@@ -4,6 +4,7 @@ import util
 import logging
 import pyjs
 import subprocess
+from pyjs import options
 from pyjs import translator
 if translator.name == 'proto':
     builtin_module = 'pyjslib'
@@ -12,7 +13,7 @@ elif translator.name == 'dict':
 else:
     raise ValueError("unknown translator engine '%s'" % translator.name)
 translate_cmd = 'translator.py'
-translate_cmd_opts = ['--translator=%s' % translator.name]
+translate_cmd_opts = ['--use-translator=%s' % translator.name]
 
 
 if pyjs.pyjspth is None:
@@ -27,24 +28,7 @@ else:
     PYJAMASLIB_PATH = os.path.join(pyjs.pyjspth, "library")
 
 
-
-translator_opts = [ 'debug',
-        'print_statements',
-        'internal_ast',
-        'function_argument_checking',
-        'attribute_checking',
-        'bound_methods',
-        'descriptors',
-        'source_tracking',
-        'stupid_mode',
-        'line_tracking',
-        'store_source',
-        'inline_code',
-        'operator_funcs ',
-        'number_classes',
-        'list_imports',
-        'translator',
-    ]
+translator_opts = options.all_compile_options.keys()
 non_boolean_opts = ['translator']
 assert set(non_boolean_opts) < set(translator_opts)
 
@@ -61,15 +45,17 @@ def is_modified(in_file,out_file):
 
 def get_translator_opts(args):
     opts = []
-    for k in translator_opts:
+    for k in options.mappings:
         if args.has_key(k):
-            nk = k.replace("_", "-")
+            #XXX somewhat of a hack ... should have a method
+            # for default positive and default negative
+            nk = options.mappings[k]['names'][0]
             if k in non_boolean_opts:
-                opts.append("--%s=%s" % (nk, args[k]))
+                opts.append("%s=%s" % (nk, args[k]))
             elif args[k]:
-                opts.append("--%s" % nk)
+                opts.append("%s" % nk)
             elif k != 'list_imports':
-                opts.append("--no-%s" % nk)
+                opts.append(nk.replace('en', 'dis', 1))
     return opts
 
 def parse_outfile(out_file):
@@ -141,14 +127,13 @@ def out_translate(platform, file_names, out_file, module_name,
         proc = subprocess.Popen(pyjscompile_cmd,
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE,
                            shell=shell,
                            cwd=pydir,
                            env=os.environ
                            )
-        stdout_value, stderr_value = proc.communicate('')
-        if stderr_value:
-            raise translator.TranslationError(stderr_value, None)
+        stdout_value, ret = proc.communicate('')[0], proc.returncode
+        if ret:
+            raise translator.TranslationError('general fail in translator process')
 
     if translator_args.get('list_imports', None):
         print "List Imports %s:" % platform, file_names
@@ -442,14 +427,52 @@ class BaseLinker(object):
         pass
 
 
-def add_linker_options(parser):
-    parser.add_option("-o", "--output", dest="output", default='output',
-                      help="directory to which the app should be written")
+mappings = options.Mappings()
+get_linker_options = mappings.link
+add_linker_options = mappings.bind
 
-    parser.add_option("-j", "--include-js", dest="js_includes",
-                      action="append", default=[],
-                      help="javascripts to load into the same frame as the rest of the script")
-    parser.add_option("-I", "--library_dir", dest="library_dirs",
-                      default=[],
-                      action="append", help="additional paths appended to PYJSPATH")
 
+mappings.multi_file = (
+    ['--dynamic-link'],
+    ['-m', '--multi-file'],
+    [],
+    dict(help='shared modules linked BEFORE runtime (late-bind) ASYNC <script>',
+         default=False)
+)
+mappings.unlinked_modules = (
+    ['--dynamic-load'],
+    ['--dynamic'],
+    [],
+    dict(help='shared modules linked DURING runtime (on-demand), regex; SYNC XHR',
+         type='string',
+         action='append',
+         metavar='REGEX',
+         default=[])
+)
+mappings.js_includes = (
+    ['--static-link'],
+    ['-j', '--include-js'],
+    [],
+    dict(help='<script>s loaded in the application frame',
+         type='string',
+         metavar='FILE',
+         default=[])
+)
+mappings.library_dirs = (
+    ['-I', '--search-path'],
+    ['--library_dir'],
+    [],
+    dict(help='additional paths appended to PYJSPATH',
+         type='string',
+         action='append',
+         metavar='PATH',
+         default=[])
+)
+mappings.output = (
+    ['-o', '--output'],
+    [],
+    [],
+    dict(help='assemble/finalize project in this directory',
+         metavar='PATH',
+         default='output')
+)
