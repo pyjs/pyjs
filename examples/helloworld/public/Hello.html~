@@ -1,0 +1,19 @@
+<html>
+<!-- auto-generated html - You should consider editing and adapting this
+ to suit your requirements. No doctype used here to force quirks mode; see
+ wiki for details: http://pyjs.org/wiki/csshellandhowtodealwithit/
+-->
+<head>
+  <link rel="stylesheet" href="Hello.css">
+  <title>Hello (Pyjamas Auto-Generated HTML file)</title>
+</head>
+<body style="background-color:white">
+  <pre>
+  some text demonstrating static HTML here.
+
+   
+    <a id="eeeclick" href='#'>eeee bbbb </a>
+
+  </pre>
+</body>
+</html>

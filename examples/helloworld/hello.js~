@@ -1,0 +1,6 @@
+
+function eee() {
+    alert("parent is....");
+    alert(document.parent)
+    return function () { alert('ddd');};
+}
