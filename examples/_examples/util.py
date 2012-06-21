@@ -9,6 +9,7 @@ import urllib
 #import bz2
 import zipfile
 #import tarfile
+import shutil
 from optparse import OptionParser
 
 
@@ -81,18 +82,22 @@ PACKAGE = {
 
 INDEX = {
     'example': r'''
-        <hr/>
-<!-- start {name} {{example.{name}._comment_end}}
-        <h2 class='title'>{{example.{name}.title}}</h2>
-        <h3 class='desc'>{{example.{name}.desc}}</h3>
-        <ul class='demos'>
-            {{example.{name}.demos}}
-        </ul>
-{{example.{name}._comment_start}} -->
-        <h4 class='source'><a href="https://github.com/pyjs/pyjs/tree/master/examples/{name}/">source directory</a> ({name})<h4>
+        <!-- start {name} {{example.{name}._comment_end}}
+        <tr>{{example.{name}.demo1}}
+
+            <td rowspan="{{example.{name}.numdemos}}">
+                {{example.{name}.title}}
+            </td>
+
+            <td rowspan="{{example.{name}.numdemos}}">
+               <a id="pyicon" href="https://github.com/pyjs/pyjs/tree/master/examples/{name}/"></a>
+            </td>
+        </tr>
+        {{example.{name}.demos}}
+        {{example.{name}._comment_start}} -->
     ''',
     'demo': r'''
-        <li class='demo'>(demo) <a href="{target}.html">{target}</a></li>
+        <td><a href="{target}.html">{target}</a></td>
     ''',
 }
 
@@ -313,15 +318,19 @@ def install(package=None, **packages):
     if package is not None:
         PACKAGE.update(package)
         name = ENV['NAME_EXAMPLE']
-        demos = ''.join([
-            str(INDEX['demo']).format(name=name, target=target[:-3])
-            for target in TARGETS
-        ])
+
+        demos = [
+               str(INDEX['demo']).format(name=name, target=target[:-3])
+               for target in TARGETS
+        ]
+
         example = {
             'name': name,
             'title': PACKAGE['title'],
             'desc': PACKAGE['desc'],
-            'demos': demos,
+            'numdemos' : '%s' % len(demos),
+            'demo1' : demos[0],
+            'demos': ''.join(['<tr>%s</tr>' % _s for _s in demos[1:]]),
         }
         if 'OPT_PROXYINSTALL' in ENV:
             sys.stdout.write(repr(example))
@@ -345,6 +354,16 @@ def install(package=None, **packages):
                 str(INDEX['example']).format(name=example)
                 for example in _list_examples()
             ])
+
+            _src='''<div id="pyjsdemos">
+                    <table>
+                    <thead>
+                    <tr><th>Demo</th><th>Description</th><th>Source Code</th></tr>
+                    </thead>
+                    <tbody>%s</tbody></table></div>'''
+
+            examples = _src % examples
+
             index_tpl = os.path.join(ENV['BASE_EXAMPLES'], '_examples', 'template', 'index.html.tpl')
             idx_in_fd = open(index_tpl, 'r')
             tpl = str(idx_in_fd.read()).format(examples)
@@ -360,3 +379,14 @@ def install(package=None, **packages):
         idx_out_fd.write(index_new)
     finally:
         idx_out_fd.close()
+
+
+    _static_dir = os.path.join(ENV['BASE_EXAMPLES'], '_examples', 'static')
+    _output_dir = os.path.join(ENV['BASE_EXAMPLES'], '__output__', 'static')
+
+    if not os.path.exists(_output_dir):
+        try:
+           shutil.copytree(_static_dir, _output_dir)
+        except Exception, e:
+           sys.stdout.write("Error copying static directory to output directory\n")
+           sys.stdout.write("%s\n" % e)

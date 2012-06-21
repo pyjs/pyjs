@@ -4,7 +4,7 @@
     <meta name="keywords" content="Python Pyjs Examples, Python Web widgets" />
     <meta name="description" content="Python Pyjs Examples" />
     <meta name="title" content="Python Web Toolkit Examples - Javascript Translator and AJAX Widgets" />
-    <link rel="stylesheet" type="text/css" href="_examples/static/examples.css" />
+    <link rel="stylesheet" type="text/css" href="static/examples.css" />
 </head>
 <body>
     <h1 id='title'>Pyjs Examples</h1>
