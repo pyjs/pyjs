@@ -8,8 +8,8 @@ TARGETS = [
 
 
 PACKAGE = {
-    'title': 'helloworld',
-    'desc': 'Port of GWT hello world example',
+    'title': 'Media',
+    'desc': 'features video and audio capabilities',
 }
 
 

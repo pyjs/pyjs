@@ -86,7 +86,7 @@ INDEX = {
         <tr>{{example.{name}.demo1}}
 
             <td rowspan="{{example.{name}.numdemos}}">
-                {{example.{name}.title}}
+                {{example.{name}.desc}}
             </td>
 
             <td rowspan="{{example.{name}.numdemos}}">
@@ -97,7 +97,7 @@ INDEX = {
         {{example.{name}._comment_start}} -->
     ''',
     'demo': r'''
-        <td><a href="{target}.html">{target}</a></td>
+        <td><a href="{target}.html">{title}</a></td>
     ''',
 }
 
@@ -319,10 +319,18 @@ def install(package=None, **packages):
         PACKAGE.update(package)
         name = ENV['NAME_EXAMPLE']
 
-        demos = [
-               str(INDEX['demo']).format(name=name, target=target[:-3])
+        if len(TARGETS) == 1:
+           demos = [
+               str(INDEX['demo']).format(name=name, target=target[:-3], 
+                                         title=PACKAGE['title'])
                for target in TARGETS
-        ]
+           ]
+        else:
+           demos = [
+               str(INDEX['demo']).format(name=name, target=target[:-3], 
+                                         title=target[:-3])
+               for target in TARGETS
+           ]
 
         example = {
             'name': name,

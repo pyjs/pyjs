@@ -57,12 +57,11 @@ class Graffle(SimplePanel):
         self.connection_circle.draw()
 
 
-
 def start(obj,x,y):
     obj.dx=0
     obj.dy=0
 
-def up(obj):
+def up(obj, event):
     pass
 
 if __name__ == "__main__":
@@ -72,4 +71,3 @@ if __name__ == "__main__":
     graffle.draw()
     graffle.connect()
     pyjd.run()
-

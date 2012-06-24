@@ -647,18 +647,21 @@ class RaphaelElement(object,RaphaelEventHandler):
         self.onMoveFunction=move
         self.onStartFunction=start
         self.onUpFunction=up
+
         JS("""
            this['_element']['drag'](@{{onMove}},@{{onStart}},@{{onUp}});
         """)
 
-    def _onMove(self,dx,dy,a,b):
+    #todo
+    #check these args and see if they are correct
+    def _onMove(self,dx,dy,x,y,event):
         self.onMoveFunction(self,dx,dy,x,y)
 
-    def _onStart(self,x,y):
+    def _onStart(self,x,y,event):
         self.onStartFunction(self,x,y)
 
-    def _onUp(self):
-        self.onUpFunction(self)
+    def _onUp(self, event):
+        self.onUpFunction(self, event)
 
 #############################################################################
 
