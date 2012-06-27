@@ -18,3 +18,21 @@ p {
     margin: 0px 0px 0px 10px;
     padding: 0px;
 }
+tr:nth-child(even) {background: #EBECE4;}
+tr:nth-child(odd)  {background: #FFF;}
+table tbody tr:hover {
+      background: #FDFCDC; 
+      word-wrap:break-word
+}
+table, th { border: 1px solid black;}
+th { text-align: left; 
+     background: #000; 
+     color: #FFF;
+}
+#pyicon { 
+          background-image:url("source-py-icon.png");
+          display:block;
+          width:32px;
+          height:32px;
+          margin: 0 auto 0 auto;
+}

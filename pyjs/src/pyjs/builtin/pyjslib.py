@@ -20,7 +20,7 @@ from __pyjamas__ import INT, JS, setCompilerOptions, debugger
 
 setCompilerOptions("noDebug", "noBoundMethods", "noDescriptors", "noGetattrSupport", "noAttributeChecking", "noSourceTracking", "noLineTracking", "noStoreSource")
 
-platform = JS("$pyjs.platform")
+platform = JS("$pyjs['platform']")
 sys = None
 dynamic = None
 Ellipsis = None
@@ -37,11 +37,11 @@ $min_int = -0x80000000;
 """)
 
 _handle_exception = JS("""function(err) {
-    $pyjs.loaded_modules['sys'].save_exception_stack();
+    $pyjs['loaded_modules']['sys']['save_exception_stack']();
 
-    if (!$pyjs.in_try_except) {
-        var $pyjs_msg = $pyjs.loaded_modules['sys']._get_traceback(err);
-        $pyjs.__active_exception_stack__ = null;
+    if (!$pyjs['in_try_except']) {
+        var $pyjs_msg = $pyjs['loaded_modules']['sys']['_get_traceback'](err);
+        $pyjs['__active_exception_stack__'] = null;
         @{{debugReport}}($pyjs_msg);
     }
     throw err;
@@ -88,7 +88,7 @@ def type(clsname, bases=None, methods=None):
 
     JS(" var bss = null; ")
     if bases:
-        JS("@{{!bss}} = @{{bases}}.__array;")
+        JS("@{{!bss}} = @{{bases}}['__array'];")
     JS(" return $pyjs_type(@{{clsname}}, @{{!bss}}, @{{!mths}}); ")
 
 class object:
@@ -98,14 +98,14 @@ class object:
         if (typeof @{{name}} != 'string') {
             throw @{{TypeError}}("attribute name must be string");
         }
-        if (attrib_remap.indexOf(@{{name}}) >= 0) {
+        if (attrib_remap['indexOf'](@{{name}}) >= 0) {
             @{{name}} = '$$' + @{{name}};
         }
         if (typeof @{{self}}[@{{name}}] != 'undefined'
-            && @{{self}}.__is_instance__
+            && @{{self}}['__is_instance__']
             && @{{self}}[@{{name}}] !== null
-            && typeof @{{self}}[@{{name}}].__set__ == 'function') {
-            @{{self}}[@{{name}}].__set__(@{{self}}, @{{value}});
+            && typeof @{{self}}[@{{name}}]['__set__'] == 'function') {
+            @{{self}}[@{{name}}]['__set__'](@{{self}}, @{{value}});
         } else {
             @{{self}}[@{{name}}] = @{{value}};
         }
@@ -119,18 +119,18 @@ object.__str__ = JS("""function (self) {
         self = this;
     }
     var s;
-    if (self.__is_instance__ === true) {
+    if (self['__is_instance__'] === true) {
         s = "instance of ";
-    } else if (self.__is_instance__ === false) {
+    } else if (self['__is_instance__'] === false) {
         s = "class ";
     } else {
         s = "javascript " + typeof self + " ";
     }
-    if (self.__module__) {
-        s += self.__module__ + ".";
+    if (self['__module__']) {
+        s += self['__module__'] + ".";
     }
-    if (typeof self.__name__ != 'undefined') {
-        return s + self.__name__;
+    if (typeof self['__name__'] != 'undefined') {
+        return s + self['__name__'];
     }
     return s + "<unknown>";
 }""")
@@ -170,13 +170,13 @@ def op_is(a,b):
     JS("""
     if (@{{a}} === @{{b}}) return true;
     if (@{{a}} !== null && @{{b}} !== null) {
-        switch ((@{{a}}.__number__ << 8) | @{{b}}.__number__) {
+        switch ((@{{a}}['__number__'] << 8) | @{{b}}['__number__']) {
             case 0x0101:
                 return @{{a}} == @{{b}};
             case 0x0202:
-                return @{{a}}.__v == @{{b}}.__v;
+                return @{{a}}['__v'] == @{{b}}['__v'];
             case 0x0404:
-                return @{{a}}.__cmp__(@{{b}}) == 0;
+                return @{{a}}['__cmp__'](@{{b}}) == 0;
         }
     }
     return false;
@@ -197,66 +197,66 @@ def op_eq(a,b):
         return false;
     }
     if (@{{a}} === @{{b}}) {
-        if (@{{a}}.__is_instance__ === false &&
-            @{{b}}.__is_instance__ === false) {
+        if (@{{a}}['__is_instance__'] === false &&
+            @{{b}}['__is_instance__'] === false) {
             return true;
         }
     }
-    switch ((@{{a}}.__number__ << 8) | @{{b}}.__number__) {
+    switch ((@{{a}}['__number__'] << 8) | @{{b}}['__number__']) {
         case 0x0101:
         case 0x0401:
             return @{{a}} == @{{b}};
         case 0x0102:
-            return @{{a}} == @{{b}}.__v;
+            return @{{a}} == @{{b}}['__v'];
         case 0x0201:
-            return @{{a}}.__v == @{{b}};
+            return @{{a}}['__v'] == @{{b}};
         case 0x0202:
-            return @{{a}}.__v == @{{b}}.__v;
+            return @{{a}}['__v'] == @{{b}}['__v'];
         case 0x0104:
         case 0x0204:
-            @{{a}} = new @{{long}}(@{{a}}.valueOf());
+            @{{a}} = new @{{long}}(@{{a}}['valueOf']());
         case 0x0404:
-            return @{{a}}.__cmp__(@{{b}}) == 0;
+            return @{{a}}['__cmp__'](@{{b}}) == 0;
         case 0x0402:
-            return @{{a}}.__cmp__(new @{{long}}(@{{b}}.valueOf())) == 0;
+            return @{{a}}['__cmp__'](new @{{long}}(@{{b}}['valueOf']())) == 0;
     }
     if (typeof @{{a}} == 'object' || typeof @{{a}} == 'function') {
-        if (typeof @{{a}}.__eq__ == 'function') {
-            if (typeof @{{b}}.__eq__ != 'function') {
+        if (typeof @{{a}}['__eq__'] == 'function') {
+            if (typeof @{{b}}['__eq__'] != 'function') {
                 return false;
             }
-            if (@{{a}}.__eq__ === @{{b}}.__eq__) {
-                return @{{a}}.__eq__(@{{b}});
+            if (@{{a}}['__eq__'] === @{{b}}['__eq__']) {
+                return @{{a}}['__eq__'](@{{b}});
             }
             if (@{{_isinstance}}(@{{a}}, @{{b}})) {
-                return @{{a}}.__eq__(@{{b}});
+                return @{{a}}['__eq__'](@{{b}});
             }
             return false;
         }
-        if (typeof @{{a}}.__cmp__ == 'function') {
-            if (typeof @{{b}}.__cmp__ != 'function') {
+        if (typeof @{{a}}['__cmp__'] == 'function') {
+            if (typeof @{{b}}['__cmp__'] != 'function') {
                 return false;
             }
-            if (@{{a}}.__cmp__ === @{{b}}.__cmp__) {
-                return @{{a}}.__cmp__(@{{b}}) == 0;
+            if (@{{a}}['__cmp__'] === @{{b}}['__cmp__']) {
+                return @{{a}}['__cmp__'](@{{b}}) == 0;
             }
             if (@{{_isinstance}}(@{{a}}, @{{b}})) {
-                return @{{a}}.__cmp__(@{{b}}) == 0;
+                return @{{a}}['__cmp__'](@{{b}}) == 0;
             }
             return false;
         }
     } else if (typeof @{{b}} == 'object' || typeof @{{b}} == 'function') {
-        if (typeof @{{b}}.__eq__ == 'function') {
+        if (typeof @{{b}}['__eq__'] == 'function') {
             if (@{{_isinstance}}(@{{a}}, @{{b}})) {
-                return @{{b}}.__eq__(@{{a}});
+                return @{{b}}['__eq__'](@{{a}});
             }
             return false;
         }
-        if (typeof @{{b}}.__cmp__ == 'function') {
-            // typeof bXXX.__cmp__ != 'function'
-            // aXXX.__cmp__ !== bXXX.__cmp__
+        if (typeof @{{b}}['__cmp__'] == 'function') {
+            // typeof bXXX['__cmp__'] != 'function'
+            // aXXX['__cmp__'] !== bXXX['__cmp__']
             if (@{{_isinstance}}(@{{a}}, @{{b}})) {
-                return @{{b}}.__cmp__(@{{a}}) == 0;
+                return @{{b}}['__cmp__'](@{{a}}) == 0;
             }
             return false;
         }
@@ -266,28 +266,28 @@ def op_eq(a,b):
 
 def op_uadd(v):
     JS("""
-    switch (@{{v}}.__number__) {
+    switch (@{{v}}['__number__']) {
         case 0x01:
         case 0x02:
         case 0x04:
             return @{{v}};
     }
     if (@{{v}}!== null) {
-        if (typeof @{{v}}['__pos__'] == 'function') return @{{v}}.__pos__();
+        if (typeof @{{v}}['__pos__'] == 'function') return @{{v}}['__pos__']();
     }
 """)
     raise TypeError("bad operand type for unary +: '%r'" % v)
 
 def op_usub(v):
     JS("""
-    switch (@{{v}}.__number__) {
+    switch (@{{v}}['__number__']) {
         case 0x01:
             return -@{{v}};
         case 0x02:
             return new @{{int}}(-@{{v}});
     }
     if (@{{v}}!== null) {
-        if (typeof @{{v}}['__neg__'] == 'function') return @{{v}}.__neg__();
+        if (typeof @{{v}}['__neg__'] == 'function') return @{{v}}['__neg__']();
     }
 """)
     raise TypeError("bad operand type for unary -: '%r'" % v)
@@ -303,34 +303,34 @@ def __op_add(x, y):
 def op_add(x, y):
     JS("""
     if (@{{x}}!== null && @{{y}}!== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 return @{{x}}+ @{{y}};
             case 0x0102:
-                return @{{x}}+ @{{y}}.__v;
+                return @{{x}}+ @{{y}}['__v'];
             case 0x0201:
-                return @{{x}}.__v + @{{y}};
+                return @{{x}}['__v'] + @{{y}};
             case 0x0202:
-                return new @{{int}}(@{{x}}.__v + @{{y}}.__v);
+                return new @{{int}}(@{{x}}['__v'] + @{{y}}['__v']);
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__add(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__add'](@{{y}});
             case 0x0402:
-                return @{{x}}.__add(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__add'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__add(@{{y}});
+                return @{{x}}['__add'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
+        if (!@{{x}}['__number__']) {
             if (typeof @{{x}}== 'string' && typeof @{{y}}== 'string') return @{{x}}+ @{{y}};
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__add__'] == 'function')
-                return @{{y}}.__add__(@{{x}});
-            if (typeof @{{x}}['__add__'] == 'function') return @{{x}}.__add__(@{{y}});
+                return @{{y}}['__add__'](@{{x}});
+            if (typeof @{{x}}['__add__'] == 'function') return @{{x}}['__add__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__radd__'] == 'function') return @{{y}}.__radd__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__radd__'] == 'function') return @{{y}}['__radd__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for +: '%r', '%r'" % (x, y))
@@ -346,33 +346,33 @@ def __op_sub(x, y):
 def op_sub(x, y):
     JS("""
     if (@{{x}}!== null && @{{y}}!== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 return @{{x}}- @{{y}};
             case 0x0102:
-                return @{{x}}- @{{y}}.__v;
+                return @{{x}}- @{{y}}['__v'];
             case 0x0201:
-                return @{{x}}.__v - @{{y}};
+                return @{{x}}['__v'] - @{{y}};
             case 0x0202:
-                return new @{{int}}(@{{x}}.__v - @{{y}}.__v);
+                return new @{{int}}(@{{x}}['__v'] - @{{y}}['__v']);
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__sub(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__sub'](@{{y}});
             case 0x0402:
-                return @{{x}}.__sub(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__sub'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__sub(@{{y}});
+                return @{{x}}['__sub'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__sub__'] == 'function')
-                return @{{y}}.__sub__(@{{x}});
-            if (typeof @{{x}}['__sub__'] == 'function') return @{{x}}.__sub__(@{{y}});
+                return @{{y}}['__sub__'](@{{x}});
+            if (typeof @{{x}}['__sub__'] == 'function') return @{{x}}['__sub__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rsub__'] == 'function') return @{{y}}.__rsub__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rsub__'] == 'function') return @{{y}}['__rsub__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for -: '%r', '%r'" % (x, y))
@@ -380,37 +380,37 @@ def op_sub(x, y):
 def op_floordiv(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.floor(@{{x}} / @{{y}});
+                return Math['floor'](@{{x}} / @{{y}});
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.floor(@{{x}} / @{{y}}.__v);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return Math['floor'](@{{x}} / @{{y}}['__v']);
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.floor(@{{x}}.__v / @{{y}});
+                return Math['floor'](@{{x}}['__v'] / @{{y}});
             case 0x0202:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-                return new @{{int}}(Math.floor(@{{x}}.__v / @{{y}}.__v));
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+                return new @{{int}}(Math['floor'](@{{x}}['__v'] / @{{y}}['__v']));
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__floordiv(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__floordiv'](@{{y}});
             case 0x0402:
-                return @{{x}}.__floordiv(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__floordiv'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__floordiv(@{{y}});
+                return @{{x}}['__floordiv'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__floordiv__'] == 'function')
-                return @{{y}}.__floordiv__(@{{x}});
-            if (typeof @{{x}}['__floordiv__'] == 'function') return @{{x}}.__floordiv__(@{{y}});
+                return @{{y}}['__floordiv__'](@{{x}});
+            if (typeof @{{x}}['__floordiv__'] == 'function') return @{{x}}['__floordiv__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rfloordiv__'] == 'function') return @{{y}}.__rfloordiv__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rfloordiv__'] == 'function') return @{{y}}['__rfloordiv__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for //: '%r', '%r'" % (x, y))
@@ -418,37 +418,37 @@ def op_floordiv(x, y):
 def op_div(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
                 return @{{x}} / @{{y}};
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return @{{x}} / @{{y}}.__v;
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return @{{x}} / @{{y}}['__v'];
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return @{{x}}.__v / @{{y}};
+                return @{{x}}['__v'] / @{{y}};
             case 0x0202:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return new @{{int}}(@{{x}}.__v / @{{y}}.__v);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return new @{{int}}(@{{x}}['__v'] / @{{y}}['__v']);
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__div(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__div'](@{{y}});
             case 0x0402:
-                return @{{x}}.__div(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__div'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__div(@{{y}});
+                return @{{x}}['__div'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__div__'] == 'function')
-                return @{{y}}.__div__(@{{x}});
-            if (typeof @{{x}}['__div__'] == 'function') return @{{x}}.__div__(@{{y}});
+                return @{{y}}['__div__'](@{{x}});
+            if (typeof @{{x}}['__div__'] == 'function') return @{{x}}['__div__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rdiv__'] == 'function') return @{{y}}.__rdiv__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rdiv__'] == 'function') return @{{y}}['__rdiv__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for /: '%r', '%r'" % (x, y))
@@ -456,7 +456,7 @@ def op_div(x, y):
 def op_truediv(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
@@ -466,24 +466,24 @@ def op_truediv(x, y):
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
                 return @{{x}} / @{{y}};
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return @{{x}} / @{{y}}.__v;
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return @{{x}} / @{{y}}['__v'];
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return @{{x}}.__v / @{{y}};
+                return @{{x}}['__v'] / @{{y}};
             case 0x0202:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return @{{x}}.__v / @{{y}}.__v;
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return @{{x}}['__v'] / @{{y}}['__v'];
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__truediv__'] == 'function')
-                return @{{y}}.__truediv__(@{{x}});
-            if (typeof @{{x}}['__truediv__'] == 'function') return @{{x}}.__truediv__(@{{y}});
+                return @{{y}}['__truediv__'](@{{x}});
+            if (typeof @{{x}}['__truediv__'] == 'function') return @{{x}}['__truediv__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rtruediv__'] == 'function') return @{{y}}.__rtruediv__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rtruediv__'] == 'function') return @{{y}}['__rtruediv__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for /: '%r', '%r'" % (x, y))
@@ -491,33 +491,33 @@ def op_truediv(x, y):
 def op_mul(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 return @{{x}} * @{{y}};
             case 0x0102:
-                return @{{x}} * @{{y}}.__v;
+                return @{{x}} * @{{y}}['__v'];
             case 0x0201:
-                return @{{x}}.__v * @{{y}};
+                return @{{x}}['__v'] * @{{y}};
             case 0x0202:
-                return new @{{int}}(@{{x}}.__v * @{{y}}.__v);
+                return new @{{int}}(@{{x}}['__v'] * @{{y}}['__v']);
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__mul(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__mul'](@{{y}});
             case 0x0402:
-                return @{{x}}.__mul(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__mul'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__mul(@{{y}});
+                return @{{x}}['__mul'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__mul__'] == 'function')
-                return @{{y}}.__mul__(@{{x}});
-            if (typeof @{{x}}['__mul__'] == 'function') return @{{x}}.__mul__(@{{y}});
+                return @{{y}}['__mul__'](@{{x}});
+            if (typeof @{{x}}['__mul__'] == 'function') return @{{x}}['__mul__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rmul__'] == 'function') return @{{y}}.__rmul__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rmul__'] == 'function') return @{{y}}['__rmul__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for *: '%r', '%r'" % (x, y))
@@ -525,7 +525,7 @@ def op_mul(x, y):
 def op_mod(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
@@ -533,36 +533,36 @@ def op_mod(x, y):
                 var v = @{{x}} % @{{y}};
                 return (v < 0 && @{{y}} > 0 ? v + @{{y}} : v);
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                var v = @{{x}} % @{{y}}.__v;
-                return (v < 0 && @{{y}}.__v > 0 ? v + @{{y}}.__v : v);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                var v = @{{x}} % @{{y}}['__v'];
+                return (v < 0 && @{{y}}['__v'] > 0 ? v + @{{y}}['__v'] : v);
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                var v = @{{x}}.__v % @{{y}};
-                return (v < 0 && @{{y}}.__v > 0 ? v + @{{y}}.__v : v);
+                var v = @{{x}}['__v'] % @{{y}};
+                return (v < 0 && @{{y}}['__v'] > 0 ? v + @{{y}}['__v'] : v);
             case 0x0202:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-                var v = @{{x}}.__v % @{{y}}.__v;
-                return new @{{int}}(v < 0 && @{{y}}.__v > 0 ? v + @{{y}}.__v : v);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+                var v = @{{x}}['__v'] % @{{y}}['__v'];
+                return new @{{int}}(v < 0 && @{{y}}['__v'] > 0 ? v + @{{y}}['__v'] : v);
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__mod(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__mod'](@{{y}});
             case 0x0402:
-                return @{{x}}.__mod(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__mod'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__mod(@{{y}});
+                return @{{x}}['__mod'](@{{y}});
         }
         if (typeof @{{x}} == 'string') {
             return @{{sprintf}}(@{{x}}, @{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__mod__'] == 'function')
-                return @{{y}}.__mod__(@{{x}});
-            if (typeof @{{x}}['__mod__'] == 'function') return @{{x}}.__mod__(@{{y}});
+                return @{{y}}['__mod__'](@{{x}});
+            if (typeof @{{x}}['__mod__'] == 'function') return @{{x}}['__mod__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rmod__'] == 'function') return @{{y}}.__rmod__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rmod__'] == 'function') return @{{y}}['__rmod__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for %: '%r', '%r'" % (x, y))
@@ -570,36 +570,36 @@ def op_mod(x, y):
 def op_pow(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.pow(@{{x}}, @{{y}});
+                return Math['pow'](@{{x}}, @{{y}});
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.pow(@{{x}},@{{y}}.__v);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                return Math['pow'](@{{x}},@{{y}}['__v']);
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                return Math.pow(@{{x}}.__v,@{{y}});
+                return Math['pow'](@{{x}}['__v'],@{{y}});
             case 0x0202:
-                return @{{x}}.__pow__(@{{y}});
+                return @{{x}}['__pow__'](@{{y}});
             case 0x0204:
-                return (new @{{long}}(@{{x}}.__v)).__pow(@{{y}});
+                return (new @{{long}}(@{{x}}['__v']))['__pow'](@{{y}});
             case 0x0402:
-                return @{{x}}.__pow(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__pow'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__pow(@{{y}});
+                return @{{x}}['__pow'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__pow__'] == 'function')
-                return @{{y}}.__pow__(@{{x}});
-            if (typeof @{{x}}['__pow__'] == 'function') return @{{x}}.__pow__(@{{y}});
+                return @{{y}}['__pow__'](@{{x}});
+            if (typeof @{{x}}['__pow__'] == 'function') return @{{x}}['__pow__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rpow__'] == 'function') return @{{y}}.__rpow__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rpow__'] == 'function') return @{{y}}['__rpow__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for %: '%r', '%r'" % (x, y))
@@ -607,7 +607,7 @@ def op_pow(x, y):
 def op_invert(v):
     JS("""
     if (@{{v}} !== null) {
-        if (typeof @{{v}}['__invert__'] == 'function') return @{{v}}.__invert__();
+        if (typeof @{{v}}['__invert__'] == 'function') return @{{v}}['__invert__']();
     }
 """)
     raise TypeError("bad operand type for unary -: '%r'" % v)
@@ -615,21 +615,21 @@ def op_invert(v):
 def op_bitshiftleft(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0202:
-                return @{{x}}.__lshift__(@{{y}});
+                return @{{x}}['__lshift__'](@{{y}});
             case 0x0204:
-                return @{{y}}.__rlshift__(@{{x}});
+                return @{{y}}['__rlshift__'](@{{x}});
             case 0x0402:
-                return @{{x}}.__lshift(@{{y}}.__v);
+                return @{{x}}['__lshift'](@{{y}}['__v']);
             case 0x0404:
-                return @{{x}}.__lshift(@{{y}}.valueOf());
+                return @{{x}}['__lshift'](@{{y}}['valueOf']());
         }
         if (typeof @{{x}}['__lshift__'] == 'function') {
-            var v = @{{x}}.__lshift__(@{{y}});
+            var v = @{{x}}['__lshift__'](@{{y}});
             if (v !== @{{NotImplemented}}) return v;
         }
-        if (typeof @{{y}}['__rlshift__'] != 'undefined') return @{{y}}.__rlshift__(@{{x}});
+        if (typeof @{{y}}['__rlshift__'] != 'undefined') return @{{y}}['__rlshift__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for <<: '%r', '%r'" % (x, y))
@@ -637,21 +637,21 @@ def op_bitshiftleft(x, y):
 def op_bitshiftright(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0202:
-                return @{{x}}.__rshift__(@{{y}});
+                return @{{x}}['__rshift__'](@{{y}});
             case 0x0204:
-                return @{{y}}.__rrshift__(@{{x}});
+                return @{{y}}['__rrshift__'](@{{x}});
             case 0x0402:
-                return @{{x}}.__rshift(@{{y}}.__v);
+                return @{{x}}['__rshift'](@{{y}}['__v']);
             case 0x0404:
-                return @{{x}}.__rshift(@{{y}}.valueOf());
+                return @{{x}}['__rshift'](@{{y}}['valueOf']());
         }
         if (typeof @{{x}}['__rshift__'] == 'function') {
-            var v = @{{x}}.__rshift__(@{{y}});
+            var v = @{{x}}['__rshift__'](@{{y}});
             if (v !== @{{NotImplemented}}) return v;
         }
-        if (typeof @{{y}}['__rrshift__'] != 'undefined') return @{{y}}.__rrshift__(@{{x}});
+        if (typeof @{{y}}['__rrshift__'] != 'undefined') return @{{y}}['__rrshift__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for >>: '%r', '%r'" % (x, y))
@@ -659,39 +659,39 @@ def op_bitshiftright(x, y):
 def op_bitand2(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0202:
-                return @{{x}}.__and__(@{{y}});
+                return @{{x}}['__and__'](@{{y}});
             case 0x0204:
-                return @{{y}}.__and(new @{{long}}(@{{x}}));
+                return @{{y}}['__and'](new @{{long}}(@{{x}}));
             case 0x0402:
-                return @{{x}}.__and(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__and'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__and(@{{y}});
+                return @{{x}}['__and'](@{{y}});
         }
         if (typeof @{{x}}['__and__'] == 'function') {
-            var v = @{{x}}.__and__(@{{y}});
+            var v = @{{x}}['__and__'](@{{y}});
             if (v !== @{{NotImplemented}}) return v;
         }
-        if (typeof @{{y}}['__rand__'] != 'undefined') return @{{y}}.__rand__(@{{x}});
+        if (typeof @{{y}}['__rand__'] != 'undefined') return @{{y}}['__rand__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for &: '%r', '%r'" % (x, y))
 
 op_bitand = JS("""function (args) {
     var a;
-    if (args[0] !== null && args[1] !== null && args.length > 1) {
+    if (args[0] !== null && args[1] !== null && args['length'] > 1) {
         var res, r;
         res = args[0];
-        for (i = 1; i < args.length; i++) {
+        for (i = 1; i < args['length']; i++) {
             if (typeof res['__and__'] == 'function') {
                 r = res;
-                res = res.__and__(args[i]);
+                res = res['__and__'](args[i]);
                 if (res === @{{NotImplemented}} && typeof args[i]['__rand__'] == 'function') {
-                    res = args[i].__rand__(r);
+                    res = args[i]['__rand__'](r);
                 }
             } else if (typeof args[i]['__rand__'] == 'function') {
-                res = args[i].__rand__(res);
+                res = args[i]['__rand__'](res);
             } else {
                 res = null;
                 break;
@@ -714,39 +714,39 @@ JS("""
 def op_bitxor2(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0202:
-                return @{{x}}.__xor__(@{{y}});
+                return @{{x}}['__xor__'](@{{y}});
             case 0x0204:
-                return @{{y}}.__xor(new @{{long}}(@{{x}}));
+                return @{{y}}['__xor'](new @{{long}}(@{{x}}));
             case 0x0402:
-                return @{{x}}.__xor(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__xor'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__xor(@{{y}});
+                return @{{x}}['__xor'](@{{y}});
         }
         if (typeof @{{x}}['__xor__'] == 'function') {
-            var v = @{{x}}.__xor__(@{{y}});
+            var v = @{{x}}['__xor__'](@{{y}});
             if (v !== @{{NotImplemented}}) return v;
         }
-        if (typeof @{{y}}['__rxor__'] != 'undefined') return @{{y}}.__rxor__(@{{x}});
+        if (typeof @{{y}}['__rxor__'] != 'undefined') return @{{y}}['__rxor__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for ^: '%r', '%r'" % (x, y))
 
 op_bitxor = JS("""function (args) {
     var a;
-    if (args[0] !== null && args[1] !== null && args.length > 1) {
+    if (args[0] !== null && args[1] !== null && args['length'] > 1) {
         var res, r;
         res = args[0];
-        for (i = 1; i < args.length; i++) {
+        for (i = 1; i < args['length']; i++) {
             if (typeof res['__xor__'] == 'function') {
                 r = res;
-                res = res.__xor__(args[i]);
+                res = res['__xor__'](args[i]);
                 if (res === @{{NotImplemented}} && typeof args[i]['__rxor__'] == 'function') {
-                    res = args[i].__rxor__(r);
+                    res = args[i]['__rxor__'](r);
                 }
             } else if (typeof args[i]['__rxor__'] == 'function') {
-                res = args[i].__rxor__(res);
+                res = args[i]['__rxor__'](res);
             } else {
                 res = null;
                 break;
@@ -769,22 +769,22 @@ JS("""
 def op_bitor2(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0202:
-                return @{{x}}.__or__(@{{y}});
+                return @{{x}}['__or__'](@{{y}});
             case 0x0204:
-                return @{{y}}.__or(new @{{long}}(@{{x}}));
+                return @{{y}}['__or'](new @{{long}}(@{{x}}));
             case 0x0402:
-                return @{{x}}.__or(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__or'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__or(@{{y}});
+                return @{{x}}['__or'](@{{y}});
         }
         if (typeof @{{x}}['__or__'] == 'function') {
-            var v = @{{x}}.__or__(@{{y}});
+            var v = @{{x}}['__or__'](@{{y}});
             if (v !== @{{NotImplemented}}) return v;
         }
         if (typeof @{{y}}['__ror__'] != 'undefined') {
-            return @{{y}}.__ror__(@{{x}});
+            return @{{y}}['__ror__'](@{{x}});
         }
     }
 """)
@@ -792,18 +792,18 @@ def op_bitor2(x, y):
 
 op_bitor = JS("""function (args) {
     var a;
-    if (args[0] !== null && args[1] !== null && args.length > 1) {
+    if (args[0] !== null && args[1] !== null && args['length'] > 1) {
         var res, r;
         res = args[0];
-        for (i = 1; i < args.length; i++) {
+        for (i = 1; i < args['length']; i++) {
             if (typeof res['__or__'] == 'function') {
                 r = res;
-                res = res.__or__(args[i]);
+                res = res['__or__'](args[i]);
                 if (res === @{{NotImplemented}} && typeof args[i]['__ror__'] == 'function') {
-                    res = args[i].__ror__(r);
+                    res = args[i]['__ror__'](r);
                 }
             } else if (typeof args[i]['__ror__'] == 'function') {
-                res = args[i].__ror__(res);
+                res = args[i]['__ror__'](res);
             } else {
                 res = null;
                 break;
@@ -832,27 +832,27 @@ JS("""
 #     Try the parent if it has an object that resolves to [context.]path
 # If the module doesn't exist and dynamic loading is enabled, try dynamic loading
 def ___import___(path, context, module_name=None, get_base=True):
-    save_track_module = JS("$pyjs.track.module")
-    sys = JS("$pyjs.loaded_modules['sys']")
-    pyjslib = JS("$pyjs.loaded_modules['pyjslib']")
-    if JS("@{{sys}}.__was_initialized__ != true"):
-        module = JS("$pyjs.loaded_modules[@{{path}}]")
+    save_track_module = JS("$pyjs['track']['module']")
+    sys = JS("$pyjs['loaded_modules']['sys']")
+    pyjslib = JS("$pyjs['loaded_modules']['pyjslib']")
+    if JS("@{{sys}}['__was_initialized__'] != true"):
+        module = JS("$pyjs['loaded_modules'][@{{path}}]")
         module()
-        JS("$pyjs.track.module = @{{save_track_module}};")
+        JS("$pyjs['track']['module'] = @{{save_track_module}};")
         if path == 'sys':
             module.modules = dict({'pyjslib': pyjslib,
                                    '__builtin__':pyjslib,
                                    'builtins':pyjslib,
                                    'sys': module})
-            JS("$pyjs.loaded_modules['__builtin__'] = @{{pyjslib}};")
-            JS("$pyjs.loaded_modules['builtins'] = @{{pyjslib}};")
+            JS("$pyjs['loaded_modules']['__builtin__'] = @{{pyjslib}};")
+            JS("$pyjs['loaded_modules']['builtins'] = @{{pyjslib}};")
         return module
     importName = path
     is_module_object = False
     path_parts = path.__split('.') # make a javascript Array
     depth = path_parts.length
     topName = JS("@{{path_parts}}[0]")
-    objName = JS("@{{path_parts}}[@{{path_parts}}.length-1]")
+    objName = JS("@{{path_parts}}[@{{path_parts}}['length']-1]")
     parentName = path_parts.slice(0, path_parts.length-1).join('.')
     if context is None:
         in_context = False
@@ -864,57 +864,57 @@ def ___import___(path, context, module_name=None, get_base=True):
         else:
             inContextParentName = context + '.' + parentName
         inContextTopName = context + '.' + topName
-        contextTopName = JS("@{{context}}.__split('.')[0]")
+        contextTopName = JS("@{{context}}['__split']('.')[0]")
 
         # Check if we already have imported this module in this context
         if depth > 1 and sys.modules.has_key(inContextParentName):
             module = sys.modules[inContextParentName]
             if JS("typeof @{{module}}[@{{objName}}] != 'undefined'"):
                 if get_base:
-                    return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                    return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
                 return JS("@{{module}}[@{{objName}}]")
         elif sys.modules.has_key(inContextImportName):
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
             return sys.modules[inContextImportName]
-        elif depth > 1 and JS("typeof (@{{module}} = $pyjs.loaded_modules[@{{inContextParentName}}]) != 'undefined'"):
+        elif depth > 1 and JS("typeof (@{{module}} = $pyjs['loaded_modules'][@{{inContextParentName}}]) != 'undefined'"):
             sys.modules[inContextParentName] = module
-            JS("@{{module}}.__was_initialized__ = false;")
+            JS("@{{module}}['__was_initialized__'] = false;")
             module(None)
-            JS("$pyjs.track.module = @{{save_track_module}};")
+            JS("$pyjs['track']['module'] = @{{save_track_module}};")
             if JS("typeof @{{module}}[@{{objName}}] != 'undefined'"):
                 if get_base:
-                    return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                    return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
                 return JS("@{{module}}[@{{objName}}]")
         if sys.modules.has_key(inContextImportName):
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
             return sys.modules[inContextImportName]
-        if JS("typeof (@{{module}} = $pyjs.loaded_modules[@{{inContextImportName}}]) != 'undefined'"):
+        if JS("typeof (@{{module}} = $pyjs['loaded_modules'][@{{inContextImportName}}]) != 'undefined'"):
             sys.modules[inContextImportName] = module
-            JS("@{{module}}.__was_initialized__ = false;")
+            JS("@{{module}}['__was_initialized__'] = false;")
             module(module_name)
-            JS("$pyjs.track.module = @{{save_track_module}};")
+            JS("$pyjs['track']['module'] = @{{save_track_module}};")
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
             return module
         # Check if the topName is a valid module, if so, we stay in_context
         if not sys.modules.has_key(inContextTopName):
-            if JS("typeof (@{{module}} = $pyjs.loaded_modules[@{{inContextTopName}}]) != 'function'"):
+            if JS("typeof (@{{module}} = $pyjs['loaded_modules'][@{{inContextTopName}}]) != 'function'"):
                 in_context = False
-                if JS("$pyjs.options.dynamic_loading"):
+                if JS("$pyjs['options']['dynamic_loading']"):
                     module = __dynamic_load__(inContextTopName)
                     if JS("""typeof @{{module}} == 'function'"""):
                         in_context = True
                         if depth == 1:
                             module(module_name)
-                            JS("$pyjs.track.module = @{{save_track_module}};")
+                            JS("$pyjs['track']['module'] = @{{save_track_module}};")
                             return module
                         else:
                             module(None)
                             if depth == 2 and JS("typeof @{{module}}[@{{objName}}] != 'undefined'"):
                                 if get_base:
-                                    return JS("$pyjs.loaded_modules[@{{inContextTopName}}]")
+                                    return JS("$pyjs['loaded_modules'][@{{inContextTopName}}]")
                                 return JS("@{{module}}[@{{objName}}]")
         if in_context:
             importName = inContextImportName
@@ -925,43 +925,43 @@ def ___import___(path, context, module_name=None, get_base=True):
             module = sys.modules[parentName]
             if JS("typeof @{{module}}[@{{objName}}] != 'undefined'"):
                 if get_base:
-                    return JS("$pyjs.loaded_modules[@{{topName}}]")
+                    return JS("$pyjs['loaded_modules'][@{{topName}}]")
                 return JS("@{{module}}[@{{objName}}]")
         elif sys.modules.has_key(importName):
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{topName}}]")
+                return JS("$pyjs['loaded_modules'][@{{topName}}]")
             return sys.modules[importName]
-        elif parentName and JS("typeof (@{{module}} = $pyjs.loaded_modules[@{{parentName}}]) != 'undefined'"):
+        elif parentName and JS("typeof (@{{module}} = $pyjs['loaded_modules'][@{{parentName}}]) != 'undefined'"):
             sys.modules[parentName] = module
-            JS("@{{module}}.__was_initialized__ = false;")
+            JS("@{{module}}['__was_initialized__'] = false;")
             module(None)
-            JS("$pyjs.track.module = @{{save_track_module}};")
+            JS("$pyjs['track']['module'] = @{{save_track_module}};")
             if JS("typeof @{{module}}[@{{objName}}] != 'undefined'"):
                 if get_base:
-                    return JS("$pyjs.loaded_modules[@{{topName}}]")
+                    return JS("$pyjs['loaded_modules'][@{{topName}}]")
                 return JS("@{{module}}[@{{objName}}]")
         if sys.modules.has_key(importName):
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{topName}}]")
+                return JS("$pyjs['loaded_modules'][@{{topName}}]")
             return sys.modules[importName]
-        if JS("typeof (@{{module}} = $pyjs.loaded_modules[@{{importName}}]) != 'undefined'"):
+        if JS("typeof (@{{module}} = $pyjs['loaded_modules'][@{{importName}}]) != 'undefined'"):
             sys.modules[importName] = module
             if importName != 'pyjslib' and importName != 'sys':
-                JS("@{{module}}.__was_initialized__ = false;")
+                JS("@{{module}}['__was_initialized__'] = false;")
             module(module_name)
-            JS("$pyjs.track.module = @{{save_track_module}};")
+            JS("$pyjs['track']['module'] = @{{save_track_module}};")
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{topName}}]")
+                return JS("$pyjs['loaded_modules'][@{{topName}}]")
             return module
 
     # If we are here, the module is not loaded (yet).
-    if JS("$pyjs.options.dynamic_loading"):
+    if JS("$pyjs['options']['dynamic_loading']"):
         module = __dynamic_load__(importName)
         if JS("""typeof @{{module}}== 'function'"""):
             module(module_name)
-            JS("$pyjs.track.module = @{{save_track_module}};")
+            JS("$pyjs['track']['module'] = @{{save_track_module}};")
             if get_base:
-                return JS("$pyjs.loaded_modules[@{{topName}}]")
+                return JS("$pyjs['loaded_modules'][@{{topName}}]")
             return module
 
     raise ImportError(
@@ -970,19 +970,19 @@ def ___import___(path, context, module_name=None, get_base=True):
 def __dynamic_load__(importName):
     global __nondynamic_modules__
     setCompilerOptions("noDebug")
-    module = JS("""$pyjs.loaded_modules[@{{importName}}]""")
+    module = JS("""$pyjs['loaded_modules'][@{{importName}}]""")
     if sys is None or dynamic is None or __nondynamic_modules__.has_key(importName):
         return module
     if JS("""typeof @{{module}}== 'undefined'"""):
         try:
             dynamic.ajax_import("lib/" + importName + ".__" + platform + "__.js")
-            module = JS("""$pyjs.loaded_modules[@{{importName}}]""")
+            module = JS("""$pyjs['loaded_modules'][@{{importName}}]""")
         except:
             pass
     if JS("""typeof @{{module}}== 'undefined'"""):
         try:
             dynamic.ajax_import("lib/" + importName + ".js")
-            module = JS("""$pyjs.loaded_modules[@{{importName}}]""")
+            module = JS("""$pyjs['loaded_modules'][@{{importName}}]""")
         except:
             pass
         if JS("""typeof @{{module}}== 'undefined'"""):
@@ -1108,7 +1108,7 @@ def init():
     if (err instanceof(ReferenceError) || err instanceof(TypeError)) {
         var message = '';
         try {
-            message = err.message;
+            message = err['message'];
         } catch ( e) {
         }
         return @{{AttributeError}}(message);
@@ -1120,50 +1120,50 @@ def init():
     # (to raise an exception when there wasn't any)
     JS("""
 @{{TryElse}} = function () { };
-@{{TryElse}}.prototype = new Error();
-@{{TryElse}}.__name__ = 'TryElse';
+@{{TryElse}}['prototype'] = new Error();
+@{{TryElse}}['__name__'] = 'TryElse';
 """)
 
     # Patching of the standard javascript String object
     JS("""
-String.prototype.rfind = function(sub, start, end) {
+String['prototype']['rfind'] = function(sub, start, end) {
     var pos;
     if (typeof start != 'undefined') {
         /* *sigh* - python rfind goes *RIGHT*, NOT left */
-        pos = this.substring(start).lastIndexOf(sub);
+        pos = this['substring'](start)['lastIndexOf'](sub);
         if (pos == -1) {
             return -1;
         }
         pos += start;
     }
     else {
-        pos=this.lastIndexOf(sub, start);
+        pos=this['lastIndexOf'](sub, start);
     }
     if (typeof end == 'undefined') return pos;
 
-    if (pos + sub.length>end) return -1;
+    if (pos + sub['length']>end) return -1;
     return pos;
 };
 
-String.prototype.find = function(sub, start, end) {
-    var pos=this.indexOf(sub, start);
+String['prototype']['find'] = function(sub, start, end) {
+    var pos=this['indexOf'](sub, start);
     if (typeof end == 'undefined') return pos;
 
-    if (pos + sub.length>end) return -1;
+    if (pos + sub['length']>end) return -1;
     return pos;
 };
-String.prototype.index = function(sub, start, end) {
-    var pos = this.find(sub, start, end);
+String['prototype']['index'] = function(sub, start, end) {
+    var pos = this['find'](sub, start, end);
     if (pos < 0)
         throw @{{ValueError}}('substring not found');
     return pos;
 }
-String.prototype.count = function(sub, start, end) {
-    var pos, count = 0, n = sub.length;
+String['prototype']['count'] = function(sub, start, end) {
+    var pos, count = 0, n = sub['length'];
     if (typeof start == 'undefined') start = 0;
-    if (typeof end == 'undefined') end = this.length;
+    if (typeof end == 'undefined') end = this['length'];
     while (start < end) {
-        pos = this.find(sub, start, end);
+        pos = this['find'](sub, start, end);
         if (pos < 0) break;
         count ++;
         start = pos + n;
@@ -1171,13 +1171,13 @@ String.prototype.count = function(sub, start, end) {
     return count;
 }
 
-String.prototype.format = function() {
-    var args = $p['tuple']($pyjs_array_slice.call(arguments,0,arguments.length-1));
+String['prototype']['format'] = function() {
+    var args = $p['tuple']($pyjs_array_slice['call'](arguments,0,arguments['length']-1));
 
-    var kw = arguments.length >= 1 ? arguments[arguments.length-1] : arguments[arguments.length];
-    if (typeof kw != 'object' || kw.__name__ != 'dict' || typeof kw.$pyjs_is_kwarg == 'undefined') {
-        if (typeof kw != 'undefined') args.__array.push(kw);
-        kw = arguments[arguments.length+1];
+    var kw = arguments['length'] >= 1 ? arguments[arguments['length']-1] : arguments[arguments['length']];
+    if (typeof kw != 'object' || kw['__name__'] != 'dict' || typeof kw['$pyjs_is_kwarg'] == 'undefined') {
+        if (typeof kw != 'undefined') args['__array']['push'](kw);
+        kw = arguments[arguments['length']+1];
     } else {
         delete kw['$pyjs_is_kwarg'];
     }
@@ -1186,95 +1186,95 @@ String.prototype.format = function() {
     }
     return $p['_string_format'](this, args, kw);
 }
-String.prototype.format.__args__ = ['args', ['kw']];
+String['prototype']['format']['__args__'] = ['args', ['kw']];
 
-String.prototype.join = function(data) {
+String['prototype']['join'] = function(data) {
     var text="";
 
-    if (data.constructor === Array) {
-        return data.join(this);
-    } else if (typeof data.__iter__ == 'function') {
-        if (typeof data.__array == 'object') {
-            return data.__array.join(this);
+    if (data['constructor'] === Array) {
+        return data['join'](this);
+    } else if (typeof data['__iter__'] == 'function') {
+        if (typeof data['__array'] == 'object') {
+            return data['__array']['join'](this);
         }
-        var iter=data.__iter__();
-        if (typeof iter.__array == 'object') {
-            return iter.__array.join(this);
+        var iter=data['__iter__']();
+        if (typeof iter['__array'] == 'object') {
+            return iter['__array']['join'](this);
         }
         data = [];
         var item, i = 0;
-        if (typeof iter.$genfunc == 'function') {
-            while (typeof (item=iter.next(true)) != 'undefined') {
+        if (typeof iter['$genfunc'] == 'function') {
+            while (typeof (item=iter['next'](true)) != 'undefined') {
                 data[i++] = item;
             }
         } else {
             try {
                 while (true) {
-                    data[i++] = iter.next();
+                    data[i++] = iter['next']();
                 }
             }
             catch (e) {
                 if (!@{{isinstance}}(e, @{{StopIteration}})) throw e;
             }
         }
-        return data.join(this);
+        return data['join'](this);
     }
 
     return text;
 };
 
-String.prototype.isdigit = function() {
-    return (this.match(/^\d+$/g) !== null);
+String['prototype']['isdigit'] = function() {
+    return (this['match'](/^\d+$/g) !== null);
 };
 
-String.prototype.isalnum = function() {
-    return (this.match(/^[a-zA-Z\d]+$/g) !== null);
+String['prototype']['isalnum'] = function() {
+    return (this['match'](/^[a-zA-Z\d]+$/g) !== null);
 };
 
-String.prototype.isalpha = function() {
-    return (this.match(/^[a-zA-Z]+$/g) !== null);
+String['prototype']['isalpha'] = function() {
+    return (this['match'](/^[a-zA-Z]+$/g) !== null);
 };
 
-String.prototype.isupper = function() {
-    return (this.match(/[a-z]/g) === null);
+String['prototype']['isupper'] = function() {
+    return (this['match'](/[a-z]/g) === null);
 };
 
-String.prototype.islower = function() {
-    return (this.match(/[A-Z]/g) === null);
+String['prototype']['islower'] = function() {
+    return (this['match'](/[A-Z]/g) === null);
 };
 
-String.prototype.__replace=String.prototype.replace;
+String['prototype']['__replace']=String['prototype']['replace'];
 
-String.prototype.$$replace = function(old, replace, count) {
+String['prototype']['$$replace'] = function(old, replace, count) {
     var do_max=false;
     var start=0;
     var new_str="";
     var pos=0;
 
-    if (typeof old != 'string') return this.__replace(old, replace);
+    if (typeof old != 'string') return this['__replace'](old, replace);
     if (typeof count != 'undefined') do_max=true;
 
-    while (start<this.length) {
+    while (start<this['length']) {
         if (do_max && !count--) break;
 
-        pos=this.indexOf(old, start);
+        pos=this['indexOf'](old, start);
         if (pos<0) break;
 
-        new_str+=this.substring(start, pos) + replace;
-        start=pos+old.length;
+        new_str+=this['substring'](start, pos) + replace;
+        start=pos+old['length'];
     }
-    if (start<this.length) new_str+=this.substring(start);
+    if (start<this['length']) new_str+=this['substring'](start);
 
     return new_str;
 };
 
-String.prototype.__contains__ = function(s){
-    return this.indexOf(s)>=0;
+String['prototype']['__contains__'] = function(s){
+    return this['indexOf'](s)>=0;
 };
 
-String.prototype.__split = String.prototype.split;
+String['prototype']['__split'] = String['prototype']['split'];
 
-String.prototype.$$split = function(sep, maxsplit) {
+String['prototype']['$$split'] = function(sep, maxsplit) {
     var items=@{{list}}();
     var do_max=false;
     var subject=this;
@@ -1283,34 +1283,34 @@ String.prototype.$$split = function(sep, maxsplit) {
 
     if (sep === null || typeof sep == 'undefined') {
         sep=" ";
-        if (subject.length == 0) {
+        if (subject['length'] == 0) {
             return items;
         }
-        subject=subject.strip();
-        subject=subject.$$replace(/\s+/g, sep);
+        subject=subject['strip']();
+        subject=subject['$$replace'](/\s+/g, sep);
     }
     else if (typeof maxsplit != 'undefined') do_max=true;
 
-    if (subject.length == 0) {
-        items.__array.push('');
+    if (subject['length'] == 0) {
+        items['__array']['push']('');
         return items;
     }
 
-    while (start<subject.length) {
+    while (start<subject['length']) {
         if (do_max && !maxsplit--) break;
 
-        pos=subject.indexOf(sep, start);
+        pos=subject['indexOf'](sep, start);
         if (pos<0) break;
 
-        items.__array.push(subject.substring(start, pos));
-        start=pos+sep.length;
+        items['__array']['push'](subject['substring'](start, pos));
+        start=pos+sep['length'];
     }
-    if (start<=subject.length) items.__array.push(subject.substring(start));
+    if (start<=subject['length']) items['__array']['push'](subject['substring'](start));
 
     return items;
 };
 
-String.prototype.rsplit = function(sep, maxsplit) {
+String['prototype']['rsplit'] = function(sep, maxsplit) {
     var items=@{{list}}();
     var do_max=false;
     var subject=this;
@@ -1318,58 +1318,58 @@ String.prototype.rsplit = function(sep, maxsplit) {
 
     if (sep === null || typeof sep == 'undefined') {
         sep=" ";
-        if (subject.length == 0) {
+        if (subject['length'] == 0) {
             return items;
         }
-        subject=subject.strip();
-        subject=subject.$$replace(/\s+/g, sep);
+        subject=subject['strip']();
+        subject=subject['$$replace'](/\s+/g, sep);
     }
     else if (typeof maxsplit != 'undefined') do_max=true;
 
-    if (subject.length == 0) {
-        items.__array.push('');
+    if (subject['length'] == 0) {
+        items['__array']['push']('');
         return items;
     }
 
-    while (subject.length > 0) {
+    while (subject['length'] > 0) {
         if (do_max && !maxsplit--) break;
 
-        pos=subject.lastIndexOf(sep);
+        pos=subject['lastIndexOf'](sep);
         if (pos<0) break;
 
-        items.__array.push(subject.substr(pos+sep.lenght));
-        subject = subject.substr(0, pos);
+        items['__array']['push'](subject['substr'](pos+sep['lenght']));
+        subject = subject['substr'](0, pos);
     }
-    if (subject.length > 0) items.__array.push(subject);
-    items.__array.reverse()
+    if (subject['length'] > 0) items['__array']['push'](subject);
+    items['__array']['reverse']()
 
     return items;
 };
-String.prototype.splitlines = function(keepends) {
-    var items = this.$$split("\\n");
+String['prototype']['splitlines'] = function(keepends) {
+    var items = this['$$split']("\\n");
     if (typeof keepends != 'undefined' && keepends)
     {
-        for (var i=0; i<items.__array.length; i++)
+        for (var i=0; i<items['__array']['length']; i++)
         {
-            items.__array[i] = items.__array[i] + "\\n";
+            items['__array'][i] = items['__array'][i] + "\\n";
         }
     }
     return items;
 }
 if (typeof "a"[0] == 'undefined' ) {
     // IE: cannot do "abc"[idx]
-    String.prototype.__iter__ = function() {
+    String['prototype']['__iter__'] = function() {
         var i = 0;
         var s = this;
         return {
             'next': function(noStop) {
-                if (i >= s.length) {
+                if (i >= s['length']) {
                     if (noStop === true) {
                         return;
                     }
                     throw @{{StopIteration}}();
                 }
-                return s.charAt(i++);
+                return s['charAt'](i++);
             },
             '__iter__': function() {
                 return this;
@@ -1377,19 +1377,19 @@ if (typeof "a"[0] == 'undefined' ) {
         };
     };
 } else {
-    String.prototype.__iter__ = function() {
+    String['prototype']['__iter__'] = function() {
         var i = 0;
         var s = this;
         return {
             '__array': this,
             'next': function(noStop) {
-                if (i >= s.length) {
+                if (i >= s['length']) {
                     if (noStop === true) {
                         return;
                     }
                     throw @{{StopIteration}}();
                 }
-                return s.charAt(i++);
+                return s['charAt'](i++);
             },
             '__iter__': function() {
                 return this;
@@ -1398,157 +1398,157 @@ if (typeof "a"[0] == 'undefined' ) {
     };
 }
 
-String.prototype.strip = function(chars) {
-    return this.lstrip(chars).rstrip(chars);
+String['prototype']['strip'] = function(chars) {
+    return this['lstrip'](chars)['rstrip'](chars);
 };
 
-String.prototype.lstrip = function(chars) {
-    if (typeof chars == 'undefined') return this.$$replace(/^\s+/, "");
-    if (chars.length == 0) return this;
-    return this.$$replace(new RegExp("^[" + chars + "]+"), "");
+String['prototype']['lstrip'] = function(chars) {
+    if (typeof chars == 'undefined') return this['$$replace'](/^\s+/, "");
+    if (chars['length'] == 0) return this;
+    return this['$$replace'](new RegExp("^[" + chars + "]+"), "");
 };
 
-String.prototype.rstrip = function(chars) {
-    if (typeof chars == 'undefined') return this.$$replace(/\s+$/, "");
-    if (chars.length == 0) return this;
-    return this.$$replace(new RegExp("[" + chars + "]+$"), "");
+String['prototype']['rstrip'] = function(chars) {
+    if (typeof chars == 'undefined') return this['$$replace'](/\s+$/, "");
+    if (chars['length'] == 0) return this;
+    return this['$$replace'](new RegExp("[" + chars + "]+$"), "");
 };
 
-String.prototype.startswith = function(prefix, start, end) {
-    // FIXME: accept tuples as suffix (since 2.5)
+String['prototype']['startswith'] = function(prefix, start, end) {
+    // FIXME: accept tuples as suffix (since 2['5'])
     if (typeof start == 'undefined') start = 0;
-    if (typeof end == 'undefined') end = this.length;
+    if (typeof end == 'undefined') end = this['length'];
 
-    if ((end - start) < prefix.length) return false;
-    if (this.substr(start, prefix.length) == prefix) return true;
+    if ((end - start) < prefix['length']) return false;
+    if (this['substr'](start, prefix['length']) == prefix) return true;
     return false;
 };
 
-String.prototype.endswith = function(suffix, start, end) {
-    // FIXME: accept tuples as suffix (since 2.5)
+String['prototype']['endswith'] = function(suffix, start, end) {
+    // FIXME: accept tuples as suffix (since 2['5'])
     if (typeof start == 'undefined') start = 0;
-    if (typeof end == 'undefined') end = this.length;
+    if (typeof end == 'undefined') end = this['length'];
 
-    if ((end - start) < suffix.length) return false;
-    if (this.substr(end - suffix.length, suffix.length) == suffix) return true;
+    if ((end - start) < suffix['length']) return false;
+    if (this['substr'](end - suffix['length'], suffix['length']) == suffix) return true;
     return false;
 };
 
-String.prototype.ljust = function(width, fillchar) {
-    switch (width.__number__) {
+String['prototype']['ljust'] = function(width, fillchar) {
+    switch (width['__number__']) {
         case 0x02:
         case 0x04:
-            width = width.valueOf();
+            width = width['valueOf']();
             break;
         case 0x01:
-            if (Math.floor(width) == width) break;
+            if (Math['floor'](width) == width) break;
         default:
             throw @{{TypeError}}("an integer is required (got '" + width + "')");
     }
     if (typeof fillchar == 'undefined') fillchar = ' ';
     if (typeof(fillchar) != 'string' ||
-        fillchar.length != 1) {
+        fillchar['length'] != 1) {
         throw @{{TypeError}}("ljust() argument 2 must be char, not " + typeof(fillchar));
     }
-    if (this.length >= width) return this;
-    return this + new Array(width+1 - this.length).join(fillchar);
+    if (this['length'] >= width) return this;
+    return this + new Array(width+1 - this['length'])['join'](fillchar);
 };
 
-String.prototype.rjust = function(width, fillchar) {
-    switch (width.__number__) {
+String['prototype']['rjust'] = function(width, fillchar) {
+    switch (width['__number__']) {
         case 0x02:
         case 0x04:
-            width = width.valueOf();
+            width = width['valueOf']();
             break;
         case 0x01:
-            if (Math.floor(width) == width) break;
+            if (Math['floor'](width) == width) break;
         default:
             throw @{{TypeError}}("an integer is required (got '" + width + "')");
     }
     if (typeof fillchar == 'undefined') fillchar = ' ';
     if (typeof(fillchar) != 'string' ||
-        fillchar.length != 1) {
+        fillchar['length'] != 1) {
         throw @{{TypeError}}("rjust() argument 2 must be char, not " + typeof(fillchar));
     }
-    if (this.length >= width) return this;
-    return new Array(width + 1 - this.length).join(fillchar) + this;
+    if (this['length'] >= width) return this;
+    return new Array(width + 1 - this['length'])['join'](fillchar) + this;
 };
 
-String.prototype.center = function(width, fillchar) {
-    switch (width.__number__) {
+String['prototype']['center'] = function(width, fillchar) {
+    switch (width['__number__']) {
         case 0x02:
         case 0x04:
-            width = width.valueOf();
+            width = width['valueOf']();
             break;
         case 0x01:
-            if (Math.floor(width) == width) break;
+            if (Math['floor'](width) == width) break;
         default:
             throw @{{TypeError}}("an integer is required (got '" + width + "')");
     }
     if (typeof fillchar == 'undefined') fillchar = ' ';
     if (typeof(fillchar) != 'string' ||
-        fillchar.length != 1) {
+        fillchar['length'] != 1) {
         throw @{{TypeError}}("center() argument 2 must be char, not " + typeof(fillchar));
     }
-    if (this.length >= width) return this;
-    var padlen = width - this.length;
-    var right = Math.ceil(padlen / 2);
+    if (this['length'] >= width) return this;
+    var padlen = width - this['length'];
+    var right = Math['ceil'](padlen / 2);
     var left = padlen - right;
-    return new Array(left+1).join(fillchar) + this + new Array(right+1).join(fillchar);
+    return new Array(left+1)['join'](fillchar) + this + new Array(right+1)['join'](fillchar);
 };
 
-String.prototype.__getslice__ = function(lower, upper) {
+String['prototype']['__getslice__'] = function(lower, upper) {
     if (lower === null) {
         lower = 0;
     } else if (lower < 0) {
-        lower = this.length + lower;
+        lower = this['length'] + lower;
     }
     if (upper === null) {
-        upper=this.length;
+        upper=this['length'];
     } else if (upper < 0) {
-       upper = this.length + upper;
+       upper = this['length'] + upper;
     }
-    return this.substring(lower, upper);
+    return this['substring'](lower, upper);
 };
 
-String.prototype.__getitem__ = function(idx) {
-    if (idx < 0) idx += this.length;
-    if (idx < 0 || idx > this.length) {
+String['prototype']['__getitem__'] = function(idx) {
+    if (idx < 0) idx += this['length'];
+    if (idx < 0 || idx > this['length']) {
         throw @{{IndexError}}("string index out of range");
     }
-    return this.charAt(idx);
+    return this['charAt'](idx);
 };
 
-String.prototype.__setitem__ = function(idx, val) {
+String['prototype']['__setitem__'] = function(idx, val) {
     throw @{{TypeError}}("'str' object does not support item assignment");
 };
 
-String.prototype.upper = String.prototype.toUpperCase;
-String.prototype.lower = String.prototype.toLowerCase;
+String['prototype']['upper'] = String['prototype']['toUpperCase'];
+String['prototype']['lower'] = String['prototype']['toLowerCase'];
 
-String.prototype.capitalize = function() {
-    return this.charAt(0).toUpperCase() + this.substring(1);
+String['prototype']['capitalize'] = function() {
+    return this['charAt'](0)['toUpperCase']() + this['substring'](1);
 };
 
-String.prototype.zfill = function(width) {
-    return this.rjust(width, '0');
+String['prototype']['zfill'] = function(width) {
+    return this['rjust'](width, '0');
 };
 
-String.prototype.__add__ = function(y) {
+String['prototype']['__add__'] = function(y) {
     if (typeof y != "string") {
         throw @{{TypeError}}("cannot concatenate 'str' and non-str objects");
     }
     return this + y;
 };
 
-String.prototype.__mul__ = function(y) {
-    switch (y.__number__) {
+String['prototype']['__mul__'] = function(y) {
+    switch (y['__number__']) {
         case 0x02:
         case 0x04:
-            y = y.valueOf();
+            y = y['valueOf']();
             break;
         case 0x01:
-            if (Math.floor(y) == y) break;
+            if (Math['floor'](y) == y) break;
         default:
             throw @{{TypeError}}("can't multiply sequence by non-int of type 'str'");
     }
@@ -1558,56 +1558,56 @@ String.prototype.__mul__ = function(y) {
     }
     return s;
 };
-String.prototype.__rmul__ = String.prototype.__mul__;
-String.prototype.__number__ = null;
-String.prototype.__name__ = 'str';
-String.prototype.__class__ = String.prototype;
-String.prototype.__is_instance__ = null;
-String.prototype.__str__ = function () {
-    if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-    return this.toString();
+String['prototype']['__rmul__'] = String['prototype']['__mul__'];
+String['prototype']['__number__'] = null;
+String['prototype']['__name__'] = 'str';
+String['prototype']['__class__'] = String['prototype'];
+String['prototype']['__is_instance__'] = null;
+String['prototype']['__str__'] = function () {
+    if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+    return this['toString']();
 };
-String.prototype.__repr__ = function () {
-    if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-    return "'" + this.toString() + "'";
+String['prototype']['__repr__'] = function () {
+    if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+    return "'" + this['toString']() + "'";
 };
-String.prototype.__mro__ = [@{{basestring}}];
+String['prototype']['__mro__'] = [@{{basestring}}];
 """)
 
     # Patching of the standard javascript Boolean object
     JS("""
-Boolean.prototype.__number__ = 0x01;
-Boolean.prototype.__name__ = 'bool';
-Boolean.prototype.__class__ = Boolean.prototype;
-Boolean.prototype.__is_instance__ = null;
-Boolean.prototype.__str__= function () {
-    if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
+Boolean['prototype']['__number__'] = 0x01;
+Boolean['prototype']['__name__'] = 'bool';
+Boolean['prototype']['__class__'] = Boolean['prototype'];
+Boolean['prototype']['__is_instance__'] = null;
+Boolean['prototype']['__str__']= function () {
+    if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
     if (this == true) return "True";
     return "False";
 };
-Boolean.prototype.__repr__ = Boolean.prototype.__str__;
-Boolean.prototype.__and__ = function (y) {
-    return this & y.valueOf();
+Boolean['prototype']['__repr__'] = Boolean['prototype']['__str__'];
+Boolean['prototype']['__and__'] = function (y) {
+    return this & y['valueOf']();
 };
-Boolean.prototype.__or__ = function (y) {
-    return this | y.valueOf();
+Boolean['prototype']['__or__'] = function (y) {
+    return this | y['valueOf']();
 };
-Boolean.prototype.__xor__ = function (y) {
-    return this ^ y.valueOf();
+Boolean['prototype']['__xor__'] = function (y) {
+    return this ^ y['valueOf']();
 };
 """)
 
     # Patching of the standard javascript Array object
     # This makes it imposible to use for (k in Array())
     JS("""
-if (typeof Array.prototype.indexOf != 'function') {
-    Array.prototype.indexOf = function(elt /*, from*/) {
-        var len = this.length >>> 0;
+if (typeof Array['prototype']['indexOf'] != 'function') {
+    Array['prototype']['indexOf'] = function(elt /*, from*/) {
+        var len = this['length'] >>> 0;
 
         var from = Number(arguments[1]) || 0;
         from = (from < 0)
-                ? Math.ceil(from)
-                : Math.floor(from);
+                ? Math['ceil'](from)
+                : Math['floor'](from);
         if (from < 0)
             from += len;
 
@@ -1623,10 +1623,10 @@ if (typeof Array.prototype.indexOf != 'function') {
 
     # Patching of the standard javascript RegExp
     JS("""
-RegExp.prototype.Exec = function(pat) {
-    var m = this.exec(pat);
+RegExp['prototype']['Exec'] = function(pat) {
+    var m = this['exec'](pat);
     if (m !== null) {
-        var len = m.length >>> 0;
+        var len = m['length'] >>> 0;
         for (var i = 0; i < len; i++) {
             if (typeof(m[i]) == 'undefined')
                 m[i] = null;
@@ -1636,7 +1636,7 @@ RegExp.prototype.Exec = function(pat) {
 };
 """)
     JS("""
-@{{abs}} = Math.abs;
+@{{abs}} = Math['abs'];
 """)
 
 class Class:
@@ -1667,55 +1667,55 @@ cmp = JS("""function(a, b) {
         return 1;
     }
 
-    switch ((a.__number__ << 8)|b.__number__) {
+    switch ((a['__number__'] << 8)|b['__number__']) {
         case 0x0202:
-            a = a.__v;
-            b = b.__v;
+            a = a['__v'];
+            b = b['__v'];
         case 0x0101:
             return a == b ? 0 : (a < b ? -1 : 1);
         case 0x0100:
         case 0x0200:
         case 0x0400:
-            if (typeof b.__cmp__ == 'function') {
-                return -b.__cmp__(a);
+            if (typeof b['__cmp__'] == 'function') {
+                return -b['__cmp__'](a);
             }
             return -1;
         case 0x0001:
         case 0x0002:
         case 0x0004:
-            if (typeof a.__cmp__ == 'function') {
-                return a.__cmp__(b);
+            if (typeof a['__cmp__'] == 'function') {
+                return a['__cmp__'](b);
             }
             return 1;
         case 0x0102:
-            return -b.__cmp__(new @{{int}}(a));
+            return -b['__cmp__'](new @{{int}}(a));
         case 0x0104:
-            return -b.__cmp__(new @{{long}}(a));
+            return -b['__cmp__'](new @{{long}}(a));
         case 0x0201:
-            return a.__cmp__(new @{{int}}(b));
+            return a['__cmp__'](new @{{int}}(b));
         case 0x0401:
-            return a.__cmp__(new @{{long}}(b));
+            return a['__cmp__'](new @{{long}}(b));
         case 0x0204:
-            return -b.__cmp__(new @{{long}}(a));
+            return -b['__cmp__'](new @{{long}}(a));
         case 0x0402:
-            return a.__cmp__(new @{{long}}(b));
+            return a['__cmp__'](new @{{long}}(b));
         case 0x0404:
-            return a.__cmp__(b);
+            return a['__cmp__'](b);
     }
 
-    if (typeof a.__class__ == typeof b.__class__ && typeof a.__class__ == 'function') {
-        if (a.__class__.__name__ < b.__class__.__name__) {
+    if (typeof a['__class__'] == typeof b['__class__'] && typeof a['__class__'] == 'function') {
+        if (a['__class__']['__name__'] < b['__class__']['__name__']) {
             return -1;
         }
-        if (a.__class__.__name__ > b.__class__.__name__) {
+        if (a['__class__']['__name__'] > b['__class__']['__name__']) {
             return 1;
         }
     }
 
-    if ((typeof a == 'object' || typeof a == 'function') && typeof a.__cmp__ == 'function') {
-        return a.__cmp__(b);
-    } else if ((typeof b == 'object' || typeof b == 'function') && typeof b.__cmp__ == 'function') {
-        return -b.__cmp__(a);
+    if ((typeof a == 'object' || typeof a == 'function') && typeof a['__cmp__'] == 'function') {
+        return a['__cmp__'](b);
+    } else if ((typeof b == 'object' || typeof b == 'function') && typeof b['__cmp__'] == 'function') {
+        return -b['__cmp__'](a);
     }
     if (a == b) return 0;
     if (a > b) return 1;
@@ -1743,10 +1743,10 @@ def bool(v):
             return false;
     }
     if (typeof @{{v}} == 'object') {
-        if (typeof @{{v}}.__nonzero__ == 'function'){
-            return @{{v}}.__nonzero__();
-        } else if (typeof @{{v}}.__len__ == 'function'){
-            return @{{v}}.__len__() > 0;
+        if (typeof @{{v}}['__nonzero__'] == 'function'){
+            return @{{v}}['__nonzero__']();
+        } else if (typeof @{{v}}['__len__'] == 'function'){
+            return @{{v}}['__len__']() > 0;
         }
     }
     return true;
@@ -1757,7 +1757,7 @@ class float:
     def __new__(self, num):
         JS("""
         if (typeof @{{num}} == 'string') {
-            @{{num}} = @{{num}}.lstrip();
+            @{{num}} = @{{num}}['lstrip']();
             if (@{{num}} === "") {
                 throw @{{ValueError}}("empty string for float()");
             }
@@ -1771,128 +1771,128 @@ class float:
 # Patching of the standard javascript Number
 # which is in principle the python 'float'
 JS("""
-Number.prototype.__number__ = 0x01;
-Number.prototype.__name__ = 'float';
-Number.prototype.__init__ = function (value, radix) {
+Number['prototype']['__number__'] = 0x01;
+Number['prototype']['__name__'] = 'float';
+Number['prototype']['__init__'] = function (value, radix) {
     return null;
 };
 
-Number.prototype.__str__ = function () {
-    if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-    return this.toString();
+Number['prototype']['__str__'] = function () {
+    if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+    return this['toString']();
 };
 
-Number.prototype.__repr__ = function () {
-    if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-    return this.toString();
+Number['prototype']['__repr__'] = function () {
+    if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+    return this['toString']();
 };
 
-Number.prototype.__nonzero__ = function () {
+Number['prototype']['__nonzero__'] = function () {
     return this != 0;
 };
 
-Number.prototype.__cmp__ = function (y) {
+Number['prototype']['__cmp__'] = function (y) {
     return this < y? -1 : (this == y ? 0 : 1);
 };
 
-Number.prototype.__hash__ = function () {
+Number['prototype']['__hash__'] = function () {
     return this;
 };
 
-Number.prototype.__oct__ = function () {
-    return '0'+this.toString(8);
+Number['prototype']['__oct__'] = function () {
+    return '0'+this['toString'](8);
 };
 
-Number.prototype.__hex__ = function () {
-    return '0x'+this.toString(16);
+Number['prototype']['__hex__'] = function () {
+    return '0x'+this['toString'](16);
 };
 
-Number.prototype.__pos__ = function () {
+Number['prototype']['__pos__'] = function () {
     return this;
 };
 
-Number.prototype.__neg__ = function () {
+Number['prototype']['__neg__'] = function () {
     return -this;
 };
 
-Number.prototype.__abs__ = function () {
+Number['prototype']['__abs__'] = function () {
     if (this >= 0) return this;
     return -this;
 };
 
-Number.prototype.__add__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__add__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return this + y;
 };
 
-Number.prototype.__radd__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__radd__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return y + this;
 };
 
-Number.prototype.__sub__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__sub__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return this - y;
 };
 
-Number.prototype.__rsub__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__rsub__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return y - this;
 };
 
-Number.prototype.__floordiv__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__floordiv__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (y == 0) throw @{{ZeroDivisionError}}('float divmod()');
-    return Math.floor(this / y);
+    return Math['floor'](this / y);
 };
 
-Number.prototype.__rfloordiv__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__rfloordiv__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (this == 0) throw @{{ZeroDivisionError}}('float divmod');
-    return Math.floor(y / this);
+    return Math['floor'](y / this);
 };
 
-Number.prototype.__div__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__div__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (y == 0) throw @{{ZeroDivisionError}}('float division');
     return this / y;
 };
 
-Number.prototype.__rdiv__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__rdiv__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (this == 0) throw @{{ZeroDivisionError}}('float division');
     return y / this;
 };
 
-Number.prototype.__mul__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__mul__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return this * y;
 };
 
-Number.prototype.__rmul__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__rmul__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     return y * this;
 };
 
-Number.prototype.__mod__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__mod__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (y == 0) throw @{{ZeroDivisionError}}('float modulo');
     return this % y;
 };
 
-Number.prototype.__rmod__ = function (y) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__rmod__'] = function (y) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (this == 0) throw @{{ZeroDivisionError}}('float modulo');
     return y % this;
 };
 
-Number.prototype.__pow__ = function (y, z) {
-    if (!y.__number__ || isNaN(y = y.valueOf())) return @{{NotImplemented}};
+Number['prototype']['__pow__'] = function (y, z) {
+    if (!y['__number__'] || isNaN(y = y['valueOf']())) return @{{NotImplemented}};
     if (typeof z == 'undefined' || z == null) {
-        return Math.pow(this, y);
+        return Math['pow'](this, y);
     }
-    if (!z.__number__ || isNaN(z = z.valueOf())) return @{{NotImplemented}};
-    return Math.pow(this, y) % z;
+    if (!z['__number__'] || isNaN(z = z['valueOf']())) return @{{NotImplemented}};
+    return Math['pow'](this, y) % z;
 };
 """)
 
@@ -1980,33 +1980,33 @@ def float_int(value, radix=None):
     if (typeof @{{value}}['__int__'] != 'undefined') {
         return @{{value}}['__int__']();
     }
-    if (@{{value}}.__number__) {
+    if (@{{value}}['__number__']) {
         if (@{{radix}} !== null) {
             throw @{{TypeError}}("int() can't convert non-string with explicit base");
         }
-        v = @{{value}}.valueOf();
+        v = @{{value}}['valueOf']();
         if (v > 0) {
-            v = Math.floor(v);
+            v = Math['floor'](v);
         } else {
-            v = Math.ceil(v);
+            v = Math['ceil'](v);
         }
     } else if (typeof @{{value}} == 'string') {
         if (@{{radix}} === null) {
             @{{radix}} = 10;
         }
-        @{{value}} = @{{value}}.lstrip();
-        switch (@{{value}}[@{{value}}.length-1]) {
+        @{{value}} = @{{value}}['lstrip']();
+        switch (@{{value}}[@{{value}}['length']-1]) {
             case 'l':
             case 'L':
-                v = @{{value}}.slice(0, @{{value}}.length-2);
+                v = @{{value}}['slice'](0, @{{value}}['length']-2);
                 break;
             default:
                 v = @{{value}};
         }
-        if (v.match($radix_regex[@{{radix}}]) === null) {
+        if (v['match']($radix_regex[@{{radix}}]) === null) {
             v = NaN;
         } else {
-            v = v.$$replace(' ', '');
+            v = v['$$replace'](' ', '');
             v = parseInt(v, @{{radix}});
         }
     } else {
@@ -2070,32 +2070,32 @@ var $radix_regex = [
             if (typeof value['__int__'] != 'undefined') {
                 return value['__int__']();
             }
-            switch (value.__number__) {
+            switch (value['__number__']) {
                 case 0x01:
-                    value = value > 0 ? Math.floor(value) : Math.ceil(value);
+                    value = value > 0 ? Math['floor'](value) : Math['ceil'](value);
                     break;
                 case 0x02:
                     return value;
                 case 0x04:
-                    v = value.valueOf();
+                    v = value['valueOf']();
                     if (!($min_int <= v && v <= $max_int))
                         return value;
             }
             radix = null;
         }
-        if (typeof this != 'object' || this.__number__ != 0x02) return new $int(value, radix);
-        if (value.__number__) {
+        if (typeof this != 'object' || this['__number__'] != 0x02) return new $int(value, radix);
+        if (value['__number__']) {
             if (radix !== null) throw @{{TypeError}}("int() can't convert non-string with explicit base");
-            v = value.valueOf();
+            v = value['valueOf']();
         } else if (typeof value == 'string') {
             if (radix === null) {
                 radix = 10;
             }
-            if (value.match($radix_regex[radix]) === null) {
-                value = value.lstrip();
+            if (value['match']($radix_regex[radix]) === null) {
+                value = value['lstrip']();
                 v = NaN;
             } else {
-                value = value.$$replace(' ', '');
+                value = value['$$replace'](' ', '');
                 v = parseInt(value, radix);
             }
         } else {
@@ -2105,272 +2105,272 @@ var $radix_regex = [
             throw @{{ValueError}}("invalid literal for int() with base " + @{{!radix}} + ": '" + @{{!value}} + "'");
         }
         if ($min_int <= v && v <= $max_int) {
-            this.__v = v;
+            this['__v'] = v;
             return this;
         }
         return new pyjslib['long'](v);
     };
-    $int.__init__ = function () {};
-    $int.__number__ = 0x02;
-    $int.__v = 0;
-    $int.__name__ = 'int';
-    $int.prototype = $int;
-    $int.__class__ = $int;
+    $int['__init__'] = function () {};
+    $int['__number__'] = 0x02;
+    $int['__v'] = 0;
+    $int['__name__'] = 'int';
+    $int['prototype'] = $int;
+    $int['__class__'] = $int;
 
-    $int.toExponential = function (fractionDigits) {
-        return (typeof fractionDigits == 'undefined' || fractionDigits === null) ? this.__v.toExponential() : this.__v.toExponential(fractionDigits);
+    $int['toExponential'] = function (fractionDigits) {
+        return (typeof fractionDigits == 'undefined' || fractionDigits === null) ? this['__v']['toExponential']() : this['__v']['toExponential'](fractionDigits);
     };
 
-    $int.toFixed = function (digits) {
-        return (typeof digits == 'undefined' || digits === null) ? this.__v.toFixed() : this.__v.toFixed(digits);
+    $int['toFixed'] = function (digits) {
+        return (typeof digits == 'undefined' || digits === null) ? this['__v']['toFixed']() : this['__v']['toFixed'](digits);
     };
 
-    $int.toLocaleString = function () {
-        return this.__v.toLocaleString();
+    $int['toLocaleString'] = function () {
+        return this['__v']['toLocaleString']();
     };
 
-    $int.toPrecision = function (precision) {
-        return (typeof precision == 'undefined' || precision === null) ? this.__v.toPrecision() : this.__v.toPrecision(precision);
+    $int['toPrecision'] = function (precision) {
+        return (typeof precision == 'undefined' || precision === null) ? this['__v']['toPrecision']() : this['__v']['toPrecision'](precision);
     };
 
-    $int.toString = function (radix) {
-        return (typeof radix == 'undefined' || radix === null) ? this.__v.toString() : this.__v.toString(radix);
+    $int['toString'] = function (radix) {
+        return (typeof radix == 'undefined' || radix === null) ? this['__v']['toString']() : this['__v']['toString'](radix);
     };
 
-    $int.valueOf = function () {
-        return this.__v.valueOf();
+    $int['valueOf'] = function () {
+        return this['__v']['valueOf']();
     };
 
-    $int.__str__ = function () {
-        if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-        if (this.__number__ == 0x02) return this.__v.toString();
-        return this.toString();
+    $int['__str__'] = function () {
+        if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+        if (this['__number__'] == 0x02) return this['__v']['toString']();
+        return this['toString']();
     };
 
-    $int.__repr__ = function () {
-        if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
-        if (this.__number__ == 0x02) return this.__v.toString();
-        return this.toString();
+    $int['__repr__'] = function () {
+        if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
+        if (this['__number__'] == 0x02) return this['__v']['toString']();
+        return this['toString']();
     };
 
-    $int.__nonzero__ = function () {
-        return this.__v != 0;
+    $int['__nonzero__'] = function () {
+        return this['__v'] != 0;
     };
 
-    $int.__cmp__ = function (y) {
-        return this.__v < y? -1 : (this.__v == y ? 0 : 1);
+    $int['__cmp__'] = function (y) {
+        return this['__v'] < y? -1 : (this['__v'] == y ? 0 : 1);
     };
 
-    $int.__hash__ = function () {
-        return this.__v;
+    $int['__hash__'] = function () {
+        return this['__v'];
     };
 
-    $int.__invert__ = function () {
-        return new $int(~this.__v);
+    $int['__invert__'] = function () {
+        return new $int(~this['__v']);
     };
 
-    $int.__lshift__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
+    $int['__lshift__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
         if (y < 32) {
-            var v = this.__v << y;
-            if (v > this.__v) {
+            var v = this['__v'] << y;
+            if (v > this['__v']) {
                 return new $int(v);
             }
         }
-        return new @{{long}}(this.__v).__lshift__(y);
+        return new @{{long}}(this['__v'])['__lshift__'](y);
     };
 
-    $int.__rlshift__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        if (this.__v < 32) {
-            var v = y << this.__v;
-            if (v > this.__v) {
+    $int['__rlshift__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        if (this['__v'] < 32) {
+            var v = y << this['__v'];
+            if (v > this['__v']) {
                 return new $int(v);
             }
         }
-        return new @{{long}}(y).__lshift__(this.__v);
+        return new @{{long}}(y)['__lshift__'](this['__v']);
     };
 
-    $int.__rshift__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(this.__v >> y);
+    $int['__rshift__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(this['__v'] >> y);
     };
 
-    $int.__rrshift__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(y >> this.__v);
+    $int['__rrshift__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(y >> this['__v']);
     };
 
-    $int.__and__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(this.__v & y);
+    $int['__and__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(this['__v'] & y);
     };
 
-    $int.__rand__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(y & this.__v);
+    $int['__rand__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(y & this['__v']);
     };
 
-    $int.__xor__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(this.__v ^ y);
+    $int['__xor__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(this['__v'] ^ y);
     };
 
-    $int.__rxor__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(y ^ this.__v);
+    $int['__rxor__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(y ^ this['__v']);
     };
 
-    $int.__or__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(this.__v | y);
+    $int['__or__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(this['__v'] | y);
     };
 
-    $int.__ror__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        return new $int(y | this.__v);
+    $int['__ror__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        return new $int(y | this['__v']);
     };
 
-    $int.__oct__ = function () {
-        return '0x'+this.__v.toString(8);
+    $int['__oct__'] = function () {
+        return '0x'+this['__v']['toString'](8);
     };
 
-    $int.__hex__ = function () {
-        return '0x'+this.__v.toString(16);
+    $int['__hex__'] = function () {
+        return '0x'+this['__v']['toString'](16);
     };
 
-    $int.__pos__ = function () {
+    $int['__pos__'] = function () {
         return this;
     };
 
-    $int.__neg__ = function () {
-        return new $int(-this.__v);
+    $int['__neg__'] = function () {
+        return new $int(-this['__v']);
     };
 
-    $int.__abs__ = function () {
-        if (this.__v >= 0) return this;
-        return new $int(-this.__v);
+    $int['__abs__'] = function () {
+        if (this['__v'] >= 0) return this;
+        return new $int(-this['__v']);
     };
 
-    $int.__add__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        var v = this.__v + y;
+    $int['__add__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        var v = this['__v'] + y;
         if ($min_int <= v && v <= $max_int) {
             return new $int(v);
         }
         if (-$max_float_int < v && v < $max_float_int) {
             return new @{{long}}(v);
         }
-        return new @{{long}}(this.__v).__add__(new @{{long}}(y));
+        return new @{{long}}(this['__v'])['__add__'](new @{{long}}(y));
     };
 
-    $int.__radd__ = $int.__add__;
+    $int['__radd__'] = $int['__add__'];
 
-    $int.__sub__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        var v = this.__v - y;
+    $int['__sub__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        var v = this['__v'] - y;
         if ($min_int <= v && v <= $max_int) {
             return new $int(v);
         }
         if (-$max_float_int < v && v < $max_float_int) {
             return new @{{long}}(v);
         }
-        return new @{{long}}(this.__v).__sub__(new @{{long}}(y));
+        return new @{{long}}(this['__v'])['__sub__'](new @{{long}}(y));
     };
 
-    $int.__rsub__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        var v = y -this.__v;
+    $int['__rsub__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        var v = y -this['__v'];
         if ($min_int <= v && v <= $max_int) {
             return new $int(v);
         }
         if (-$max_float_int < v && v < $max_float_int) {
             return new @{{long}}(v);
         }
-        return new @{{long}}(y).__sub__(new @{{long}}(this.__v));
+        return new @{{long}}(y)['__sub__'](new @{{long}}(this['__v']));
     };
 
-    $int.__floordiv__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
+    $int['__floordiv__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
         if (y == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(Math.floor(this.__v / y));
+        return new $int(Math['floor'](this['__v'] / y));
     };
 
-    $int.__rfloordiv__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        if (this.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(Math.floor(y / this.__v));
+    $int['__rfloordiv__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        if (this['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+        return new $int(Math['floor'](y / this['__v']));
     };
 
-    $int.__div__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
+    $int['__div__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
         if (y == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(this.__v / y);
+        return new $int(this['__v'] / y);
     };
 
-    $int.__rdiv__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        if (this.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(y / this.__v);
+    $int['__rdiv__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        if (this['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+        return new $int(y / this['__v']);
     };
 
-    $int.__mul__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        var v = this.__v * y;
+    $int['__mul__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        var v = this['__v'] * y;
         if ($min_int <= v && v <= $max_int) {
             return new $int(v);
         }
         if (-$max_float_int < v && v < $max_float_int) {
             return new @{{long}}(v);
         }
-        return new @{{long}}(this.__v).__mul__(new @{{long}}(y));
+        return new @{{long}}(this['__v'])['__mul__'](new @{{long}}(y));
     };
 
-    $int.__rmul__ = $int.__mul__;
+    $int['__rmul__'] = $int['__mul__'];
 
-    $int.__mod__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
+    $int['__mod__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
         if (y == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(this.__v % y);
+        return new $int(this['__v'] % y);
     };
 
-    $int.__rmod__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        if (this.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-        return new $int(y % this.__v);
+    $int['__rmod__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        if (this['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+        return new $int(y % this['__v']);
     };
 
-    $int.__pow__ = function (y) {
-        if (y.__number__ != 0x02) return @{{NotImplemented}};
-        y = y.__v;
-        var v = Math.pow(this.__v, y);
+    $int['__pow__'] = function (y) {
+        if (y['__number__'] != 0x02) return @{{NotImplemented}};
+        y = y['__v'];
+        var v = Math['pow'](this['__v'], y);
         if ($min_int <= v && v <= $max_int) {
             return new $int(v);
         }
         if (-$max_float_int < v && v < $max_float_int) {
             return new @{{long}}(v);
         }
-        return new @{{long}}(this.__v).__pow__(new @{{long}}(y));
+        return new @{{long}}(this['__v'])['__pow__'](new @{{long}}(y));
     };
 })();
 """)
@@ -2382,7 +2382,7 @@ var $radix_regex = [
 JS("""
 (function(){
 
-    var $log2 = Math.log(2);
+    var $log2 = Math['log'](2);
     var $DigitValue = [
             37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37,
             37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37,
@@ -2428,13 +2428,13 @@ JS("""
     }
 
     function long_normalize(v) {
-        var j = v.ob_size < 0 ? -v.ob_size:v.ob_size;
+        var j = v['ob_size'] < 0 ? -v['ob_size']:v['ob_size'];
         var i = j;
-        while (i > 0 && v.ob_digit[i-1] == 0) {
+        while (i > 0 && v['ob_digit'][i-1] == 0) {
             i--;
         }
         if (i != j) {
-            v.ob_size = v.ob_size < 0 ? -i:i;
+            v['ob_size'] = v['ob_size'] < 0 ? -i:i;
         }
         return v;
     }
@@ -2443,21 +2443,21 @@ JS("""
         var multiplier = PyLong_BASE; // 1L << PyLong_SHIFT == 1 << 15
         var neg, i, x, nbitsneeded;
 
-        if (vv.ob_size < 0) {
-            i = -vv.ob_size;
+        if (vv['ob_size'] < 0) {
+            i = -vv['ob_size'];
             neg = true;
-        } else if (vv.ob_size > 0) {
-            i = vv.ob_size;
+        } else if (vv['ob_size'] > 0) {
+            i = vv['ob_size'];
             neg = false;
         } else {
             return [0.0, 0];
         }
         --i;
-        x = vv.ob_digit[i];
+        x = vv['ob_digit'][i];
         nbitsneeded = 56;
         while (i > 0 && nbitsneeded > 0) {
             --i;
-            x = x * multiplier + vv.ob_digit[i];
+            x = x * multiplier + vv['ob_digit'][i];
             nbitsneeded -= PyLong_SHIFT;
         }
         if (neg) {
@@ -2503,16 +2503,16 @@ JS("""
     //}
 
     function muladd1(z, a, n, extra) {
-        var size_a = a.ob_size < 0 ? -a.ob_size : a.ob_size;
+        var size_a = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
         var carry = extra, i;
 
         for (i = 0; i < size_a; ++i) {
-                carry += a.ob_digit[i] * n;
-                z.ob_digit[i] = carry & PyLong_MASK;
+                carry += a['ob_digit'][i] * n;
+                z['ob_digit'][i] = carry & PyLong_MASK;
                 carry >>= PyLong_SHIFT;
         }
-        z.ob_digit[i] = carry;
-        z.ob_size = i + 1;
+        z['ob_digit'][i] = carry;
+        z['ob_size'] = i + 1;
         return long_normalize(z);
     }
 
@@ -2520,46 +2520,46 @@ JS("""
         var rem = 0, hi = 0;
         pin_idx += size;
         pout_idx += size;
-        while (pin_idx > pin.length) {
+        while (pin_idx > pin['length']) {
             --size;
             --pin_idx;
             pout[--pout_idx] = 0;
         }
         while (--size >= 0) {
             rem = (rem << PyLong_SHIFT) + pin[--pin_idx];
-            pout[--pout_idx] = hi = Math.floor(rem / n);
+            pout[--pout_idx] = hi = Math['floor'](rem / n);
             rem -= hi * n;
         }
         return [rem, pout_idx, pin_idx];
     }
 
     function divrem1(a, n, prem) {
-        var size = a.ob_size < 0 ? -a.ob_size : a.ob_size;
+        var size = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
         var z = new $long(0);
 
-        prem[0] = inplace_divrem1(z.ob_digit, a.ob_digit, 0, 0, size, n)[0];
-        z.ob_size = size;
+        prem[0] = inplace_divrem1(z['ob_digit'], a['ob_digit'], 0, 0, size, n)[0];
+        z['ob_size'] = size;
         return long_normalize(z);
     }
 
     function Format(aa, base, addL, newstyle, noBase) {
         var text, str, p, i, bits, sz, rem, sign = '';
-        var c_0 = "0".charCodeAt(0);
-        var c_a = "a".charCodeAt(0);
-        base = base.valueOf();
+        var c_0 = "0"['charCodeAt'](0);
+        var c_a = "a"['charCodeAt'](0);
+        base = base['valueOf']();
 
-        if (aa.ob_size == 0) {
+        if (aa['ob_size'] == 0) {
             if (addL) {
                 text = "0L";
             } else {
                 text = "0";
             }
         } else {
-            if (aa.ob_size < 0) {
+            if (aa['ob_size'] < 0) {
                 sign = '-';
-                size_a = -aa.ob_size;
+                size_a = -aa['ob_size'];
             } else {
-                size_a = aa.ob_size;
+                size_a = aa['ob_size'];
             }
             i = base;
             bits = 0;
@@ -2569,7 +2569,7 @@ JS("""
             }
             i = addL ? 6 : 5;
             j = size_a * PyLong_SHIFT + bits - 1;
-            sz = Math.floor(i + j / bits);
+            sz = Math['floor'](i + j / bits);
             if (j / PyLong_SHIFT < size_a || sz < i) {
                 throw @{{OverflowError}}("long is too large to format");
             }
@@ -2581,11 +2581,11 @@ JS("""
                 i = base;
                 while ((i >>>= 1) > 1) ++basebits;
                 for (i = 0; i < size_a; ++i) {
-                    accum |= aa.ob_digit[i] << accumbits;
+                    accum |= aa['ob_digit'][i] << accumbits;
                     accumbits += PyLong_SHIFT;
                     while (1) {
                         var cdigit = accum & (base - 1);
-                        str[--p] = $cdigit.charAt(cdigit);
+                        str[--p] = $cdigit['charAt'](cdigit);
                         accumbits -= basebits;
                         accum >>>= basebits;
                         if (i < size_a-1) {
@@ -2593,7 +2593,7 @@ JS("""
                         } else if (accum <= 0) break;
                     }
                 }
-                text = str.join("");
+                text = str['join']("");
             } else {
                 // Not 0, and base not a power of 2.
                 var scratch, pin, scratch_idx, pin_idx;
@@ -2606,8 +2606,8 @@ JS("""
                     powbase = newpow;
                     ++power;
                 }
-                scratch = aa.ob_digit.slice(0);
-                pin = aa.ob_digit;
+                scratch = aa['ob_digit']['slice'](0);
+                pin = aa['ob_digit'];
                 scratch_idx = pin_idx = 0;
                 do {
                         var ntostore = power;
@@ -2620,15 +2620,15 @@ JS("""
                             --size;
                         }
                         do {
-                            var nextrem = Math.floor(rem / base);
-                            str[--p] = $cdigit.charAt(rem - nextrem * base);
+                            var nextrem = Math['floor'](rem / base);
+                            str[--p] = $cdigit['charAt'](rem - nextrem * base);
                             rem = nextrem;
                             --ntostore;
                         } while (ntostore && (size || rem));
                 } while (size !=0);
-                text = str.slice(p).join("");
+                text = str['slice'](p)['join']("");
             }
-            text = text.lstrip('0');
+            text = text['lstrip']('0');
             if (text == "" || text == "L") text = "0" + text;
         }
         if (noBase !== false) {
@@ -2639,7 +2639,7 @@ JS("""
                     text = '0b' + text;
                     break;
                 case 8:
-                    text = (newstyle ? '0o':(aa.ob_size ? '0': '')) + text;
+                    text = (newstyle ? '0o':(aa['ob_size'] ? '0': '')) + text;
                     break;
                 case 16:
                     text = '0x' + text;
@@ -2653,8 +2653,8 @@ JS("""
     }
 
     function long_divrem(a, b, pdiv, prem) {
-        var size_a = a.ob_size < 0 ? -a.ob_size : a.ob_size;
-        var size_b = b.ob_size < 0 ? -b.ob_size : b.ob_size;
+        var size_a = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
+        var size_b = b['ob_size'] < 0 ? -b['ob_size'] : b['ob_size'];
         var z = null;
 
         if (size_b == 0) {
@@ -2662,91 +2662,91 @@ JS("""
         }
         if (size_a < size_b ||
             (size_a == size_b &&
-             a.ob_digit[size_a-1] < b.ob_digit[size_b-1])) {
+             a['ob_digit'][size_a-1] < b['ob_digit'][size_b-1])) {
                 // |a| < |b|
-                pdiv.ob_size = 0;
-                prem.ob_digit = a.ob_digit.slice(0);
-                prem.ob_size = a.ob_size;
+                pdiv['ob_size'] = 0;
+                prem['ob_digit'] = a['ob_digit']['slice'](0);
+                prem['ob_size'] = a['ob_size'];
                 return 0;
         }
         if (size_b == 1) {
                 rem = [0];
-                prem.ob_digit = [0];
-                prem.ob_size = 1;
-                z = divrem1(a, b.ob_digit[0], prem.ob_digit);
+                prem['ob_digit'] = [0];
+                prem['ob_size'] = 1;
+                z = divrem1(a, b['ob_digit'][0], prem['ob_digit']);
                 prem = long_normalize(prem);
         }
         else {
                 z = @{{!x_divrem}}(a, b, prem);
         }
         if (z === null) {
-            pdiv.ob_size = 0;
+            pdiv['ob_size'] = 0;
         } else {
-            pdiv.ob_digit = z.ob_digit.slice(0);
-            pdiv.ob_size = z.ob_size;
+            pdiv['ob_digit'] = z['ob_digit']['slice'](0);
+            pdiv['ob_size'] = z['ob_size'];
         }
-        if ((a.ob_size < 0) != (b.ob_size < 0))
-                pdiv.ob_size = -(pdiv.ob_size);
-        if (a.ob_size < 0 && prem.ob_size != 0)
-                prem.ob_size = -prem.ob_size;
+        if ((a['ob_size'] < 0) != (b['ob_size'] < 0))
+                pdiv['ob_size'] = -(pdiv['ob_size']);
+        if (a['ob_size'] < 0 && prem['ob_size'] != 0)
+                prem['ob_size'] = -prem['ob_size'];
         return 0;
     }
 
     function x_divrem(v1, w1, prem) {
-        var size_w = w1.ob_size < 0 ? -w1.ob_size : w1.ob_size;
-        var d = Math.floor(PyLong_BASE / (w1.ob_digit[size_w-1] + 1));
+        var size_w = w1['ob_size'] < 0 ? -w1['ob_size'] : w1['ob_size'];
+        var d = Math['floor'](PyLong_BASE / (w1['ob_digit'][size_w-1] + 1));
         var v = muladd1($x_divrem_v, v1, d, 0);
         var w = muladd1($x_divrem_w, w1, d, 0);
         var a, j, k;
-        var size_v = v.ob_size < 0 ? -v.ob_size : v.ob_size;
+        var size_v = v['ob_size'] < 0 ? -v['ob_size'] : v['ob_size'];
         k = size_v - size_w;
         a = new $long(0);
-        a.ob_size = k + 1;
+        a['ob_size'] = k + 1;
 
         for (j = size_v; k >= 0; --j, --k) {
-            var vj = (j >= size_v) ? 0 : v.ob_digit[j];
+            var vj = (j >= size_v) ? 0 : v['ob_digit'][j];
             var carry = 0;
             var q, i;
 
-            if (vj == w.ob_digit[size_w-1])
+            if (vj == w['ob_digit'][size_w-1])
                 q = PyLong_MASK;
             else
-                q = Math.floor(((vj << PyLong_SHIFT) + v.ob_digit[j-1]) /
-                        w.ob_digit[size_w-1]);
+                q = Math['floor'](((vj << PyLong_SHIFT) + v['ob_digit'][j-1]) /
+                        w['ob_digit'][size_w-1]);
 
-            while (w.ob_digit[size_w-2]*q >
+            while (w['ob_digit'][size_w-2]*q >
                     ((
                         (vj << PyLong_SHIFT)
-                        + v.ob_digit[j-1]
-                        - q*w.ob_digit[size_w-1]
+                        + v['ob_digit'][j-1]
+                        - q*w['ob_digit'][size_w-1]
                                                 ) << PyLong_SHIFT)
-                    + v.ob_digit[j-2])
+                    + v['ob_digit'][j-2])
                 --q;
 
             for (i = 0; i < size_w && i+k < size_v; ++i) {
-                var z = w.ob_digit[i] * q;
+                var z = w['ob_digit'][i] * q;
                 var zz = z >>> PyLong_SHIFT;
-                carry += v.ob_digit[i+k] - z
+                carry += v['ob_digit'][i+k] - z
                         + (zz << PyLong_SHIFT);
-                v.ob_digit[i+k] = carry & PyLong_MASK;
+                v['ob_digit'][i+k] = carry & PyLong_MASK;
                 // carry = Py_ARITHMETIC_RIGHT_SHIFT(BASE_TWODIGITS_TYPE, carry, PyLong_SHIFT);
                 carry >>= PyLong_SHIFT;
                 carry -= zz;
             }
 
             if (i+k < size_v) {
-                carry += v.ob_digit[i+k];
-                v.ob_digit[i+k] = 0;
+                carry += v['ob_digit'][i+k];
+                v['ob_digit'][i+k] = 0;
             }
 
             if (carry == 0)
-                a.ob_digit[k] = q;
+                a['ob_digit'][k] = q;
             else {
-                a.ob_digit[k] = q-1;
+                a['ob_digit'][k] = q-1;
                 carry = 0;
                 for (i = 0; i < size_w && i+k < size_v; ++i) {
-                    carry += v.ob_digit[i+k] + w.ob_digit[i];
-                    v.ob_digit[i+k] = carry & PyLong_MASK;
+                    carry += v['ob_digit'][i+k] + w['ob_digit'][i];
+                    v['ob_digit'][i+k] = carry & PyLong_MASK;
                     // carry = Py_ARITHMETIC_RIGHT_SHIFT( BASE_TWODIGITS_TYPE, carry, PyLong_SHIFT);
                     carry >>= PyLong_SHIFT;
                 }
@@ -2754,14 +2754,14 @@ JS("""
         } /* for j, k */
 
         i = divrem1(v, d, prem);
-        prem.ob_digit = i.ob_digit.slice(0);
-        prem.ob_size = i.ob_size;
+        prem['ob_digit'] = i['ob_digit']['slice'](0);
+        prem['ob_size'] = i['ob_size'];
         return long_normalize(a);
     }
 
     function x_add(a, b) {
-        var size_a = a.ob_size < 0 ? -a.ob_size : a.ob_size;
-        var size_b = b.ob_size < 0 ? -b.ob_size : b.ob_size;
+        var size_a = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
+        var size_b = b['ob_size'] < 0 ? -b['ob_size'] : b['ob_size'];
         var z = new $long(0);
         var i;
         var carry = 0;
@@ -2775,23 +2775,23 @@ JS("""
             size_b = temp;
         }
         for (i = 0; i < size_b; ++i) {
-                carry += a.ob_digit[i] + b.ob_digit[i];
-                z.ob_digit[i] = carry & PyLong_MASK;
+                carry += a['ob_digit'][i] + b['ob_digit'][i];
+                z['ob_digit'][i] = carry & PyLong_MASK;
                 carry >>>= PyLong_SHIFT;
         }
         for (; i < size_a; ++i) {
-                carry += a.ob_digit[i];
-                z.ob_digit[i] = carry & PyLong_MASK;
+                carry += a['ob_digit'][i];
+                z['ob_digit'][i] = carry & PyLong_MASK;
                 carry >>>= PyLong_SHIFT;
         }
-        z.ob_digit[i] = carry;
-        z.ob_size = i+1;
+        z['ob_digit'][i] = carry;
+        z['ob_size'] = i+1;
         return long_normalize(z);
     }
 
     function x_sub(a, b) {
-        var size_a = a.ob_size < 0 ? -a.ob_size : a.ob_size;
-        var size_b = b.ob_size < 0 ? -b.ob_size : b.ob_size;
+        var size_a = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
+        var size_b = b['ob_size'] < 0 ? -b['ob_size'] : b['ob_size'];
         var z = new $long(0);
         var i;
         var borrow = 0;
@@ -2807,11 +2807,11 @@ JS("""
             sign = -1;
         } else if (size_a == size_b) {
             i = size_a;
-            while (--i >= 0 && a.ob_digit[i] == b.ob_digit[i])
+            while (--i >= 0 && a['ob_digit'][i] == b['ob_digit'][i])
                 ;
             if (i < 0)
                 return z;
-            if (a.ob_digit[i] < b.ob_digit[i]) {
+            if (a['ob_digit'][i] < b['ob_digit'][i]) {
                 var temp = a;
                 a = b;
                 b = temp;
@@ -2823,81 +2823,81 @@ JS("""
             size_a = size_b = i+1;
         }
         for (i = 0; i < size_b; ++i) {
-                borrow = a.ob_digit[i] - b.ob_digit[i] - borrow;
-                z.ob_digit[i] = borrow & PyLong_MASK;
+                borrow = a['ob_digit'][i] - b['ob_digit'][i] - borrow;
+                z['ob_digit'][i] = borrow & PyLong_MASK;
                 borrow >>>= PyLong_SHIFT;
                 borrow &= 1;
         }
         for (; i < size_a; ++i) {
-                borrow = a.ob_digit[i] - borrow;
-                z.ob_digit[i] = borrow & PyLong_MASK;
+                borrow = a['ob_digit'][i] - borrow;
+                z['ob_digit'][i] = borrow & PyLong_MASK;
                 borrow >>>= PyLong_SHIFT;
                 borrow &= 1;
         }
-        z.ob_size = i;
+        z['ob_size'] = i;
         if (sign < 0)
-            z.ob_size = -(z.ob_size);
+            z['ob_size'] = -(z['ob_size']);
         return long_normalize(z);
     }
 
     function x_mul(a, b) {
-        var size_a = a.ob_size < 0 ? -a.ob_size : a.ob_size;
-        var size_b = b.ob_size < 0 ? -b.ob_size : b.ob_size;
+        var size_a = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
+        var size_b = b['ob_size'] < 0 ? -b['ob_size'] : b['ob_size'];
         var z = new $long(0);
         var i, s;
 
-        z.ob_size = size_a + size_b;
-        for (i = 0; i < z.ob_size; i++) {
-            z.ob_digit[i] = 0;
+        z['ob_size'] = size_a + size_b;
+        for (i = 0; i < z['ob_size']; i++) {
+            z['ob_digit'][i] = 0;
         }
-        if (size_a == size_b && array_eq(a.ob_digit, b.ob_digit, size_a)) {
-            // Efficient squaring per HAC, Algorithm 14.16:
+        if (size_a == size_b && array_eq(a['ob_digit'], b['ob_digit'], size_a)) {
+            // Efficient squaring per HAC, Algorithm 14['16']:
             for (i = 0; i < size_a; ++i) {
                 var carry;
-                var f = a.ob_digit[i];
+                var f = a['ob_digit'][i];
                 var pz = (i << 1);
                 var pa = i + 1;
                 var paend = size_a;
 
-                carry = z.ob_digit[pz] + f * f;
-                z.ob_digit[pz++] = carry & PyLong_MASK;
+                carry = z['ob_digit'][pz] + f * f;
+                z['ob_digit'][pz++] = carry & PyLong_MASK;
                 carry >>>= PyLong_SHIFT;
 
                 f <<= 1;
                 while (pa < paend) {
-                    carry += z.ob_digit[pz] + a.ob_digit[pa++] * f;
-                    z.ob_digit[pz++] = carry & PyLong_MASK;
+                    carry += z['ob_digit'][pz] + a['ob_digit'][pa++] * f;
+                    z['ob_digit'][pz++] = carry & PyLong_MASK;
                     carry >>>= PyLong_SHIFT;
                 }
                 if (carry) {
-                    carry += z.ob_digit[pz];
-                    z.ob_digit[pz++] = carry & PyLong_MASK;
+                    carry += z['ob_digit'][pz];
+                    z['ob_digit'][pz++] = carry & PyLong_MASK;
                     carry >>>= PyLong_SHIFT;
                 }
                 if (carry) {
-                    z.ob_digit[pz] += carry & PyLong_MASK;
+                    z['ob_digit'][pz] += carry & PyLong_MASK;
                 }
             }
         }
         else {  // a is not the same as b -- gradeschool long mult
             for (i = 0; i < size_a; ++i) {
                 var carry = 0;
-                var f = a.ob_digit[i];
+                var f = a['ob_digit'][i];
                 var pz = i;
                 var pb = 0;
                 var pbend = size_b;
 
                 while (pb < pbend) {
-                    carry += z.ob_digit[pz] + b.ob_digit[pb++] * f;
-                    z.ob_digit[pz++] = carry & PyLong_MASK;
+                    carry += z['ob_digit'][pz] + b['ob_digit'][pb++] * f;
+                    z['ob_digit'][pz++] = carry & PyLong_MASK;
                     carry >>>= PyLong_SHIFT;
                 }
                 if (carry) {
-                    z.ob_digit[pz] += carry & PyLong_MASK;
+                    z['ob_digit'][pz] += carry & PyLong_MASK;
                 }
             }
         }
-        z.ob_size = z.ob_digit.length;
+        z['ob_size'] = z['ob_digit']['length'];
         return long_normalize(z);
     }
 
@@ -2909,18 +2909,18 @@ JS("""
                 return -1;
         if (pdiv == null && pmod == null) return 0;
 
-        if ((mod.ob_size < 0 && w.ob_size > 0) ||
-            (mod.ob_size > 0 && w.ob_size < 0)) {
-                mod = mod.__add__(w);
-                div = div.__sub__($const_long_1);
+        if ((mod['ob_size'] < 0 && w['ob_size'] > 0) ||
+            (mod['ob_size'] > 0 && w['ob_size'] < 0)) {
+                mod = mod['__add__'](w);
+                div = div['__sub__']($const_long_1);
         }
         if (pdiv !== null) {
-            pdiv.ob_digit = div.ob_digit.slice(0);
-            pdiv.ob_size = div.ob_size;
+            pdiv['ob_digit'] = div['ob_digit']['slice'](0);
+            pdiv['ob_size'] = div['ob_size'];
         }
         if (pmod !== null) {
-            pmod.ob_digit = mod.ob_digit.slice(0);
-            pmod.ob_size = mod.ob_size;
+            pmod['ob_digit'] = mod['ob_digit']['slice'](0);
+            pmod['ob_size'] = mod['ob_size'];
         }
         return 0;
     }
@@ -2930,13 +2930,13 @@ JS("""
     /* XXX do not convert to @{{long}} - this is correct */
     var $long = pyjslib['long'] = function(value, radix) {
         var v, i;
-        if (!radix || radix.valueOf() == 0) {
+        if (!radix || radix['valueOf']() == 0) {
             if (typeof value == 'undefined') {
                 throw @{{TypeError}}("long() takes at least 1 argument");
             }
-            switch (value.__number__) {
+            switch (value['__number__']) {
                 case 0x01:
-                    value = value > 0 ? Math.floor(value) : Math.ceil(value);
+                    value = value > 0 ? Math['floor'](value) : Math['ceil'](value);
                     break;
                 case 0x02:
                     break;
@@ -2945,27 +2945,27 @@ JS("""
             }
             radix = null;
         }
-        if (typeof this != 'object' || this.__number__ != 0x04) return new $long(value, radix);
+        if (typeof this != 'object' || this['__number__'] != 0x04) return new $long(value, radix);
 
         v = value;
-        this.ob_size = 0;
-        this.ob_digit = new Array();
-        if (v.__number__) {
+        this['ob_size'] = 0;
+        this['ob_digit'] = new Array();
+        if (v['__number__']) {
             if (radix) {
                 throw @{{TypeError}}("long() can't convert non-string with explicit base");
             }
-            if (v.__number__ == 0x04) {
-                var size = v.ob_size < 0 ? -v.ob_size:v.ob_size;
+            if (v['__number__'] == 0x04) {
+                var size = v['ob_size'] < 0 ? -v['ob_size']:v['ob_size'];
                 for (var i = 0; i < size; i++) {
-                    this.ob_digit[i] = v.ob_digit[i];
+                    this['ob_digit'][i] = v['ob_digit'][i];
                 }
-                this.ob_size = v.ob_size;
+                this['ob_size'] = v['ob_size'];
                 return this;
             }
-            if (v.__number__ == 0x02) {
+            if (v['__number__'] == 0x02) {
                 var neg = false;
                 var ndig = 0;
-                v = v.valueOf();
+                v = v['valueOf']();
 
                 if (v < 0) {
                     v = -v;
@@ -2974,14 +2974,14 @@ JS("""
                 // Count the number of Python digits.
                 var t = v;
                 while (t) {
-                    this.ob_digit[ndig] = t & PyLong_MASK;
+                    this['ob_digit'][ndig] = t & PyLong_MASK;
                     t >>>= PyLong_SHIFT;
                     ++ndig;
                 }
-                this.ob_size = neg ? -ndig : ndig;
+                this['ob_size'] = neg ? -ndig : ndig;
                 return this;
             }
-            if (v.__number__ == 0x01) {
+            if (v['__number__'] == 0x01) {
                 var ndig, frac, expo, bits;
                 var neg = false;
 
@@ -2992,8 +2992,8 @@ JS("""
                     throw @{{OverflowError}}('cannot convert float infinity to integer');
                 }
                 if (v == 0) {
-                    this.ob_digit[0] = 0;
-                    this.ob_size = 0;
+                    this['ob_digit'][0] = 0;
+                    this['ob_size'] = 0;
                     return this;
                 }
                 if (v < 0) {
@@ -3005,44 +3005,44 @@ JS("""
                     frac = 0;
                     expo = 0;
                 } else {
-                    expo = Math.log(v)/$log2;
-                    expo = (expo < 0 ? Math.ceil(expo):Math.floor(expo)) + 1;
-                    frac = v / Math.pow(2.0, expo);
+                    expo = Math['log'](v)/$log2;
+                    expo = (expo < 0 ? Math['ceil'](expo):Math['floor'](expo)) + 1;
+                    frac = v / Math['pow'](2.0, expo);
                 }
                 if (expo <= 0) {
                     return this;
                 }
-                ndig = Math.floor((expo-1) / PyLong_SHIFT) + 1;
+                ndig = Math['floor']((expo-1) / PyLong_SHIFT) + 1;
                 // ldexp(a,b) == a * (2**b)
-                frac = frac * Math.pow(2.0, ((expo-1) % PyLong_SHIFT) + 1);
+                frac = frac * Math['pow'](2.0, ((expo-1) % PyLong_SHIFT) + 1);
                 for (var i = ndig; --i >= 0;) {
-                    bits = Math.floor(frac);
-                    this.ob_digit[i] = bits;
+                    bits = Math['floor'](frac);
+                    this['ob_digit'][i] = bits;
                     frac -= bits;
-                    frac = frac * Math.pow(2.0, PyLong_SHIFT);
+                    frac = frac * Math['pow'](2.0, PyLong_SHIFT);
                 }
-                this.ob_size = neg ? -ndig : ndig;
+                this['ob_size'] = neg ? -ndig : ndig;
                 return this;
             }
             throw @{{ValueError}}('cannot convert ' + @{{repr}}(@{{value}}) + 'to integer');
         } else if (typeof v == 'string') {
             var nchars;
-            var text = value.lstrip();
+            var text = value['lstrip']();
             var i = 0;
             var neg = false;
 
-            switch (text.charAt(0)) {
+            switch (text['charAt'](0)) {
                 case '-':
                     neg = true;
                 case '+':
-                    text = text.slice(1).lstrip();
+                    text = text['slice'](1)['lstrip']();
             }
 
             if (!radix) {
-                if (text == '0' || text.charAt(0) != '0') {
+                if (text == '0' || text['charAt'](0) != '0') {
                     radix = 10;
                 } else {
-                    switch (text.charAt(1)) {
+                    switch (text['charAt'](1)) {
                         case 'x':
                         case 'X':
                             radix = 16;
@@ -3063,19 +3063,19 @@ JS("""
             } else if (radix < 1 || radix > 36) {
                 throw @{{ValueError}}("long() arg 2 must be >= 2 and <= 36");
             }
-            if (text.charAt(0) == '0' && text.length > 1) {
-                switch (text.charAt(1)) {
+            if (text['charAt'](0) == '0' && text['length'] > 1) {
+                switch (text['charAt'](1)) {
                     case 'x':
                     case 'X':
-                        if (radix == 16) text = text.slice(2);
+                        if (radix == 16) text = text['slice'](2);
                         break;
                     case 'o':
                     case 'O':
-                        if (radix == 8) text = text.slice(2);
+                        if (radix == 8) text = text['slice'](2);
                         break;
                     case 'b':
                     case 'B':
-                        if (radix == 2) text = text.slice(2);
+                        if (radix == 2) text = text['slice'](2);
                         break;
 
                 }
@@ -3090,7 +3090,7 @@ JS("""
                     n >>>= 1;
                 }
                 n = 0;
-                while ($DigitValue[text.charCodeAt(p)] < radix) {
+                while ($DigitValue[text['charCodeAt'](p)] < radix) {
                     p++;
                 }
                 nchars = p;
@@ -3098,30 +3098,30 @@ JS("""
                 if (n / bits_per_char < p) {
                     throw @{{ValueError}}("long string too large to convert");
                 }
-                this.ob_size = n = Math.floor(n/PyLong_SHIFT);
+                this['ob_size'] = n = Math['floor'](n/PyLong_SHIFT);
                 for (var i = 0; i < n; i++) {
-                    this.ob_digit[i] = 0;
+                    this['ob_digit'][i] = 0;
                 }
                 // Read string from right, and fill in long from left
                 accum = 0;
                 bits_in_accum = 0;
                 pdigit = 0;
                 while (--p >= 0) {
-                    k = $DigitValue[text.charCodeAt(p)];
+                    k = $DigitValue[text['charCodeAt'](p)];
                     accum |= k << bits_in_accum;
                     bits_in_accum += bits_per_char;
                     if (bits_in_accum >= PyLong_SHIFT) {
-                        this.ob_digit[pdigit] = accum & PyLong_MASK;
+                        this['ob_digit'][pdigit] = accum & PyLong_MASK;
                         pdigit++;
                         accum >>>= PyLong_SHIFT;
                         bits_in_accum -= PyLong_SHIFT;
                     }
                 }
                 if (bits_in_accum) {
-                    this.ob_digit[pdigit++] = accum;
+                    this['ob_digit'][pdigit++] = accum;
                 }
                 while (pdigit < n) {
-                    this.ob_digit[pdigit++] = 0;
+                    this['ob_digit'][pdigit++] = 0;
                 }
                 long_normalize(this);
             } else {
@@ -3131,7 +3131,7 @@ JS("""
                 if ($log_base_PyLong_BASE[radix] == 0.0) {
                     var i = 1;
                     var convmax = radix;
-                    $log_base_PyLong_BASE[radix] = Math.log(radix) / Math.log(PyLong_BASE);
+                    $log_base_PyLong_BASE[radix] = Math['log'](radix) / Math['log'](PyLong_BASE);
                     while (1) {
                         var next = convmax * radix;
                         if (next > PyLong_BASE) break;
@@ -3142,20 +3142,20 @@ JS("""
                     $convwidth_base[radix] = i;
                 }
                 scan = 0;
-                while ($DigitValue[text.charCodeAt(scan)] < radix)
+                while ($DigitValue[text['charCodeAt'](scan)] < radix)
                     ++scan;
                 nchars = scan;
                 size_z = scan * $log_base_PyLong_BASE[radix] + 1;
                 for (var i = 0; i < size_z; i ++) {
-                    this.ob_digit[i] = 0;
+                    this['ob_digit'][i] = 0;
                 }
-                this.ob_size = 0;
+                this['ob_size'] = 0;
                 convwidth = $convwidth_base[radix];
                 convmultmax = $convmultmax_base[radix];
                 for (var str = 0; str < scan;) {
-                    c = $DigitValue[text.charCodeAt(str++)];
+                    c = $DigitValue[text['charCodeAt'](str++)];
                     for (i = 1; i < convwidth && str != scan; ++i, ++str) {
-                        c = c * radix + $DigitValue[text.charCodeAt(str)];
+                        c = c * radix + $DigitValue[text['charCodeAt'](str)];
                     }
                     convmult = convmultmax;
                     if (i != convwidth) {
@@ -3163,27 +3163,27 @@ JS("""
                         for ( ; i > 1; --i) convmult *= radix;
                     }
                     pz = 0;
-                    pzstop = this.ob_size;
+                    pzstop = this['ob_size'];
                     for (; pz < pzstop; ++pz) {
-                        c += this.ob_digit[pz] * convmult;
-                        this.ob_digit[pz] = c & PyLong_MASK;
+                        c += this['ob_digit'][pz] * convmult;
+                        this['ob_digit'][pz] = c & PyLong_MASK;
                         c >>>= PyLong_SHIFT;
                     }
                     if (c) {
-                        if (this.ob_size < size_z) {
-                            this.ob_digit[pz] = c;
-                            this.ob_size++;
+                        if (this['ob_size'] < size_z) {
+                            this['ob_digit'][pz] = c;
+                            this['ob_size']++;
                         } else {
-                            this.ob_digit[this.ob_size] = c;
+                            this['ob_digit'][this['ob_size']] = c;
                         }
                     }
                 }
             }
-            text = text.slice(nchars);
-            if (neg) this.ob_size = -this.ob_size;
-            if (text.charAt(0) == 'l' || text.charAt(0) == 'L') text = text.slice(1);
-            text = text.lstrip();
-            if (text.length === 0) {
+            text = text['slice'](nchars);
+            if (neg) this['ob_size'] = -this['ob_size'];
+            if (text['charAt'](0) == 'l' || text['charAt'](0) == 'L') text = text['slice'](1);
+            text = text['lstrip']();
+            if (text['length'] === 0) {
                 return this;
             }
             throw @{{ValueError}}("invalid literal for long() with base " +
@@ -3196,108 +3196,108 @@ JS("""
         }
         return this;
     };
-    $long.__init__ = function () {};
-    $long.__number__ = 0x04;
-    $long.__name__ = 'long';
-    $long.prototype = $long;
-    $long.__class__ = $long;
-    $long.ob_size = 0;
+    $long['__init__'] = function () {};
+    $long['__number__'] = 0x04;
+    $long['__name__'] = 'long';
+    $long['prototype'] = $long;
+    $long['__class__'] = $long;
+    $long['ob_size'] = 0;
 
-    $long.toExponential = function (fractionDigits) {
-        return (typeof fractionDigits == 'undefined' || fractionDigits === null) ? this.__v.toExponential() : this.__v.toExponential(fractionDigits);
+    $long['toExponential'] = function (fractionDigits) {
+        return (typeof fractionDigits == 'undefined' || fractionDigits === null) ? this['__v']['toExponential']() : this['__v']['toExponential'](fractionDigits);
     };
 
-    $long.toFixed = function (digits) {
-        return (typeof digits == 'undefined' || digits === null) ? this.__v.toFixed() : this.__v.toFixed(digits);
+    $long['toFixed'] = function (digits) {
+        return (typeof digits == 'undefined' || digits === null) ? this['__v']['toFixed']() : this['__v']['toFixed'](digits);
     };
 
-    $long.toLocaleString = function () {
-        return this.__v.toLocaleString();
+    $long['toLocaleString'] = function () {
+        return this['__v']['toLocaleString']();
     };
 
-    $long.toPrecision = function (precision) {
-        return (typeof precision == 'undefined' || precision === null) ? this.__v.toPrecision() : this.__v.toPrecision(precision);
+    $long['toPrecision'] = function (precision) {
+        return (typeof precision == 'undefined' || precision === null) ? this['__v']['toPrecision']() : this['__v']['toPrecision'](precision);
     };
 
-    $long.toString = function (radix) {
+    $long['toString'] = function (radix) {
         return (typeof radix == 'undefined' || radix === null) ? Format(this, 10, false, false) : Format(this, radix, false, false, false);
     };
 
-    $long.valueOf = function() {
+    $long['valueOf'] = function() {
         var x, v;
         x = AsScaledDouble(this);
         // ldexp(a,b) == a * (2**b)
-        v = x[0] * Math.pow(2.0, x[1] * PyLong_SHIFT);
+        v = x[0] * Math['pow'](2.0, x[1] * PyLong_SHIFT);
         if (!isFinite(v)) {
             throw @{{OverflowError}}('long int too large to convert to float');
         }
         return v;
     };
 
-    $long.__str__ = function () {
-        if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
+    $long['__str__'] = function () {
+        if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
         return Format(this, 10, false, false);
     };
 
-    $long.__repr__ = function () {
-        if (typeof this == 'function') return "<type '" + this.__name__ + "'>";
+    $long['__repr__'] = function () {
+        if (typeof this == 'function') return "<type '" + this['__name__'] + "'>";
         return Format(this, 10, true, false);
     };
 
-    $long.__nonzero__ = function () {
-        return this.ob_size != 0;
+    $long['__nonzero__'] = function () {
+        return this['ob_size'] != 0;
     };
 
-    $long.__cmp__ = function (b) {
+    $long['__cmp__'] = function (b) {
         var sign;
 
-        if (this.ob_size != b.ob_size) {
-            if (this.ob_size < b.ob_size) return -1;
+        if (this['ob_size'] != b['ob_size']) {
+            if (this['ob_size'] < b['ob_size']) return -1;
             return 1;
         }
-        var i = this.ob_size < 0 ? - this.ob_size : this.ob_size;
-        while (--i >= 0 && this.ob_digit[i] == b.ob_digit[i])
+        var i = this['ob_size'] < 0 ? - this['ob_size'] : this['ob_size'];
+        while (--i >= 0 && this['ob_digit'][i] == b['ob_digit'][i])
             ;
         if (i < 0) return 0;
-        if (this.ob_digit[i] < b.ob_digit[i]) {
-            if (this.ob_size < 0) return 1;
+        if (this['ob_digit'][i] < b['ob_digit'][i]) {
+            if (this['ob_size'] < 0) return 1;
             return -1;
         }
-        if (this.ob_size < 0) return -1;
+        if (this['ob_size'] < 0) return -1;
         return 1;
     };
 
-    $long.__hash__ = function () {
-        var s = this.__str__();
-        var v = this.valueOf();
-        if (v.toString() == s) {
+    $long['__hash__'] = function () {
+        var s = this['__str__']();
+        var v = this['valueOf']();
+        if (v['toString']() == s) {
             return v;
         }
         return s;
     };
 
-    $long.__invert__ = function () {
-        var x = this.__add__($const_long_1);
-        x.ob_size = -x.ob_size;
+    $long['__invert__'] = function () {
+        var x = this['__add__']($const_long_1);
+        x['ob_size'] = -x['ob_size'];
         return x;
     };
 
-    $long.__neg__ = function () {
+    $long['__neg__'] = function () {
         var x = new $long(0);
-        x.ob_digit = this.ob_digit.slice(0);
-        x.ob_size = -this.ob_size;
+        x['ob_digit'] = this['ob_digit']['slice'](0);
+        x['ob_size'] = -this['ob_size'];
         return x;
     };
 
-    $long.__abs__ = function () {
-        if (this.ob_size >= 0) return this;
+    $long['__abs__'] = function () {
+        if (this['ob_size'] >= 0) return this;
         var x = new $long(0);
-        x.ob_digit = this.ob_digit.slice(0);
-        x.ob_size = -x.ob_size;
+        x['ob_digit'] = this['ob_digit']['slice'](0);
+        x['ob_size'] = -x['ob_size'];
         return x;
     };
 
-    $long.__lshift = function (y) {
+    $long['__lshift'] = function (y) {
         var a, z, wordshift, remshift, oldsize, newsize,
             accum, i, j;
         if (y < 0) {
@@ -3308,61 +3308,61 @@ JS("""
         }
         a = this;
 
-        wordshift = Math.floor(y / PyLong_SHIFT);
+        wordshift = Math['floor'](y / PyLong_SHIFT);
         remshift  = y - wordshift * PyLong_SHIFT;
 
-        oldsize = a.ob_size < 0 ? -a.ob_size : a.ob_size;
+        oldsize = a['ob_size'] < 0 ? -a['ob_size'] : a['ob_size'];
         newsize = oldsize + wordshift;
         if (remshift) ++newsize;
         z = new $long(0);
-        z.ob_size = a.ob_size < 0 ? -newsize : newsize;
+        z['ob_size'] = a['ob_size'] < 0 ? -newsize : newsize;
         for (i = 0; i < wordshift; i++) {
-            z.ob_digit[i] = 0;
+            z['ob_digit'][i] = 0;
         }
         accum = 0;
         for (i = wordshift, j = 0; j < oldsize; i++, j++) {
-            accum |= a.ob_digit[j] << remshift;
-            z.ob_digit[i] = accum & PyLong_MASK;
+            accum |= a['ob_digit'][j] << remshift;
+            z['ob_digit'][i] = accum & PyLong_MASK;
             accum >>>= PyLong_SHIFT;
         }
         if (remshift) {
-            z.ob_digit[newsize-1] = accum;
+            z['ob_digit'][newsize-1] = accum;
         }
         z = long_normalize(z);
         return z;
     };
 
-    $long.__lshift__ = function (y) {
-        switch (y.__number__) {
+    $long['__lshift__'] = function (y) {
+        switch (y['__number__']) {
             case 0x01:
-                if (y == Math.floor(y)) return this.__lshift(y);
+                if (y == Math['floor'](y)) return this['__lshift'](y);
                 break;
             case 0x02:
-                return this.__lshift(y.__v);
+                return this['__lshift'](y['__v']);
             case 0x04:
-                y = y.valueOf();
-                return this.__lshift(y);
+                y = y['valueOf']();
+                return this['__lshift'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rlshift__ = function (y) {
-        switch (y.__number__) {
+    $long['__rlshift__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__lshift(this.valueOf());
+                return (new $long(y['__v']))['__lshift'](this['valueOf']());
             case 0x04:
-                return y.__lshift(this.valueOf());
+                return y['__lshift'](this['valueOf']());
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rshift = function (y) {
+    $long['__rshift'] = function (y) {
         var a, z, size, wordshift, newsize, loshift, hishift,
             lomask, himask, i, j;
-        if (y.__number__ != 0x01) {
-            y = y.valueOf();
+        if (y['__number__'] != 0x01) {
+            y = y['valueOf']();
         } else {
-            if (y != Math.floor(y)) {
+            if (y != Math['floor'](y)) {
                 throw @{{TypeError}}("unsupported operand type(s) for >>: 'long' and 'float'");
             }
         }
@@ -3373,14 +3373,14 @@ JS("""
             throw @{{ValueError}}('shift count too big');
         }
         a = this;
-        size = this.ob_size;
-        if (this.ob_size < 0) {
+        size = this['ob_size'];
+        if (this['ob_size'] < 0) {
             size = -size;
-            a = this.__add__($const_long_1);
-            a.ob_size = -a.ob_size;
+            a = this['__add__']($const_long_1);
+            a['ob_size'] = -a['ob_size'];
         }
 
-        wordshift = Math.floor(y / PyLong_SHIFT);
+        wordshift = Math['floor'](y / PyLong_SHIFT);
         newsize = size - wordshift;
         if (newsize <= 0) {
             z = $const_long_0;
@@ -3390,62 +3390,62 @@ JS("""
             lomask = (1 << hishift) - 1;
             himask = PyLong_MASK ^ lomask;
             z = new $long(0);
-            z.ob_size = a.ob_size < 0 ? -newsize : newsize;
+            z['ob_size'] = a['ob_size'] < 0 ? -newsize : newsize;
             for (i = 0, j = wordshift; i < newsize; i++, j++) {
-                z.ob_digit[i] = (a.ob_digit[j] >>> loshift) & lomask;
+                z['ob_digit'][i] = (a['ob_digit'][j] >>> loshift) & lomask;
                 if (i+1 < newsize) {
-                    z.ob_digit[i] |=
-                      (a.ob_digit[j+1] << hishift) & himask;
+                    z['ob_digit'][i] |=
+                      (a['ob_digit'][j+1] << hishift) & himask;
                 }
             }
             z = long_normalize(z);
         }
 
-        if (this.ob_size < 0) {
-            z = z.__add__($const_long_1);
-            z.ob_size = -z.ob_size;
+        if (this['ob_size'] < 0) {
+            z = z['__add__']($const_long_1);
+            z['ob_size'] = -z['ob_size'];
         }
         return z;
     };
 
-    $long.__rshift__ = function (y) {
-        switch (y.__number__) {
+    $long['__rshift__'] = function (y) {
+        switch (y['__number__']) {
             case 0x01:
-                if (y == Math.floor(y)) return this.__rshift(y);
+                if (y == Math['floor'](y)) return this['__rshift'](y);
                 break;
             case 0x02:
-                return this.__rshift(y.__v);
+                return this['__rshift'](y['__v']);
             case 0x04:
-                y = y.valueOf();
-                return this.__rshift(y);
+                y = y['valueOf']();
+                return this['__rshift'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rrshift__ = function (y) {
-        switch (y.__number__) {
+    $long['__rrshift__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__rshift(this.valueOf());
+                return (new $long(y['__v']))['__rshift'](this['valueOf']());
             case 0x04:
-                return y.__rshift(this.valueOf());
+                return y['__rshift'](this['valueOf']());
         }
         return @{{NotImplemented}};
     };
 
-    $long.__and = function (b) {
+    $long['__and'] = function (b) {
         var a, maska, maskb, negz, size_a, size_b, size_z,
             i, z, diga, digb, v, op;
 
         a = this;
 
-        if (a.ob_size < 0) {
-            a = a.__invert__();
+        if (a['ob_size'] < 0) {
+            a = a['__invert__']();
             maska = PyLong_MASK;
         } else {
             maska = 0;
         }
-        if (b.ob_size < 0) {
-            b = b.__invert__();
+        if (b['ob_size'] < 0) {
+            b = b['__invert__']();
             maskb = PyLong_MASK;
         } else {
             maskb = 0;
@@ -3462,36 +3462,36 @@ JS("""
             }
 
 
-        size_a = a.ob_size;
-        size_b = b.ob_size;
+        size_a = a['ob_size'];
+        size_b = b['ob_size'];
         size_z = op == '&'
                     ? (maska
                         ? size_b
                         : (maskb ? size_a : (size_a < size_b ? size_a : size_b)))
                     : (size_a > size_b ? size_a : size_b);
         z = new $long(0);
-        z.ob_size = size_z;
+        z['ob_size'] = size_z;
 
         switch (op) {
             case '&':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga & digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga & digb;
                 }
                 break;
             case '|':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga | digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga | digb;
                 }
                 break;
             case '^':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga ^ digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga ^ digb;
                 }
                 break;
         }
@@ -3499,38 +3499,38 @@ JS("""
         if (negz == 0) {
             return z;
         }
-        return z.__invert__();
+        return z['__invert__']();
     };
 
-    $long.__and__ = function (y) {
-        switch (y.__number__) {
+    $long['__and__'] = function (y) {
+        switch (y['__number__']) {
             case 0x01:
-                if (y == Math.floor(y)) return this.__and(new $long(y));
+                if (y == Math['floor'](y)) return this['__and'](new $long(y));
                 break;
             case 0x02:
-                return this.__and(new $long(y.__v));
+                return this['__and'](new $long(y['__v']));
             case 0x04:
-                return this.__and(y);
+                return this['__and'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rand__ = $long.__and__;
+    $long['__rand__'] = $long['__and__'];
 
-    $long.__xor = function (b) {
+    $long['__xor'] = function (b) {
         var a,maska, maskb, negz, size_a, size_b, size_z,
             i, z, diga, digb, v, op;
 
         a = this;
 
-        if (a.ob_size < 0) {
-            a = a.__invert__();
+        if (a['ob_size'] < 0) {
+            a = a['__invert__']();
             maska = PyLong_MASK;
         } else {
             maska = 0;
         }
-        if (b.ob_size < 0) {
-            b = b.__invert__();
+        if (b['ob_size'] < 0) {
+            b = b['__invert__']();
             maskb = PyLong_MASK;
         } else {
             maskb = 0;
@@ -3545,36 +3545,36 @@ JS("""
             }
 
 
-        size_a = a.ob_size;
-        size_b = b.ob_size;
+        size_a = a['ob_size'];
+        size_b = b['ob_size'];
         size_z = op == '&'
                     ? (maska
                         ? size_b
                         : (maskb ? size_a : (size_a < size_b ? size_a : size_b)))
                     : (size_a > size_b ? size_a : size_b);
         z = new $long(0);
-        z.ob_size = size_z;
+        z['ob_size'] = size_z;
 
         switch (op) {
             case '&':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga & digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga & digb;
                 }
                 break;
             case '|':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga | digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga | digb;
                 }
                 break;
             case '^':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga ^ digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga ^ digb;
                 }
                 break;
         }
@@ -3582,38 +3582,38 @@ JS("""
         if (negz == 0) {
             return z;
         }
-        return z.__invert__();
+        return z['__invert__']();
     };
 
-    $long.__xor__ = function (y) {
-        switch (y.__number__) {
+    $long['__xor__'] = function (y) {
+        switch (y['__number__']) {
             case 0x01:
-                if (y == Math.floor(y)) return this.__xor(new $long(y));
+                if (y == Math['floor'](y)) return this['__xor'](new $long(y));
                 break;
             case 0x02:
-                return this.__xor(new $long(y.__v));
+                return this['__xor'](new $long(y['__v']));
             case 0x04:
-                return this.__xor(y);
+                return this['__xor'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rxor__ = $long.__xor__;
+    $long['__rxor__'] = $long['__xor__'];
 
-    $long.__or = function (b) {
+    $long['__or'] = function (b) {
         var a, maska, maskb, negz, size_a, size_b, size_z,
             i, z, diga, digb, v, op;
 
         a = this;
 
-        if (a.ob_size < 0) {
-            a = a.__invert__();
+        if (a['ob_size'] < 0) {
+            a = a['__invert__']();
             maska = PyLong_MASK;
         } else {
             maska = 0;
         }
-        if (b.ob_size < 0) {
-            b = b.__invert__();
+        if (b['ob_size'] < 0) {
+            b = b['__invert__']();
             maskb = PyLong_MASK;
         } else {
             maskb = 0;
@@ -3630,36 +3630,36 @@ JS("""
             }
 
 
-        size_a = a.ob_size;
-        size_b = b.ob_size;
+        size_a = a['ob_size'];
+        size_b = b['ob_size'];
         size_z = op == '&'
                     ? (maska
                         ? size_b
                         : (maskb ? size_a : (size_a < size_b ? size_a : size_b)))
                     : (size_a > size_b ? size_a : size_b);
         z = new $long(0);
-        z.ob_size = size_z;
+        z['ob_size'] = size_z;
 
         switch (op) {
             case '&':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga & digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga & digb;
                 }
                 break;
             case '|':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga | digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga | digb;
                 }
                 break;
             case '^':
                 for (i = 0; i < size_z; ++i) {
-                    diga = (i < size_a ? a.ob_digit[i] : 0) ^ maska;
-                    digb = (i < size_b ? b.ob_digit[i] : 0) ^ maskb;
-                    z.ob_digit[i] = diga ^ digb;
+                    diga = (i < size_a ? a['ob_digit'][i] : 0) ^ maska;
+                    digb = (i < size_b ? b['ob_digit'][i] : 0) ^ maskb;
+                    z['ob_digit'][i] = diga ^ digb;
                 }
                 break;
         }
@@ -3667,254 +3667,254 @@ JS("""
         if (negz == 0) {
             return z;
         }
-        return z.__invert__();
+        return z['__invert__']();
     };
 
-    $long.__or__ = function (y) {
-        switch (y.__number__) {
+    $long['__or__'] = function (y) {
+        switch (y['__number__']) {
             case 0x01:
-                if (y == Math.floor(y)) return this.__or(new $long(y));
+                if (y == Math['floor'](y)) return this['__or'](new $long(y));
                 break;
             case 0x02:
-                return this.__or(new $long(y.__v));
+                return this['__or'](new $long(y['__v']));
             case 0x04:
-                return this.__or(y);
+                return this['__or'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__ror__ = $long.__or__;
+    $long['__ror__'] = $long['__or__'];
 
-    $long.__oct__ = function () {
+    $long['__oct__'] = function () {
         return Format(this, 8, true, false);
     };
 
-    $long.__hex__ = function () {
+    $long['__hex__'] = function () {
         return Format(this, 16, true, false);
     };
 
-    $long.__add = function (b) {
+    $long['__add'] = function (b) {
         var a = this, z;
-        if (a.ob_size < 0) {
-            if (b.ob_size < 0) {
+        if (a['ob_size'] < 0) {
+            if (b['ob_size'] < 0) {
                 z = x_add(a, b);
-                z.ob_size = -(z.ob_size);
+                z['ob_size'] = -(z['ob_size']);
             }
             else {
                 z = x_sub(b, a);
             }
         }
         else {
-            z = b.ob_size < 0 ? x_sub(a, b) : x_add(a, b);
+            z = b['ob_size'] < 0 ? x_sub(a, b) : x_add(a, b);
         }
         return z;
     };
 
-    $long.__add__ = function (y) {
-        switch (y.__number__) {
+    $long['__add__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__add(new $long(y.__v));
+                return this['__add'](new $long(y['__v']));
             case 0x04:
-                return this.__add(y);
+                return this['__add'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__radd__ = $long.__add__;
+    $long['__radd__'] = $long['__add__'];
 
-    $long.__sub = function (b) {
+    $long['__sub'] = function (b) {
         var a = this, z;
-        if (a.ob_size < 0) {
-            z = b.ob_size < 0 ? x_sub(a, b) : x_add(a, b);
-            z.ob_size = -(z.ob_size);
+        if (a['ob_size'] < 0) {
+            z = b['ob_size'] < 0 ? x_sub(a, b) : x_add(a, b);
+            z['ob_size'] = -(z['ob_size']);
         }
         else {
-            z = b.ob_size < 0 ?  x_add(a, b) : x_sub(a, b);
+            z = b['ob_size'] < 0 ?  x_add(a, b) : x_sub(a, b);
         }
         return z;
     };
 
-    $long.__sub__ = function (y) {
-        switch (y.__number__) {
+    $long['__sub__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__sub(new $long(y.__v));
+                return this['__sub'](new $long(y['__v']));
             case 0x04:
-                return this.__sub(y);
+                return this['__sub'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rsub__ = function (y) {
-        switch (y.__number__) {
+    $long['__rsub__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__sub(this);
+                return (new $long(y['__v']))['__sub'](this);
             case 0x04:
-                return y.__sub(this);
+                return y['__sub'](this);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__mul = function (b) {
+    $long['__mul'] = function (b) {
         //var z = k_mul(a, b);
         var z = x_mul(this, b);
-        if ((this.ob_size ^ b.ob_size) < 0)
-            z.ob_size = -(z.ob_size);
+        if ((this['ob_size'] ^ b['ob_size']) < 0)
+            z['ob_size'] = -(z['ob_size']);
         return z;
     };
 
-    $long.__mul__ = function (y) {
-        switch (y.__number__) {
+    $long['__mul__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__mul(new $long(y.__v));
+                return this['__mul'](new $long(y['__v']));
             case 0x04:
-                return this.__mul(y);
+                return this['__mul'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rmul__ = $long.__mul__;
+    $long['__rmul__'] = $long['__mul__'];
 
-    $long.__div = function (b) {
+    $long['__div'] = function (b) {
         var div = new $long(0);
         l_divmod(this, b, div, null);
         return div;
     };
 
-    $long.__div__ = function (y) {
-        switch (y.__number__) {
+    $long['__div__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__sub(new $long(y.__v));
+                return this['__sub'](new $long(y['__v']));
             case 0x04:
-                return this.__sub(y);
+                return this['__sub'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rdiv__ = function (y) {
-        switch (y.__number__) {
+    $long['__rdiv__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__div(this);
+                return (new $long(y['__v']))['__div'](this);
             case 0x04:
-                return y.__div(this);
+                return y['__div'](this);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__mod = function (b) {
+    $long['__mod'] = function (b) {
         var mod = new $long(0);
         l_divmod(this, b, null, mod);
         return mod;
     };
 
-    $long.__mod__ = function (y) {
-        switch (y.__number__) {
+    $long['__mod__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__mod(new $long(y.__v));
+                return this['__mod'](new $long(y['__v']));
             case 0x04:
-                return this.__mod(y);
+                return this['__mod'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rmod__ = function (y) {
-        switch (y.__number__) {
+    $long['__rmod__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__mod(this);
+                return (new $long(y['__v']))['__mod'](this);
             case 0x04:
-                return y.__mod(this);
+                return y['__mod'](this);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__divmod = function (b) {
+    $long['__divmod'] = function (b) {
         var div = new $long(0);
         var mod = new $long(0);
         l_divmod(this, b, div, mod);
         return @{{tuple}}([div, mod]);
     };
 
-    $long.__divmod__ = function (y) {
-        switch (y.__number__) {
+    $long['__divmod__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__divmod(new $long(y.__v));
+                return this['__divmod'](new $long(y['__v']));
             case 0x04:
-                return this.__divmod(y);
+                return this['__divmod'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rdivmod__ = function (y) {
-        switch (y.__number__) {
+    $long['__rdivmod__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__divmod(this);
+                return (new $long(y['__v']))['__divmod'](this);
             case 0x04:
-                return y.__divmod(this);
+                return y['__divmod'](this);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__floordiv = function (b) {
+    $long['__floordiv'] = function (b) {
         var div = new $long(0);
         l_divmod(this, b, div, null);
         return div;
     };
 
-    $long.__floordiv__ = function (y) {
-        switch (y.__number__) {
+    $long['__floordiv__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return this.__floordiv(new $long(y.__v));
+                return this['__floordiv'](new $long(y['__v']));
             case 0x04:
-                return this.__floordiv(y);
+                return this['__floordiv'](y);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__rfloordiv__ = function (y) {
-        switch (y.__number__) {
+    $long['__rfloordiv__'] = function (y) {
+        switch (y['__number__']) {
             case 0x02:
-                return (new $long(y.__v)).__floordiv(this);
+                return (new $long(y['__v']))['__floordiv'](this);
             case 0x04:
-                return y.__floordiv(this);
+                return y['__floordiv'](this);
         }
         return @{{NotImplemented}};
     };
 
-    $long.__pow = function (w, x) {
+    $long['__pow'] = function (w, x) {
         var v = this;
         var a, b, c, negativeOutput = 0, z, i, j, k, temp, bi;
         var table = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 
         a = this;
-        b = w.__number__ == 0x04 ? w : new $long(w);
+        b = w['__number__'] == 0x04 ? w : new $long(w);
         if (x === null || typeof x == 'undefined') {
             c = null;
         } else {
-            c = x.__number__ == 0x04 ? x : new $long(x);
+            c = x['__number__'] == 0x04 ? x : new $long(x);
         }
 
-        if (b.ob_size < 0) {
+        if (b['ob_size'] < 0) {
             if (c !== null) {
                 throw @{{TypeError}}("pow() 2nd argument cannot be negative when 3rd argument specified");
             }
-            return Math.pow(v.valueOf(), w.valueOf());
+            return Math['pow'](v['valueOf'](), w['valueOf']());
         }
 
         if (c !== null) {
-            if (c.ob_size == 0) {
+            if (c['ob_size'] == 0) {
                 throw @{{ValueError}}("pow() 3rd argument cannot be 0");
             }
-            if (c.ob_size < 0) {
+            if (c['ob_size'] < 0) {
                 negativeOutput = 1;
                 temp = $pow_temp_c;
-                temp.ob_digit = c.ob_digit.slice(0);
-                temp.ob_size = -c.ob_size;
+                temp['ob_digit'] = c['ob_digit']['slice'](0);
+                temp['ob_size'] = -c['ob_size'];
                 c = temp;
             }
-            if (c.ob_size == 1 && c.ob_digit[0] == 1) {
+            if (c['ob_size'] == 1 && c['ob_digit'][0] == 1) {
                 return $const_long_0;
             }
-            if (a.ob_size < 0) {
+            if (a['ob_size'] < 0) {
                 temp = $pow_temp_a;
                 l_divmod(a, c, null, temp);
                 a = temp;
@@ -3922,22 +3922,22 @@ JS("""
         }
         z = new $long(1);
         temp = $pow_temp_z;
-        if (b.ob_size <= FIVEARY_CUTOFF) {
-            for (i = b.ob_size - 1; i >= 0; --i) {
-                bi = b.ob_digit[i];
+        if (b['ob_size'] <= FIVEARY_CUTOFF) {
+            for (i = b['ob_size'] - 1; i >= 0; --i) {
+                bi = b['ob_digit'][i];
                 for (j = 1 << (PyLong_SHIFT-1); j != 0; j >>>= 1) {
-                    z = z.__mul(z);
+                    z = z['__mul'](z);
                     if (c !== null) {
                         l_divmod(z, c, null, temp);
-                        z.ob_digit = temp.ob_digit.slice(0);
-                        z.ob_size = temp.ob_size;
+                        z['ob_digit'] = temp['ob_digit']['slice'](0);
+                        z['ob_size'] = temp['ob_size'];
                     }
                     if (bi & j) {
-                        z = z.__mul(a);
+                        z = z['__mul'](a);
                         if (c !== null) {
                             l_divmod(z, c, null, temp);
-                            z.ob_digit = temp.ob_digit.slice(0);
-                            z.ob_size = temp.ob_size;
+                            z['ob_digit'] = temp['ob_digit']['slice'](0);
+                            z['ob_size'] = temp['ob_size'];
                         }
                     }
                 }
@@ -3945,31 +3945,31 @@ JS("""
         } else {
             table[0] = z;
             for (i = 1; i < 32; ++i) {
-                table[i] = table[i-1].__mul(a);
+                table[i] = table[i-1]['__mul'](a);
                 if (c !== null) {
                     l_divmod(table[i], c, null, temp);
-                    table[i].ob_digit = temp.ob_digit.slice(0);
-                    table[i].ob_size = temp.ob_size;
+                    table[i]['ob_digit'] = temp['ob_digit']['slice'](0);
+                    table[i]['ob_size'] = temp['ob_size'];
                 }
             }
-            for (i = b.ob_size - 1; i >= 0; --i) {
-                bi = b.ob_digit[i];
+            for (i = b['ob_size'] - 1; i >= 0; --i) {
+                bi = b['ob_digit'][i];
                 for (j = PyLong_SHIFT - 5; j >= 0; j -= 5) {
                     var index = (bi >>> j) & 0x1f;
                     for (k = 0; k < 5; ++k) {
-                        z = z.__mul(z);
+                        z = z['__mul'](z);
                         if (c !== null) {
                             l_divmod(z, c, null, temp);
-                            z.ob_digit = temp.ob_digit.slice(0);
-                            z.ob_size = temp.ob_size;
+                            z['ob_digit'] = temp['ob_digit']['slice'](0);
+                            z['ob_size'] = temp['ob_size'];
                         }
                     }
                     if (index) {
-                        z = z.__mul(table[index]);
+                        z = z['__mul'](table[index]);
                         if (c !== null) {
                             l_divmod(z, c, null, temp);
-                            z.ob_digit = temp.ob_digit.slice(0);
-                            z.ob_size = temp.ob_size;
+                            z['ob_digit'] = temp['ob_digit']['slice'](0);
+                            z['ob_size'] = temp['ob_size'];
                         }
                     }
                 }
@@ -3977,32 +3977,32 @@ JS("""
         }
 
         if ((c !== null) && negativeOutput &&
-            (z.ob_size != 0) && (c.ob_size != 0)) {
-            z = z.__sub__(c);
+            (z['ob_size'] != 0) && (c['ob_size'] != 0)) {
+            z = z['__sub__'](c);
         }
         return z;
     };
 
-    $long.__pow__ = function (y, z) {
-        switch (y.__number__) {
+    $long['__pow__'] = function (y, z) {
+        switch (y['__number__']) {
             case 0x02:
                 if (typeof z == 'undefined')
-                    return this.__pow(new $long(y.__v), null);
-                switch (z.__number) {
+                    return this['__pow'](new $long(y['__v']), null);
+                switch (z['__number']) {
                     case 0x02:
-                        return this.__pow(new $long(y.__v), new $long(z));
+                        return this['__pow'](new $long(y['__v']), new $long(z));
                     case 0x04:
-                        return this.__pow(new $long(y.__v), z);
+                        return this['__pow'](new $long(y['__v']), z);
                 }
                 break;
             case 0x04:
                 if (typeof z == 'undefined')
-                    return this.__pow(y, null);
-                switch (z.__number) {
+                    return this['__pow'](y, null);
+                switch (z['__number']) {
                     case 0x02:
-                        return this.__pow(y, new $long(z));
+                        return this['__pow'](y, new $long(z));
                     case 0x04:
-                        return this.__pow(y, z);
+                        return this['__pow'](y, z);
                 }
                 break;
         }
@@ -4034,37 +4034,37 @@ class tuple:
         if (@{{data}} === null) {
             throw @{{TypeError}}("'NoneType' is not iterable");
         }
-        if (@{{data}}.constructor === Array) {
-            @{{self}}.__array = @{{data}}.slice();
+        if (@{{data}}['constructor'] === Array) {
+            @{{self}}['__array'] = @{{data}}['slice']();
             return null;
         }
-        if (typeof @{{data}}.__iter__ == 'function') {
-            if (typeof @{{data}}.__array == 'object') {
-                @{{self}}.__array = @{{data}}.__array.slice();
+        if (typeof @{{data}}['__iter__'] == 'function') {
+            if (typeof @{{data}}['__array'] == 'object') {
+                @{{self}}['__array'] = @{{data}}['__array']['slice']();
                 return null;
             }
-            var iter = @{{data}}.__iter__();
-            if (typeof iter.__array == 'object') {
-                @{{self}}.__array = iter.__array.slice();
+            var iter = @{{data}}['__iter__']();
+            if (typeof iter['__array'] == 'object') {
+                @{{self}}['__array'] = iter['__array']['slice']();
                 return null;
             }
             @{{data}} = [];
             var item, i = 0;
-            if (typeof iter.$genfunc == 'function') {
-                while (typeof (item=iter.next(true)) != 'undefined') {
+            if (typeof iter['$genfunc'] == 'function') {
+                while (typeof (item=iter['next'](true)) != 'undefined') {
                     @{{data}}[i++] = item;
                 }
             } else {
                 try {
                     while (true) {
-                        @{{data}}[i++] = iter.next();
+                        @{{data}}[i++] = iter['next']();
                     }
                 }
                 catch (e) {
                     if (!@{{isinstance}}(e, @{{StopIteration}})) throw e;
                 }
             }
-            @{{self}}.__array = @{{data}};
+            @{{self}}['__array'] = @{{data}};
             return null;
         }
         throw @{{TypeError}}("'" + @{{repr}}(@{{data}}) + "' is not iterable");
@@ -4077,10 +4077,10 @@ class tuple:
         if not isinstance(l, tuple):
             return 1
         JS("""
-        var n1 = @{{self}}.__array.length,
-            n2 = @{{l}}.__array.length,
-            a1 = @{{self}}.__array,
-            a2 = @{{l}}.__array,
+        var n1 = @{{self}}['__array']['length'],
+            n2 = @{{l}}['__array']['length'],
+            a1 = @{{self}}['__array'],
+            a2 = @{{l}}['__array'],
             n, c;
         n = (n1 < n2 ? n1 : n2);
         for (var i = 0; i < n; i++) {
@@ -4093,43 +4093,43 @@ class tuple:
 
     def __getslice__(self, lower, upper):
         JS("""
-        if (@{{upper}}==null) return @{{tuple}}(@{{self}}.__array.slice(@{{lower}}));
-        return @{{tuple}}(@{{self}}.__array.slice(@{{lower}}, @{{upper}}));
+        if (@{{upper}}==null) return @{{tuple}}(@{{self}}['__array']['slice'](@{{lower}}));
+        return @{{tuple}}(@{{self}}['__array']['slice'](@{{lower}}, @{{upper}}));
         """)
 
     def __getitem__(self, _index):
         JS("""
-        var index = @{{_index}}.valueOf();
+        var index = @{{_index}}['valueOf']();
         if (typeof index == 'boolean') index = @{{int}}(index);
-        if (index < 0) index += @{{self}}.__array.length;
-        if (index < 0 || index >= @{{self}}.__array.length) {
+        if (index < 0) index += @{{self}}['__array']['length'];
+        if (index < 0 || index >= @{{self}}['__array']['length']) {
             throw @{{IndexError}}("tuple index out of range");
         }
-        return @{{self}}.__array[index];
+        return @{{self}}['__array'][index];
         """)
 
     def __len__(self):
-        return INT(JS("""@{{self}}.__array.length"""))
+        return INT(JS("""@{{self}}['__array']['length']"""))
 
     def index(self, value, _start=0):
         JS("""
-        var start = @{{_start}}.valueOf();
+        var start = @{{_start}}['valueOf']();
         /* if (typeof valueXXX == 'number' || typeof valueXXX == 'string') {
-            start = selfXXX.__array.indexOf(valueXXX, start);
+            start = selfXXX['__array']['indexOf'](valueXXX, start);
             if (start >= 0)
                 return start;
         } else */ {
-            var len = @{{self}}.__array.length >>> 0;
+            var len = @{{self}}['__array']['length'] >>> 0;
 
             start = (start < 0)
-                    ? Math.ceil(start)
-                    : Math.floor(start);
+                    ? Math['ceil'](start)
+                    : Math['floor'](start);
             if (start < 0)
                 start += len;
 
             for (; start < len; start++) {
-                if ( /*start in selfXXX.__array && */
-                    @{{cmp}}(@{{self}}.__array[start], @{{value}}) == 0)
+                if ( /*start in selfXXX['__array'] && */
+                    @{{cmp}}(@{{self}}['__array'][start], @{{value}}) == 0)
                     return start;
             }
         }
@@ -4142,16 +4142,16 @@ class tuple:
         except ValueError:
             return False
         return True
-        #return JS('@{{self}}.__array.indexOf(@{{value}})>=0')
+        #return JS('@{{self}}['__array']['indexOf'](@{{value}})>=0')
 
     def __iter__(self):
-        return JS("new $iter_array(@{{self}}.__array)")
+        return JS("new $iter_array(@{{self}}['__array'])")
         JS("""
         var i = 0;
-        var l = @{{self}}.__array;
+        var l = @{{self}}['__array'];
         return {
             'next': function() {
-                if (i >= l.length) {
+                if (i >= l['length']) {
                     throw @{{StopIteration}}();
                 }
                 return l[i++];
@@ -4163,7 +4163,7 @@ class tuple:
         """)
 
     def __enumerate__(self):
-        return JS("new $enumerate_array(@{{self}}.__array)")
+        return JS("new $enumerate_array(@{{self}}['__array'])")
 
     def getArray(self):
         """
@@ -4180,12 +4180,12 @@ class tuple:
             return "<type '%s'>" % self.__name__
         JS("""
         var s = "(";
-        for (var i=0; i < @{{self}}.__array.length; i++) {
-            s += @{{repr}}(@{{self}}.__array[i]);
-            if (i < @{{self}}.__array.length - 1)
+        for (var i=0; i < @{{self}}['__array']['length']; i++) {
+            s += @{{repr}}(@{{self}}['__array'][i]);
+            if (i < @{{self}}['__array']['length'] - 1)
                 s += ", ";
         }
-        if (@{{self}}.__array.length == 1)
+        if (@{{self}}['__array']['length'] == 1)
             s += ",";
         s += ")";
         return s;
@@ -4197,7 +4197,7 @@ class tuple:
         return tuple(self.__array.concat(y.__array))
 
     def __mul__(self, n):
-        if not JS("@{{n}} !== null && @{{n}}.__number__ && (@{{n}}.__number__ != 0x01 || isFinite(@{{n}}))"):
+        if not JS("@{{n}} !== null && @{{n}}['__number__'] && (@{{n}}['__number__'] != 0x01 || isFinite(@{{n}}))"):
             raise TypeError("can't multiply sequence by non-int")
         a = []
         while n:
@@ -4207,8 +4207,8 @@ class tuple:
 
     def __rmul__(self, n):
         return self.__mul__(n)
-JS("@{{tuple}}.__str__ = @{{tuple}}.__repr__;")
-JS("@{{tuple}}.toString = @{{tuple}}.__str__;")
+JS("@{{tuple}}['__str__'] = @{{tuple}}['__repr__'];")
+JS("@{{tuple}}['toString'] = @{{tuple}}['__str__'];")
 
 
 class NotImplementedType(object):
@@ -4222,65 +4222,65 @@ NotImplemented = NotImplementedType()
 
 JS("""
 var $iter_array = function (l) {
-    this.__array = l;
-    this.i = -1;
+    this['__array'] = l;
+    this['i'] = -1;
 };
-$iter_array.prototype.next = function (noStop) {
-    if (++this.i == this.__array.length) {
+$iter_array['prototype']['next'] = function (noStop) {
+    if (++this['i'] == this['__array']['length']) {
         if (noStop === true) {
             return;
         }
         throw @{{StopIteration}}();
     }
-    return this.__array[this.i];
+    return this['__array'][this['i']];
 };
-$iter_array.prototype.__iter__ = function ( ) {
+$iter_array['prototype']['__iter__'] = function ( ) {
     return this;
 };
 var $reversed_iter_array = function (l) {
-    this.___array = l;
-    this.i = l.length;
+    this['___array'] = l;
+    this['i'] = l['length'];
 };
-$reversed_iter_array.prototype.next = function (noStop) {
-    if (--this.i == -1) {
+$reversed_iter_array['prototype']['next'] = function (noStop) {
+    if (--this['i'] == -1) {
         if (noStop === true) {
             return;
         }
         throw @{{StopIteration}}();
     }
-    return this.___array[this.i];
+    return this['___array'][this['i']];
 };
-$reversed_iter_array.prototype.__iter__ = function ( ) {
+$reversed_iter_array['prototype']['__iter__'] = function ( ) {
     return this;
 };
-//$reversed_iter_array.prototype.$genfunc = $reversed_iter_array.prototype.next;
+//$reversed_iter_array['prototype']['$genfunc'] = $reversed_iter_array['prototype']['next'];
 var $enumerate_array = function (l) {
-    this.array = l;
-    this.i = -1;
-    this.tuple = """)
+    this['array'] = l;
+    this['i'] = -1;
+    this['tuple'] = """)
 tuple([0, ""])
 JS("""
-    this.tl = this.tuple.__array;
+    this['tl'] = this['tuple']['__array'];
 };
-$enumerate_array.prototype.next = function (noStop, reuseTuple) {
-    if (++this.i == this.array.length) {
+$enumerate_array['prototype']['next'] = function (noStop, reuseTuple) {
+    if (++this['i'] == this['array']['length']) {
         if (noStop === true) {
             return;
         }
         throw @{{StopIteration}}();
     }
-    this.tl[1] = this.array[this.i];
-    if (this.tl[0].__number__ == 0x01) {
-        this.tl[0] = this.i;
+    this['tl'][1] = this['array'][this['i']];
+    if (this['tl'][0]['__number__'] == 0x01) {
+        this['tl'][0] = this['i'];
     } else {
-        this.tl[0] = new @{{int}}(this.i);
+        this['tl'][0] = new @{{int}}(this['i']);
     }
-    return reuseTuple === true ? this.tuple : @{{tuple}}(this.tl);
+    return reuseTuple === true ? this['tuple'] : @{{tuple}}(this['tl']);
 };
-$enumerate_array.prototype.__iter__ = function ( ) {
+$enumerate_array['prototype']['__iter__'] = function ( ) {
     return this;
 };
-$enumerate_array.prototype.$genfunc = $enumerate_array.prototype.next;
+$enumerate_array['prototype']['$genfunc'] = $enumerate_array['prototype']['next'];
 """)
 # NOTE: $genfunc is defined to enable faster loop code
 
@@ -4291,37 +4291,37 @@ class list:
         if (@{{data}} === null) {
             throw @{{TypeError}}("'NoneType' is not iterable");
         }
-        if (@{{data}}.constructor === Array) {
-            @{{self}}.__array = @{{data}}.slice();
+        if (@{{data}}['constructor'] === Array) {
+            @{{self}}['__array'] = @{{data}}['slice']();
             return null;
         }
-        if (typeof @{{data}}.__iter__ == 'function') {
-            if (typeof @{{data}}.__array == 'object') {
-                @{{self}}.__array = @{{data}}.__array.slice();
+        if (typeof @{{data}}['__iter__'] == 'function') {
+            if (typeof @{{data}}['__array'] == 'object') {
+                @{{self}}['__array'] = @{{data}}['__array']['slice']();
                 return null;
             }
-            var iter = @{{data}}.__iter__();
-            if (typeof iter.__array == 'object') {
-                @{{self}}.__array = iter.__array.slice();
+            var iter = @{{data}}['__iter__']();
+            if (typeof iter['__array'] == 'object') {
+                @{{self}}['__array'] = iter['__array']['slice']();
                 return null;
             }
             @{{data}} = [];
             var item, i = 0;
-            if (typeof iter.$genfunc == 'function') {
-                while (typeof (item=iter.next(true)) != 'undefined') {
+            if (typeof iter['$genfunc'] == 'function') {
+                while (typeof (item=iter['next'](true)) != 'undefined') {
                     @{{data}}[i++] = item;
                 }
             } else {
                 try {
                     while (true) {
-                        @{{data}}[i++] = iter.next();
+                        @{{data}}[i++] = iter['next']();
                     }
                 }
                 catch (e) {
                     if (!@{{isinstance}}(e, @{{StopIteration}})) throw e;
                 }
             }
-            @{{self}}.__array = @{{data}};
+            @{{self}}['__array'] = @{{data}};
             return null;
         }
         throw @{{TypeError}}("'" + @{{repr}}(@{{data}}) + "' is not iterable");
@@ -4331,7 +4331,7 @@ class list:
         raise TypeError("list objects are unhashable")
 
     def append(self, item):
-        JS("""@{{self}}.__array[@{{self}}.__array.length] = @{{item}};""")
+        JS("""@{{self}}['__array'][@{{self}}['__array']['length']] = @{{item}};""")
 
     # extend in place, just in case there's somewhere a shortcut to self.__array
     def extend(self, data):
@@ -4340,25 +4340,25 @@ class list:
         if (@{{data}} === null) {
             throw @{{TypeError}}("'NoneType' is not iterable");
         }
-        if (@{{data}}.constructor === Array) {
-        } else if (typeof @{{data}}.__iter__ == 'function') {
-            if (typeof @{{data}}.__array == 'object') {
-                @{{data}} = @{{data}}.__array;
+        if (@{{data}}['constructor'] === Array) {
+        } else if (typeof @{{data}}['__iter__'] == 'function') {
+            if (typeof @{{data}}['__array'] == 'object') {
+                @{{data}} = @{{data}}['__array'];
             } else {
-                var iter = @{{data}}.__iter__();
-                if (typeof iter.__array == 'object') {
-                    @{{data}} = iter.__array;
+                var iter = @{{data}}['__iter__']();
+                if (typeof iter['__array'] == 'object') {
+                    @{{data}} = iter['__array'];
                 }
                 @{{data}} = [];
                 var item, i = 0;
-                if (typeof iter.$genfunc == 'function') {
-                    while (typeof (item=iter.next(true)) != 'undefined') {
+                if (typeof iter['$genfunc'] == 'function') {
+                    while (typeof (item=iter['next'](true)) != 'undefined') {
                         @{{data}}[i++] = item;
                     }
                 } else {
                     try {
                         while (true) {
-                            @{{data}}[i++] = iter.next();
+                            @{{data}}[i++] = iter['next']();
                         }
                     }
                     catch (e) {
@@ -4369,9 +4369,9 @@ class list:
         } else {
             throw @{{TypeError}}("'" + @{{repr}}(@{{data}}) + "' is not iterable");
         }
-        var l = @{{self}}.__array;
-        var j = @{{self}}.__array.length;
-        var n = @{{data}}.length, i = 0;
+        var l = @{{self}}['__array'];
+        var j = @{{self}}['__array']['length'];
+        var n = @{{data}}['length'], i = 0;
         while (i < n) {
             l[j++] = @{{data}}[i++];
         }
@@ -4379,33 +4379,33 @@ class list:
 
     def remove(self, value):
         JS("""
-        var index=@{{self}}.index(@{{value}});
+        var index=@{{self}}['index'](@{{value}});
         if (index<0) {
-            throw @{{ValueError}}("list.remove(x): x not in list");
+            throw @{{ValueError}}("list['remove'](x): x not in list");
         }
-        @{{self}}.__array.splice(index, 1);
+        @{{self}}['__array']['splice'](index, 1);
         return true;
         """)
 
     def index(self, value, _start=0):
         JS("""
-        var start = @{{_start}}.valueOf();
+        var start = @{{_start}}['valueOf']();
         /* if (typeof valueXXX == 'number' || typeof valueXXX == 'string') {
-            start = selfXXX.__array.indexOf(valueXXX, start);
+            start = selfXXX['__array']['indexOf'](valueXXX, start);
             if (start >= 0)
                 return start;
         } else */ {
-            var len = @{{self}}.__array.length >>> 0;
+            var len = @{{self}}['__array']['length'] >>> 0;
 
             start = (start < 0)
-                    ? Math.ceil(start)
-                    : Math.floor(start);
+                    ? Math['ceil'](start)
+                    : Math['floor'](start);
             if (start < 0)
                 start += len;
 
             for (; start < len; start++) {
-                if ( /*start in selfXXX.__array && */
-                    @{{cmp}}(@{{self}}.__array[start], @{{value}}) == 0)
+                if ( /*start in selfXXX['__array'] && */
+                    @{{cmp}}(@{{self}}['__array'][start], @{{value}}) == 0)
                     return start;
             }
         }
@@ -4413,20 +4413,20 @@ class list:
         raise ValueError("list.index(x): x not in list")
 
     def insert(self, index, value):
-        JS("""    var a = @{{self}}.__array; @{{self}}.__array=a.slice(0, @{{index}}).concat(@{{value}}, a.slice(@{{index}}));""")
+        JS("""    var a = @{{self}}['__array']; @{{self}}['__array']=a['slice'](0, @{{index}})['concat'](@{{value}}, a['slice'](@{{index}}));""")
 
     def pop(self, _index = -1):
         JS("""
-        var index = @{{_index}}.valueOf();
-        if (index<0) index += @{{self}}.__array.length;
-        if (index < 0 || index >= @{{self}}.__array.length) {
-            if (@{{self}}.__array.length == 0) {
+        var index = @{{_index}}['valueOf']();
+        if (index<0) index += @{{self}}['__array']['length'];
+        if (index < 0 || index >= @{{self}}['__array']['length']) {
+            if (@{{self}}['__array']['length'] == 0) {
                 throw @{{IndexError}}("pop from empty list");
             }
             throw @{{IndexError}}("pop index out of range");
         }
-        var a = @{{self}}.__array[index];
-        @{{self}}.__array.splice(index, 1);
+        var a = @{{self}}['__array'][index];
+        @{{self}}['__array']['splice'](index, 1);
         return a;
         """)
 
@@ -4434,10 +4434,10 @@ class list:
         if not isinstance(l, list):
             return -1
         JS("""
-        var n1 = @{{self}}.__array.length,
-            n2 = @{{l}}.__array.length,
-            a1 = @{{self}}.__array,
-            a2 = @{{l}}.__array,
+        var n1 = @{{self}}['__array']['length'],
+            n2 = @{{l}}['__array']['length'],
+            a1 = @{{self}}['__array'],
+            a2 = @{{l}}['__array'],
             n, c;
         n = (n1 < n2 ? n1 : n2);
         for (var i = 0; i < n; i++) {
@@ -4451,8 +4451,8 @@ class list:
     def __getslice__(self, lower, upper):
         JS("""
         if (@{{upper}}==null)
-            return @{{list}}(@{{self}}.__array.slice(@{{lower}}));
-        return @{{list}}(@{{self}}.__array.slice(@{{lower}}, @{{upper}}));
+            return @{{list}}(@{{self}}['__array']['slice'](@{{lower}}));
+        return @{{list}}(@{{self}}['__array']['slice'](@{{lower}}, @{{upper}}));
         """)
 
     def __delslice__(self, _lower, upper):
@@ -4460,10 +4460,10 @@ class list:
         var lower = @{{_lower}};
         var n = @{{upper}} - lower;
         if (@{{upper}}==null) {
-            n =  @{{self}}.__array.length;
+            n =  @{{self}}['__array']['length'];
         }
         if (!lower) lower = 0;
-        if (n > 0) @{{self}}.__array.splice(lower, n);
+        if (n > 0) @{{self}}['__array']['splice'](lower, n);
         """)
         return None
 
@@ -4477,37 +4477,37 @@ class list:
 
     def __getitem__(self, _index):
         JS("""
-        var index = @{{_index}}.valueOf();
+        var index = @{{_index}}['valueOf']();
         if (typeof index == 'boolean') index = @{{int}}(index);
-        if (index < 0) index += @{{self}}.__array.length;
-        if (index < 0 || index >= @{{self}}.__array.length) {
+        if (index < 0) index += @{{self}}['__array']['length'];
+        if (index < 0 || index >= @{{self}}['__array']['length']) {
             throw @{{IndexError}}("list index out of range");
         }
-        return @{{self}}.__array[index];
+        return @{{self}}['__array'][index];
         """)
 
     def __setitem__(self, _index, value):
         JS("""
-        var index = @{{_index}}.valueOf();
-        if (index < 0) index += @{{self}}.__array.length;
-        if (index < 0 || index >= @{{self}}.__array.length) {
+        var index = @{{_index}}['valueOf']();
+        if (index < 0) index += @{{self}}['__array']['length'];
+        if (index < 0 || index >= @{{self}}['__array']['length']) {
             throw @{{IndexError}}("list assignment index out of range");
         }
-        @{{self}}.__array[index]=@{{value}};
+        @{{self}}['__array'][index]=@{{value}};
         """)
 
     def __delitem__(self, _index):
         JS("""
-        var index = @{{_index}}.valueOf();
-        if (index < 0) index += @{{self}}.__array.length;
-        if (index < 0 || index >= @{{self}}.__array.length) {
+        var index = @{{_index}}['valueOf']();
+        if (index < 0) index += @{{self}}['__array']['length'];
+        if (index < 0 || index >= @{{self}}['__array']['length']) {
             throw @{{IndexError}}("list assignment index out of range");
         }
-        @{{self}}.__array.splice(index, 1);
+        @{{self}}['__array']['splice'](index, 1);
         """)
 
     def __len__(self):
-        return INT(JS("""@{{self}}.__array.length"""))
+        return INT(JS("""@{{self}}['__array']['length']"""))
 
     def __contains__(self, value):
         try:
@@ -4517,16 +4517,16 @@ class list:
         return True
 
     def __iter__(self):
-        return JS("new $iter_array(@{{self}}.__array)")
+        return JS("new $iter_array(@{{self}}['__array'])")
 
     def __reversed__(self):
-        return JS("new $reversed_iter_array(@{{self}}.__array)")
+        return JS("new $reversed_iter_array(@{{self}}['__array'])")
 
     def __enumerate__(self):
-        return JS("new $enumerate_array(@{{self}}.__array)")
+        return JS("new $enumerate_array(@{{self}}['__array'])")
 
     def reverse(self):
-        JS("""    @{{self}}.__array.reverse();""")
+        JS("""    @{{self}}['__array']['reverse']();""")
 
     def sort(self, cmp=None, key=None, reverse=False):
         if cmp is None:
@@ -4561,9 +4561,9 @@ class list:
             return "<type '%s'>" % self.__name__
         JS("""
         var s = "[";
-        for (var i=0; i < @{{self}}.__array.length; i++) {
-            s += @{{repr}}(@{{self}}.__array[i]);
-            if (i < @{{self}}.__array.length - 1)
+        for (var i=0; i < @{{self}}['__array']['length']; i++) {
+            s += @{{repr}}(@{{self}}['__array'][i]);
+            if (i < @{{self}}['__array']['length'] - 1)
                 s += ", ";
         }
         s += "]";
@@ -4576,7 +4576,7 @@ class list:
         return list(self.__array.concat(y.__array))
 
     def __mul__(self, n):
-        if not JS("@{{n}} !== null && @{{n}}.__number__ && (@{{n}}.__number__ != 0x01 || isFinite(@{{n}}))"):
+        if not JS("@{{n}} !== null && @{{n}}['__number__'] && (@{{n}}['__number__'] != 0x01 || isFinite(@{{n}}))"):
             raise TypeError("can't multiply sequence by non-int")
         a = []
         while n:
@@ -4586,8 +4586,8 @@ class list:
 
     def __rmul__(self, n):
         return self.__mul__(n)
-JS("@{{list}}.__str__ = @{{list}}.__repr__;")
-JS("@{{list}}.toString = @{{list}}.__str__;")
+JS("@{{list}}['__str__'] = @{{list}}['__repr__'];")
+JS("@{{list}}['toString'] = @{{list}}['__str__'];")
 
 class slice:
     def __init__(self, a1, *args):
@@ -4681,8 +4681,8 @@ class slice:
     def __repr__(self):
         return "slice(%s, %s, %s)" % (self.start, self.stop, self.step)
 
-JS("@{{slice}}.__str__ = @{{slice}}.__repr__;")
-JS("@{{slice}}.toString = @{{slice}}.__str__;")
+JS("@{{slice}}['__str__'] = @{{slice}}['__repr__'];")
+JS("@{{slice}}['toString'] = @{{slice}}['__str__'];")
 
 class dict:
     def __init__(self, seq=JS("[]"), **kwargs):
@@ -4693,36 +4693,36 @@ class dict:
             JS("""
         var item, i, n, sKey;
         var data = @{{_data}};
-        //selfXXX.__object = {};
+        //selfXXX['__object'] = {};
 
         if (data === null) {
             throw @{{TypeError}}("'NoneType' is not iterable");
         }
-        if (data.constructor === Array) {
-        } else if (typeof data.__object == 'object') {
-            data = data.__object;
+        if (data['constructor'] === Array) {
+        } else if (typeof data['__object'] == 'object') {
+            data = data['__object'];
             for (sKey in data) {
-                @{{self}}.__object[sKey] = data[sKey].slice();
+                @{{self}}['__object'][sKey] = data[sKey]['slice']();
             }
             return null;
-        } else if (typeof data.__iter__ == 'function') {
-            if (typeof data.__array == 'object') {
-                data = data.__array;
+        } else if (typeof data['__iter__'] == 'function') {
+            if (typeof data['__array'] == 'object') {
+                data = data['__array'];
             } else {
-                var iter = data.__iter__();
-                if (typeof iter.__array == 'object') {
-                    data = iter.__array;
+                var iter = data['__iter__']();
+                if (typeof iter['__array'] == 'object') {
+                    data = iter['__array'];
                 }
                 data = [];
                 var item, i = 0;
-                if (typeof iter.$genfunc == 'function') {
-                    while (typeof (item=iter.next(true)) != 'undefined') {
+                if (typeof iter['$genfunc'] == 'function') {
+                    while (typeof (item=iter['next'](true)) != 'undefined') {
                         data[i++] = item;
                     }
                 } else {
                     try {
                         while (true) {
-                            data[i++] = iter.next();
+                            data[i++] = iter['next']();
                         }
                     }
                     catch (e) {
@@ -4733,50 +4733,50 @@ class dict:
         } else if (typeof data == 'object' || typeof data == 'function') {
             for (var key in data) {
                 var _key = key;
-                if (key.substring(0,2) == '$$') {
+                if (key['substring'](0,2) == '$$') {
                     // handle back mapping of name
                     // d = dict(comment='value')
                     // comment will be in the object as $$comment
-                    _key = key.substring(2);
-                    if (var_remap.indexOf(_key) < 0) {
+                    _key = key['substring'](2);
+                    if (var_remap['indexOf'](_key) < 0) {
                         _key = key;
                     }
                 }
-                @{{self}}.__object['$'+_key] = [_key, data[key]];
+                @{{self}}['__object']['$'+_key] = [_key, data[key]];
             }
             return null;
         } else {
             throw @{{TypeError}}("'" + @{{repr}}(data) + "' is not iterable");
         }
         // Assume uniform array content...
-        if ((n = data.length) == 0) {
+        if ((n = data['length']) == 0) {
             return null;
         }
         i = 0;
-        if (data[0].constructor === Array) {
+        if (data[0]['constructor'] === Array) {
             while (i < n) {
                 item = data[i++];
                 key = item[0];
-                sKey = (key===null?null:(typeof key.$H != 'undefined'?key.$H:((typeof key=='string'||key.__number__)?'$'+key:@{{__hash}}(key))));
-                @{{self}}.__object[sKey] = [key, item[1]];
+                sKey = (key===null?null:(typeof key['$H'] != 'undefined'?key['$H']:((typeof key=='string'||key['__number__'])?'$'+key:@{{__hash}}(key))));
+                @{{self}}['__object'][sKey] = [key, item[1]];
             }
             return null;
         }
-        if (typeof data[0].__array != 'undefined') {
+        if (typeof data[0]['__array'] != 'undefined') {
             while (i < n) {
-                item = data[i++].__array;
+                item = data[i++]['__array'];
                 key = item[0];
-                sKey = (key===null?null:(typeof key.$H != 'undefined'?key.$H:((typeof key=='string'||key.__number__)?'$'+key:@{{__hash}}(key))));
-                @{{self}}.__object[sKey] = [key, item[1]];
+                sKey = (key===null?null:(typeof key['$H'] != 'undefined'?key['$H']:((typeof key=='string'||key['__number__'])?'$'+key:@{{__hash}}(key))));
+                @{{self}}['__object'][sKey] = [key, item[1]];
             }
             return null;
         }
         i = -1;
         var key;
         while (++i < n) {
-            key = data[i].__getitem__(0);
-            sKey = (key===null?null:(typeof key.$H != 'undefined'?key.$H:((typeof key=='string'||key.__number__)?'$'+key:@{{__hash}}(key))));
-            @{{self}}.__object[sKey] = [key, data[i].__getitem__(1)];
+            key = data[i]['__getitem__'](0);
+            sKey = (key===null?null:(typeof key['$H'] != 'undefined'?key['$H']:((typeof key=='string'||key['__number__'])?'$'+key:@{{__hash}}(key))));
+            @{{self}}['__object'][sKey] = [key, data[i]['__getitem__'](1)];
         }
         return null;
         """)
@@ -4792,14 +4792,14 @@ class dict:
         if (typeof @{{value}} == 'undefined') {
             throw @{{ValueError}}("Value for key '" + @{{key}} + "' is undefined");
         }
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        @{{self}}.__object[sKey] = [@{{key}}, @{{value}}];
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        @{{self}}['__object'][sKey] = [@{{key}}, @{{value}}];
         """)
 
     def __getitem__(self, key):
         JS("""
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        var value=@{{self}}.__object[sKey];
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        var value=@{{self}}['__object'][sKey];
         if (typeof value == 'undefined'){
             throw @{{KeyError}}(@{{key}});
         }
@@ -4811,7 +4811,7 @@ class dict:
 
     def __nonzero__(self):
         JS("""
-        for (var i in @{{self}}.__object){
+        for (var i in @{{self}}['__object']){
             return true;
         }
         return false;
@@ -4825,8 +4825,8 @@ class dict:
             other_sKeys = new Array(),
             selfLen = 0,
             otherLen = 0,
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (sKey in selfObj) {
            self_sKeys[selfLen++] = sKey;
         }
@@ -4839,8 +4839,8 @@ class dict:
         if (selfLen > otherLen) {
             return 1;
         }
-        self_sKeys.sort();
-        other_sKeys.sort();
+        self_sKeys['sort']();
+        other_sKeys['sort']();
         var c, sKey;
         for (var idx = 0; idx < selfLen; idx++) {
             c = @{{cmp}}(selfObj[sKey = self_sKeys[idx]][0], otherObj[other_sKeys[idx]][0]);
@@ -4857,7 +4857,7 @@ class dict:
     def __len__(self):
         size = 0
         JS("""
-        for (var i in @{{self}}.__object) @{{size}}++;
+        for (var i in @{{self}}['__object']) @{{size}}++;
         """)
         return INT(size);
 
@@ -4867,23 +4867,23 @@ class dict:
 
     def __delitem__(self, key):
         JS("""
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        delete @{{self}}.__object[sKey];
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        delete @{{self}}['__object'][sKey];
         """)
 
     def __contains__(self, key):
         JS("""
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        return typeof @{{self}}.__object[sKey] == 'undefined' ? false : true;
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        return typeof @{{self}}['__object'][sKey] == 'undefined' ? false : true;
         """)
 
     def keys(self):
         JS("""
         var keys=@{{list}}(),
-            selfObj = @{{self}}.__object,
-            __array = keys.__array,
+            selfObj = @{{self}}['__object'],
+            __array = keys['__array'],
             i = 0;
-        for (var sKey in @{{self}}.__object) {
+        for (var sKey in @{{self}}['__object']) {
             __array[i++] = selfObj[sKey][0];
         }
         return keys;
@@ -4900,8 +4900,8 @@ class dict:
         JS("""
         var values=@{{list}}();
         var i = 0;
-        for (var key in @{{self}}.__object) {
-            values.__array[i++] = @{{self}}.__object[key][1];
+        for (var key in @{{self}}['__object']) {
+            values['__array'][i++] = @{{self}}['__object'][key][1];
         }
         return values;
         """)
@@ -4910,9 +4910,9 @@ class dict:
         JS("""
         var items = @{{list}}();
         var i = 0;
-        for (var key in @{{self}}.__object) {
-          var kv = @{{self}}.__object[key];
-          items.__array[i++] = @{{list}}(kv);
+        for (var key in @{{self}}['__object']) {
+          var kv = @{{self}}['__object'][key];
+          items['__array'][i++] = @{{list}}(kv);
           }
           return items;
         """)
@@ -4921,8 +4921,8 @@ class dict:
         JS("""
         var keys = new Array();
         var i = 0;
-        for (var key in @{{self}}.__object) {
-            keys[i++] = @{{self}}.__object[key][0];
+        for (var key in @{{self}}['__object']) {
+            keys[i++] = @{{self}}['__object'][key][0];
         }
         return new $iter_array(keys);
 """)
@@ -4931,8 +4931,8 @@ class dict:
         JS("""
         var keys = new Array();
         var i = 0;
-        for (var key in @{{self}}.__object) {
-            keys[i++] = @{{self}}.__object[key][0];
+        for (var key in @{{self}}['__object']) {
+            keys[i++] = @{{self}}['__object'][key][0];
         }
         return new $enumerate_array(keys);
 """)
@@ -4949,20 +4949,20 @@ class dict:
 
     def setdefault(self, key, default_value):
         JS("""
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        return typeof @{{self}}.__object[sKey] == 'undefined' ? (@{{self}}.__object[sKey]=[@{{key}}, @{{default_value}}])[1] : @{{self}}.__object[sKey][1];
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        return typeof @{{self}}['__object'][sKey] == 'undefined' ? (@{{self}}['__object'][sKey]=[@{{key}}, @{{default_value}}])[1] : @{{self}}['__object'][sKey][1];
 """)
 
     def get(self, key, default_value=None):
         JS("""
         var empty = true;
-        for (var sKey in @{{self}}.__object) {
+        for (var sKey in @{{self}}['__object']) {
             empty = false;
             break;
         }
         if (empty) return @{{default_value}};
-        var sKey = (@{{key}}===null?null:(typeof @{{key}}.$H != 'undefined'?@{{key}}.$H:((typeof @{{key}}=='string'||@{{key}}.__number__)?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
-        return typeof @{{self}}.__object[sKey] == 'undefined' ? @{{default_value}} : @{{self}}.__object[sKey][1];
+        var sKey = (@{{key}}===null?null:(typeof @{{key}}['$H'] != 'undefined'?@{{key}}['$H']:((typeof @{{key}}=='string'||@{{key}}['__number__'])?'$'+@{{key}}:@{{__hash}}(@{{key}}))));
+        return typeof @{{self}}['__object'][sKey] == 'undefined' ? @{{default_value}} : @{{self}}['__object'][sKey][1];
 """)
 
     def update(self, *args, **kwargs):
@@ -5024,14 +5024,14 @@ class dict:
             return "<type '%s'>" % self.__name__
         JS("""
         var keys = new Array();
-        for (var key in @{{self}}.__object)
-            keys.push(key);
+        for (var key in @{{self}}['__object'])
+            keys['push'](key);
 
         var s = "{";
-        for (var i=0; i<keys.length; i++) {
-            var v = @{{self}}.__object[keys[i]];
+        for (var i=0; i<keys['length']; i++) {
+            var v = @{{self}}['__object'][keys[i]];
             s += @{{repr}}(v[0]) + ": " + @{{repr}}(v[1]);
-            if (i < keys.length-1)
+            if (i < keys['length']-1)
                 s += ", ";
         }
         s += "}";
@@ -5041,22 +5041,22 @@ class dict:
     def toString(self):
         return self.__repr__()
 
-JS("@{{dict}}.has_key = @{{dict}}.__contains__;")
-JS("@{{dict}}.iterkeys = @{{dict}}.__iter__;")
-JS("@{{dict}}.__str__ = @{{dict}}.__repr__;")
+JS("@{{dict}}['has_key'] = @{{dict}}['__contains__'];")
+JS("@{{dict}}['iterkeys'] = @{{dict}}['__iter__'];")
+JS("@{{dict}}['__str__'] = @{{dict}}['__repr__'];")
 
 # __empty_dict is used in kwargs initialization
 # There must me a temporary __init__ function used to prevent infinite
 # recursion
 def __empty_dict():
     JS("""
-    var dict__init__ = @{{dict}}.__init__;
+    var dict__init__ = @{{dict}}['__init__'];
     var d;
-    @{{dict}}.__init__ = function() {
-        this.__object = {};
+    @{{dict}}['__init__'] = function() {
+        this['__object'] = {};
     };
     d = @{{dict}}();
-    d.__init__ = @{{dict}}.__init__ = dict__init__;
+    d['__init__'] = @{{dict}}['__init__'] = dict__init__;
     return d;
 """)
 
@@ -5075,9 +5075,9 @@ class set(object):
 
         if isSet(_data):
             JS("""
-            @{{self}}.__object = {};
-            var selfObj = @{{self}}.__object,
-                dataObj = @{{!data}}.__object;
+            @{{self}}['__object'] = {};
+            var selfObj = @{{self}}['__object'],
+                dataObj = @{{!data}}['__object'];
             for (var sVal in dataObj) {
                 selfObj[sVal] = dataObj[sVal];
             }
@@ -5086,16 +5086,16 @@ class set(object):
         var item,
             i,
             n,
-            selfObj = @{{self}}.__object = {};
+            selfObj = @{{self}}['__object'] = {};
 
-        if (@{{!data}}.constructor === Array) {
+        if (@{{!data}}['constructor'] === Array) {
         // data is already an Array.
         // We deal with the Array of data after this if block.
           }
 
           // We may have some other set-like thing with __object
-          else if (typeof @{{!data}}.__object == 'object') {
-            var dataObj = @{{!data}}.__object;
+          else if (typeof @{{!data}}['__object'] == 'object') {
+            var dataObj = @{{!data}}['__object'];
             for (var sKey in dataObj) {
                 selfObj[sKey] = dataObj[sKey];
             }
@@ -5103,31 +5103,31 @@ class set(object):
           }
 
           // Something with an __iter__ method
-          else if (typeof @{{!data}}.__iter__ == 'function') {
+          else if (typeof @{{!data}}['__iter__'] == 'function') {
 
             // It has an __array member to iterate over. Make that our data.
-            if (typeof @{{!data}}.__array == 'object') {
-                data = @{{!data}}.__array;
+            if (typeof @{{!data}}['__array'] == 'object') {
+                data = @{{!data}}['__array'];
                 }
             else {
                 // Several ways to deal with the __iter__ method
-                var iter = @{{!data}}.__iter__();
+                var iter = @{{!data}}['__iter__']();
                 // iter has an __array member that's an array. Use that.
-                if (typeof iter.__array == 'object') {
-                    data = iter.__array;
+                if (typeof iter['__array'] == 'object') {
+                    data = iter['__array'];
                 }
                 var data = [];
                 var item, i = 0;
-                // iter has a .$genfunc
-                if (typeof iter.$genfunc == 'function') {
-                    while (typeof (item=iter.next(true)) != 'undefined') {
+                // iter has a ['$genfunc']
+                if (typeof iter['$genfunc'] == 'function') {
+                    while (typeof (item=iter['next'](true)) != 'undefined') {
                         @{{!data}}[i++] = item;
                     }
                 } else {
                 // actually use the object's __iter__ method
                     try {
                         while (true) {
-                            @{{!data}}[i++] = iter.next();
+                            @{{!data}}[i++] = iter['next']();
                         }
                     }
                     catch (e) {
@@ -5146,7 +5146,7 @@ class set(object):
             throw @{{TypeError}}("'" + @{{repr}}(@{{!data}}) + "' is not iterable");
         }
         // Assume uniform array content...
-        if ((n = @{{!data}}.length) == 0) {
+        if ((n = @{{!data}}['length']) == 0) {
             return null;
         }
         i = n-1;
@@ -5168,8 +5168,8 @@ class set(object):
             return 2
             #other = frozenset(other)
         JS("""
-        var selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object,
+        var selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'],
             selfMismatch = false,
             otherMismatch = false;
         if (selfObj === otherObj) {
@@ -5198,16 +5198,16 @@ class set(object):
             # Use frozenset hash
             JS("""
             var hashes = new Array(),
-                obj = @{{self}}.__object,
+                obj = @{{self}}['__object'],
                 i = 0;
             for (var v in obj) {
                 hashes[i++] = v;
             }
-            hashes.sort();
-            var h = hashes.join("|");
+            hashes['sort']();
+            var h = hashes['join']("|");
             return (h in obj);
 """)
-        JS("""return @{{__hash}}(@{{value}}) in @{{self}}.__object;""")
+        JS("""return @{{__hash}}(@{{value}}) in @{{self}}['__object'];""")
 
     def __hash__(self):
         raise TypeError("set objects are unhashable")
@@ -5216,7 +5216,7 @@ class set(object):
         JS("""
         var items = new Array(),
             i = 0,
-            obj = @{{self}}.__object;
+            obj = @{{self}}['__object'];
         for (var key in obj) {
             items[i++] = obj[key];
         }
@@ -5226,7 +5226,7 @@ class set(object):
     def __len__(self):
         size=0.0
         JS("""
-        for (var i in @{{self}}.__object) @{{size}}++;
+        for (var i in @{{self}}['__object']) @{{size}}++;
         """)
         return INT(size)
 
@@ -5240,12 +5240,12 @@ class set(object):
         JS("""
         var values = new Array();
         var i = 0,
-            obj = @{{self}}.__object,
-            s = @{{self}}.__name__ + "([";
+            obj = @{{self}}['__object'],
+            s = @{{self}}['__name__'] + "([";
         for (var sVal in obj) {
             values[i++] = @{{repr}}(obj[sVal]);
         }
-        s += values.join(", ");
+        s += values['join'](", ");
         s += "])";
         return s;
         """)
@@ -5283,18 +5283,18 @@ class set(object):
         return self.difference(other)
 
     def add(self, value):
-        JS("""@{{self}}.__object[@{{hash}}(@{{value}})] = @{{value}};""")
+        JS("""@{{self}}['__object'][@{{hash}}(@{{value}})] = @{{value}};""")
         return None
 
     def clear(self):
-        JS("""@{{self}}.__object = {};""")
+        JS("""@{{self}}['__object'] = {};""")
         return None
 
     def copy(self):
         new_set = set()
         JS("""
-        var obj = @{{new_set}}.__object,
-            selfObj = @{{self}}.__object;
+        var obj = @{{new_set}}['__object'],
+            selfObj = @{{self}}['__object'];
         for (var sVal in selfObj) {
             obj[sVal] = selfObj[sVal];
         }
@@ -5309,9 +5309,9 @@ class set(object):
             other = frozenset(other)
         new_set = set()
         JS("""
-        var obj = @{{new_set}}.__object,
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var obj = @{{new_set}}['__object'],
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (!(sVal in otherObj)) {
                 obj[sVal] = selfObj[sVal];
@@ -5326,8 +5326,8 @@ class set(object):
         if not isSet(other):
             other = frozenset(other)
         JS("""
-        var selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in otherObj) {
             if (sVal in selfObj) {
                 delete selfObj[sVal];
@@ -5339,7 +5339,7 @@ class set(object):
     def discard(self, value):
         if isSet(value) == 1:
             value = frozenset(value)
-        JS("""delete @{{self}}.__object[@{{hash}}(@{{value}})];""")
+        JS("""delete @{{self}}['__object'][@{{hash}}(@{{value}})];""")
         return None
 
     def intersection(self, other):
@@ -5350,9 +5350,9 @@ class set(object):
             other = frozenset(other)
         new_set = set()
         JS("""
-        var obj = @{{new_set}}.__object,
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var obj = @{{new_set}}['__object'],
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (sVal in otherObj) {
                 obj[sVal] = selfObj[sVal];
@@ -5367,8 +5367,8 @@ class set(object):
         if not isSet(other):
             other = frozenset(other)
         JS("""
-        var selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (!(sVal in otherObj)) {
                 delete selfObj[sVal];
@@ -5383,8 +5383,8 @@ class set(object):
         if not isSet(other):
             other = frozenset(other)
         JS("""
-        var selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (typeof otherObj[sVal] != 'undefined') {
                 return false;
@@ -5401,18 +5401,18 @@ class set(object):
     def issubset(self, other):
         if not isSet(other):
             other = frozenset(other)
-        return JS("@{{self}}.__cmp__(@{{other}}) < 0")
+        return JS("@{{self}}['__cmp__'](@{{other}}) < 0")
 
     def issuperset(self, other):
         if not isSet(other):
             other = frozenset(other)
-        return JS("(@{{self}}.__cmp__(@{{other}})|1) == 1")
+        return JS("(@{{self}}['__cmp__'](@{{other}})|1) == 1")
 
     def pop(self):
         JS("""
-        for (var sVal in @{{self}}.__object) {
-            var value = @{{self}}.__object[sVal];
-            delete @{{self}}.__object[sVal];
+        for (var sVal in @{{self}}['__object']) {
+            var value = @{{self}}['__object'][sVal];
+            delete @{{self}}['__object'][sVal];
             return value;
         }
         """)
@@ -5425,10 +5425,10 @@ class set(object):
             val = value
         JS("""
         var h = @{{hash}}(@{{val}});
-        if (!(h in @{{self}}.__object)) {
+        if (!(h in @{{self}}['__object'])) {
             throw @{{KeyError}}(@{{value}});
         }
-        delete @{{self}}.__object[h];
+        delete @{{self}}['__object'][h];
         """)
 
     def symmetric_difference(self, other):
@@ -5439,9 +5439,9 @@ class set(object):
             other = frozenset(other)
         new_set = set()
         JS("""
-        var obj = @{{new_set}}.__object,
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var obj = @{{new_set}}['__object'],
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (typeof otherObj[sVal] == 'undefined') {
                 obj[sVal] = selfObj[sVal];
@@ -5462,8 +5462,8 @@ class set(object):
             other = frozenset(other)
         JS("""
         var obj = new Object(),
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             if (typeof otherObj[sVal] == 'undefined') {
                 obj[sVal] = selfObj[sVal];
@@ -5474,7 +5474,7 @@ class set(object):
                 obj[sVal] = otherObj[sVal];
             }
         }
-        @{{self}}.__object = obj;
+        @{{self}}['__object'] = obj;
 """)
         return None
 
@@ -5486,9 +5486,9 @@ class set(object):
         if not isSet(other):
             other = frozenset(other)
         JS("""
-        var obj = @{{new_set}}.__object,
-            selfObj = @{{self}}.__object,
-            otherObj = @{{other}}.__object;
+        var obj = @{{new_set}}['__object'],
+            selfObj = @{{self}}['__object'],
+            otherObj = @{{other}}['__object'];
         for (var sVal in selfObj) {
             obj[sVal] = selfObj[sVal];
         }
@@ -5504,8 +5504,8 @@ class set(object):
         if not isSet(data):
             data = frozenset(data)
         JS("""
-        var selfObj = @{{self}}.__object,
-            dataObj = @{{data}}.__object;
+        var selfObj = @{{self}}['__object'],
+            dataObj = @{{data}}['__object'];
         for (var sVal in dataObj) {
             if (!(sVal in selfObj)) {
                 selfObj[sVal] = dataObj[sVal];
@@ -5524,12 +5524,12 @@ class frozenset(set):
 
     def __hash__(self):
         JS("""
-        var hashes = new Array(), obj = @{{self}}.__object, i = 0;
+        var hashes = new Array(), obj = @{{self}}['__object'], i = 0;
         for (var v in obj) {
             hashes[i++] = v;
         }
-        hashes.sort();
-        return (@{{self}}.$H = hashes.join("|"));
+        hashes['sort']();
+        return (@{{self}}['$H'] = hashes['join']("|"));
 """)
 
     def add(self, value):
@@ -5598,11 +5598,11 @@ class property(object):
 def staticmethod(func):
     JS("""
     var fnwrap = function() {
-        return @{{func}}.apply(null,$pyjs_array_slice.call(arguments));
+        return @{{func}}['apply'](null,$pyjs_array_slice['call'](arguments));
     };
-    fnwrap.__name__ = @{{func}}.__name__;
-    fnwrap.__args__ = @{{func}}.__args__;
-    fnwrap.__bind_type__ = 3;
+    fnwrap['__name__'] = @{{func}}['__name__'];
+    fnwrap['__args__'] = @{{func}}['__args__'];
+    fnwrap['__bind_type__'] = 3;
     return fnwrap;
     """)
 
@@ -5613,24 +5613,24 @@ def super(typ, object_or_type = None):
         raise TypeError("super(type, obj): obj must be an instance or subtype of type")
     JS("""
     var type_ = @{{typ}}
-    if (typeof type_.__mro__ == 'undefined') {
-        type_ = type_.__class__;
+    if (typeof type_['__mro__'] == 'undefined') {
+        type_ = type_['__class__'];
     }
-    var fn = $pyjs_type('super', type_.__mro__.slice(1), {});
-    fn.__new__ = fn.__mro__[1].__new__;
-    fn.__init__ = fn.__mro__[1].__init__;
-    if (@{{object_or_type}}.__is_instance__ === false) {
+    var fn = $pyjs_type('super', type_['__mro__']['slice'](1), {});
+    fn['__new__'] = fn['__mro__'][1]['__new__'];
+    fn['__init__'] = fn['__mro__'][1]['__init__'];
+    if (@{{object_or_type}}['__is_instance__'] === false) {
         return fn;
     }
     var obj = new Object();
     function wrapper(obj, name) {
         var fnwrap = function() {
-            return obj[name].apply(@{{object_or_type}},
-                                   $pyjs_array_slice.call(arguments));
+            return obj[name]['apply'](@{{object_or_type}},
+                                   $pyjs_array_slice['call'](arguments));
         };
-        fnwrap.__name__ = name;
-        fnwrap.__args__ = obj[name].__args__;
-        fnwrap.__bind_type__ = obj[name].__bind_type__;
+        fnwrap['__name__'] = name;
+        fnwrap['__args__'] = obj[name]['__args__'];
+        fnwrap['__bind_type__'] = obj[name]['__bind_type__'];
         return fnwrap;
     }
     for (var m in fn) {
@@ -5638,7 +5638,7 @@ def super(typ, object_or_type = None):
             obj[m] = wrapper(fn, m);
         }
     }
-    obj.__is_instance__ = @{{object_or_type}}.__is_instance__;
+    obj['__is_instance__'] = @{{object_or_type}}['__is_instance__'];
     return obj;
     """)
 
@@ -5647,16 +5647,16 @@ def xrange(start, stop = None, step = 1):
     if stop is None:
         stop = start
         start = 0
-    if not JS("@{{start}}!== null && @{{start}}.__number__ && (@{{start}}.__number__ != 0x01 || isFinite(@{{start}}))"):
+    if not JS("@{{start}}!== null && @{{start}}['__number__'] && (@{{start}}['__number__'] != 0x01 || isFinite(@{{start}}))"):
         raise TypeError("xrange() integer start argument expected, got %s" % start.__class__.__name__)
-    if not JS("@{{stop}}!== null && @{{stop}}.__number__ && (@{{stop}}.__number__ != 0x01 || isFinite(@{{stop}}))"):
+    if not JS("@{{stop}}!== null && @{{stop}}['__number__'] && (@{{stop}}['__number__'] != 0x01 || isFinite(@{{stop}}))"):
         raise TypeError("xrange() integer end argument expected, got %s" % stop.__class__.__name__)
-    if not JS("@{{step}}!== null && @{{step}}.__number__ && (@{{step}}.__number__ != 0x01 || isFinite(@{{step}}))"):
+    if not JS("@{{step}}!== null && @{{step}}['__number__'] && (@{{step}}['__number__'] != 0x01 || isFinite(@{{step}}))"):
         raise TypeError("xrange() integer step argument expected, got %s" % step.__class__.__name__)
     rval = nval = start
     JS("""
     var nstep = (@{{stop}}-@{{start}})/@{{step}};
-    nstep = nstep < 0 ? Math.ceil(nstep) : Math.floor(nstep);
+    nstep = nstep < 0 ? Math['ceil'](nstep) : Math['floor'](nstep);
     if ((@{{stop}}-@{{start}}) % @{{step}}) {
         nstep++;
     }
@@ -5677,7 +5677,7 @@ def xrange(start, stop = None, step = 1):
     JS("""
         },
         '$genfunc': function() {
-            return this.next(true);
+            return this['next'](true);
         },
         '__iter__': function() {
             return this;
@@ -5697,10 +5697,10 @@ def xrange(start, stop = None, step = 1):
             return s + ")";
         },
         '__repr__': function() {
-            return "'" + this.toString() + "'";
+            return "'" + this['toString']() + "'";
         }
     };
-    @{{!x}}['__str__'] = @{{!x}}.toString;
+    @{{!x}}['__str__'] = @{{!x}}['toString'];
     return @{{!x}};
     """)
 
@@ -5708,7 +5708,7 @@ def get_len_of_range(lo, hi, step):
     n = 0
     JS("""
     var diff = @{{hi}} - @{{lo}} - 1;
-    @{{n}} = Math.floor(diff / @{{step}}) + 1;
+    @{{n}} = Math['floor'](diff / @{{step}}) + 1;
     """);
     return n
 
@@ -5717,11 +5717,11 @@ def range(start, stop = None, step = 1):
         stop = start
         start = 0
     ilow = start
-    if not JS("@{{start}}!== null && @{{start}}.__number__ && (@{{start}}.__number__ != 0x01 || isFinite(@{{start}}))"):
+    if not JS("@{{start}}!== null && @{{start}}['__number__'] && (@{{start}}['__number__'] != 0x01 || isFinite(@{{start}}))"):
         raise TypeError("xrange() integer start argument expected, got %s" % start.__class__.__name__)
-    if not JS("@{{stop}}!== null && @{{stop}}.__number__ && (@{{stop}}.__number__ != 0x01 || isFinite(@{{stop}}))"):
+    if not JS("@{{stop}}!== null && @{{stop}}['__number__'] && (@{{stop}}['__number__'] != 0x01 || isFinite(@{{stop}}))"):
         raise TypeError("xrange() integer end argument expected, got %s" % stop.__class__.__name__)
-    if not JS("@{{step}}!== null && @{{step}}.__number__ && (@{{step}}.__number__ != 0x01 || isFinite(@{{step}}))"):
+    if not JS("@{{step}}!== null && @{{step}}['__number__'] && (@{{step}}['__number__'] != 0x01 || isFinite(@{{step}}))"):
         raise TypeError("xrange() integer step argument expected, got %s" % step.__class__.__name__)
 
     if step == 0:
@@ -5749,27 +5749,27 @@ def __getslice(object, lower, upper):
     if (@{{object}}=== null) {
         return null;
     }
-    if (typeof @{{object}}.__getslice__ == 'function') {
-        return @{{object}}.__getslice__(@{{lower}}, @{{upper}});
+    if (typeof @{{object}}['__getslice__'] == 'function') {
+        return @{{object}}['__getslice__'](@{{lower}}, @{{upper}});
     }
-    if (@{{object}}.slice == 'function')
-        return @{{object}}.slice(@{{lower}}, @{{upper}});
+    if (@{{object}}['slice'] == 'function')
+        return @{{object}}['slice'](@{{lower}}, @{{upper}});
 
     return null;
     """)
 
 def __delslice(object, lower, upper):
     JS("""
-    if (typeof @{{object}}.__delslice__ == 'function') {
-        return @{{object}}.__delslice__(@{{lower}}, @{{upper}});
+    if (typeof @{{object}}['__delslice__'] == 'function') {
+        return @{{object}}['__delslice__'](@{{lower}}, @{{upper}});
     }
-    if (@{{object}}.__getslice__ == 'function'
-      && @{{object}}.__delitem__ == 'function') {
+    if (@{{object}}['__getslice__'] == 'function'
+      && @{{object}}['__delitem__'] == 'function') {
         if (@{{upper}}== null) {
             @{{upper}}= @{{len}}(@{{object}});
         }
         for (var i = @{{lower}}; i < @{{upper}}; i++) {
-            @{{object}}.__delitem__(i);
+            @{{object}}['__delitem__'](i);
         }
         return null;
     }
@@ -5779,8 +5779,8 @@ def __delslice(object, lower, upper):
 
 def __setslice(object, lower, upper, value):
     JS("""
-    if (typeof @{{object}}.__setslice__ == 'function') {
-        return @{{object}}.__setslice__(@{{lower}}, @{{upper}}, @{{value}});
+    if (typeof @{{object}}['__setslice__'] == 'function') {
+        return @{{object}}['__setslice__'](@{{lower}}, @{{upper}}, @{{value}});
     }
     throw @{{TypeError}}('object does not support __setslice__');
     return null;
@@ -5799,11 +5799,11 @@ class str(basestring):
             if (@{{text}}) return 'True';
             return 'False';
         }
-        if (@{{text}}.__is_instance__ === false) {
-            return @{{object}}.__str__(@{{text}});
+        if (@{{text}}['__is_instance__'] === false) {
+            return @{{object}}['__str__'](@{{text}});
         }
         if (@{{hasattr}}(@{{text}},'__str__')) {
-            return @{{text}}.__str__();
+            return @{{text}}['__str__']();
         }
         return String(@{{text}});
 """)
@@ -5817,7 +5817,7 @@ def ord(x):
 
 def chr(x):
     JS("""
-        return String.fromCharCode(@{{x}});
+        return String['fromCharCode'](@{{x}});
     """)
 
 def is_basetype(x):
@@ -5832,8 +5832,8 @@ def is_basetype(x):
 
 def get_pyjs_classtype(x):
     JS("""
-        if (@{{x}}!== null && typeof @{{x}}.__is_instance__ == 'boolean') {
-            var src = @{{x}}.__name__;
+        if (@{{x}}!== null && typeof @{{x}}['__is_instance__'] == 'boolean') {
+            var src = @{{x}}['__name__'];
             return src;
         }
         return null;
@@ -5859,14 +5859,14 @@ def repr(x):
        }
 
        if (t == "number")
-           return @{{x}}.toString();
+           return @{{x}}['toString']();
 
        if (t == "string") {
-           if (@{{x}}.indexOf("'") == -1)
+           if (@{{x}}['indexOf']("'") == -1)
                return "'" + @{{x}}+ "'";
-           if (@{{x}}.indexOf('"') == -1)
+           if (@{{x}}['indexOf']('"') == -1)
                return '"' + @{{x}}+ '"';
-           var s = @{{x}}.$$replace(new RegExp('"', "g"), '\\\\"');
+           var s = @{{x}}['$$replace'](new RegExp('"', "g"), '\\\\"');
            return '"' + s + '"';
        }
 
@@ -5877,12 +5877,12 @@ def repr(x):
         return x.__repr__()
     JS("""
        if (t == "function")
-           return "<function " + @{{x}}.toString() + ">";
+           return "<function " + @{{x}}['toString']() + ">";
 
        // If we get here, x is an object.  See if it's a Pyjamas class.
 
        if (!@{{hasattr}}(@{{x}}, "__init__"))
-           return "<" + @{{x}}.toString() + ">";
+           return "<" + @{{x}}['toString']() + ">";
 
        // Handle the common Pyjamas data types.
 
@@ -5895,9 +5895,9 @@ def repr(x):
        // If we get here, the class isn't one we know -> return the class name.
        // Note that we replace underscores with dots so that the name will
        // (hopefully!) look like the original Python name.
-       // (XXX this was for pyjamas 0.4 but may come back in an optimised mode)
+       // (XXX this was for pyjamas 0['4'] but may come back in an optimised mode)
 
-       //var s = constructor.$$replace(new RegExp('_', "g"), '.');
+       //var s = constructor['$$replace'](new RegExp('_', "g"), '.');
        return "<" + constructor + " object>";
     """)
 
@@ -5909,14 +5909,14 @@ def len(object):
     }
     if (@{{object}}=== null)
         return @{{v}};
-    else if (typeof @{{object}}.__array != 'undefined')
-        @{{v}} = @{{object}}.__array.length;
-    else if (typeof @{{object}}.__len__ == 'function')
-        @{{v}} = @{{object}}.__len__();
-    else if (typeof @{{object}}.length != 'undefined')
-        @{{v}} = @{{object}}.length;
+    else if (typeof @{{object}}['__array'] != 'undefined')
+        @{{v}} = @{{object}}['__array']['length'];
+    else if (typeof @{{object}}['__len__'] == 'function')
+        @{{v}} = @{{object}}['__len__']();
+    else if (typeof @{{object}}['length'] != 'undefined')
+        @{{v}} = @{{object}}['length'];
     else throw @{{TypeError}}("object has no len()");
-    if (@{{v}}.__number__ & 0x06) return @{{v}};
+    if (@{{v}}['__number__'] & 0x06) return @{{v}};
     """)
     return INT(v)
 
@@ -5931,18 +5931,18 @@ def isinstance(object_, classinfo):
         }
         return false;
     }
-    switch (@{{classinfo}}.__name__) {
+    switch (@{{classinfo}}['__name__']) {
         case 'float':
-            return typeof @{{object_}}== 'number' && @{{object_}}.__number__ == 0x01 && isFinite(@{{object_}});
+            return typeof @{{object_}}== 'number' && @{{object_}}['__number__'] == 0x01 && isFinite(@{{object_}});
         case 'int':
         case 'float_int':
             if (@{{object_}}!== null
-                && @{{object_}}.__number__) {
-                if (@{{object_}}.__number__ == 0x02) {
+                && @{{object_}}['__number__']) {
+                if (@{{object_}}['__number__'] == 0x02) {
                     return true;
                 }
                 if (isFinite(@{{object_}}) &&
-                    Math.ceil(@{{object_}}) == @{{object_}}) {
+                    Math['ceil'](@{{object_}}) == @{{object_}}) {
                     return true;
                 }
             }
@@ -5953,7 +5953,7 @@ def isinstance(object_, classinfo):
         case 'bool':
             return typeof @{{object_}}== 'boolean';
         case 'long':
-            return @{{object_}}.__number__ == 0x04;
+            return @{{object_}}['__number__'] == 0x04;
     }
     if (typeof @{{object_}}!= 'object' && typeof @{{object_}}!= 'function') {
         return false;
@@ -5971,28 +5971,28 @@ def isinstance(object_, classinfo):
 
 def _isinstance(object_, classinfo):
     JS("""
-    if (   @{{object_}}.__is_instance__ !== true
-        || @{{classinfo}}.__is_instance__ === null) {
+    if (   @{{object_}}['__is_instance__'] !== true
+        || @{{classinfo}}['__is_instance__'] === null) {
         return false;
     }
-    var __mro__ = @{{object_}}.__mro__;
-    var n = __mro__.length;
-    if (@{{classinfo}}.__is_instance__ === false) {
+    var __mro__ = @{{object_}}['__mro__'];
+    var n = __mro__['length'];
+    if (@{{classinfo}}['__is_instance__'] === false) {
         while (--n >= 0) {
-            if (@{{object_}}.__mro__[n] === @{{classinfo}}.prototype) {
+            if (@{{object_}}['__mro__'][n] === @{{classinfo}}['prototype']) {
                 return true;
             }
         }
         return false;
     }
     while (--n >= 0) {
-        if (@{{object_}}.__mro__[n] === @{{classinfo}}.__class__) return true;
+        if (@{{object_}}['__mro__'][n] === @{{classinfo}}['__class__']) return true;
     }
     return false;
     """)
 
 def issubclass(class_, classinfo):
-    if JS(""" typeof @{{class_}} == 'undefined' || @{{class_}} === null || @{{class_}}.__is_instance__ !== false """):
+    if JS(""" typeof @{{class_}} == 'undefined' || @{{class_}} === null || @{{class_}}['__is_instance__'] !== false """):
         raise TypeError("arg 1 must be a class")
 
     if isinstance(classinfo, tuple):
@@ -6001,28 +6001,28 @@ def issubclass(class_, classinfo):
                 return True
         return False
     else:
-        if JS(""" typeof @{{classinfo}} == 'undefined' || @{{classinfo}}.__is_instance__ !== false """):
+        if JS(""" typeof @{{classinfo}} == 'undefined' || @{{classinfo}}['__is_instance__'] !== false """):
             raise TypeError("arg 2 must be a class or tuple of classes")
         return _issubtype(class_, classinfo)
 
 def _issubtype(object_, classinfo):
     JS("""
-    if (   @{{object_}}.__is_instance__ === null
-        || @{{classinfo}}.__is_instance__ === null) {
+    if (   @{{object_}}['__is_instance__'] === null
+        || @{{classinfo}}['__is_instance__'] === null) {
         return false;
     }
-    var __mro__ = @{{object_}}.__mro__;
-    var n = __mro__.length;
-    if (@{{classinfo}}.__is_instance__ === false) {
+    var __mro__ = @{{object_}}['__mro__'];
+    var n = __mro__['length'];
+    if (@{{classinfo}}['__is_instance__'] === false) {
         while (--n >= 0) {
-            if (@{{object_}}.__mro__[n] === @{{classinfo}}.prototype) {
+            if (@{{object_}}['__mro__'][n] === @{{classinfo}}['prototype']) {
                 return true;
             }
         }
         return false;
     }
     while (--n >= 0) {
-        if (@{{object_}}.__mro__[n] === @{{classinfo}}.__class__) return true;
+        if (@{{object_}}['__mro__'][n] === @{{classinfo}}['__class__']) return true;
     }
     return false;
     """)
@@ -6058,18 +6058,18 @@ def __getattr_check(attr, attr_left, attr_right, attrstr,
 def getattr(obj, name, default_value=None):
     JS("""
     if (@{{obj}}=== null || typeof @{{obj}}== 'undefined') {
-        if (arguments.length != 3 || typeof @{{obj}}== 'undefined') {
+        if (arguments['length'] != 3 || typeof @{{obj}}== 'undefined') {
             throw @{{AttributeError}}("'" + @{{repr}}(@{{obj}}) + "' has no attribute '" + @{{name}}+ "'");
         }
         return @{{default_value}};
     }
-    var mapped_name = attrib_remap.indexOf(@{{name}}) < 0 ? @{{name}}:
+    var mapped_name = attrib_remap['indexOf'](@{{name}}) < 0 ? @{{name}}:
                         '$$'+@{{name}};
     if (typeof @{{obj}}[mapped_name] == 'undefined') {
-        if (arguments.length != 3) {
-            if (@{{obj}}.__is_instance__ === true &&
-                    typeof @{{obj}}.__getattr__ == 'function') {
-                return @{{obj}}.__getattr__(@{{name}});
+        if (arguments['length'] != 3) {
+            if (@{{obj}}['__is_instance__'] === true &&
+                    typeof @{{obj}}['__getattr__'] == 'function') {
+                return @{{obj}}['__getattr__'](@{{name}});
             }
             throw @{{AttributeError}}("'" + @{{repr}}(@{{obj}}) + "' has no attribute '" + @{{name}}+ "'");
         }
@@ -6078,39 +6078,39 @@ def getattr(obj, name, default_value=None):
     var method = @{{obj}}[mapped_name];
     if (method === null) return method;
 
-    if (typeof method.__get__ == 'function') {
-        if (@{{obj}}.__is_instance__) {
-            return method.__get__(@{{obj}}, @{{obj}}.__class__);
+    if (typeof method['__get__'] == 'function') {
+        if (@{{obj}}['__is_instance__']) {
+            return method['__get__'](@{{obj}}, @{{obj}}['__class__']);
         }
-        return method.__get__(null, @{{obj}}.__class__);
+        return method['__get__'](null, @{{obj}}['__class__']);
     }
     if (   typeof method != 'function'
-        || typeof method.__is_instance__ != 'undefined'
-        || @{{obj}}.__is_instance__ !== true
+        || typeof method['__is_instance__'] != 'undefined'
+        || @{{obj}}['__is_instance__'] !== true
         || @{{name}}== '__class__') {
         return @{{obj}}[mapped_name];
     }
 
     var fnwrap = function() {
-        return method.apply(@{{obj}},$pyjs_array_slice.call(arguments));
+        return method['apply'](@{{obj}},$pyjs_array_slice['call'](arguments));
     };
-    fnwrap.__name__ = @{{name}};
-    fnwrap.__args__ = @{{obj}}[mapped_name].__args__;
-    fnwrap.__class__ = @{{obj}}.__class__;
-    fnwrap.__doc__ = method.__doc__ || '';
-    fnwrap.__bind_type__ = @{{obj}}[mapped_name].__bind_type__;
-    if (typeof @{{obj}}[mapped_name].__is_instance__ != 'undefined') {
-        fnwrap.__is_instance__ = @{{obj}}[mapped_name].__is_instance__;
+    fnwrap['__name__'] = @{{name}};
+    fnwrap['__args__'] = @{{obj}}[mapped_name]['__args__'];
+    fnwrap['__class__'] = @{{obj}}['__class__'];
+    fnwrap['__doc__'] = method['__doc__'] || '';
+    fnwrap['__bind_type__'] = @{{obj}}[mapped_name]['__bind_type__'];
+    if (typeof @{{obj}}[mapped_name]['__is_instance__'] != 'undefined') {
+        fnwrap['__is_instance__'] = @{{obj}}[mapped_name]['__is_instance__'];
     } else {
-        fnwrap.__is_instance__ = false;
+        fnwrap['__is_instance__'] = false;
     }
     return fnwrap;
     """)
 
 def _del(obj):
     JS("""
-    if (typeof @{{obj}}.__delete__ == 'function') {
-        @{{obj}}.__delete__(@{{obj}});
+    if (typeof @{{obj}}['__delete__'] == 'function') {
+        @{{obj}}['__delete__'](@{{obj}});
     } else {
         delete @{{obj}};
     }
@@ -6124,18 +6124,18 @@ def delattr(obj, name):
     if (typeof @{{name}}!= 'string') {
         throw @{{TypeError}}("attribute name must be string");
     }
-    if (@{{obj}}.__is_instance__ && typeof @{{obj}}.__delattr__ == 'function') {
-        @{{obj}}.__delattr__(@{{name}});
+    if (@{{obj}}['__is_instance__'] && typeof @{{obj}}['__delattr__'] == 'function') {
+        @{{obj}}['__delattr__'](@{{name}});
         return;
     }
-    var mapped_name = attrib_remap.indexOf(@{{name}}) < 0 ? @{{name}}:
+    var mapped_name = attrib_remap['indexOf'](@{{name}}) < 0 ? @{{name}}:
                         '$$'+@{{name}};
     if (   @{{obj}}!== null
         && (typeof @{{obj}}== 'object' || typeof @{{obj}}== 'function')
         && (typeof(@{{obj}}[mapped_name]) != "undefined") ){
-        if (@{{obj}}.__is_instance__
-            && typeof @{{obj}}[mapped_name].__delete__ == 'function') {
-            @{{obj}}[mapped_name].__delete__(@{{obj}});
+        if (@{{obj}}['__is_instance__']
+            && typeof @{{obj}}[mapped_name]['__delete__'] == 'function') {
+            @{{obj}}[mapped_name]['__delete__'](@{{obj}});
         } else {
             delete @{{obj}}[mapped_name];
         }
@@ -6149,7 +6149,7 @@ def delattr(obj, name):
        throw @{{AttributeError}}("'"+typeof(@{{obj}})+
                                  "' object has no attribute '"+@{{name}}+"'");
     }
-    throw @{{AttributeError}}(@{{obj}}.__name__+
+    throw @{{AttributeError}}(@{{obj}}['__name__']+
                               " instance has no attribute '"+ @{{name}}+"'");
     """)
 
@@ -6161,18 +6161,18 @@ def setattr(obj, name, value):
     if (typeof @{{name}}!= 'string') {
         throw @{{TypeError}}("attribute name must be string");
     }
-    if (@{{obj}}.__is_instance__ && typeof @{{obj}}.__setattr__ == 'function') {
-        @{{obj}}.__setattr__(@{{name}}, @{{value}})
+    if (@{{obj}}['__is_instance__'] && typeof @{{obj}}['__setattr__'] == 'function') {
+        @{{obj}}['__setattr__'](@{{name}}, @{{value}})
         return;
     }
-    if (attrib_remap.indexOf(@{{name}}) >= 0) {
+    if (attrib_remap['indexOf'](@{{name}}) >= 0) {
         @{{name}}= '$$' + @{{name}};
     }
     if (   typeof @{{obj}}[@{{name}}] != 'undefined'
-        && @{{obj}}.__is_instance__
+        && @{{obj}}['__is_instance__']
         && @{{obj}}[@{{name}}] !== null
-        && typeof @{{obj}}[@{{name}}].__set__ == 'function') {
-        @{{obj}}[@{{name}}].__set__(@{{obj}}, @{{value}});
+        && typeof @{{obj}}[@{{name}}]['__set__'] == 'function') {
+        @{{obj}}[@{{name}}]['__set__'](@{{obj}}, @{{value}});
     } else {
         @{{obj}}[@{{name}}] = @{{value}};
     }
@@ -6189,7 +6189,7 @@ def hasattr(obj, name):
     if (@{{obj}}=== null) return false;
     if (typeof @{{obj}}[@{{name}}] == 'undefined' && (
             typeof @{{obj}}['$$'+@{{name}}] == 'undefined' ||
-            attrib_remap.indexOf(@{{name}}) < 0)
+            attrib_remap['indexOf'](@{{name}}) < 0)
       ) {
         return false;
     }
@@ -6205,11 +6205,11 @@ def dir(obj):
     }
     var properties=@{{list}}();
     for (var property in @{{obj}}) {
-        if (property.substring(0,2) == '$$') {
+        if (property['substring'](0,2) == '$$') {
             // handle back mapping of name
-            properties.append(property.substring(2));
-        } else if (attrib_remap.indexOf(property) < 0) {
-            properties.append(property);
+            properties['append'](property['substring'](2));
+        } else if (attrib_remap['indexOf'](property) < 0) {
+            properties['append'](property);
         }
     }
     return properties;
@@ -6316,8 +6316,8 @@ def _reversed(iterable):
 
 def enumerate(seq):
     JS("""
-    if (typeof @{{seq}}.__enumerate__ == 'function') {
-        return @{{seq}}.__enumerate__();
+    if (typeof @{{seq}}['__enumerate__'] == 'function') {
+        return @{{seq}}['__enumerate__']();
     }
 """)
     return _enumerate(seq)
@@ -6399,7 +6399,7 @@ class complex:
     def __add__(self, b):
         if isinstance(b, complex):
             return complex(self.real + b.real, self.imag + b.imag)
-        elif JS("typeof @{{b}}.__number__ != 'undefined'"):
+        elif JS("typeof @{{b}}['__number__'] != 'undefined'"):
             return complex(self.real + b, self.imag)
         else:
             raise TypeError("unsupported operand type(s) for +: '%r', '%r'" % (self, b))
@@ -6416,30 +6416,30 @@ if JS("typeof 'a'[0] == 'undefined'"):
     # IE has problems with setting obj.$H on certain DOM objects
     #def __hash(obj):
     JS("""@{{__hash}} = function(obj) {
-        switch (obj.constructor) {
+        switch (obj['constructor']) {
             case String:
             case Number:
             case Date:
                 return '$'+obj;
         }
-        if (typeof obj.__hash__ == 'function') return obj.__hash__();
-        if (typeof obj.nodeType != 'number') {
+        if (typeof obj['__hash__'] == 'function') return obj['__hash__']();
+        if (typeof obj['nodeType'] != 'number') {
             try {
-            obj.$H = ++@{{next_hash_id}};
+            obj['$H'] = ++@{{next_hash_id}};
             } catch (e) {
                 return obj;
             }
             return @{{next_hash_id}};
-            return obj.$H = ++@{{next_hash_id}};
+            return obj['$H'] = ++@{{next_hash_id}};
         }
-        if (typeof obj.setAttribute == 'undefined') {
+        if (typeof obj['setAttribute'] == 'undefined') {
             return obj;
         }
         var $H;
-        if ($H = obj.getAttribute('$H')) {
+        if ($H = obj['getAttribute']('$H')) {
             return $H;
         }
-        obj.setAttribute('$H', ++@{{next_hash_id}});
+        obj['setAttribute']('$H', ++@{{next_hash_id}});
         return @{{next_hash_id}};
     };
         """)
@@ -6448,47 +6448,47 @@ if JS("typeof 'a'[0] == 'undefined'"):
     JS("""@{{hash}} = function(obj) {
         if (obj === null) return null;
 
-        if (typeof obj.$H != 'undefined') return obj.$H;
-        if (typeof obj == 'string' || obj.__number__) return '$'+obj;
-        switch (obj.constructor) {
+        if (typeof obj['$H'] != 'undefined') return obj['$H'];
+        if (typeof obj == 'string' || obj['__number__']) return '$'+obj;
+        switch (obj['constructor']) {
             case String:
             case Number:
             case Date:
                 return '$'+obj;
         }
-        if (typeof obj.__hash__ == 'function') return obj.__hash__();
-        if (typeof obj.nodeType != 'number') {
+        if (typeof obj['__hash__'] == 'function') return obj['__hash__']();
+        if (typeof obj['nodeType'] != 'number') {
             try {
-            obj.$H = ++@{{next_hash_id}};
+            obj['$H'] = ++@{{next_hash_id}};
             } catch (e) {
                 return obj;
             }
             return @{{next_hash_id}};
-            return obj.$H = ++@{{next_hash_id}};
+            return obj['$H'] = ++@{{next_hash_id}};
         }
-        if (typeof obj.setAttribute == 'undefined') {
+        if (typeof obj['setAttribute'] == 'undefined') {
             return obj;
         }
         var $H;
-        if ($H = obj.getAttribute('$H')) {
+        if ($H = obj['getAttribute']('$H')) {
             return $H;
         }
-        obj.setAttribute('$H', ++@{{next_hash_id}});
+        obj['setAttribute']('$H', ++@{{next_hash_id}});
         return @{{next_hash_id}};
     };
         """)
 else:
     #def __hash(obj):
     JS("""@{{__hash}} = function(obj) {
-        switch (obj.constructor) {
+        switch (obj['constructor']) {
             case String:
             case Number:
             case Date:
                 return '$'+obj;
         }
-        if (typeof obj.__hash__ == 'function') return obj.__hash__();
-        obj.$H = ++@{{next_hash_id}};
-        return obj.$H;
+        if (typeof obj['__hash__'] == 'function') return obj['__hash__']();
+        obj['$H'] = ++@{{next_hash_id}};
+        return obj['$H'];
     };
         """)
 
@@ -6496,17 +6496,17 @@ else:
     JS("""@{{hash}} = function(obj) {
         if (obj === null) return null;
 
-        if (typeof obj.$H != 'undefined') return obj.$H;
-        if (typeof obj == 'string' || obj.__number__) return '$'+obj;
-        switch (obj.constructor) {
+        if (typeof obj['$H'] != 'undefined') return obj['$H'];
+        if (typeof obj == 'string' || obj['__number__']) return '$'+obj;
+        switch (obj['constructor']) {
             case String:
             case Number:
             case Date:
                 return '$'+obj;
         }
-        if (typeof obj.__hash__ == 'function') return obj.__hash__();
-        obj.$H = ++@{{next_hash_id}};
-        return obj.$H;
+        if (typeof obj['__hash__'] == 'function') return obj['__hash__']();
+        obj['$H'] = ++@{{next_hash_id}};
+        return obj['$H'];
     };
         """)
 
@@ -6536,7 +6536,7 @@ def isNull(a):
 
 def isArray(a):
     JS("""
-    return @{{isObject}}(@{{a}}) && @{{a}}.constructor === Array;
+    return @{{isObject}}(@{{a}}) && @{{a}}['constructor'] === Array;
     """)
 
 def isUndefined(a):
@@ -6547,20 +6547,20 @@ def isUndefined(a):
 def isIteratable(a):
     JS("""
     if (@{{a}}=== null) return false;
-    return typeof @{{a}}.__iter__ == 'function';
+    return typeof @{{a}}['__iter__'] == 'function';
     """)
 
 def isNumber(a):
     JS("""
-    return @{{a}}!== null && @{{a}}.__number__ &&
-           (@{{a}}.__number__ != 0x01 || isFinite(@{{a}}));
+    return @{{a}}!== null && @{{a}}['__number__'] &&
+           (@{{a}}['__number__'] != 0x01 || isFinite(@{{a}}));
     """)
 
 def isInteger(a):
     JS("""
-    switch (@{{a}}.__number__) {
+    switch (@{{a}}['__number__']) {
         case 0x01:
-            if (@{{a}} != Math.floor(@{{a}})) break;
+            if (@{{a}} != Math['floor'](@{{a}})) break;
         case 0x02:
         case 0x04:
             return true;
@@ -6571,12 +6571,12 @@ def isInteger(a):
 def isSet(a):
     JS("""
     if (@{{a}}=== null) return false;
-    if (typeof @{{a}}.__object == 'undefined') return false;
-    var a_mro = @{{a}}.__mro__;
-    switch (a_mro[a_mro.length-2].__md5__) {
-        case @{{set}}.__md5__:
+    if (typeof @{{a}}['__object'] == 'undefined') return false;
+    var a_mro = @{{a}}['__mro__'];
+    switch (a_mro[a_mro['length']-2]['__md5__']) {
+        case @{{set}}['__md5__']:
             return 1;
-        case @{{frozenset}}.__md5__:
+        case @{{frozenset}}['__md5__']:
             return 2;
     }
     return false;
@@ -6589,10 +6589,10 @@ def toJSObjects(x):
     if isArray(x):
         JS("""
         var result = [];
-        for(var k=0; k < @{{x}}.length; k++) {
+        for(var k=0; k < @{{x}}['length']; k++) {
            var v = @{{x}}[k];
            var tv = @{{toJSObjects}}(v);
-           result.push(tv);
+           result['push'](tv);
         }
         return result;
         """)
@@ -6601,10 +6601,10 @@ def toJSObjects(x):
             return x.valueOf()
         elif isinstance(x, dict):
             JS("""
-            var o = @{{x}}.getObject();
+            var o = @{{x}}['getObject']();
             var result = {};
             for (var i in o) {
-               result[o[i][0].toString()] = @{{toJSObjects}}(o[i][1]);
+               result[o[i][0]['toString']()] = @{{toJSObjects}}(o[i][1]);
             }
             return result;
             """)
@@ -6655,9 +6655,9 @@ def sprintf(strng, args):
         if (!precision) {
             precision = null;
         } else {
-            precision = parseInt(precision.substr(1));
+            precision = parseInt(precision['substr'](1));
         }
-        if (flags.indexOf('-') >= 0) {
+        if (flags['indexOf']('-') >= 0) {
             left_padding = 0;
         }
         switch (conversion) {
@@ -6667,7 +6667,7 @@ def sprintf(strng, args):
                 break;
             case 'c':
                 numeric = false;
-                subst = String.fromCharCode(parseInt(param));
+                subst = String['fromCharCode'](parseInt(param));
                 break;
             case 'd':
             case 'i':
@@ -6678,8 +6678,8 @@ def sprintf(strng, args):
                 if (precision === null) {
                     precision = 6;
                 }
-                subst = re_exp.exec(String(param.toExponential(precision)));
-                if (subst[3].length == 1) {
+                subst = re_exp['exec'](String(param['toExponential'](precision)));
+                if (subst[3]['length'] == 1) {
                     subst = subst[1] + subst[2] + '0' + subst[3];
                 } else {
                     subst = subst[1] + subst[2] + subst[3];
@@ -6689,8 +6689,8 @@ def sprintf(strng, args):
                 if (precision === null) {
                     precision = 6;
                 }
-                subst = re_exp.exec(String(param.toExponential(precision)).toUpperCase());
-                if (subst[3].length == 1) {
+                subst = re_exp['exec'](String(param['toExponential'](precision))['toUpperCase']());
+                if (subst[3]['length'] == 1) {
                     subst = subst[1] + subst[2] + '0' + subst[3];
                 } else {
                     subst = subst[1] + subst[2] + subst[3];
@@ -6700,34 +6700,34 @@ def sprintf(strng, args):
                 if (precision === null) {
                     precision = 6;
                 }
-                subst = String(parseFloat(param).toFixed(precision));
+                subst = String(parseFloat(param)['toFixed'](precision));
                 break;
             case 'F':
                 if (precision === null) {
                     precision = 6;
                 }
-                subst = String(parseFloat(param).toFixed(precision)).toUpperCase();
+                subst = String(parseFloat(param)['toFixed'](precision))['toUpperCase']();
                 break;
             case 'g':
                 // FIXME: Issue 672 should return double digit exponent
                 // probably can remove code in formatd after that
-                if (precision === null && flags.indexOf('#') >= 0) {
+                if (precision === null && flags['indexOf']('#') >= 0) {
                     precision = 6;
                 }
                 if (param >= 1E6 || param < 1E-5) {
-                    subst = String(precision == null ? param.toExponential() : param.toExponential().toPrecision(precision));
+                    subst = String(precision == null ? param['toExponential']() : param['toExponential']()['toPrecision'](precision));
                 } else {
-                    subst = String(precision == null ? parseFloat(param) : parseFloat(param).toPrecision(precision));
+                    subst = String(precision == null ? parseFloat(param) : parseFloat(param)['toPrecision'](precision));
                 }
                 break;
             case 'G':
-                if (precision === null && flags.indexOf('#') >= 0) {
+                if (precision === null && flags['indexOf']('#') >= 0) {
                     precision = 6;
                 }
                 if (param >= 1E6 || param < 1E-5) {
-                    subst = String(precision == null ? param.toExponential() : param.toExponential().toPrecision(precision)).toUpperCase();
+                    subst = String(precision == null ? param['toExponential']() : param['toExponential']()['toPrecision'](precision))['toUpperCase']();
                 } else {
-                    subst = String(precision == null ? parseFloat(param) : parseFloat(param).toPrecision(precision)).toUpperCase().toUpperCase();
+                    subst = String(precision == null ? parseFloat(param) : parseFloat(param)['toPrecision'](precision))['toUpperCase']()['toUpperCase']();
                 }
                 break;
             case 'r':
@@ -6740,39 +6740,39 @@ def sprintf(strng, args):
                 break;
             case 'o':
                 param = @{{int}}(param);
-                subst = param.toString(8);
-                if (subst != '0' && flags.indexOf('#') >= 0) {
+                subst = param['toString'](8);
+                if (subst != '0' && flags['indexOf']('#') >= 0) {
                     subst = '0' + subst;
                 }
                 break;
             case 'x':
                 param = @{{int}}(param);
-                subst = param.toString(16);
-                if (flags.indexOf('#') >= 0) {
+                subst = param['toString'](16);
+                if (flags['indexOf']('#') >= 0) {
                     if (left_padding) {
-                        subst = subst.rjust(minlen - 2, '0');
+                        subst = subst['rjust'](minlen - 2, '0');
                     }
                     subst = '0x' + subst;
                 }
                 break;
             case 'X':
                 param = @{{int}}(param);
-                subst = param.toString(16).toUpperCase();
-                if (flags.indexOf('#') >= 0) {
+                subst = param['toString'](16)['toUpperCase']();
+                if (flags['indexOf']('#') >= 0) {
                     if (left_padding) {
-                        subst = subst.rjust(minlen - 2, '0');
+                        subst = subst['rjust'](minlen - 2, '0');
                     }
                     subst = '0x' + subst;
                 }
                 break;
             default:
-                throw @{{ValueError}}("unsupported format character '" + conversion + "' ("+@{{hex}}(conversion.charCodeAt(0))+") at index " + (@{{strng}}.length - remainder.length - 1));
+                throw @{{ValueError}}("unsupported format character '" + conversion + "' ("+@{{hex}}(conversion['charCodeAt'](0))+") at index " + (@{{strng}}['length'] - remainder['length'] - 1));
         }
-        if (minlen && subst.length < minlen) {
-            if (numeric && left_padding && flags.indexOf('0') >= 0) {
+        if (minlen && subst['length'] < minlen) {
+            if (numeric && left_padding && flags['indexOf']('0') >= 0) {
                 padchar = '0';
             }
-            subst = left_padding ? subst.rjust(minlen, padchar) : subst.ljust(minlen, padchar);
+            subst = left_padding ? subst['rjust'](minlen, padchar) : subst['ljust'](minlen, padchar);
         }
         return subst;
     }
@@ -6781,9 +6781,9 @@ def sprintf(strng, args):
         var a, left, flags, precision, conversion, minlen, param,
             __array = result;
         while (remainder) {
-            a = re_list.exec(remainder);
+            a = re_list['exec'](remainder);
             if (a === null) {
-                __array[__array.length] = remainder;
+                __array[__array['length']] = remainder;
                 break;
             }
             left = a[1]; flags = a[2];
@@ -6792,18 +6792,18 @@ def sprintf(strng, args):
             if (typeof minlen == 'undefined') minlen = null;
             if (typeof precision == 'undefined') precision = null;
             if (typeof conversion == 'undefined') conversion = null;
-            __array[__array.length] = left;
+            __array[__array['length']] = left;
             if (minlen == '*') {
                 if (argidx == nargs) {
                     throw @{{TypeError}}("not enough arguments for format string");
                 }
-                minlen = args.__getitem__(argidx++);
-                switch (minlen.__number__) {
+                minlen = args['__getitem__'](argidx++);
+                switch (minlen['__number__']) {
                     case 0x02:
                     case 0x04:
                         break;
                     case 0x01:
-                        if (minlen == Math.floor(minlen)) {
+                        if (minlen == Math['floor'](minlen)) {
                             break;
                         }
                     default:
@@ -6814,9 +6814,9 @@ def sprintf(strng, args):
                 if (argidx == nargs) {
                     throw @{{TypeError}}("not enough arguments for format string");
                 }
-                param = args.__getitem__(argidx++);
+                param = args['__getitem__'](argidx++);
             }
-            __array[__array.length] = formatarg(flags, minlen, precision, conversion, param);
+            __array[__array['length']] = formatarg(flags, minlen, precision, conversion, param);
         }
     }
 
@@ -6835,9 +6835,9 @@ def sprintf(strng, args):
 
         argidx++;
         while (remainder) {
-            a = re_dict.exec(remainder);
+            a = re_dict['exec'](remainder);
             if (a === null) {
-                __array[__array.length] = remainder;
+                __array[__array['length']] = remainder;
                 break;
             }
             left = a[1]; key = a[2]; flags = a[3];
@@ -6846,31 +6846,31 @@ def sprintf(strng, args):
             if (typeof minlen == 'undefined') minlen = null;
             if (typeof precision == 'undefined') precision = null;
             if (typeof conversion == 'undefined') conversion = null;
-            __array[__array.length] = left;
-            param = arg.__getitem__(key);
-            __array[__array.length] = formatarg(flags, minlen, precision, conversion, param);
+            __array[__array['length']] = left;
+            param = arg['__getitem__'](key);
+            __array[__array['length']] = formatarg(flags, minlen, precision, conversion, param);
         }
     }
 
-    var constructor = args === null ? 'NoneType' : (args.__md5__ == @{{tuple}}.__md5__ ? 'tuple': (args.__md5__ == @{{dict}}.__md5__ ? 'dict': 'Other'));
-    if (strng.indexOf("%(") >= 0) {
-        if (re_dict.exec(strng) !== null) {
+    var constructor = args === null ? 'NoneType' : (args['__md5__'] == @{{tuple}}['__md5__'] ? 'tuple': (args['__md5__'] == @{{dict}}['__md5__'] ? 'dict': 'Other'));
+    if (strng['indexOf']("%(") >= 0) {
+        if (re_dict['exec'](strng) !== null) {
             if (constructor != "dict") {
                 throw @{{TypeError}}("format requires a mapping");
             }
             sprintf_dict(strng, args);
-            return result.join("");
+            return result['join']("");
         }
     }
     if (constructor != "tuple") {
         args = @{{tuple}}([args]);
     }
-    nargs = args.__array.length;
+    nargs = args['__array']['length'];
     sprintf_list(strng, args);
     if (argidx != nargs) {
         throw @{{TypeError}}('not all arguments converted during string formatting');
     }
-    return result.join("");
+    return result['join']("");
 """)
 
 __module_internals = set(['__track_lines__'])
@@ -6891,21 +6891,21 @@ def debugReport(msg):
 
 JS("""
 var $printFunc = null;
-if (   typeof $wnd.console != 'undefined'
-    && typeof $wnd.console.debug == 'function') {
+if (   typeof $wnd['console'] != 'undefined'
+    && typeof $wnd['console']['debug'] == 'function') {
     $printFunc = function(s) {
-        $wnd.console.debug(s);
+        $wnd['console']['debug'](s);
     };
-} else if (   typeof $wnd.opera != 'undefined'
-           && typeof $wnd.opera.postError == 'function') {
+} else if (   typeof $wnd['opera'] != 'undefined'
+           && typeof $wnd['opera']['postError'] == 'function') {
     $printFunc = function(s) {
-        $wnd.opera.postError(s);
+        $wnd['opera']['postError'](s);
     };
 } else if ( typeof console != 'undefined') {
-    if (   typeof console.log == 'function'
-        || typeof console.log == 'object') {
+    if (   typeof console['log'] == 'function'
+        || typeof console['log'] == 'object') {
         $printFunc = function(s){
-            console.log(s);
+            console['log'](s);
         };
     }
 }
@@ -6920,19 +6920,19 @@ def _print_to_console(s):
 def printFunc(objs, newline):
     JS("""
     var s = "";
-    for(var i=0; i < @{{objs}}.length; i++) {
+    for(var i=0; i < @{{objs}}['length']; i++) {
         if(s != "") s += " ";
         s += @{{objs}}[i];
     }
     if (newline) {
       s += '\\n';
     }
-    @{{sys}}.stdout.write(s);
+    @{{sys}}['stdout']['write'](s);
     """)
 
 def pow(x, y, z = None):
     p = None
-    JS("@{{p}} = Math.pow(@{{x}}, @{{y}});")
+    JS("@{{p}} = Math['pow'](@{{x}}, @{{y}});")
     if z is None:
         return float(p)
     return float(p % z)
@@ -6940,15 +6940,15 @@ def pow(x, y, z = None):
 def hex(x):
     JS("""
     if (typeof @{{x}} == 'number') {
-        if (Math.floor(@{{x}}) == @{{x}}) {
-            return '0x' + @{{x}}.toString(16);
+        if (Math['floor'](@{{x}}) == @{{x}}) {
+            return '0x' + @{{x}}['toString'](16);
         }
     } else {
-        switch (@{{x}}.__number__) {
+        switch (@{{x}}['__number__']) {
             case 0x02:
-                return '0x' + @{{x}}.__v.toString(16);
+                return '0x' + @{{x}}['__v']['toString'](16);
             case 0x04:
-                return @{{x}}.__hex__();
+                return @{{x}}['__hex__']();
         }
     }
 """)
@@ -6957,15 +6957,15 @@ def hex(x):
 def oct(x):
     JS("""
     if (typeof @{{x}} == 'number') {
-        if (Math.floor(@{{x}}) == @{{x}}) {
-            return @{{x}} == 0 ? '0': '0' + @{{x}}.toString(8);
+        if (Math['floor'](@{{x}}) == @{{x}}) {
+            return @{{x}} == 0 ? '0': '0' + @{{x}}['toString'](8);
         }
     } else {
-        switch (@{{x}}.__number__) {
+        switch (@{{x}}['__number__']) {
             case 0x02:
-                return @{{x}}.__v == 0 ? '0': '0' + @{{x}}.__v.toString(8);
+                return @{{x}}['__v'] == 0 ? '0': '0' + @{{x}}['__v']['toString'](8);
             case 0x04:
-                return @{{x}}.__oct__();
+                return @{{x}}['__oct__']();
         }
     }
 """)
@@ -6974,47 +6974,47 @@ def oct(x):
 def round(x, n = 0):
     n = pow(10, n)
     r = None
-    JS("@{{r}} = Math.round(@{{n}}*@{{x}})/@{{n}};")
+    JS("@{{r}} = Math['round'](@{{n}}*@{{x}})/@{{n}};")
     return float(r)
 
 def divmod(x, y):
     JS("""
     if (@{{x}} !== null && @{{y}} !== null) {
-        switch ((@{{x}}.__number__ << 8) | @{{y}}.__number__) {
+        switch ((@{{x}}['__number__'] << 8) | @{{y}}['__number__']) {
             case 0x0101:
             case 0x0104:
             case 0x0401:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                var f = Math.floor(@{{x}} / @{{y}});
+                var f = Math['floor'](@{{x}} / @{{y}});
                 return @{{tuple}}([f, @{{x}} - f * @{{y}}]);
             case 0x0102:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                var f = Math.floor(@{{x}} / @{{y}}.__v);
-                return @{{tuple}}([f, @{{x}} - f * @{{y}}.__v]);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('float divmod()');
+                var f = Math['floor'](@{{x}} / @{{y}}['__v']);
+                return @{{tuple}}([f, @{{x}} - f * @{{y}}['__v']]);
             case 0x0201:
                 if (@{{y}} == 0) throw @{{ZeroDivisionError}}('float divmod()');
-                var f = Math.floor(@{{x}}.__v / @{{y}});
-                return @{{tuple}}([f, @{{x}}.__v - f * @{{y}}]);
+                var f = Math['floor'](@{{x}}['__v'] / @{{y}});
+                return @{{tuple}}([f, @{{x}}['__v'] - f * @{{y}}]);
             case 0x0202:
-                if (@{{y}}.__v == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
-                var f = Math.floor(@{{x}}.__v / @{{y}}.__v);
-                return @{{tuple}}([new @{{int}}(f), new @{{int}}(@{{x}}.__v - f * @{{y}}.__v)]);
+                if (@{{y}}['__v'] == 0) throw @{{ZeroDivisionError}}('integer division or modulo by zero');
+                var f = Math['floor'](@{{x}}['__v'] / @{{y}}['__v']);
+                return @{{tuple}}([new @{{int}}(f), new @{{int}}(@{{x}}['__v'] - f * @{{y}}['__v'])]);
             case 0x0204:
-                return @{{y}}.__rdivmod__(new @{{long}}(@{{x}}.__v));
+                return @{{y}}['__rdivmod__'](new @{{long}}(@{{x}}['__v']));
             case 0x0402:
-                return @{{x}}.__divmod__(new @{{long}}(@{{y}}.__v));
+                return @{{x}}['__divmod__'](new @{{long}}(@{{y}}['__v']));
             case 0x0404:
-                return @{{x}}.__divmod__(@{{y}});
+                return @{{x}}['__divmod__'](@{{y}});
         }
-        if (!@{{x}}.__number__) {
-            if (   !@{{y}}.__number__
-                && @{{x}}.__mro__.length > @{{y}}.__mro__.length
+        if (!@{{x}}['__number__']) {
+            if (   !@{{y}}['__number__']
+                && @{{x}}['__mro__']['length'] > @{{y}}['__mro__']['length']
                 && @{{isinstance}}(@{{x}}, @{{y}})
                 && typeof @{{x}}['__divmod__'] == 'function')
-                return @{{y}}.__divmod__(@{{x}});
-            if (typeof @{{x}}['__divmod__'] == 'function') return @{{x}}.__divmod__(@{{y}});
+                return @{{y}}['__divmod__'](@{{x}});
+            if (typeof @{{x}}['__divmod__'] == 'function') return @{{x}}['__divmod__'](@{{y}});
         }
-        if (!@{{y}}.__number__ && typeof @{{y}}['__rdivmod__'] == 'function') return @{{y}}.__rdivmod__(@{{x}});
+        if (!@{{y}}['__number__'] && typeof @{{y}}['__rdivmod__'] == 'function') return @{{y}}['__rdivmod__'](@{{x}});
     }
 """)
     raise TypeError("unsupported operand type(s) for divmod(): '%r', '%r'" % (x, y))
@@ -8161,30 +8161,30 @@ __iter_prepare = JS("""function(iter, reuse_tuple) {
         throw @{{TypeError}}("iter is undefined");
     }
     var it = {};
-    it.$iter = iter;
-    it.$loopvar = 0;
-    it.$reuse_tuple = reuse_tuple;
-    if (typeof (it.$arr = iter.__array) != 'undefined') {
-        it.$gentype = 0;
+    it['$iter'] = iter;
+    it['$loopvar'] = 0;
+    it['$reuse_tuple'] = reuse_tuple;
+    if (typeof (it['$arr'] = iter['__array']) != 'undefined') {
+        it['$gentype'] = 0;
     } else {
-        it.$iter = iter.__iter__();
-        it.$gentype = typeof (it.$arr = iter.__array) != 'undefined'? 0 : (typeof iter.$genfunc == 'function'? 1 : -1);
+        it['$iter'] = iter['__iter__']();
+        it['$gentype'] = typeof (it['$arr'] = iter['__array']) != 'undefined'? 0 : (typeof iter['$genfunc'] == 'function'? 1 : -1);
     }
     return it;
 }""")
 
 __wrapped_next = JS("""function(it) {
-    var iterator = it.$iter;
-    it.$nextval = it.$gentype?(it.$gentype > 0?
-        iterator.next(true,it.$reuse_tuple):@{{wrapped_next}}(iterator)
-                              ) : it.$arr[it.$loopvar++];
+    var iterator = it['$iter'];
+    it['$nextval'] = it['$gentype']?(it['$gentype'] > 0?
+        iterator['next'](true,it['$reuse_tuple']):@{{wrapped_next}}(iterator)
+                              ) : it['$arr'][it['$loopvar']++];
     return it;
 }""")
 
 # For optimized for loops: fall back for userdef iterators
 wrapped_next = JS("""function (iter) {
     try {
-        var res = iter.next();
+        var res = iter['next']();
     } catch (e) {
         if (@{{isinstance}}(e, @{{StopIteration}})) {
             return;
@@ -8201,29 +8201,29 @@ __ass_unpack = JS("""function (data, count, extended) {
     if (data === null) {
         throw @{{TypeError}}("'NoneType' is not iterable");
     }
-    if (data.constructor === Array) {
-    } else if (typeof data.__iter__ == 'function') {
-        if (typeof data.__array == 'object') {
-            data = data.__array;
+    if (data['constructor'] === Array) {
+    } else if (typeof data['__iter__'] == 'function') {
+        if (typeof data['__array'] == 'object') {
+            data = data['__array'];
         } else {
-            var iter = data.__iter__();
-            if (typeof iter.__array == 'object') {
-                data = iter.__array;
+            var iter = data['__iter__']();
+            if (typeof iter['__array'] == 'object') {
+                data = iter['__array'];
             }
             data = [];
             var item, i = 0;
-            if (typeof iter.$genfunc == 'function') {
-                while (typeof (item=iter.next(true)) != 'undefined') {
+            if (typeof iter['$genfunc'] == 'function') {
+                while (typeof (item=iter['next'](true)) != 'undefined') {
                     data[i++] = item;
                 }
             } else {
                 try {
                     while (true) {
-                        data[i++] = iter.next();
+                        data[i++] = iter['next']();
                     }
                 }
                 catch (e) {
-                    if (e.__name__ != 'StopIteration') throw e;
+                    if (e['__name__'] != 'StopIteration') throw e;
                 }
             }
         }
@@ -8233,11 +8233,11 @@ __ass_unpack = JS("""function (data, count, extended) {
     var res = new Array();
     if (typeof extended == 'undefined' || extended === null)
     {
-        if (data.length != count)
-        if (data.length > count)
+        if (data['length'] != count)
+        if (data['length'] > count)
             throw @{{ValueError}}("too many values to unpack");
         else
-            throw @{{ValueError}}("need more than "+data.length+" values to unpack");
+            throw @{{ValueError}}("need more than "+data['length']+" values to unpack");
         return data;
     }
     else
@@ -8281,4 +8281,5 @@ def __import__(name, globals={}, locals={}, fromlist=[], level=-1):
 
 import sys # needed for debug option
 import dynamic # needed for ___import___
+
 

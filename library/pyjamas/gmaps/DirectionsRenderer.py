@@ -26,10 +26,10 @@ class DirectionsRenderer:
     def __init__(self, options):
         if options:
             self.renderer = \
-                JS("""new $wnd.google.maps.DirectionsRenderer(@{{options}})""")
+                JS("""new $wnd['google']['maps']['DirectionsRenderer'](@{{options}})""")
         else:
             self.renderer = \
-                JS("""new $wnd.google.maps.DirectionsRenderer()""")
+                JS("""new $wnd['google']['maps']['DirectionsRenderer']()""")
 
     def setDirections(self, results):
         self.renderer.setDirections(translateDirectionsResults(results, True))

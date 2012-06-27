@@ -35,9 +35,9 @@ from pyjamas.Canvas.CanvasGradientImplIE6 import CanvasGradientImplIE6
 
 def addNamespace():
     JS("""
-    if (!$doc.namespaces["v"]) {
-        $doc.namespaces.add("v", "urn:schemas-microsoft-com:vml");
-        $doc.createStyleSheet().cssText = "v\\:*{behavior:url(#default#VML);}";
+    if (!$doc['namespaces']["v"]) {
+        $doc['namespaces']['add']("v", "urn:schemas-microsoft-com:vml");
+        $doc['createStyleSheet']()['cssText'] = "v\\:*{behavior:url(#default#VML);}";
     }
     """)
 

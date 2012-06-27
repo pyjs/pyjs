@@ -17,10 +17,10 @@ from __pyjamas__ import JS
 from pyjamas.gmaps.Utils import dictToJs, createListenerMethods
 
 ### GOOGLE MAPS WRAPPERS ###
-MapTypeId = JS("$wnd.google.maps.MapTypeId")
-MapTypeControlStyle = JS("$wnd.google.maps.MapTypeControlStyle")
-NavigationControlStyle = JS("$wnd.google.maps.NavigationControlStyle")
-ScaleControlStyle = JS("$wnd.google.maps.ScaleControlStyle")
+MapTypeId = JS("$wnd['google']['maps']['MapTypeId']")
+MapTypeControlStyle = JS("$wnd['google']['maps']['MapTypeControlStyle']")
+NavigationControlStyle = JS("$wnd['google']['maps']['NavigationControlStyle']")
+ScaleControlStyle = JS("$wnd['google']['maps']['ScaleControlStyle']")
 
 
 def MapOptions(**params):
@@ -41,17 +41,17 @@ def ScaleControlOptions(**params):
 
 def Map(el, options):
     if options:
-        map = JS("""new $wnd.google.maps.Map(@{{el}}, @{{options}})""")
+        map = JS("""new $wnd['google']['maps']['Map'](@{{el}}, @{{options}})""")
     else:
-        map = JS("""new $wnd.google.maps.Map(@{{el}})""")
+        map = JS("""new $wnd['google']['maps']['Map'](@{{el}})""")
 
     createListenerMethods(map)
     return map
 
 
 def MapPanes(el):
-    JS("""return new $wnd.google.maps.MapPanes(@{{el}})""")
+    JS("""return new $wnd['google']['maps']['MapPanes'](@{{el}})""")
 
 
 def MapCanvasProjection(el):
-    JS("""return new $wnd.google.maps.MapCanvasProjection(@{{el}})""")
+    JS("""return new $wnd['google']['maps']['MapCanvasProjection'](@{{el}})""")

@@ -23,18 +23,18 @@ from __pyjamas__ import JS
 JS("""
 // Copyright 2007 Google Inc. All Rights Reserved.
 //
-// Sets up google.gears.*, which is *the only* supported way to access Gears.
+// Sets up google['gears'].*, which is *the only* supported way to access Gears.
 //
 // Circumvent this file at your own risk!
 //
-// In the future, Gears may automatically define google.gears.* without this
+// In the future, Gears may automatically define google['gears'].* without this
 // file. Gears may use these objects to transparently fix bugs and compatibility
 // issues. Applications that use the code below will continue to work seamlessly
 // when that happens.
 
 @{{!init_gears}} = function() {
   // We are already defined. Hooray!
-  if ($wnd.google && $wnd.google.gears) {
+  if ($wnd['google'] && $wnd['google']['gears']) {
     return;
   }
 
@@ -46,16 +46,16 @@ JS("""
   } else {
     // IE
     try {
-      factory = new ActiveXObject('Gears.Factory');
+      factory = new ActiveXObject('Gears['Factory']');
     } catch (e) {
       // Safari
-      if (navigator.mimeTypes["application/x-googlegears"]) {
-        factory = $doc.createElement("object");
-        factory.style.display = "none";
-        factory.width = 0;
-        factory.height = 0;
-        factory.type = "application/x-googlegears";
-        $doc.documentElement.appendChild(factory);
+      if (navigator['mimeTypes']["application/x-googlegears"]) {
+        factory = $doc['createElement']("object");
+        factory['style']['display'] = "none";
+        factory['width'] = 0;
+        factory['height'] = 0;
+        factory['type'] = "application/x-googlegears";
+        $doc['documentElement']['appendChild'](factory);
       }
     }
   }
@@ -67,12 +67,12 @@ JS("""
   }
 
   // Now set up the objects, being careful not to overwrite anything.
-  if (!$wnd.google) {
-    $wnd.google = {};
+  if (!$wnd['google']) {
+    $wnd['google'] = {};
   }
 
-  if (!$wnd.google.gears) {
-    $wnd.google.gears = {factory: factory};
+  if (!$wnd['google']['gears']) {
+    $wnd['google']['gears'] = {factory: factory};
   }
 }
 
@@ -88,7 +88,7 @@ JS("""
 def getInstance():
     JS("""
     @{{!init_gears}}();
-    return $wnd.google && $wnd.google.gears && $wnd.google.gears.factory;
+    return $wnd['google'] && $wnd['google']['gears'] && $wnd['google']['gears']['factory'];
     """)
 
 

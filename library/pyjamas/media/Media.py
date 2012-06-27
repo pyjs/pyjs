@@ -21,7 +21,7 @@ from pyjamas.ui.Widget import Widget
 
 def mediaEventGetTypeInt(eventType):
     JS("""
-    window.console.log('mediaEventGetTypeInt: ' + eventType)
+    window['console']['log']('mediaEventGetTypeInt: ' + eventType)
     switch (eventType) {
         case "abort":             return 0x00001;
         case "canplay":           return 0x00002;
@@ -46,7 +46,7 @@ def mediaEventGetTypeInt(eventType):
         case "volumechange":      return 0x100000;
         case "waiting":           return 0x200000;
         default:
-        window.console.debug("Unknown media eventType: " + eventType)
+        window['console']['debug']("Unknown media eventType: " + eventType)
         return 0;
     }
     """)
@@ -613,10 +613,10 @@ class Media(Widget):
     def initMediaEvents(self):
         JS("""
         mediaDispatchEvent = function(evt) {
-            var curElem = evt.target;
-            var listener = curElem.__listener;
+            var curElem = evt['target'];
+            var listener = curElem['__listener'];
             if (listener) {
-                @{{self.dispatchMediaEvent}}(evt, listener)
+                @{{self['dispatchMediaEvent']}}(evt, listener)
             }
         }
         """)

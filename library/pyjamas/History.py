@@ -66,7 +66,7 @@ def newItem(ht):
     if(@{{historyToken}} == "" || @{{historyToken}} == null){
         @{{historyToken}} = "#";
     }
-    $wnd.location.hash = encodeURI(@{{historyToken}}).replace('#','%23');
+    $wnd['location']['hash'] = encodeURI(@{{historyToken}})['replace']('#','%23');
     """)
 
 

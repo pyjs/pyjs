@@ -18,13 +18,13 @@ from pyjamas.gmaps.Utils import translateGmapsObject, dictToJs
 from pyjamas.gmaps.Geocoder import translateGeocoderResult
 
 
-DirectionsStatus = JS("$wnd.google.maps.DirectionsStatus")
+DirectionsStatus = JS("$wnd['google']['maps']['DirectionsStatus']")
 
 
-DirectionsTravelMode = JS("$wnd.google.maps.DirectionsTravelMode")
+DirectionsTravelMode = JS("$wnd['google']['maps']['DirectionsTravelMode']")
 
 
-DirectionsUnitSystem = JS("$wnd.google.maps.DirectionsUnitSystem")
+DirectionsUnitSystem = JS("$wnd['google']['maps']['DirectionsUnitSystem']")
 
 
 directionsResultsFields = dictToJs(
@@ -47,7 +47,7 @@ def translateDirectionsResults(jsResults, pyToJs=False):
 class DirectionsService:
 
     def __init__(self):
-        self.ds = JS("""new $wnd.google.maps.DirectionsService()""")
+        self.ds = JS("""new $wnd['google']['maps']['DirectionsService']()""")
 
     def route(self, request, callback):
         self.ds.route(request,

@@ -16,7 +16,7 @@ from __pyjamas__ import JS
 
 
 def Polyline(points, color, width):
-    JS("return new $wnd.google.maps.Polyline(@{{points}}, @{{color}}, @{{width}})")
+    JS("return new $wnd['google']['maps']['Polyline'](@{{points}}, @{{color}}, @{{width}})")
 
 
 def PolylineOptions():

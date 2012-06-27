@@ -64,15 +64,15 @@ class JSONParser:
 
     def jsObjectToPy(self, obj):
         JS("""
-        if (pyjslib.isArray(@{{obj}})) {
+        if (pyjslib['isArray'](@{{obj}})) {
             for (var i in @{{obj}})
-                @{{obj}}[i] = this.jsObjectToPy(@{{obj}}[i]);
-            return new pyjslib.list(@{{obj}});
+                @{{obj}}[i] = this['jsObjectToPy'](@{{obj}}[i]);
+            return new pyjslib['list'](@{{obj}});
             }
-        else if (pyjslib.isObject(@{{obj}})) {
+        else if (pyjslib['isObject'](@{{obj}})) {
             for (var i in @{{obj}})
-                @{{obj}}[i]=this.jsObjectToPy(@{{obj}}[i]);
-            return new pyjslib.dict(@{{obj}});
+                @{{obj}}[i]=this['jsObjectToPy'](@{{obj}}[i]);
+            return new pyjslib['dict'](@{{obj}});
             }
 
         return @{{obj}};
@@ -80,26 +80,26 @@ class JSONParser:
 
     def jsObjectToPyObject(self, obj):
         JS("""
-        if (pyjslib.isArray(@{{obj}})) {
+        if (pyjslib['isArray'](@{{obj}})) {
             for (var i in @{{obj}})
-                @{{obj}}[i] = this.jsObjectToPyObject(@{{obj}}[i]);
-            @{{obj}}=new pyjslib.list(@{{obj}});
+                @{{obj}}[i] = this['jsObjectToPyObject'](@{{obj}}[i]);
+            @{{obj}}=new pyjslib['list'](@{{obj}});
             }
-        else if (pyjslib.isObject(@{{obj}})) {
+        else if (pyjslib['isObject'](@{{obj}})) {
             if (@{{obj}}["__jsonclass__"]) {
                 var class_name = @{{obj}}["__jsonclass__"][0];
                 delete @{{obj}}["__jsonclass__"];
-                var _obj = this.jsObjectToPyObject(@{{obj}});
+                var _obj = this['jsObjectToPyObject'](@{{obj}});
 
                 return $pyjs_kwargs_call(
-                    null, eval('$pyjs.loaded_modules.' + class_name),
+                    null, eval("$pyjs['loaded_modules']." + class_name),
                     null, _obj, [{}]
                 );
                 }
             else {
                 for (var i in @{{obj}})
-                    @{{obj}}[i]=this.jsObjectToPyObject(@{{obj}}[i]);
-                return new pyjslib.dict(@{{obj}});
+                    @{{obj}}[i]=this['jsObjectToPyObject'](@{{obj}}[i]);
+                return new pyjslib['dict'](@{{obj}});
                 }
             }
 
@@ -119,8 +119,8 @@ class JSONParser:
             '\\': '\\\\'
         },
         s = {
-            array: function (x) {
-                var a = ['['], b, f, i, l = x.length, v;
+            'array': function (x) {
+                var a = ['['], b, f, i, l = x['length'], v;
                 for (i = 0; i < l; i += 1) {
                     v = x[i];
                     f = s[typeof v];
@@ -128,15 +128,15 @@ class JSONParser:
                         v = f(v);
                         if (typeof v == 'string') {
                             if (b) {
-                                a[a.length] = ',';
+                                a[a['length']] = ',';
                             }
-                            a[a.length] = v;
+                            a[a['length']] = v;
                             b = true;
                         }
                     }
                 }
-                a[a.length] = ']';
-                return a.join('');
+                a[a['length']] = ']';
+                return a['join']('');
             },
             'boolean': function (x) {
                 return String(x);
@@ -147,25 +147,25 @@ class JSONParser:
             'null': function (x) {
                 return "null";
             },
-            number: function (x) {
+            'number': function (x) {
                 return isFinite(x) ? String(x) : 'null';
             },
-            object: function (x) {
+            'object': function (x) {
                 if (x) {
-                    if (x.__number__) {
+                    if (x['__number__']) {
                         return String(x);
                     }
                     if (x instanceof Array) {
-                        return s.array(x);
+                        return s['array'](x);
                     }
-                    if (x instanceof pyjslib.list) {
-                        return s.array(x.__array);
+                    if (x instanceof pyjslib['list']) {
+                        return s['array'](x['__array']);
                     }
-                    if (x instanceof pyjslib.tuple) {
-                        return s.array(x.__array);
+                    if (x instanceof pyjslib['tuple']) {
+                        return s['array'](x['__array']);
                     }
-                    if (x instanceof pyjslib.dict) {
-                        return s.object(pyjslib.toJSObjects(x));
+                    if (x instanceof pyjslib['dict']) {
+                        return s['object'](pyjslib['toJSObjects'](x));
                     }
                     var a = ['{'], b, f, i, v;
                     for (i in x) {
@@ -175,29 +175,29 @@ class JSONParser:
                             v = f(v);
                             if (typeof v == 'string') {
                                 if (b) {
-                                    a[a.length] = ',';
+                                    a[a['length']] = ',';
                                 }
-                                a.push(s.string(i), ':', v);
+                                a['push'](s['string'](i), ':', v);
                                 b = true;
                             }
                         }
                     }
-                    a[a.length] = '}';
-                    return a.join('');
+                    a[a['length']] = '}';
+                    return a['join']('');
                 }
                 return 'null';
             },
-            string: function (x) {
+            'string': function (x) {
                 if (/["\\\x00-\x1f]/.test(x)) {
-                    x = x.replace(/([\x00-\x1f\\"])/g, function(a, b) {
+                    x = x['replace'](/([\x00-\x1f\\"])/g, function(a, b) {
                         var c = m[b];
                         if (c) {
                             return c;
                         }
-                        c = b.charCodeAt();
+                        c = b['charCodeAt']();
                         return '\\u00' +
-                            Math.floor(c / 16).toString(16) +
-                            (c % 16).toString(16);
+                            Math['floor'](c / 16)['toString'](16) +
+                            (c % 16)['toString'](16);
                     });
                 }
                 return '"' + x + '"';

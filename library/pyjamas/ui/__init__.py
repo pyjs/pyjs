@@ -87,7 +87,7 @@ class Applier(object):
         for (prop, args) in kwargs.items():
             fn = getattr(self, "set%s" % prop, None)
             if not fn:
-                raise Exception("setter function for %s does not exist" % prop)
+                raise Exception("setter function for %s does not exist in %s" % (prop, self.__class__.__name__))
             args = kwargs[prop]
             if isinstance(args, tuple):
                 fn(*args)

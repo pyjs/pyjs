@@ -133,7 +133,7 @@ class ImplHorizontalSplitPanel:
         resizefn = getattr(self, "onResize")
 
         JS("""
-            @{{container}}.onresize = function() {
+            @{{container}}['onresize'] = function() {
                @{{resizefn}}();
                                       }
         """)

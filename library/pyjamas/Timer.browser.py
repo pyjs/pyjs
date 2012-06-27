@@ -19,26 +19,26 @@ class Timer:
     def __setTimeout(self, delayMillis):
         fire = self.__fire
         JS("""
-        return $wnd.setTimeout(function() {
+        return $wnd['setTimeout'](function() {
            @{{fire}}();
           }, @{{delayMillis}});
         """)
 
     def __clearTimeout(self,tid):
         JS("""
-        $wnd.clearTimeout(@{{tid}});
+        $wnd['clearTimeout'](@{{tid}});
         """)
 
     def __setInterval(self, periodMillis):
         fire = self.__fire
         JS("""
-        return $wnd.setInterval(function() {
+        return $wnd['setInterval'](function() {
            @{{fire}}();
           }, @{{periodMillis}});
         """)
 
     def __clearInterval(self,tid):
         JS("""
-        $wnd.clearInterval(@{{tid}});
+        $wnd['clearInterval'](@{{tid}});
         """)
 

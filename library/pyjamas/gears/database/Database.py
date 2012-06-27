@@ -89,7 +89,7 @@ class GearsDatabase:
     """
     def getLastInsertRowId(self):
         JS("""
-        return this.db.lastInsertRowId;
+        return this['db']['lastInsertRowId'];
         """)
 
     """*
@@ -108,7 +108,7 @@ class GearsDatabase:
     """
     def getRowsAffected(self):
         JS("""
-        return this.db.rowsAffected;
+        return this['db']['rowsAffected'];
         """)
 
     """*
@@ -119,22 +119,22 @@ class GearsDatabase:
     """
     def open(self, name=None):
         if name is None:
-            JS(" this.db.open(); ")
+            JS(" this['db']['open'](); ")
         else:
-            JS(" this.db.open(@{{name}}); ")
+            JS(" this['db']['open'](@{{name}}); ")
 
 
     def execute_args(self, sqlStatement, args):
         JS("""
         if (typeof @{{args}} == 'undefined') {
-            return this.db.execute(@{{sqlStatement}});
+            return this['db']['execute'](@{{sqlStatement}});
         } else {
-            return this.db.execute(@{{sqlStatement}}, @{{args}}.l);
+            return this['db']['execute'](@{{sqlStatement}}, @{{args}}['l']);
         }
         """)
 
 
     def uncheckedClose(self):
         JS("""
-        this.db.close();
+        this['db']['close']();
         """)

@@ -5,6 +5,7 @@ pyjd/__init__.py
 examples/showcase/build/
 examples/showcase/src/demoInfo.py
 output
+__output__
 *.pyc
 *.pyo
 .*.sw?

@@ -17,8 +17,8 @@ from __pyjamas__ import JS
 from pyjamas.gmaps.Utils import translateGmapsObject, dictToJs #, gmapsPyObjectToJs
 
 
-GeocoderStatus = JS("$wnd.google.maps.GeocoderStatus")
-GeocoderLocationType = JS("$wnd.google.maps.GeocoderLocationType")
+GeocoderStatus = JS("$wnd['google']['maps']['GeocoderStatus']")
+GeocoderLocationType = JS("$wnd['google']['maps']['GeocoderLocationType']")
 
 
 geocoderResultsFields = dictToJs(
@@ -45,7 +45,7 @@ def translateGeocoderResult(jsResult, pyToJs=False):
 class Geocoder:
 
     def __init__(self):
-        self.geocoder = JS("new $wnd.google.maps.Geocoder()")
+        self.geocoder = JS("new $wnd['google']['maps']['Geocoder']()")
 
     def geocode(self, request, callback):
 

@@ -1,17 +1,17 @@
 # Check http://docs.python.org/library/time.html
 
-from __pyjamas__ import JS
+from __pyjamas__ import JS, debugger
 import math
 
-timezone = JS("60 * (new Date(new Date().getFullYear(), 0, 1)).getTimezoneOffset()")
-altzone = JS("60 * (new Date(new Date().getFullYear(), 6, 1)).getTimezoneOffset()")
+timezone = JS("60 * (new Date(new Date()['getFullYear'](), 0, 1))['getTimezoneOffset']()")
+altzone = JS("60 * (new Date(new Date()['getFullYear'](), 6, 1))['getTimezoneOffset']()")
 if altzone > timezone:
     # Probably on southern parth of the earth...
     d = timezone
     timezone = altzone
     altzone = d
 _dst = timezone - altzone
-d = JS("(new Date(new Date().getFullYear(), 0, 1))")
+d = JS("(new Date(new Date()['getFullYear'](), 0, 1))")
 d = str(d.toLocaleString()).split()[-1]
 if d[0] == '(':
     d = d[1:-1]
@@ -23,7 +23,7 @@ __c__months = ["January", "February", "March", "April", "May", "June", "July", "
 
 
 def time():
-    return float(JS("new Date().getTime() / 1000.0"))
+    return float(JS("new Date()['getTime']() / 1000.0"))
 
 class struct_time(object):
     n_fields = 9
@@ -127,7 +127,7 @@ def mktime(t):
     tm_min = t[4]
     tm_sec = t[5]
     date = JS("new Date(@{{tm_year}}, @{{tm_mon}}, @{{tm_mday}}, @{{tm_hour}}, @{{tm_min}}, @{{tm_sec}})") # local time
-    utc = JS("Date.UTC(@{{tm_year}}, @{{tm_mon}}, @{{tm_mday}}, @{{tm_hour}}, @{{tm_min}}, @{{tm_sec}})")/1000
+    utc = JS("Date['UTC'](@{{tm_year}}, @{{tm_mon}}, @{{tm_mday}}, @{{tm_hour}}, @{{tm_min}}, @{{tm_sec}})")/1000
     ts = date.getTime() / 1000
     if t[8] == 0:
         if ts - utc == timezone:
@@ -213,7 +213,7 @@ def strftime(fmt, t=None):
     JS("var a, fmtChar;")
     while remainder:
         JS("""
-        @{{!a}} = @{{re_pct}}.exec(@{{remainder}});
+        @{{!a}} = @{{re_pct}}['exec'](@{{remainder}});
         if (!@{{!a}}) {
             @{{result}} += @{{remainder}};
             @{{remainder}} = false;
@@ -255,17 +255,17 @@ var _DATE_FORMAT_REGXES = {
  */
 function _parseDate(datestring, format) {
     var parsed = {};
-    for (var i1=0,i2=0;i1<format.length;i1++,i2++) {
+    for (var i1=0,i2=0;i1<format['length'];i1++,i2++) {
         var c1 = format[i1];
         var c2 = datestring[i2];
         if (c1 == '%') {
             c1 = format[++i1];
-            var data = _DATE_FORMAT_REGXES[c1].exec(datestring.substring(i2));
-            if (!data.length) {
+            var data = _DATE_FORMAT_REGXES[c1]['exec'](datestring['substring'](i2));
+            if (!data['length']) {
                 return null;
             }
             data = data[0];
-            i2 += data.length-1;
+            i2 += data['length']-1;
             var value = parseInt(data, 10);
             if (isNaN(value)) {
                 return null;
@@ -282,7 +282,7 @@ function _parseDate(datestring, format) {
 
 /*
  * basic implementation of strptime. The only recognized formats
- * defined in _DATE_FORMAT_REGEXES (i.e. %Y, %d, %m, %H, %M)
+ * defined in _DATE_FORMAT_REGEXES (i['e']. %Y, %d, %m, %H, %M)
  */
 function strptime(datestring, format) {
     var parsed = _parseDate(datestring, format);
@@ -291,47 +291,47 @@ function strptime(datestring, format) {
     }
     // create initial date (!!! year=0 means 1900 !!!)
     var date = new Date(0, 0, 1, 0, 0);
-    date.setFullYear(0); // reset to year 0
-    if (typeof parsed.Y != "undefined") {
-        date.setFullYear(parsed.Y);
+    date['setFullYear'](0); // reset to year 0
+    if (typeof parsed['Y'] != "undefined") {
+        date['setFullYear'](parsed['Y']);
     }
-    if (typeof parsed.y != "undefined") {
-        date.setFullYear(2000+parsed.y);
+    if (typeof parsed['y'] != "undefined") {
+        date['setFullYear'](2000+parsed['y']);
     }
-    if (typeof parsed.m != "undefined") {
-        if (parsed.m < 1 || parsed.m > 12) {
+    if (typeof parsed['m'] != "undefined") {
+        if (parsed['m'] < 1 || parsed['m'] > 12) {
             return null;
         }
         // !!! month indexes start at 0 in javascript !!!
-        date.setMonth(parsed.m - 1);
+        date['setMonth'](parsed['m'] - 1);
     }
-    if (typeof parsed.d != "undefined") {
-        if (parsed.m < 1 || parsed.m > 31) {
+    if (typeof parsed['d'] != "undefined") {
+        if (parsed['m'] < 1 || parsed['m'] > 31) {
             return null;
         }
-        date.setDate(parsed.d);
+        date['setDate'](parsed['d']);
     }
-    if (typeof parsed.H != "undefined") {
-        if (parsed.H < 0 || parsed.H > 23) {
+    if (typeof parsed['H'] != "undefined") {
+        if (parsed['H'] < 0 || parsed['H'] > 23) {
             return null;
         }
-        date.setHours(parsed.H);
+        date['setHours'](parsed['H']);
     }
-    if (typeof parsed.M != "undefined") {
-        if (parsed.M < 0 || parsed.M > 59) {
+    if (typeof parsed['M'] != "undefined") {
+        if (parsed['M'] < 0 || parsed['M'] > 59) {
             return null;
         }
-        date.setMinutes(parsed.M);
+        date['setMinutes'](parsed['M']);
     }
-    if (typeof parsed.S != "undefined") {
-        if (parsed.S < 0 || parsed.S > 59) {
+    if (typeof parsed['S'] != "undefined") {
+        if (parsed['S'] < 0 || parsed['S'] > 59) {
             return null;
         }
-        date.setSeconds(parsed.S);
+        date['setSeconds'](parsed['S']);
     }
-    // new Date().setFullYear(2010,01,31) returns March 3
-    if (typeof parsed.m != "undefined" && date.getMonth() != parsed.m-1) {
-        // date.getMonth() and parsed.m don't correspond
+    // new Date()['setFullYear'](2010,01,31) returns March 3
+    if (typeof parsed['m'] != "undefined" && date['getMonth']() != parsed['m']-1) {
+        // date['getMonth']() and parsed['m'] don't correspond
         return null;
     }
     return date;
@@ -342,13 +342,13 @@ function strptime(datestring, format) {
 # There's a timestamp required
 def _strptime(datestring, format):
     try:
-        return float(JS("strptime(@{{datestring}}.valueOf(), @{{format}}.valueOf()).getTime() / 1000.0"))
+        return float(JS("strptime(@{{datestring}}['valueOf'](), @{{format}}['valueOf']())['getTime']() / 1000.0"))
     except:
         raise ValueError("Invalid or unsupported values for strptime: '%s', '%s'" % (datestring, format))
 
 def strptime(datestring, format):
     try:
-        tt = localtime(float(JS("strptime(@{{datestring}}.valueOf(), @{{format}}.valueOf()).getTime() / 1000.0")))
+        tt = localtime(float(JS("strptime(@{{datestring}}['valueOf'](), @{{format}}['valueOf']())['getTime']() / 1000.0")))
         tt.tm_isdst = -1
         return tt
     except:

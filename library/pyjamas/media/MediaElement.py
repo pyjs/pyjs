@@ -25,19 +25,19 @@ class MediaElement(Element):
 
     def getNetworkState(self):
         JS("""
-        return this.networkState;
+        return this['networkState'];
         """)
 
 
     def getBuffered(self):
         JS("""
-        return this.buffered;
+        return this['buffered'];
         """)
 
 
     def isSeeking(self):
         JS("""
-        return media.seeking;
+        return media['seeking'];
         """)
 
 

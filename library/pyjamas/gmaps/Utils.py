@@ -34,22 +34,22 @@ from __pyjamas__ import JS
 
 def translateGmapsObject(obj, fieldName, fields, pyToJs):
     JS("""
-    //console.log("translateGmapsObject " + fieldNameXXX+"("+pyToJs+")")
+    //console['log']("translateGmapsObject " + fieldNameXXX+"("+pyToJs+")")
 
     if (! (@{{fieldName}} in @{{fields}}))
     {
-      //console.log("nothing")
+      //console['log']("nothing")
       return @{{obj}};
     }
     else{
         @{{action}} = @{{fields}}[@{{fieldName}}]
-        //console.log("action=" + action)
+        //console['log']("action=" + action)
 
         if (@{{action}} == 'd')
         {
-          //console.log("is dict")
+          //console['log']("is dict")
           // this newobj can be used in js and also in python,
-          // like this "newobj.field"
+          // like this "newobj['field']"
           var newobj = {}
           for (var i in @{{obj}})
              // vai ficar disponivel como uma propriedade, no python!
@@ -61,24 +61,24 @@ def translateGmapsObject(obj, fieldName, fields, pyToJs):
         {
           if (@{{pyToJs}}) {
               var newobj = $m['listToJs'](@{{obj}})
-              //console.log("is list py->js")
+              //console['log']("is list py->js")
               for (var i in newobj){
                  newobj[i]=$m['translateGmapsObject'](
                     newobj[i], @{{fieldName}} + "[]", @{{fields}},@{{pyToJs}} ) ;
               }
               return newobj
           }else{
-              //console.log("is list js->py")
+              //console['log']("is list js->py")
               var newobj = @{{list}}([])
               for (var i in @{{obj}})
-                 newobj.append($m['translateGmapsObject'](
+                 newobj['append']($m['translateGmapsObject'](
                      @{{obj}}[i], @{{fieldName}} + "[]", @{{fields}},@{{pyToJs}} ));
               return newobj
           }
         }
         else
         {
-          //console.log("is special")
+          //console['log']("is special")
           return @{{action}}(@{{obj}})
         }
     }
@@ -148,7 +148,7 @@ def __addListener(eventName, callback):
     self = JS("this")
 
     thelist = JS("""
-       $wnd.google.maps.event.addListener(this, @{{eventName}}, function(event) {
+       $wnd['google']['maps']['event']['addListener'](this, @{{eventName}}, function(event) {
          @{{callback}}(event);
        })
     """)
@@ -169,7 +169,7 @@ def __removeListener(list):
 
     for eventName in self.__listeners:
         if list in self.__listeners[eventName]:
-            JS("""$wnd.google.maps.event.removeListener(@{{list}});""")
+            JS("""$wnd['google']['maps']['event']['removeListener'](@{{list}});""")
             self.__listeners[eventName].remove(list)
             return
     # if we get here, there is nothing to remove,
@@ -179,7 +179,7 @@ def __removeListener(list):
 def __clearListeners(eventName):
     self = JS("this")
 
-    JS("""$wnd.google.maps.event.clearListeners(this, @{{eventName}})""")
+    JS("""$wnd['google']['maps']['event']['clearListeners'](this, @{{eventName}})""")
     if eventName in self.__listeners:
         del self.__listeners[eventName]
 
@@ -187,5 +187,5 @@ def __clearListeners(eventName):
 def __clearInstanceListeners():
     self = JS("this")
 
-    JS("""$wnd.google.maps.event.clearInstanceListeners(this)""")
+    JS("""$wnd['google']['maps']['event']['clearInstanceListeners'](this)""")
     self.__listeners = {}

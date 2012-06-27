@@ -41,10 +41,10 @@ The module name cannot contain '.'; to search for a submodule of a
 package, pass the submodule name and the package's __path__."""
     if path is not None:
         name = '.'.join(path) + '.' + name
-    if JS("""typeof $pyjs.loaded_modules[@{{name}}.valueOf()] != 'undefined'"""):
+    if JS("""typeof $pyjs['loaded_modules'][@{{name}}['valueOf']()] != 'undefined'"""):
         return (None, name, ('', '', JS_COMPILED))
     # TODO: dynamic loading
-    # if JS("$pyjs.options.dynamic_loading"):
+    # if JS("$pyjs['options']['dynamic_loading']"):
     # return (jscode, name, ('js', '', JS_SOURCE))
     raise ImportError("No module named %s" % name)
 
@@ -92,10 +92,10 @@ Load a module, given information returned by find_module().
 The module name must include the full package name, if any."""
     suffix, mode, type = info
     if file is None:
-        module = JS("""$pyjs.loaded_modules[@{{filename}}.valueOf()]""")
+        module = JS("""$pyjs['loaded_modules'][@{{filename}}['valueOf']()]""")
         sys.modules[name] = module
         #debugger()
-        JS("""@{{module}}.$module_init(@{{name}})""")
+        JS("""@{{module}}['$module_init'](@{{name}})""")
         return module
     # TODO: Handle other types (for dynamic load)
     raise NotImplementedError

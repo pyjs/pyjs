@@ -123,22 +123,22 @@ class ImageLoader:
 
         var __this = this;
 
-        @{{img}}.onload = function() {
-            if(!@{{img}}.__isLoaded) {
+        @{{img}}['onload'] = function() {
+            if(!@{{img}}['__isLoaded']) {
 
                 // __isLoaded should be set for the first time here.
                 // if for some reason img fires a second onload event
                 // we do not want to execute the following again (hence the guard)
-                @{{img}}.__isLoaded = true;
-                __this.incrementLoadedImages();
-                @{{img}}.onload = null;
+                @{{img}}['__isLoaded'] = true;
+                __this['incrementLoadedImages']();
+                @{{img}}['onload'] = null;
 
                 // we call this function each time onload fires
                 // It will see if we are ready to invoke the callback
-                __this.dispatchIfComplete();
+                __this['dispatchIfComplete']();
             } else {
                 // we invoke the callback since we are already loaded
-                __this.dispatchIfComplete();
+                __this['dispatchIfComplete']();
             }
         }
 

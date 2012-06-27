@@ -61,7 +61,7 @@ for path in paths:
 complete = [
     '\n' + '( Pyjs )'.center(69, '-') + '\n',
     '  Complete! View examples via:',
-    str('  # cd {0}').format(path),
+    str('  # cd {0}/__output__').format(path),
     str('  # {0} -m SimpleHTTPServer').format(env['PYJS_BIN_PYTHON']),
     '  http://localhost:8000',
     '\n' + '( Pyjs )'.center(69, '-') + '\n\n',

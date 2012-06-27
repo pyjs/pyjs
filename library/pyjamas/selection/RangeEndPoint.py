@@ -491,22 +491,22 @@ class RangeEndPoint:
 
     def isVisible(self, doc, ele):
         JS("""
-        if (!ele.parentNode) return false;
-        if (ele.style)  {
-            if (ele.style.display == 'none') return false;
-            if (ele.style.visibility == 'hidden') return false;
+        if (!ele['parentNode']) return false;
+        if (ele['style'])  {
+            if (ele['style']['display'] == 'none') return false;
+            if (ele['style']['visibility'] == 'hidden') return false;
         }
 
         // Try the computed style in a standard way
-        var wind = doc.defaultView || doc.parentWindow;
-        if (wind && wind.getComputedStyle) {
-            var style = wind.getComputedStyle(ele, null);
-            if (style.display == 'none') return false;
-            if (style.visibility == 'hidden') return false;
+        var wind = doc['defaultView'] || doc['parentWindow'];
+        if (wind && wind['getComputedStyle']) {
+            var style = wind['getComputedStyle'](ele, null);
+            if (style['display'] == 'none') return false;
+            if (style['visibility'] == 'hidden') return false;
         }
 
         // Don't care about parents, already traversed down them
-        //return isVisible(obj.parentNode);
+        //return isVisible(obj['parentNode']);
         return true;
         """)
 

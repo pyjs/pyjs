@@ -16,8 +16,8 @@ from __pyjamas__ import JS
 
 
 def MVCObject():
-    JS("return new $wnd.google.maps.MVCObject()")
+    JS("return new $wnd['google']['maps']['MVCObject']()")
 
 
 def OverlayView():
-    JS("return new $wnd.google.maps.OverlayView()")
+    JS("return new $wnd['google']['maps']['OverlayView']()")

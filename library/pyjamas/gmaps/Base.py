@@ -17,34 +17,34 @@ from __pyjamas__ import JS
 
 def LatLng(lat, lng, nowrap=True):
     if nowrap:
-        JS("return new $wnd.google.maps.LatLng(@{{lat}}, @{{lng}}, @{{nowrap}})")
+        JS("return new $wnd['google']['maps']['LatLng'](@{{lat}}, @{{lng}}, @{{nowrap}})")
     else:
-        JS("return new $wnd.google.maps.LatLng(@{{lat}}, @{{lng}})")
+        JS("return new $wnd['google']['maps']['LatLng'](@{{lat}}, @{{lng}})")
 
 
 def LatLngBounds(sw, ne):
     if sw and ne:
-        JS("return new $wnd.google.maps.LatLngBounds(@{{sw}}, @{{ne}})")
+        JS("return new $wnd['google']['maps']['LatLngBounds'](@{{sw}}, @{{ne}})")
     else:
-        JS("return new $wnd.google.maps.LatLngBounds()")
+        JS("return new $wnd['google']['maps']['LatLngBounds']()")
 
 
 def MVCArray(array):
-    JS("return new $wnd.google.maps.MVCArray(@{{array}})")
+    JS("return new $wnd['google']['maps']['MVCArray'](@{{array}})")
 
 
 def Point(x, y):
-    JS("return new $wnd.google.maps.Point(@{{x}}, @{{y}})")
+    JS("return new $wnd['google']['maps']['Point'](@{{x}}, @{{y}})")
 
 
 def Size(width, height, widthUnit, heightUnit):
     if widthUnit and heightUnit:
         JS("""
-        return new $wnd.google.maps.Size
+        return new $wnd['google']['maps']['Size']
            (@{{width}}, @{{height}}, @{{widthUnit}}, @{{heightUnit}})
         """)
     else:
-        JS("return new $wnd.google.maps.Size(@{{width}}, @{{height}})")
+        JS("return new $wnd['google']['maps']['Size'](@{{width}}, @{{height}})")
 
 
 def Array():

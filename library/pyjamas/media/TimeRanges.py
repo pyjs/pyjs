@@ -21,19 +21,19 @@ class TimeRanges(object):
 
     def length(self):
         JS("""
-        return this.length;
+        return this['length'];
         """)
 
 
     def start(self, index):
         JS("""
-        return this.start(index);
+        return this['start'](index);
         """)
 
 
     def end(self, index):
         JS("""
-        return this.end(index);
+        return this['end'](index);
         """)
 
 

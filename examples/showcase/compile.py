@@ -111,18 +111,18 @@ def main():
     f.write("\n".join(s))
     f.close()
 
-    options = " ".join(sys.argv[1:])
+    options = " ".join(sys.argv[1:]) + " --enable-signatures --enable-preserve-libs --disable-debug --dynamic-link"
     # Compile the application using Pyjamas.
     if sys.platform == "win32":
         stmt = (sys.executable + " " + os.path.join(PATH_TO_PYJAMAS, 'bin', 'pyjsbuild.py') +
                 " " + options +
-                " -o " + os.path.join(here,'output') + " " +
+                " -o " + os.path.join(here, '..', '__output__') + " " +
                 " -I " + os.path.join(here, 'src') + " " +
                 'Showcase')
     else:
-        stmt = (os.path.join(PATH_TO_PYJAMAS, 'bin', 'pyjsbuild') +
+        stmt = (sys.executable + " " + os.path.join(PATH_TO_PYJAMAS, 'bin', 'pyjsbuild') +
                 " " + options +
-                " -o " + os.path.join(here,'output') + " " +
+                " -o " + os.path.join(here, '..', '__output__') + " " +
                 " -I " + os.path.join(here, 'src') + " " +
                 'Showcase' +
                 " > /dev/null")

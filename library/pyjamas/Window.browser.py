@@ -6,12 +6,12 @@ def addWindowResizeListener(listener):
     resizeListeners.append(listener)
 
 def getTitle():
-    return JS('$doc.title')
+    return JS('$doc["title"]')
 
 def getLocation():
     global location
     if not location:
-        l = JS('$wnd.location')
+        l = JS('$wnd["location"]')
         location = Location.Location(l)
     return location
 
@@ -20,16 +20,16 @@ def setLocation(url):
     w.location = url
 
 def getClientHeight():
-    return JS('$wnd.innerHeight')
+    return JS('$wnd["innerHeight"]')
 
 def getClientWidth():
-    return JS('$wnd.innerWidth')
+    return JS('$wnd["innerWidth"]')
 
 def setOnError(onError):
     if (not callable(onError)):
         raise TypeError("object is not callable")
     JS("""\
-    $wnd.onerror=function(msg, url, linenumber){
+    $wnd['onerror']=function(msg, url, linenumber){
         return @{{onError}}(msg, url, linenumber);
     }
     """)
@@ -82,7 +82,7 @@ def onError(msg, url, linenumber):
     dialog.className='errordialog'
     # Note: $pyjs.trackstack is a global javascript array
     # XXX: we should not have a sys dependency here!
-    tracestr = sys.trackstackstr(JS("$pyjs.trackstack.slice(0,-1)"))
+    tracestr = sys.trackstackstr(JS("$pyjs['trackstack']['slice'](0,-1)"))
     tracestr = tracestr.replace("\n", "<br />\n&nbsp;&nbsp;&nbsp;")
     dialog.innerHTML="""\
 &nbsp;<b style="color:red">JavaScript Error: </b>
@@ -115,7 +115,7 @@ def init():
 
     init_listeners()
     JS("""
-    $wnd.__pygwt_initHandlers(
+    $wnd['__pygwt_initHandlers'](
         function() {
             @{{onResize}}();
         },
@@ -124,9 +124,9 @@ def init():
         },
         function() {
             @{{onClosed}}();
-            /*$wnd.onresize = null;
-            $wnd.onbeforeclose = null;
-            $wnd.onclose = null;*/
+            /*$wnd['onresize'] = null;
+            $wnd['onbeforeclose'] = null;
+            $wnd['onclose'] = null;*/
         }
     );
     """)

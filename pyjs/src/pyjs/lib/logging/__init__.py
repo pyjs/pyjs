@@ -947,7 +947,7 @@ class Logger(Filterer):
         Find the stack frame of the caller so that we can note the source
         file name, line number and function name.
         """
-        stack = list(JS("""$pyjs.trackstack"""))
+        stack = list(JS("""$pyjs['trackstack']"""))
         #stack.reverse()
         fname = "(unknown file)"
         lineno = 0

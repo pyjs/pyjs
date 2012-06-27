@@ -156,7 +156,7 @@ function __pygwt_injectWebModeFrame(name) {
 
       // Insert an IFRAME
       var iframe = document.createElement("iframe");
-      var selectorURL = parts[0] + parts[1] + ".nocache.html";
+      var selectorURL = parts[0] + parts[1] + ".nocache.html?" + (new Date()).getTime();
       iframe.src = selectorURL;
       iframe.id = selectorURL;
       iframe.style.display = 'none';

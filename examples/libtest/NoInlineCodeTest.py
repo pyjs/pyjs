@@ -1,4 +1,6 @@
 # Tests for the implementatuion of --no-inline-code
+# Note that the use of int/float/lon as variable 
+# is not allowed with google closure compile
 
 import sys
 import UnitTest

@@ -3,34 +3,40 @@
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 <script><!--
 var $wnd = parent;
-var $doc = $wnd.document;
+var $doc = $wnd['document'];
 var $moduleName = "%(app_name)s";
 var $pyjs = new Object();
 var $p = null;
-$pyjs.global_namespace = this;
-$pyjs.__modules__ = {};
-$pyjs.loaded_modules = {};
-$pyjs.options = new Object();
+$pyjs['global_namespace'] = this;
+$pyjs['__modules__'] = {};
+$pyjs['loaded_modules'] = {};
+$pyjs['options'] = new Object();
 %(setoptions)s
-$pyjs.trackstack = [];
-$pyjs.track = {module:'__main__', lineno: 1};
-$pyjs.trackstack.push($pyjs.track);
-$pyjs.__active_exception_stack__ = null;
-$pyjs.__last_exception_stack__ = null;
-$pyjs.__last_exception__ = null;
-$pyjs.in_try_except = 0;
+$pyjs['trackstack'] = [];
+$pyjs['track'] = {'module':'__main__', 'lineno': 1};
+$pyjs['trackstack']['push']($pyjs['track']);
+$pyjs['__active_exception_stack__'] = null;
+$pyjs['__last_exception_stack__'] = null;
+$pyjs['__last_exception__'] = null;
+$pyjs['in_try_except'] = 0;
 
 /*
  * prepare app system vars
  */
-$pyjs.platform = '%(platform_name)s';
-$pyjs.appname = '%(app_name)s';
-$pyjs.loadpath = './';
+$pyjs['platform'] = '%(platform_name)s';
+$pyjs['appname'] = '%(app_name)s';
+$pyjs['loadpath'] = './';
+
+// For google closure compiler:
+window['$wnd'] = $wnd;
+window['$doc'] = $doc;
+window['$pyjs'] = $pyjs;
+
 
 --></script>
 %(app_headers)s
 </head>
-<body onload="if ($wnd && $wnd.__pygwt_modController) $wnd.__pygwt_modController.done($pyjs.appname);">
+<body onload="if ($wnd && $wnd['__pygwt_modController']) $wnd['__pygwt_modController']['done']($pyjs['appname']);">
 <font face='arial' size='-1'>This script is part of module</font> <code>%(app_name)s</code>
 
 
@@ -68,32 +74,32 @@ $pyjs.loadpath = './';
 var wait_count = 0;
 
 var onExecutionError = function (exception, name) {
-    var extra = sys.trackstackstr();
+    var extra = sys['trackstackstr']();
     if (extra == '') {
-        if (exception.name.indexOf('HaltException', 0) < 0) { 
+        if (exception['name']['indexOf']('HaltException', 0) < 0) { 
             extra = "\n.  Rebuild with pyjsbuild -d for more information.";
         }
     } else {
         extra = "\n" + extra;
     }
     alert( "In application " + name + " - " + 
-          exception.name + ': '  + exception.message + extra);
+          exception['name'] + ': '  + exception['message'] + extra);
 };
 
 function app_imported() {
-    $p = $pyjs.loaded_modules['pyjslib'];
+    $p = $pyjs['loaded_modules']['pyjslib'];
     if (typeof $p != "undefined") {
         $p('pyjslib');
-        $pyjs.__modules__.pyjslib = $p['pyjslib']
-        pyjslib.___import___(
+        $pyjs['__modules__']['pyjslib'] = $p;
+        pyjslib['___import___'](
             '%(app_name)s',
             null,
             '__main__');
     } else {
-        var B$ = $pyjs.loaded_modules['__builtin__'];
+        var B$ = $pyjs['loaded_modules']['__builtin__'];
         $p = B$['$dict'];
-        B$.$module_init('__builtin__');
-        $p._start_main('%(app_name)s');
+        B$['$module_init']('__builtin__');
+        $p['_start_main']('%(app_name)s');
     }
     return;
 }
@@ -101,7 +107,7 @@ function app_imported() {
 function prepare_app() {
     var startWait = 30000;
     var diffWait = 10000;
-    var startAt = (new Date()).getTime();
+    var startAt = (new Date())['getTime']();
     var waitUntil = startAt + startWait;
     // Wait until all (dynamic) modules are loaded, and then call app_imported()
     var wait_for_loading_modules = function ( proceed_fn, module_list ) {
@@ -109,24 +115,24 @@ function prepare_app() {
         var wait = function ( ) {
             var notLoaded = [];
             for (var i in module_list) {
-                if (typeof $pyjs.loaded_modules[module_list[i]] == 'undefined') {
-                    notLoaded.push(module_list[i]);
+                if (typeof $pyjs['loaded_modules'][module_list[i]] == 'undefined') {
+                    notLoaded['push'](module_list[i]);
                 }
             }
-            if (notLoaded.length != 0) {
+            if (notLoaded['length'] != 0) {
                 var now = new Date();
-                if (now.getTime() >= waitUntil) {
-                    var msg = "Module not loaded yet: " + notLoaded.length
-                    if (notLoaded.length <= 2) {
-                        msg += "\n" + notLoaded.toString();
+                if (now['getTime']() >= waitUntil) {
+                    var msg = "Module not loaded yet: " + notLoaded['length']
+                    if (notLoaded['length'] <= 2) {
+                        msg += "\n" + notLoaded['toString']();
                     }
                     msg += "\n" + "Wait for missing modules?"
-                    var answer = $wnd.confirm(msg);
+                    var answer = $wnd['confirm'](msg);
                     if (answer == false) {
                         proceed_fn();
                         return;
                     }
-                    waitUntil = (new Date()).getTime() + diffWait;
+                    waitUntil = (new Date())['getTime']() + diffWait;
                 }
                 setTimeout(wait, timeoutperiod);
             } else {
@@ -149,14 +155,15 @@ function pygwtOnLoad(onLoadError, name) {
         prepare_app();
     }
 }
+window['pygwtOnLoad'] = pygwtOnLoad;
 
-$pyjs.script_onload = function (modname) {
-    $pyjs.loaded_modules[modname] = function () { return null };
+$pyjs['script_onload'] = function (modname) {
+    $pyjs['loaded_modules'][modname] = function () { return null };
 }
 
-$pyjs.script_onreadystate = function (modname) {
-    if (js.readyState == 'complete') {
-        $pyjs.script_onload(modname);
+$pyjs['script_onreadystate'] = function (modname) {
+    if (js['readyState'] == 'complete') {
+        $pyjs['script_onload'](modname);
     }
 }
 --></script>

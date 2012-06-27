@@ -20,7 +20,7 @@ JS("""
     by John Walker.
 
  Code found at:
-  http://strongwiki.wisegeek.com/trac/browser/trunk/javascript/crypto
+  http://strongwiki['wisegeek']['com']/trac/browser/trunk/javascript/crypto
 
  */
 
@@ -30,7 +30,7 @@ function array(n) {
     for (i = 0; i < n; i++) {
         this[i] = 0;
     }
-    this.length = n;
+    this['length'] = n;
 }
 
 /* Some basic logical functions had to be rewritten because of a bug in
@@ -312,18 +312,18 @@ function transform(buf, offset) {
 
 }
 
-this.init = function() {
+this['init'] = function() {
     count[0] = count[1] = 0;
     state[0] = 0x67452301;
     state[1] = 0xefcdab89;
     state[2] = 0x98badcfe;
     state[3] = 0x10325476;
-    for (i = 0; i < digestBits.length; i++) {
+    for (i = 0; i < digestBits['length']; i++) {
         digestBits[i] = 0;
     }
 };
 
-this.update = function(b) {
+this['update'] = function(b) {
     var index, i;
 
     index = and(shr(count[0],3) , 0x3F);
@@ -340,7 +340,7 @@ this.update = function(b) {
     }
 };
 
-this.finish = function() {
+this['finish'] = function() {
     var bits = new array(8);
     var padding;
     var i = 0, index = 0, padLen = 0;
@@ -356,10 +356,10 @@ this.finish = function() {
     padding = new array(64);
     padding[0] = 0x80;
     for (i = 0; i < padLen; i++) {
-      this.update(padding[i]);
+      this['update'](padding[i]);
     }
     for (i = 0; i < 8; i++) {
-      this.update(bits[i]);
+      this['update'](bits[i]);
     }
 
     for (i = 0; i < 4; i++) {
@@ -370,7 +370,7 @@ this.finish = function() {
     return digestBits;
 };
 
-this.getdigestBits = function() {
+this['getdigestBits'] = function() {
     return digestBits;
 };
 

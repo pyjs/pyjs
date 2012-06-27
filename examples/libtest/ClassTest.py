@@ -161,7 +161,8 @@ class ClassTest(UnitTest):
             from __pyjamas__ import JS
             try:
                 x = ExampleClass().fail_a()
-                self.assertTrue(JS('pyjslib.isUndefined(@{{x}})'))
+                #self.assertTrue(JS('pyjslib.isUndefined(@{{x}})'))
+                self.assertTrue(JS("$pyjs['loaded_modules']['pyjslib']['isUndefined'](@{{x}})"))
             except ValueError:
                 self.assertTrue(True)
 

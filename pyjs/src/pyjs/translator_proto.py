@@ -844,29 +844,29 @@ class Translator(object):
             self.import_context = "null"
             self.relative_import_context = None
 
-        self.w( self.indent() + "$pyjs.loaded_modules['%s'] = function (__mod_name__) {" % module_name)
-        self.w( self.spacing() + "if($pyjs.loaded_modules['%s'].__was_initialized__) return $pyjs.loaded_modules['%s'];"% (module_name, module_name))
+        self.w( self.indent() + "$pyjs['loaded_modules']['%s'] = function (__mod_name__) {" % module_name)
+        self.w( self.spacing() + "if($pyjs['loaded_modules']['%s']['__was_initialized__']) return $pyjs['loaded_modules']['%s'];"% (module_name, module_name))
         if self.parent_module_name:
-            self.w( self.spacing() + "if(typeof $pyjs.loaded_modules['%s'] == 'undefined' || !$pyjs.loaded_modules['%s'].__was_initialized__) @{{___import___}}('%s', null);"% (self.parent_module_name, self.parent_module_name, self.parent_module_name))
+            self.w( self.spacing() + "if(typeof $pyjs['loaded_modules']['%s'] == 'undefined' || !$pyjs['loaded_modules']['%s']['__was_initialized__']) @{{___import___}}('%s', null);"% (self.parent_module_name, self.parent_module_name, self.parent_module_name))
         parts = self.js_module_name.split('.')
         if len(parts) > 1:
-            self.w( self.spacing() + 'var %s = $pyjs.loaded_modules["%s"];' % (parts[0], module_name.split('.')[0]))
+            self.w( self.spacing() + "var %s = $pyjs['loaded_modules']['%s'];" % (parts[0], module_name.split('.')[0]))
         if self.js_module_name in ['pyjslib', 'sys']:
-            self.w( self.spacing() + 'var %s = %s = $pyjs.loaded_modules["%s"];' % (self.module_prefix[:-1], self.js_module_name, module_name,))
+            self.w( self.spacing() + "var %s = %s = $pyjs['loaded_modules']['%s'];" % (self.module_prefix[:-1], self.js_module_name, module_name,))
         else:
-            self.w( self.spacing() + 'var %s = $pyjs.loaded_modules["%s"];' % (self.module_prefix[:-1], module_name,))
+            self.w( self.spacing() + "var %s = $pyjs['loaded_modules']['%s'];" % (self.module_prefix[:-1], module_name,))
 
-        self.w( self.spacing() + self.module_prefix + '__repr__ = function() { return "<module: %s>"; };' % (module_name))
-        self.w( self.spacing() + self.module_prefix + "__was_initialized__ = true;")
+        self.w( self.spacing() + self.module_prefix[:-1] + "['__repr__'] = function() { return '<module: %s>'; };" % (module_name))
+        self.w( self.spacing() + self.module_prefix[:-1] + "['__was_initialized__'] = true;")
         self.w( self.spacing() + "if ((__mod_name__ === null) || (typeof __mod_name__ == 'undefined')) __mod_name__ = '%s';" % (module_name))
-        lhs = self.scopeName('__name__', 0, False)
+        lhs = self.closureSafe(self.scopeName('__name__', 0, False))
         self.w( self.spacing() + "%s = __mod_name__;" % (lhs))
         if self.source_tracking:
             self.w( self.spacing() + "%s__track_lines__ = new Array();" % self.module_prefix)
         name = module_name.split(".")
         if len(name) > 1:
             jsname = self.jsname('variable', name[-1])
-            self.w( self.spacing() + "$pyjs.loaded_modules['%s']['%s'] = $pyjs.loaded_modules['%s'];" % (
+            self.w( self.spacing() + "$pyjs['loaded_modules']['%s']['%s'] = $pyjs['loaded_modules']['%s'];" % (
                 '.'.join(name[:-1]), jsname, module_name,
             ))
 
@@ -1246,6 +1246,7 @@ class Translator(object):
                     substname = self.scopeName(varname, depth, is_local)
                 else:
                     substname = jsname
+                substname = self.closureSafe(substname)
                 txt += substname
             txt += l[i+1]
         return txt
@@ -1260,16 +1261,22 @@ class Translator(object):
             depth -= 1
         return self.modpfx() + name
 
+    def closureSafe(self, varname):
+        varname = varname.split('.')
+        if len(varname) == 1:
+            return varname[0]
+        return "%s['%s']" % (varname[0], "']['".join(varname[1:]))
+
     def attrib_remap_decl(self):
         s = self.spacing()
         lines = []
-        module_prefix = self.module_prefix
+        module_prefix = self.module_prefix[:-1]
         remap = pyjs_attrib_remap.keys()
         remap.sort()
-        lines.append("%(s)svar attrib_remap = %(module_prefix)sattrib_remap = %(remap)s;" % locals())
+        lines.append("%(s)svar attrib_remap = %(module_prefix)s['attrib_remap'] = %(remap)s;" % locals())
         remap = pyjs_vars_remap.keys()
         remap.sort()
-        lines.append("%(s)svar var_remap = %(module_prefix)svar_remap = %(remap)s;" % locals())
+        lines.append("%(s)svar var_remap = %(module_prefix)s['var_remap'] = %(remap)s;" % locals())
         return "\n".join(lines)
 
     def constant_decl(self):
@@ -1319,10 +1326,10 @@ class Translator(object):
 ((%(v)s=%(e)s) === null || %(v)s === false || %(v)s === 0 || %(v)s === '' ?
     false :
     (typeof %(v)s=='object'?
-        (typeof %(v)s.__nonzero__=='function'?
-            %(v)s.__nonzero__() :
-            (typeof %(v)s.__len__=='function'?
-                (%(v)s.__len__()>0 ?
+        (typeof %(v)s['__nonzero__']=='function'?
+            %(v)s['__nonzero__']() :
+            (typeof %(v)s['__len__']=='function'?
+                (%(v)s['__len__']()>0 ?
                     true :
                     false) :
                 true ) ) :
@@ -1340,16 +1347,16 @@ class Translator(object):
         return "$p['bool'](%(e)s)" % locals()
 
     __inline_len_code_str1 = """((%(v)s=%(e)s) === null?%(zero)s:
-    (typeof %(v)s.__array != 'undefined' ? %(v)s.__array.length:
-        (typeof %(v)s.__len__ == 'function'?%(v)s.__len__():
-            (typeof %(v)s.length != 'undefined'?%(v)s.length:
+    (typeof %(v)s['__array'] != 'undefined' ? %(v)s['__array']['length']:
+        (typeof %(v)s['__len__'] == 'function'?%(v)s['__len__']():
+            (typeof %(v)s['length'] != 'undefined'?%(v)s['length']:
                 @{{len}}(%(v)s)))))"""
     __inline_len_code_str1 = __inline_len_code_str1.replace("    ", "\t").replace("\n", "\n%(s)s")
 
     __inline_len_code_str2 = """((%(v)s=%(e)s) === null?%(zero)s:
-    (typeof %(v)s.__array != 'undefined' ? new $p['int'](%(v)s.__array.length):
-        (typeof %(v)s.__len__ == 'function'?%(v)s.__len__():
-            (typeof %(v)s.length != 'undefined'? new $p['int'](%(v)s.length):
+    (typeof %(v)s['__array'] != 'undefined' ? new $p['int'](%(v)s['__array']['length']):
+        (typeof %(v)s['__len__'] == 'function'?%(v)s['__len__']():
+            (typeof %(v)s['length'] != 'undefined'? new $p['int'](%(v)s['length']):
                 @{{len}}(%(v)s)))))"""
     __inline_len_code_str2 = __inline_len_code_str2.replace("    ", "\t").replace("\n", "\n%(s)s")
 
@@ -1369,8 +1376,8 @@ class Translator(object):
 
     __inline_eq_code_str = """((%(v1)s=%(e1)s)===(%(v2)s=%(e2)s)&&%(v1)s===null?true:
     (%(v1)s===null?false:(%(v2)s===null?false:
-        ((typeof %(v1)s=='object'||typeof %(v1)s=='function')&&typeof %(v1)s.__cmp__=='function'?%(v1)s.__cmp__(%(v2)s) === 0:
-            ((typeof %(v2)s=='object'||typeof %(v2)s=='function')&&typeof %(v2)s.__cmp__=='function'?%(v2)s.__cmp__(%(v1)s) === 0:
+        ((typeof %(v1)s=='object'||typeof %(v1)s=='function')&&typeof %(v1)s['__cmp__']=='function'?%(v1)s['__cmp__'](%(v2)s) === 0:
+            ((typeof %(v2)s=='object'||typeof %(v2)s=='function')&&typeof %(v2)s['__cmp__']=='function'?%(v2)s['__cmp__'](%(v1)s) === 0:
                 %(v1)s==%(v2)s)))))"""
     __inline_eq_code_str = __inline_eq_code_str.replace("    ", "\t").replace("\n", "\n%(s)s")
 
@@ -1400,10 +1407,10 @@ class Translator(object):
             return self.__inline_cmp_code_str % locals()
         return "@{{cmp}}(%(e1)s, %(e2)s)" % locals()
 
-    __inline_getitem_code_str = """(typeof (%(v1)s=%(e)s).__array != 'undefined'?
-    ((typeof %(v1)s.__array[%(v2)s=%(i)s]) != 'undefined'?%(v1)s.__array[%(v2)s]:
-        %(v1)s.__getitem__(%(v2)s)):
-        %(v1)s.__getitem__(%(i)s))"""
+    __inline_getitem_code_str = """(typeof (%(v1)s=%(e)s)['__array'] != 'undefined'?
+    ((typeof %(v1)s['__array'][%(v2)s=%(i)s]) != 'undefined'?%(v1)s['__array'][%(v2)s]:
+        %(v1)s['__getitem__'](%(v2)s)):
+        %(v1)s['__getitem__'](%(i)s))"""
     __inline_getitem_code_str = __inline_getitem_code_str.replace("    ", "\t").replace("\n", "\n%(s)s")
 
     def inline_getitem_code(self, e, i):
@@ -1414,7 +1421,7 @@ class Translator(object):
             self.add_lookup('variable', v2, v2)
             s = self.spacing()
             return self.__inline_getitem_code_str % locals()
-        return "%(e)s.__getitem__(%(i)s)" % locals()
+        return "%(e)s['__getitem__'](%(i)s)" % locals()
 
     def md5(self, node):
         return md5(self.module_name + str(node.lineno) + repr(node)).hexdigest()
@@ -1422,10 +1429,10 @@ class Translator(object):
     def track_lineno(self, node, module=False):
         if self.source_tracking and node.lineno:
             if module:
-                self.w( self.spacing() + "$pyjs.track.module='%s';" % self.module_name)
+                self.w( self.spacing() + "$pyjs['track']['module']='%s';" % self.module_name)
             if self.line_tracking:
-                self.w( self.spacing() + "$pyjs.track.lineno=%d;" % node.lineno)
-                #self.w( self.spacing() + "if ($pyjs.track.module!='%s') debugger;" % self.module_name)
+                self.w( self.spacing() + "$pyjs['track']['lineno']=%d;" % node.lineno)
+                #self.w( self.spacing() + "if ($pyjs['track']['module']!='%s') debugger;" % self.module_name)
             if self.store_source:
                 self.track_lines[node.lineno] = self.get_line_trace(node)
 
@@ -1435,9 +1442,9 @@ class Translator(object):
             mod = self.module_name
             s = self.spacing()
             call_code = """\
-(function(){try{try{$pyjs.in_try_except += 1;
+(function(){try{try{$pyjs['in_try_except'] += 1;
 %(s)sreturn %(call_code)s;
-}finally{$pyjs.in_try_except-=1;}}catch(%(dbg)s_err){\
+}finally{$pyjs['in_try_except']-=1;}}catch(%(dbg)s_err){\
 if (!@{{isinstance}}(%(dbg)s_err, @{{StopIteration}}))\
 {@{{_handle_exception}}(%(dbg)s_err);}\
 throw %(dbg)s_err;
@@ -1534,14 +1541,14 @@ $generator['$genfunc'] = function () {
         if self.is_generator:
             s = self.spacing()
             if self.source_tracking:
-                src1 = "var $pyjs__trackstack_size_%d = $pyjs.trackstack.length;" % self.stacksize_depth
+                src1 = "var $pyjs__trackstack_size_%d = $pyjs['trackstack']['length'];" % self.stacksize_depth
                 src2 = """\
-%(s)ssys.save_exception_stack();
-%(s)sif ($pyjs.trackstack.length > $pyjs__trackstack_size_%(d)d) {
-%(s)s\t$pyjs.trackstack = $pyjs.trackstack.slice(0,$pyjs__trackstack_size_%(d)d);
-%(s)s\t$pyjs.track = $pyjs.trackstack.slice(-1)[0];
+%(s)ssys['save_exception_stack']();
+%(s)sif ($pyjs['trackstack']['length'] > $pyjs__trackstack_size_%(d)d) {
+%(s)s\t$pyjs['trackstack'] = $pyjs['trackstack']['slice'](0,$pyjs__trackstack_size_%(d)d);
+%(s)s\t$pyjs['track'] = $pyjs['trackstack']['slice'](-1)[0];
 %(s)s}
-%(s)s$pyjs.track.module='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name}
+%(s)s$pyjs['track']['module']='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name}
             else:
                 src1 = src2 = ""
 
@@ -1592,12 +1599,12 @@ $generator['$genfunc'] = function () {
     def generator_clear_state(self):
         if self.is_generator:
             n_states = len(self.generator_states)
-            self.w( self.spacing() + """for (var $i = %d ; $i < ($generator_state.length<%d?%d:$generator_state.length); $i++) $generator_state[$i]=0;""" % (n_states-1, n_states+1, n_states+1))
+            self.w( self.spacing() + """for (var $i = %d ; $i < ($generator_state['length']<%d?%d:$generator_state['length']); $i++) $generator_state[$i]=0;""" % (n_states-1, n_states+1, n_states+1))
 
     def generator_reset_state(self):
         if self.is_generator:
             n_states = len(self.generator_states)
-            self.w( self.spacing() + """$generator_state.splice(%d, $generator_state.length-%d);""" % (n_states, n_states))
+            self.w( self.spacing() + """$generator_state['splice'](%d, $generator_state['length']-%d);""" % (n_states, n_states))
 
     def generator_throw(self):
         self.w( self.indent() + "if (typeof $exc != 'undefined' && $exc !== null) {")
@@ -1636,8 +1643,8 @@ $generator['$genfunc'] = function () {
         if function_name is None:
             self.w( "\t, %d, %s);" % (bind_type, args))
         else:
-            self.w( self.spacing() + "%s.__bind_type__ = %s;" % (function_name, bind_type))
-            self.w( self.spacing() + "%s.__args__ = %s;" % (function_name, args))
+            self.w( self.spacing() + "%s['__bind_type__'] = %s;" % (function_name, bind_type))
+            self.w( self.spacing() + "%s['__args__'] = %s;" % (function_name, args))
 
     def _instance_method_init(self, node, arg_names, varargname, kwargname,
                               current_klass, output=None):
@@ -1652,19 +1659,19 @@ $generator['$genfunc'] = function () {
         maxargs1str = "%d" % maxargs1
         maxargs2str = "%d" % maxargs2
         if node.varargs:
-            argcount1 = "arguments.length < %d" % minargs1
+            argcount1 = "arguments['length'] < %d" % minargs1
             maxargs1str = "null"
         elif minargs1 == maxargs1:
-            argcount1 = "arguments.length != %d" % minargs1
+            argcount1 = "arguments['length'] != %d" % minargs1
         else:
-            argcount1 = "(arguments.length < %d || arguments.length > %d)" % (minargs1, maxargs1)
+            argcount1 = "(arguments['length'] < %d || arguments['length'] > %d)" % (minargs1, maxargs1)
         if node.varargs:
-            argcount2 = "arguments.length < %d" % minargs2
+            argcount2 = "arguments['length'] < %d" % minargs2
             maxargs2str = "null"
         elif minargs2 == maxargs2:
-            argcount2 = "arguments.length != %d" % minargs2
+            argcount2 = "arguments['length'] != %d" % minargs2
         else:
-            argcount2 = "(arguments.length < %d || arguments.length > %d)" % (minargs2, maxargs2)
+            argcount2 = "(arguments['length'] < %d || arguments['length'] > %d)" % (minargs2, maxargs2)
 
         s = self.spacing()
         if self.create_locals:
@@ -1677,37 +1684,37 @@ $generator['$genfunc'] = function () {
 
             args = []
             if node.varargs:
-                args.append("%(varargname)s = $l.%(varargname)s" % locals())
+                args.append("%(varargname)s = $l['%(varargname)s']" % locals())
             if node.kwargs:
-                args.append("%(kwargname)s = $l.%(kwargname)s" % locals())
+                args.append("%(kwargname)s = $l['%(kwargname)s']" % locals())
             args = ", ".join(args)
             if args:
                 self.w( s + "var %s;" % args)
             if arg_names:
                 an = arg_names[0]
-                self.w( s + "var %s = $l.%s;" % (an, an))
+                self.w( s + "var %s = $l['%s'];" % (an, an))
                 args = []
                 for an in arg_names[1:]:
-                    args.append("%s = $l.%s" % (an, an))
+                    args.append("%s = $l['%s']" % (an, an))
                 if args:
                     args = ", ".join(args)
                     self.w( s + "%s;" % args)
             if False: #arg_names:
                 an = arg_names[0]
-                self.w( s + "if (this.__is_instance__ === true) {")
+                self.w( s + "if (this['__is_instance__'] === true) {")
                 self.w( s + "\tvar %s = this;" % an)
                 self.w( s + "} else {")
-                self.w( s + "\t%s = $l.%s;" % (an, an))
+                self.w( s + "\t%s = $l['%s'];" % (an, an))
                 self.w( s + "}")
                 for an in arg_names[1:]:
                     an = (an, an, an)
-                    self.w(s + "%s = $pyjsdf(%s, $l.%s);" % an)
+                    self.w(s + "%s = $pyjsdf(%s, $l['%s']);" % an)
             return
 
         lpself = "var "
         lp = ""
         self.w(self.indent() + """\
-if (this.__is_instance__ === true) {\
+if (this['__is_instance__'] === true) {\
 """, output=output)
         if arg_names:
             self.w( self.spacing() + """\
@@ -1719,18 +1726,18 @@ if (this.__is_instance__ === true) {\
 
         if node.kwargs:
             self.w( self.spacing() + """\
-%s%s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[arguments.length];\
+%s%s = arguments['length'] >= %d ? arguments[arguments['length']-1] : arguments[arguments['length']];\
 """ % (lpself, kwargname, maxargs1), output=output)
             s = self.spacing()
             self.w( """\
-%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s.__name__ != 'dict' || typeof %(lp)s%(kwargname)s.$pyjs_is_kwarg == 'undefined') {\
+%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s['__name__'] != 'dict' || typeof %(lp)s%(kwargname)s['$pyjs_is_kwarg'] == 'undefined') {\
 """ % locals(), output=output)
             if node.varargs:
                 self.w( """\
-%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(lp)s%(varargname)s.__array.push(%(lp)s%(kwargname)s);\
+%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(lp)s%(varargname)s['__array']['push'](%(lp)s%(kwargname)s);\
 """ % locals(), output=output)
             self.w( """\
-%(s)s\t%(lpself)s%(kwargname)s = arguments[arguments.length+1];
+%(s)s\t%(lpself)s%(kwargname)s = arguments[arguments['length']+1];
 %(s)s} else {
 %(s)s\tdelete %(lp)s%(kwargname)s['$pyjs_is_kwarg'];
 %(s)s}\
@@ -1738,7 +1745,7 @@ if (this.__is_instance__ === true) {\
 
         if self.function_argument_checking:
             self.w( self.spacing() + """\
-if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.__name__, %d, %s, arguments.length+1);\
+if ($pyjs['options']['arg_count'] && %s) $pyjs__exception_func_param(arguments['callee']['__name__'], %d, %s, arguments['length']+1);\
 """ % (argcount1, minargs2, maxargs2str), output=output)
 
         self.w( self.dedent() + """\
@@ -1762,18 +1769,18 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
 
         if node.kwargs:
             self.w( self.spacing() + """\
-%s%s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[arguments.length];\
+%s%s = arguments['length'] >= %d ? arguments[arguments['length']-1] : arguments[arguments['length']];\
 """ % (lpself, kwargname, maxargs2), output=output)
             s = self.spacing()
             self.w( """\
-%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s.__name__ != 'dict' || typeof %(lp)s%(kwargname)s.$pyjs_is_kwarg == 'undefined') {\
+%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s['__name__'] != 'dict' || typeof %(lp)s%(kwargname)s['$pyjs_is_kwarg'] == 'undefined') {\
 """ % locals(), output=output)
             if node.varargs:
                 self.w( """\
-%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(lp)s%(varargname)s.__array.push(%(lp)s%(kwargname)s);\
+%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(lp)s%(varargname)s['__array']['push'](%(lp)s%(kwargname)s);\
 """ % locals(), output=output)
             self.w( """\
-%(s)s\t%(lp)s%(kwargname)s = arguments[arguments.length+1];
+%(s)s\t%(lp)s%(kwargname)s = arguments[arguments['length']+1];
 %(s)s} else {
 %(s)s\tdelete %(lp)s%(kwargname)s['$pyjs_is_kwarg'];
 %(s)s}\
@@ -1781,16 +1788,16 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
 
         if self.function_argument_checking:
             self.w( """\
-%sif ($pyjs.options.arg_is_instance && self.__is_instance__ !== true) $pyjs__exception_func_instance_expected(arguments.callee.__name__, arguments.callee.__class__.__name__, self);
-%sif ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.__name__, %d, %s, arguments.length);\
+%sif ($pyjs['options']['arg_is_instance'] && self['__is_instance__'] !== true) $pyjs__exception_func_instance_expected(arguments['callee']['__name__'], arguments['callee']['__class__']['__name__'], self);
+%sif ($pyjs['options']['arg_count'] && %s) $pyjs__exception_func_param(arguments['callee']['__name__'], %d, %s, arguments['length']);\
 """ % (self.spacing(), self.spacing(), argcount2, minargs2, maxargs2str), output=output)
 
         self.w( self.dedent() + "}", output=output)
 
         if arg_names and self.function_argument_checking:
             self.w( """\
-%(s)sif ($pyjs.options.arg_instance_type) {
-%(s)s\tif (%(self)s.prototype.__md5__ !== '%(__md5__)s') {
+%(s)sif ($pyjs['options']['arg_instance_type']) {
+%(s)s\tif (%(self)s.prototype['__md5__'] !== '%(__md5__)s') {
 %(s)s\t\tif (!@{{_isinstance}}(%(self)s, arguments['callee']['__class__'])) {
 %(s)s\t\t\t$pyjs__exception_func_instance_expected(arguments['callee']['__name__'], arguments['callee']['__class__']['__name__'], %(self)s);
 %(s)s\t\t}
@@ -1820,15 +1827,15 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
         if node.kwargs:
             maxargs += 1
         if node.varargs:
-            argcount = "arguments.length < %d" % minargs
+            argcount = "arguments['length'] < %d" % minargs
             maxargsstr = "null"
         elif minargs == maxargs:
-            argcount = "arguments.length != %d" % minargs
+            argcount = "arguments['length'] != %d" % minargs
         else:
-            argcount = "(arguments.length < %d || arguments.length > %d)" % (minargs, maxargs)
+            argcount = "(arguments['length'] < %d || arguments['length'] > %d)" % (minargs, maxargs)
         if self.function_argument_checking:
             self.w( self.spacing() + """\
-if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.__name__, %d, %s, arguments.length);\
+if ($pyjs['options']['arg_count'] && %s) $pyjs__exception_func_param(arguments['callee']['__name__'], %d, %s, arguments['length']);\
 """ % (argcount, minargs, maxargsstr), output=output)
 
         if node.varargs:
@@ -1836,18 +1843,18 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
 
         if node.kwargs:
             self.w( self.spacing() + """\
-%s%s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[arguments.length];\
+%s%s = arguments['length'] >= %d ? arguments[arguments['length']-1] : arguments[arguments['length']];\
 """ % (lpdec, kwargname, maxargs), output=output)
             s = self.spacing()
             self.w( """\
-%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s.__name__ != 'dict' || typeof %(lp)s%(kwargname)s.$pyjs_is_kwarg == 'undefined') {\
+%(s)sif (typeof %(lp)s%(kwargname)s != 'object' || %(lp)s%(kwargname)s['__name__'] != 'dict' || typeof %(lp)s%(kwargname)s['$pyjs_is_kwarg'] == 'undefined') {\
 """ % locals(), output=output)
             if node.varargs:
                 self.w( """\
-%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(varargname)s.__array.push(%(lp)s%(kwargname)s);\
+%(s)s\tif (typeof %(lp)s%(kwargname)s != 'undefined') %(varargname)s['__array']['push'](%(lp)s%(kwargname)s);\
 """ % locals(), output=output)
             self.w( """\
-%(s)s\t%(lp)s%(kwargname)s = arguments[arguments.length+1];
+%(s)s\t%(lp)s%(kwargname)s = arguments[arguments['length']+1];
 %(s)s} else {
 %(s)s\tdelete %(lp)s%(kwargname)s['$pyjs_is_kwarg'];
 %(s)s}\
@@ -1863,21 +1870,21 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
         if node.kwargs:
             maxargs += 1
         if node.varargs:
-            argcount = "arguments.length < %d" % minargs
+            argcount = "arguments['length'] < %d" % minargs
             maxargsstr = "null"
         elif minargs == maxargs:
-            argcount = "arguments.length != %d" % minargs
+            argcount = "arguments['length'] != %d" % minargs
             maxargsstr = "%d" % (maxargs)
         else:
-            argcount = "(arguments.length < %d || arguments.length > %d)" % (minargs, maxargs)
+            argcount = "(arguments['length'] < %d || arguments['length'] > %d)" % (minargs, maxargs)
         if self.function_argument_checking:
             self.w( """\
-    if ($pyjs.options.arg_is_instance && this.__is_instance__ !== true && this.__is_instance__ !== false) $pyjs__exception_func_class_expected(arguments.callee.__name__, arguments.callee.__class__.__name__);
-    if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.__name__, %d, %s, arguments.length);\
+    if ($pyjs['options']['arg_is_instance'] && this['__is_instance__'] !== true && this['__is_instance__'] !== false) $pyjs__exception_func_class_expected(arguments['callee']['__name__'], arguments['callee']['__class__']['__name__']);
+    if ($pyjs['options']['arg_count'] && %s) $pyjs__exception_func_param(arguments['callee']['__name__'], %d, %s, arguments['length']);\
 """ % (argcount, minargs+1, maxargsstr), output=output)
 
         self.w( """\
-    var %s = this.prototype;\
+    var %s = this['prototype'];\
 """ % (arg_names[0],), output=output)
 
         if node.varargs:
@@ -1885,18 +1892,18 @@ if ($pyjs.options.arg_count && %s) $pyjs__exception_func_param(arguments.callee.
 
         if node.kwargs:
             self.w( self.spacing() + """\
-var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[arguments.length];\
+var %s = arguments['length'] >= %d ? arguments[arguments['length']-1] : arguments[arguments['length']];\
 """ % (kwargname, maxargs), output=output)
             s = self.spacing()
             self.w( """\
-%(s)sif (typeof %(kwargname)s != 'object' || %(kwargname)s.__name__ != 'dict' || typeof %(kwargname)s.$pyjs_is_kwarg == 'undefined') {\
+%(s)sif (typeof %(kwargname)s != 'object' || %(kwargname)s['__name__'] != 'dict' || typeof %(kwargname)s['$pyjs_is_kwarg'] == 'undefined') {\
 """ % locals(), output=output)
             if node.varargs:
                 self.w( """\
-%(s)s\tif (typeof %(kwargname)s != 'undefined') %(varargname)s.__array.push(%(kwargname)s);\
+%(s)s\tif (typeof %(kwargname)s != 'undefined') %(varargname)s['__array']['push'](%(kwargname)s);\
 """ % locals(), output=output)
             self.w( """\
-%(s)s\t%(kwargname)s = arguments[arguments.length+1];
+%(s)s\t%(kwargname)s = arguments[arguments['length']+1];
 %(s)s}\
 """ % locals(), output=output)
 
@@ -1943,24 +1950,24 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                 default_name = arg_names[default_pos]
                 default_pos += 1
                 #self.w( self.spacing() + "if (typeof %s == 'undefined') %s=%s;" % (default_name, default_name, default_value))
-                self.w( self.spacing() + "if (typeof %s%s == 'undefined') %s%s=arguments.callee.__args__[%d][1];" % (lp, default_name, lp, default_name, default_pos+1), output=output)
+                self.w( self.spacing() + "if (typeof %s%s == 'undefined') %s%s=arguments['callee']['__args__'][%d][1];" % (lp, default_name, lp, default_name, default_pos+1), output=output)
 
     def _varargs_handler(self, node, varargname, start, lp):
         if node.kwargs:
-            end = "arguments.length-1"
+            end = "arguments['length']-1"
             start -= 1
         else:
-            end = "arguments.length"
+            end = "arguments['length']"
         if not lp:
             lp = 'var '
         self.w( """\
-%(s)s%(lp)s%(v)s = $p['tuple']($pyjs_array_slice.call(arguments,%(b)d,%(e)s));
+%(s)s%(lp)s%(v)s = $p['tuple']($pyjs_array_slice['call'](arguments,%(b)d,%(e)s));
 """ % {'s': self.spacing(), 'v': varargname, 'b': start, 'e': end, 'lp': lp})
 
     def _kwargs_parser(self, node, function_name, arg_names, current_klass, method_ = False):
         default_pos = len(arg_names) - len(node.defaults)
         if not method_:
-            self.w( self.indent() + function_name+'.parse_kwargs = function (', ", ".join(["__kwargs"]+arg_names) + " ) {")
+            self.w( self.indent() + function_name+"['parse_kwargs'] = function (", ", ".join(["__kwargs"]+arg_names) + " ) {")
         else:
             self.w( self.indent() + ", function (", ", ".join(["__kwargs"]+arg_names) + " ) {")
         self.w( self.spacing() + "var __r = [];")
@@ -1968,8 +1975,8 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 
         if len(arg_names) > 0:
             self.w( """\
-%(s)sif (typeof %(arg_name)s != 'undefined' && this.__is_instance__ === false && %(arg_name)s.__is_instance__ === true) {
-%(s)s\t__r.push(%(arg_name)s);
+%(s)sif (typeof %(arg_name)s != 'undefined' && this['__is_instance__'] === false && %(arg_name)s['__is_instance__'] === true) {
+%(s)s\t__r['push'](%(arg_name)s);
 %(s)s\t$pyjs__va_arg_start++;""" % {'s': self.spacing(), 'arg_name': arg_names[0]})
             idx = 1
             for arg_name in arg_names:
@@ -1985,7 +1992,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 %(s)sif (typeof %(arg_name)s == 'undefined') {
 %(s)s\t%(arg_name)s=__kwargs.%(arg_name)s;
 %(s)s\tdelete __kwargs.%(arg_name)s;
-%(s)s} else if ($pyjs.options.arg_kwarg_multiple_values && typeof __kwargs.%(arg_name)s != 'undefined') {
+%(s)s} else if ($pyjs['options']['arg_kwarg_multiple_values'] && typeof __kwargs['%(arg_name)s'] != 'undefined') {
 %(s)s\t$pyjs__exception_func_multiple_values('%(function_name)s', '%(arg_name)s');
 %(s)s}\
 """ % {'s': self.spacing(), 'arg_name': arg_name, 'function_name': function_name})
@@ -1993,11 +2000,11 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                 self.w( self.indent() + "if (typeof %s == 'undefined') {"%(arg_name))
                 self.w( self.spacing() + "%s=__kwargs.%s;"% (arg_name, arg_name))
                 self.w( self.dedent() + "}")
-            self.w( self.spacing() + "__r.push(%s);" % arg_name)
+            self.w( self.spacing() + "__r['push'](%s);" % arg_name)
 
         if self.function_argument_checking and not node.kwargs:
             self.w( """\
-%(s)sif ($pyjs.options.arg_kwarg_unexpected_keyword) {
+%(s)sif ($pyjs['options']['arg_kwarg_unexpected_keyword']) {
 %(s)s\tfor (var i in __kwargs) {
 %(s)s\t\t$pyjs__exception_func_unexpected_keyword('%(function_name)s', i);
 %(s)s\t}
@@ -2006,12 +2013,12 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 
         # Always add all remaining arguments. Needed for argument checking _and_ if self != this;
         self.w( """\
-%(s)sfor (var $pyjs__va_arg = $pyjs__va_arg_start;$pyjs__va_arg < arguments.length;$pyjs__va_arg++) {
-%(s)s\t__r.push(arguments[$pyjs__va_arg]);
+%(s)sfor (var $pyjs__va_arg = $pyjs__va_arg_start;$pyjs__va_arg < arguments['length'];$pyjs__va_arg++) {
+%(s)s\t__r['push'](arguments[$pyjs__va_arg]);
 %(s)s}
 """ % {'s': self.spacing()})
         if node.kwargs:
-            self.w( self.spacing() + "__r.push($p['dict'](__kwargs));")
+            self.w( self.spacing() + "__r['push']($p['dict'](__kwargs));")
         self.w( self.spacing() + "return __r;")
         if not method_:
             self.w( self.dedent() + "};")
@@ -2057,7 +2064,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
             package_mod = self.lookup(importName.split('.', 1)[0])
 
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.track={module:$pyjs.track.module,lineno:$pyjs.track.lineno};$pyjs.trackstack.push($pyjs.track);")
+                self.w( self.spacing() + "$pyjs['track']={'module':$pyjs['track']['module'],'lineno':$pyjs['track']['lineno']};$pyjs['trackstack']['push']($pyjs['track']);")
 
             import_stmt = None
             if (   mod[0] != 'root-module'
@@ -2099,20 +2106,20 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                 else:
                     mod_name = ass_name
                 if import_stmt is None:
-                    #stmt = "%s = $pyjs.__modules__['%s'];"% (lhs, "']['".join(mod_name.split('.')))
+                    #stmt = "%s = $pyjs['__modules__']['%s'];"% (lhs, "']['".join(mod_name.split('.')))
                     parent_mod_name = mod_name.split('.')
                     if len(parent_mod_name) == 1:
-                        stmt = "%s = $pyjs.loaded_modules['%s'];"% (lhs, mod_name)
+                        stmt = "%s = $pyjs['loaded_modules']['%s'];"% (lhs, mod_name)
                     else:
                         mod_name = parent_mod_name[-1]
                         parent_mod_name = '.'.join(parent_mod_name[:-1])
-                        stmt = "%s = $pyjs.loaded_modules['%s']['%s'];"% (lhs, parent_mod_name, mod_name)
+                        stmt = "%s = $pyjs['loaded_modules']['%s']['%s'];"% (lhs, parent_mod_name, mod_name)
                 else:
                     stmt = "%s = %s);"% (lhs, import_stmt)
                 self.w( self.spacing() + stmt)
 
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+                self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
 
     def _from(self, node, current_klass, root_level = False):
         if node.modname == '__pyjamas__':
@@ -2235,7 +2242,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
         save_output = self.output
         self.output = StringIO()
         if self.source_tracking:
-            self.w( self.spacing() + "$pyjs.track={module:'%s',lineno:%d};$pyjs.trackstack.push($pyjs.track);" % (self.module_name, node.lineno))
+            self.w( self.spacing() + "$pyjs['track']={'module':'%s','lineno':%d};$pyjs['trackstack']['push']($pyjs['track']);" % (self.module_name, node.lineno))
         self.track_lineno(node, True)
         for child in node.code:
             self._stmt(child, None)
@@ -2252,7 +2259,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
             self.output = StringIO()
             self.indent()
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.track={module:'%s',lineno:%d};$pyjs.trackstack.push($pyjs.track);" % (self.module_name, node.lineno))
+                self.w( self.spacing() + "$pyjs['track']={'module':'%s','lineno':%d};$pyjs['trackstack']['push']($pyjs['track']);" % (self.module_name, node.lineno))
             self.track_lineno(node, True)
             self.generator_switch_open()
             self.generator_switch_case(increment=False)
@@ -2277,13 +2284,13 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                 lastStmt = None
             if not isinstance(lastStmt, self.ast.Return):
                 if self.source_tracking:
-                    self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+                    self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
                 # FIXME: check why not on on self._isNativeFunc(lastStmt)
                 if not self._isNativeFunc(lastStmt):
                     self.w( self.spacing() + "return null;")
 
         self.w( self.dedent() + "};")
-        self.w( self.spacing() + "%s.__name__ = '%s';\n" % (function_name, node.name))
+        self.w( self.spacing() + "%s['__name__'] = '%s';\n" % (function_name, node.name))
 
         self.pop_lookup()
         self.func_args(node, current_klass, function_name, 'func', declared_arg_names, varargname, kwargname)
@@ -2320,7 +2327,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
             if isinstance(node.value, self.ast.Const):
                 if node.value.value is None:
                     if self.source_tracking:
-                        self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+                        self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
                     self.w( self.spacing() + "return;")
                     return
             raise TranslationError(
@@ -2328,7 +2335,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                  node, self.module_name)
         elif self.source_tracking:
             self.w( self.spacing() + "var $pyjs__ret = " + expr + ";")
-            self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+            self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
             self.w( self.spacing() + "return $pyjs__ret;")
         else:
             self.w( self.spacing() + "return " + expr + ";")
@@ -2343,7 +2350,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 
         self.w( self.spacing() + "$yield_value = " + expr + ";")
         if self.source_tracking:
-            self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+            self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
         self.w( self.spacing() + "$yielding = true;")
         self.w( self.spacing() + "$generator_state[%d] = %d;" % (len(self.generator_states)-1, self.generator_states[-1]+1))
         self.w( self.spacing() + "return $yield_value;")
@@ -2388,7 +2395,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                 except TranslationError, e:
                     raise TranslationError(e.msg, v, self.module_name)
             elif v.node.name == 'locals':
-                return """$p.dict({%s})""" % (",".join(["'%s': %s" % (pyname, self.lookup_stack[-1][pyname][2]) for pyname in self.lookup_stack[-1] if self.lookup_stack[-1][pyname][0] not in ['__pyjamas__', 'global']]))
+                return """$p['dict']({%s})""" % (",".join(["'%s': %s" % (pyname, self.lookup_stack[-1][pyname][2]) for pyname in self.lookup_stack[-1] if self.lookup_stack[-1][pyname][0] not in ['__pyjamas__', 'global']]))
             elif v.node.name == 'globals':
                 # XXX: Should be dictproxy, to handle changes
                 return "@{{_globals}}(%s)" % self.modpfx()[:-1]
@@ -2402,11 +2409,11 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
                     if optlocal_var:
                         call_name = '(typeof %s == "undefined"?%s:%s)' % (
                             v.node.name,
-                            self.scopeName(v.node.name, depth, is_local),
+                            self.closureSafe(self.scopeName(v.node.name, depth, is_local)),
                             v.node.name,
                         )
                     else:
-                        call_name = self.scopeName(v.node.name, depth, is_local)
+                        call_name = self.closureSafe(self.scopeName(v.node.name, depth, is_local))
                 else:
                     call_name = jsname
             call_args = []
@@ -2467,8 +2474,10 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 
         for ch4 in v.args:
             if isinstance(ch4, self.ast.Keyword):
-                kwarg = self.vars_remap(ch4.name) + ":" + \
-                        self.expr(ch4.expr, current_klass)
+                kwarg = "'%s':%s" % (
+                    self.vars_remap(ch4.name),
+                    self.expr(ch4.expr, current_klass),
+                )
                 kwargs.append(kwarg)
             else:
                 arg = self.expr(ch4, current_klass)
@@ -2542,14 +2551,14 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
         start_states = len(self.generator_states)
         pyjs_try_err = '$pyjs_try_err'
         if self.source_tracking:
-            self.w( self.spacing() + "var $pyjs__trackstack_size_%d = $pyjs.trackstack.length;" % self.stacksize_depth)
+            self.w( self.spacing() + "var $pyjs__trackstack_size_%d = $pyjs['trackstack']['length'];" % self.stacksize_depth)
         self.generator_switch_case(increment=True)
         self.w( self.indent() + "try {")
         added_try_except_counter = not self.ignore_debug and self.debug
         if added_try_except_counter:
             self.w( self.spacing() + "try {")
             self.indent()
-            self.w( self.spacing() + "$pyjs.in_try_except += 1;")
+            self.w( self.spacing() + "$pyjs['in_try_except'] += 1;")
         if self.is_generator:
             self.w( self.spacing() + "if (typeof $generator_exc[%d] != 'undefined' && $generator_exc[%d] !== null) throw $generator_exc[%d];" % (\
                 self.try_depth, self.try_depth, self.try_depth))
@@ -2571,12 +2580,12 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
         self.generator_switch_case(increment=True)
         self.generator_switch_close()
         if added_try_except_counter:
-            self.w( self.dedent() + "} finally { $pyjs.in_try_except -= 1; }")
+            self.w( self.dedent() + "} finally { $pyjs['in_try_except'] -= 1; }")
         self.w( self.dedent() + "} catch(%s) {" % pyjs_try_err)
         self.indent()
         if self.source_tracking:
-            self.w( self.spacing() + "$pyjs.__last_exception_stack__ = sys.save_exception_stack($pyjs__trackstack_size_%d - 1);" % self.stacksize_depth)
-            self.w( self.spacing() + "$pyjs.__active_exception_stack__ = null;")
+            self.w( self.spacing() + "$pyjs['__last_exception_stack__'] = sys['save_exception_stack']($pyjs__trackstack_size_%d - 1);" % self.stacksize_depth)
+            self.w( self.spacing() + "$pyjs['__active_exception_stack__'] = null;")
         if self.is_generator:
             self.w( self.spacing() + "$generator_exc[%d] = %s;" % (self.try_depth, pyjs_try_err))
         try_state_max_depth = self.state_max_depth
@@ -2584,7 +2593,7 @@ var %s = arguments.length >= %d ? arguments[arguments.length-1] : arguments[argu
 
         if hasattr(node, 'else_') and node.else_:
             self.w( self.indent() + """\
-if (%(e)s.__name__ == 'TryElse') {""" % {'e': pyjs_try_err})
+if (%(e)s['__name__'] == 'TryElse') {""" % {'e': pyjs_try_err})
 
             self.generator_add_state()
             self.generator_switch_open()
@@ -2603,16 +2612,16 @@ if (%(e)s.__name__ == 'TryElse') {""" % {'e': pyjs_try_err})
             self.w( self.spacing() + """%s = @{{_errorMapping}}(%s);""" % (pyjs_try_err, pyjs_try_err))
 
         self.w( self.spacing() + """\
-var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__name__ );\
+var %(e)s_name = (typeof %(e)s['__name__'] == 'undefined' ? %(e)s['name'] : %(e)s['__name__'] );\
 """ % {'e': pyjs_try_err})
-        self.w( self.spacing() + "$pyjs.__last_exception__ = {error: %s, module: %s};" % (pyjs_try_err, self.module_prefix[:-1]))
+        self.w( self.spacing() + "$pyjs['__last_exception__'] = {'error': %s, 'module': %s};" % (pyjs_try_err, self.module_prefix[:-1]))
         if self.source_tracking:
             self.w( """\
-%(s)sif ($pyjs.trackstack.length > $pyjs__trackstack_size_%(d)d) {
-%(s)s\t$pyjs.trackstack = $pyjs.trackstack.slice(0,$pyjs__trackstack_size_%(d)d);
-%(s)s\t$pyjs.track = $pyjs.trackstack.slice(-1)[0];
+%(s)sif ($pyjs['trackstack']['length'] > $pyjs__trackstack_size_%(d)d) {
+%(s)s\t$pyjs['trackstack'] = $pyjs['trackstack']['slice'](0,$pyjs__trackstack_size_%(d)d);
+%(s)s\t$pyjs['track'] = $pyjs['trackstack']['slice'](-1)[0];
 %(s)s}
-%(s)s$pyjs.track.module='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name})
+%(s)s$pyjs['track']['module']='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name})
 
         pyjs_try_err = self.add_lookup('variable', pyjs_try_err, pyjs_try_err)
         # XXX: This causes bug in class definitions?
@@ -2639,10 +2648,10 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
                     if isinstance(expr, self.ast.Tuple):
                         for x in expr.nodes:
-                            l.append("((%s_name == %s.__name__)||@{{_isinstance}}(%s,%s))" % (pyjs_try_err,
+                            l.append("((%s_name == %s['__name__'])||@{{_isinstance}}(%s,%s))" % (pyjs_try_err,
                                 self.expr(x, current_klass),pyjs_try_err, self.expr(x, current_klass)))
                     else:
-                        l = [ "(%s_name == %s.__name__)||@{{_isinstance}}(%s,%s)" % (pyjs_try_err,
+                        l = [ "(%s_name == %s['__name__'])||@{{_isinstance}}(%s,%s)" % (pyjs_try_err,
                                 self.expr(expr, current_klass),pyjs_try_err, self.expr(expr, current_klass)) ]
                     self.w( "%sif (%s) {" % (else_str, "||".join(l)))
                 self.indent()
@@ -2666,7 +2675,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
             if node.handlers[-1][0]:
                 # No default catcher, create one to fall through
-                self.w( "%s{ $pyjs.__active_exception_stack__ = $pyjs.__last_exception_stack__; $pyjs.__last_exception_stack__ = null; throw %s; }" % (else_str, pyjs_try_err))
+                self.w( "%s{ $pyjs['__active_exception_stack__'] = $pyjs['__last_exception_stack__']; $pyjs['__last_exception_stack__'] = null; throw %s; }" % (else_str, pyjs_try_err))
             else:
                 self.w(None)
         if hasattr(node, 'else_') and node.else_:
@@ -2742,6 +2751,9 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         self.w(self.spacing() + "});")
 
     def _getattr(self, v, current_klass, use_getattr=None):
+        return self.__getattr(v, current_klass, use_getattr)
+
+    def __getattr(self, v, current_klass, use_getattr=None):
         if use_getattr is None:
             use_getattr = self.getattr_support
 
@@ -2759,7 +2771,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             return ["@{{getattr}}(%s, '%s')" % (obj, attr_name)]
 
         elif isinstance(v.expr, self.ast.Getattr):
-            return self._getattr(v.expr, current_klass) + [attr_name]
+            return self.__getattr(v.expr, current_klass) + [attr_name]
         elif isinstance(v.expr, self.ast.Subscript):
             return [self._subscript(v.expr, self.modpfx()), attr_name]
         elif isinstance(v.expr, self.ast.CallFunc):
@@ -2799,10 +2811,10 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             # What to do with a (yet) unknown name?
             # Just nothing...
             if not optlocal_var:
-                return self.scopeName(name, depth, is_local)
+                return self.closureSafe(self.scopeName(name, depth, is_local))
             return '(typeof %s == "undefined"?%s:%s)' % (
                 name,
-                self.scopeName(name, depth, is_local),
+                self.closureSafe(self.scopeName(name, depth, is_local)),
                 name,
             )
         return jsname
@@ -2811,6 +2823,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         name_type, pyname, jsname, depth, is_local = self.lookup(v.name)
         if name_type is None:
             jsname = self.scopeName(v.name, depth, is_local)
+        jsname = self.closureSafe(jsname)
         return jsname, attr_name
 
     def _getattr2(self, v, current_klass, attr_name):
@@ -2819,7 +2832,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         if isinstance(v.expr, self.ast.Name):
             name_type, pyname, jsname, depth, is_local = self.lookup(v.expr.name)
             if name_type is None:
-                jsname = self.scopeName(v.expr.name, depth, is_local)
+                jsname = self.closureSafe(self.scopeName(v.expr.name, depth, is_local))
             return [jsname, v.attrname, attr_name]
         return [self.expr(v.expr, current_klass), v.attrname, attr_name]
 
@@ -2836,7 +2849,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         if self.function_argument_checking or self.module_name == 'pyjslib':
             current_klass.__md5__ = self.md5(node)
         if len(node.bases) == 0:
-            base_classes = [("object", "pyjslib.object")]
+            base_classes = [("object", "pyjslib['object']")]
         else:
             base_classes = []
             for node_base in node.bases:
@@ -2863,10 +2876,10 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         self.w( self.indent() + class_name + """ = (function(){
 %(s)svar %(p)s = new Object();
 %(s)svar $method;
-%(s)s%(p)s.__module__ = '%(module)s';""" % {'s': self.spacing(), 'p': local_prefix, 'module': self.module_name})
+%(s)s%(p)s['__module__'] = '%(module)s';""" % {'s': self.spacing(), 'p': local_prefix, 'module': self.module_name})
 
         if self.function_argument_checking or self.module_name == 'pyjslib':
-            self.w( self.spacing() + "%(p)s.__md5__ = '%(m)s';" % {'p': local_prefix, 'm': current_klass.__md5__})
+            self.w( self.spacing() + "%(p)s['__md5__'] = '%(m)s';" % {'p': local_prefix, 'm': current_klass.__md5__})
 
         self.push_lookup(name_scope)
         for child in node.code:
@@ -2884,7 +2897,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         else:
             create_class += """
 %(s)svar $data = $p['dict']();
-%(s)sfor (var $item in %(local_prefix)s) { $data.__setitem__($item, %(local_prefix)s[$item]); }
+%(s)sfor (var $item in %(local_prefix)s) { $data['__setitem__']($item, %(local_prefix)s[$item]); }
 %(s)sreturn @{{_create_class}}('%(n)s', $p['tuple']($bases), $data);"""
         create_class %= {'n': node.name, 's': self.spacing(), 'local_prefix': local_prefix, 'bases': ",".join(map(lambda x: x[1], base_classes))}
         create_class += """
@@ -2904,17 +2917,17 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
         if node.expr1:
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.__active_exception_stack__ = null;")
+                self.w( self.spacing() + "$pyjs['__active_exception_stack__'] = null;")
             if node.expr2:
                 if node.expr3:
                     self.w( """
     %(s)svar $pyjs__raise_expr1 = %(expr1)s;
     %(s)svar $pyjs__raise_expr2 = %(expr2)s;
     %(s)svar $pyjs__raise_expr3 = %(expr3)s;
-    %(s)sif ($pyjs__raise_expr2 !== null && $pyjs__raise_expr1.__is_instance__ === true) {
+    %(s)sif ($pyjs__raise_expr2 !== null && $pyjs__raise_expr1['__is_instance__'] === true) {
     %(s)s\tthrow @{{TypeError}}('instance exception may not have a separate value');
     %(s)s}
-    %(s)s\tthrow ($pyjs__raise_expr1.apply($pyjs__raise_expr1, $pyjs__raise_expr2, $pyjs__raise_expr3));
+    %(s)s\tthrow ($pyjs__raise_expr1['apply']($pyjs__raise_expr1, $pyjs__raise_expr2, $pyjs__raise_expr3));
     """ % { 's': self.spacing(),
             'expr1': self.expr(node.expr1, current_klass),
             'expr2': self.expr(node.expr2, current_klass),
@@ -2924,11 +2937,11 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                     self.w( """
 %(s)svar $pyjs__raise_expr1 = %(expr1)s;
 %(s)svar $pyjs__raise_expr2 = %(expr2)s;
-%(s)sif ($pyjs__raise_expr2 !== null && $pyjs__raise_expr1.__is_instance__ === true) {
+%(s)sif ($pyjs__raise_expr2 !== null && $pyjs__raise_expr1['__is_instance__'] === true) {
 %(s)s\tthrow @{{TypeError}}('instance exception may not have a separate value');
 %(s)s}
 %(s)sif (@{{isinstance}}($pyjs__raise_expr2, $p['tuple'])) {
-%(s)s\tthrow ($pyjs__raise_expr1.apply($pyjs__raise_expr1, $pyjs__raise_expr2.getArray()));
+%(s)s\tthrow ($pyjs__raise_expr1['apply']($pyjs__raise_expr1, $pyjs__raise_expr2['getArray']()));
 %(s)s} else {
 %(s)s\tthrow ($pyjs__raise_expr1($pyjs__raise_expr2));
 %(s)s}
@@ -2941,12 +2954,12 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                     node.expr1, current_klass))
         else:
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.__active_exception_stack__ = $pyjs.__last_exception_stack__;")
-                self.w( self.spacing() + "$pyjs.__last_exception_stack__ = null;")
+                self.w( self.spacing() + "$pyjs['__active_exception_stack__'] = $pyjs['__last_exception_stack__'];")
+                self.w( self.spacing() + "$pyjs['__last_exception_stack__'] = null;")
             s = self.spacing()
             self.w( """\
-%(s)sthrow ($pyjs.__last_exception__?
-%(s)s\t$pyjs.__last_exception__.error:
+%(s)sthrow ($pyjs['__last_exception__']?
+%(s)s\t$pyjs['__last_exception__']['error']:
 %(s)s\t@{{TypeError}}('exceptions must be classes, instances, or strings (deprecated), not NoneType'));\
 """ % locals())
         self.generator_switch_case(increment=True)
@@ -3029,7 +3042,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         save_output = self.output
         self.output = StringIO()
         if self.source_tracking:
-            self.w( self.spacing() + "$pyjs.track={module:'%s', lineno:%d};$pyjs.trackstack.push($pyjs.track);" % (self.module_name, node.lineno))
+            self.w( self.spacing() + "$pyjs['track']={'module':'%s', 'lineno':%d};$pyjs['trackstack']['push']($pyjs['track']);" % (self.module_name, node.lineno))
         self.track_lineno(node, True)
         for child in node.code:
             self._stmt(child, current_klass)
@@ -3046,7 +3059,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             self.output = StringIO()
             self.indent()
             if self.source_tracking:
-                self.w( self.spacing() + "$pyjs.track={module:'%s',lineno:%d};$pyjs.trackstack.push($pyjs.track);" % (self.module_name, node.lineno))
+                self.w( self.spacing() + "$pyjs['track']={'module':'%s','lineno':%d};$pyjs['trackstack']['push']($pyjs['track']);" % (self.module_name, node.lineno))
             self.track_lineno(node, True)
             self.generator_switch_open()
             self.generator_switch_case(increment=False)
@@ -3071,7 +3084,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                 lastStmt = None
             if not isinstance(lastStmt, self.ast.Return):
                 if self.source_tracking:
-                    self.w( self.spacing() + "$pyjs.trackstack.pop();$pyjs.track=$pyjs.trackstack.pop();$pyjs.trackstack.push($pyjs.track);")
+                    self.w( self.spacing() + "$pyjs['trackstack']['pop']();$pyjs['track']=$pyjs['trackstack']['pop']();$pyjs['trackstack']['push']($pyjs['track']);")
                 if not self._isNativeFunc(lastStmt):
                     self.w( self.spacing() + "return null;")
 
@@ -3345,7 +3358,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         else:
             raise TranslationError(
                 "unsupported type (in _assign)", v.expr, self.module_name)
-        return lhs
+        return self.closureSafe(lhs)
 
 
     def _assigns_list(self, v, current_klass, expr): # DANIEL KLUEV VERSION
@@ -3368,9 +3381,9 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                 raise TranslationError(
                     "unsupported flag (in _assign)", v, self.module_name)
             if self.descriptors:
-                desc_setattr = ("""%(l)s.__is_instance__ && """
-                                """typeof %(l)s.__setattr__ == 'function' ? """
-                                """%(l)s.__setattr__('%(a)s', %(r)s) : """
+                desc_setattr = ("""%(l)s['__is_instance__'] && """
+                                """typeof %(l)s['__setattr__'] == 'function' ? """
+                                """%(l)s['__setattr__']('%(a)s', %(r)s) : """
                                 """%(setattr)s(%(l)s, '%(a)s', %(r)s); """ %
                                 dict(
                                     setattr=self.pyjslib_name('setattr'),
@@ -3380,7 +3393,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                                 )
                 assigns.append(desc_setattr)
                 return assigns
-            lhs += '.' + attr_name
+            lhs += "['%s']" % attr_name
         elif isinstance(v, self.ast.AssName):
             lhs = self._lhsFromName(v.name, current_klass)
             if v.flags == "OP_ASSIGN":
@@ -3395,7 +3408,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                     raise TranslationError(
                         "must have one sub (in _assign)", v, self.module_name)
                 idx = self.expr(v.subs[0], current_klass)
-                assigns.append(self.track_call(obj + ".__setitem__(" + idx + ", " + expr + ")", v.lineno) + ';')
+                assigns.append(self.track_call(obj + "['__setitem__'](" + idx + ", " + expr + ")", v.lineno) + ';')
                 return assigns
             else:
                 raise TranslationError(
@@ -3610,9 +3623,9 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             if not self.stupid_mode:
                 return "(((%s)|1) == 1)" % self.inline_cmp_code(lhs, rhs)
         if op == "in":
-            return rhs + ".__contains__(" + lhs + ")"
+            return rhs + "['__contains__'](" + lhs + ")"
         elif op == "not in":
-            return "!" + rhs + ".__contains__(" + lhs + ")"
+            return "!" + rhs + "['__contains__'](" + lhs + ")"
         if op == "is":
             if self.number_classes:
                 return "@{{op_is}}(%s, %s)" % (lhs, rhs)
@@ -3695,7 +3708,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         if self.inline_code:
             rhs = nextval
         else:
-            rhs = "%s.$nextval" % nextval
+            rhs = "%s['$nextval']" % nextval
         assigns = self._assigns_list(node.assign, current_klass, rhs)
 
         if isinstance(node.list, self.ast.Name):
@@ -3711,17 +3724,17 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             self.stacksize_depth += 1
             var_trackstack_size = "$pyjs__trackstack_size_%d" % self.stacksize_depth
             self.add_lookup('variable', var_trackstack_size, var_trackstack_size)
-            self.w( self.spacing() + "%s=$pyjs.trackstack.length;" % var_trackstack_size)
+            self.w( self.spacing() + "%s=$pyjs['trackstack']['length'];" % var_trackstack_size)
         s = self.spacing()
         if self.inline_code:
             self.w( """\
 %(s)s%(iterator_name)s = """ % locals() + self.track_call("%(list_expr)s" % locals(), node.lineno) + ';')
             self.w( """\
-%(s)sif (typeof (%(array)s = %(iterator_name)s.__array) != 'undefined') {
+%(s)sif (typeof (%(array)s = %(iterator_name)s['__array']) != 'undefined') {
 %(s)s\t%(gentype)s = 0;
 %(s)s} else {
-%(s)s\t%(iterator_name)s = %(iterator_name)s.__iter__();
-%(s)s\t%(gentype)s = typeof (%(array)s = %(iterator_name)s.__array) != 'undefined'? 0 : (typeof %(iterator_name)s.$genfunc == 'function'? 1 : -1);
+%(s)s\t%(iterator_name)s = %(iterator_name)s['__iter__']();
+%(s)s\t%(gentype)s = typeof (%(array)s = %(iterator_name)s['__array']) != 'undefined'? 0 : (typeof %(iterator_name)s['$genfunc'] == 'function'? 1 : -1);
 %(s)s}
 %(s)s%(loopvar)s = 0;""" % locals())
             condition = "typeof (%(nextval)s=(%(gentype)s?(%(gentype)s > 0?%(iterator_name)s.next(true,%(reuse_tuple)s):%(wrapped_next)s(%(iterator_name)s)):%(array)s[%(loopvar)s++])) != 'undefined'" % dict(locals(), wrapped_next=self.pyjslib_name('wrapped_next'))
@@ -3731,7 +3744,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             self.w( """\
 %(s)s%(nextval)s=%(__iter_prepare)s(%(iterator_name)s,%(reuse_tuple)s);\
 """ % dict(locals(), __iter_prepare=self.pyjslib_name('__iter_prepare')))
-            condition = "typeof(%(__wrapped_next)s(%(nextval)s).$nextval) != 'undefined'" % dict(locals(), __wrapped_next=self.pyjslib_name('__wrapped_next'))
+            condition = "typeof(%(__wrapped_next)s(%(nextval)s)['$nextval']) != 'undefined'" % dict(locals(), __wrapped_next=self.pyjslib_name('__wrapped_next'))
 
         self.generator_switch_case(increment=True)
 
@@ -3767,11 +3780,11 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
         if self.source_tracking:
             self.w( """\
-%(s)sif ($pyjs.trackstack.length > $pyjs__trackstack_size_%(d)d) {
-%(s)s\t$pyjs.trackstack = $pyjs.trackstack.slice(0,$pyjs__trackstack_size_%(d)d);
-%(s)s\t$pyjs.track = $pyjs.trackstack.slice(-1)[0];
+%(s)sif ($pyjs['trackstack']['length'] > $pyjs__trackstack_size_%(d)d) {
+%(s)s\t$pyjs['trackstack'] = $pyjs['trackstack']['slice'](0,$pyjs__trackstack_size_%(d)d);
+%(s)s\t$pyjs['track'] = $pyjs['trackstack']['slice'](-1)[0];
 %(s)s}
-%(s)s$pyjs.track.module='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name})
+%(s)s$pyjs['track']['module']='%(m)s';""" % {'s': self.spacing(), 'd': self.stacksize_depth, 'm': self.module_name})
             self.stacksize_depth -= 1
         self.generator_switch_case(increment=True)
         self.is_generator = save_is_generator
@@ -3900,7 +3913,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
     def _floordiv(self, node, current_klass):
         if not self.operator_funcs:
-            return "Math.floor(%s/%s)" % (self.expr(node.left, current_klass), self.expr(node.right, current_klass))
+            return "Math['floor'](%s/%s)" % (self.expr(node.left, current_klass), self.expr(node.right, current_klass))
         e1 = self.expr(node.left, current_klass)
         e2 = self.expr(node.right, current_klass)
         v1 = self.uniqid('$floordiv')
@@ -3909,7 +3922,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         self.add_lookup('variable', v2, v2)
         s = self.spacing()
         return """(typeof (%(v1)s=%(e1)s)==typeof (%(v2)s=%(e2)s) && typeof %(v1)s=='number' && %(v2)s !== 0?
-%(s)s\tMath.floor(%(v1)s/%(v2)s):
+%(s)s\tMath['floor'](%(v1)s/%(v2)s):
 %(s)s\t@{{op_floordiv}}(%(v1)s,%(v2)s))""" % locals()
 
     def _div(self, node, current_klass):
@@ -3967,7 +3980,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
     def _power(self, node, current_klass):
         if not self.operator_funcs:
-            return "Math.pow(%s,%s)" % (self.expr(node.left, current_klass), self.expr(node.right, current_klass))
+            return "Math['pow'](%s,%s)" % (self.expr(node.left, current_klass), self.expr(node.right, current_klass))
         e1 = self.expr(node.left, current_klass)
         e2 = self.expr(node.right, current_klass)
         v1 = self.uniqid('$pow')
@@ -3976,7 +3989,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
         self.add_lookup('variable', v2, v2)
         s = self.spacing()
         return """(typeof (%(v1)s=%(e1)s)==typeof (%(v2)s=%(e2)s) && typeof %(v1)s=='number'?
-%(s)s\tMath.pow(%(v1)s,%(v2)s):
+%(s)s\tMath['pow'](%(v1)s,%(v2)s):
 %(s)s\t@{{op_pow}}(%(v1)s,%(v2)s))""" % locals()
 
     def _invert(self, node, current_klass):
@@ -4032,7 +4045,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
 
     def _subscript_stmt(self, node, current_klass):
         if node.flags == "OP_DELETE":
-            self.w( self.spacing() + self.track_call(self.expr(node.expr, current_klass) + ".__delitem__(" + self.expr(node.subs[0], current_klass) + ")", node.lineno) + ';')
+            self.w( self.spacing() + self.track_call(self.expr(node.expr, current_klass) + "['__delitem__'](" + self.expr(node.subs[0], current_klass) + ")", node.lineno) + ';')
         else:
             raise TranslationError(
                 "unsupported flag (in _subscript)", node, self.module_name)
@@ -4246,7 +4259,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
                 # Not defined yet.
                 name_type = 'variable'
                 pyname = name
-                jsname = self.scopeName(name, depth, is_local)
+                jsname = self.closureSafe(self.scopeName(name, depth, is_local))
             else:
                 name_type = 'global'
             self.add_lookup(name_type, pyname, jsname)
@@ -4321,7 +4334,7 @@ var %(e)s_name = (typeof %(e)s.__name__ == 'undefined' ? %(e)s.name : %(e)s.__na
             self.add_lookup('variable', v, v)
             self.add_lookup('variable', vl, vl)
             if self.bound_methods or self.descriptors:
-                getattr_condition = """(%(v)s=(%(vl)s=%(attr_left)s)['%(attr_right)s']) == null || ((%(vl)s.__is_instance__) && typeof %(v)s == 'function')"""
+                getattr_condition = """(%(v)s=(%(vl)s=%(attr_left)s)['%(attr_right)s']) == null || ((%(vl)s['__is_instance__']) && typeof %(v)s == 'function')"""
                 if self.descriptors:
                     getattr_condition += """ || (typeof %(v)s['__get__'] == 'function')"""
                 attr_code = """\

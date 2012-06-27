@@ -14,13 +14,13 @@ class AjaxError(RuntimeError):
     pass
 
 def createHttpRequest():
-    if JS("""typeof $wnd.XMLHttpRequest != 'undefined'"""):
+    if JS("""typeof $wnd['XMLHttpRequest'] != 'undefined'"""):
         # IE7+, Mozilla, Safari, ...
        return JS("""new XMLHttpRequest()""")
 
     # Check for IE6/ActiveX
     try:
-        res = JS("""new ActiveXObject("Msxml2.XMLHTTP")""")
+        res = JS("""new ActiveXObject("Msxml2['XMLHTTP']")""")
         return res
     except:
         pass
@@ -50,7 +50,7 @@ def load(url, onreadystatechange=None, on_load_fn=None, async=False):
                     on_load_fn(evnt, req)
 
     # next line is in JS() for IE6
-    JS("@{{req}}.onreadystatechange = @{{onreadystatechange}};")
+    JS("@{{req}}['onreadystatechange'] = @{{onreadystatechange}};")
     req.open("GET", url , async)
     try:
         req.send(None)
@@ -72,7 +72,7 @@ def load(url, onreadystatechange=None, on_load_fn=None, async=False):
 def inject(values, namespace = None, names=None):
     if namespace is None:
         from __pyjamas__ import JS
-        namespace = JS("$pyjs.global_namespace")
+        namespace = JS("$pyjs['global_namespace']")
     values = dict(values)
     if names is None:
         for k in values:

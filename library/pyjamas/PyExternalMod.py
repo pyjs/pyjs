@@ -19,7 +19,7 @@ class PyjamasExternalModule:
     PyjamasExternalModule.http = HTTPRequest()
 
     def __init__(self, mod_name):
-        self.base = 'http://'+JS('''__location.host''')
+        self.base = 'http://'+JS('''__location['host']''')
         req = '{"method":"methods","params":["%s"],"id":1}'%(mod_name)
         res = PyjamasExternalModule.http.syncPost(self.base+'/obj/handler',req)
         self.methods = self.__parseJSON(res)['result']
@@ -39,10 +39,10 @@ class PyjamasExternalModule:
             return '"'+@{{obj}}+'"'
         }else if(@{{isinstance}}([@{{obj}},@{{list}}],{})) {
             var parts = [];
-            for(var i=0; i<@{{obj}}.length; i++) {
-                parts.append([ @{{self}}.__encodeJSON([@{{obj}}[i]],{}) ],{});
+            for(var i=0; i<@{{obj}}['length']; i++) {
+                parts['append']([ @{{self}}['__encodeJSON']([@{{obj}}[i]],{}) ],{});
             }
-            return "[" + ','.join([parts],{}) + "]";
+            return "[" + ','['join']([parts],{}) + "]";
         }else{
             throw "Dicts and Objectss can not be jsoned !";
         }

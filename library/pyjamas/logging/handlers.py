@@ -77,19 +77,19 @@ class ConsoleHandler(Handler):
             print(msg)
 
     def __debug(self, msg):
-        JS(" console.debug(@{{msg}}); ")
+        JS(" console['debug'](@{{msg}}); ")
 
     def __info(self, msg):
-        JS(" console.info(@{{msg}}); ")
+        JS(" console['info'](@{{msg}}); ")
 
     def __warn(self, msg):
-        JS(" console.warn(@{{msg}}); ")
+        JS(" console['warn'](@{{msg}}); ")
 
     def __error(self, msg):
-        JS(" console.error(@{{msg}}); ")
+        JS(" console['error'](@{{msg}}); ")
 
     def __log(self, msg):
-        JS(" console.log(@{{msg}}); ")
+        JS(" console['log'](@{{msg}}); ")
 
 class NullHandler(Handler):
     """A log output handler that does nothing. Use to disable logging."""

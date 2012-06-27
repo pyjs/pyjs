@@ -2,7 +2,7 @@
 class HTTPRequest(object):
 
     def doCreateXmlHTTPRequest(self):
-        if JS("""typeof $wnd.XMLHttpRequest != 'undefined'"""):
+        if JS("""typeof $wnd['XMLHttpRequest'] != 'undefined'"""):
             # IE7+, Mozilla, Safari, ...
            res = JS("""new XMLHttpRequest()""")
            return res
@@ -29,7 +29,7 @@ class HTTPRequest(object):
             global xmlHttp, handler
             if xmlHttp.readyState == 4:
                 # For IE:
-                JS("delete @{{xmlHttp}}.onreadystatechange;")
+                JS("delete @{{xmlHttp}}['onreadystatechange'];")
                 localHandler = handler
                 status = xmlHttp.status
                 if returnxml:
@@ -62,7 +62,7 @@ class HTTPRequest(object):
             xmlHttp.send(postData)
         except:
             # For IE:
-            JS("delete @{{xmlHttp}}.onreadystatechange;")
+            JS("delete @{{xmlHttp}}['onreadystatechange'];")
             localHandler = handler
             handler = None
             xmlHttp = None

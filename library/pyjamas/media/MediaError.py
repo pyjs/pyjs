@@ -25,7 +25,7 @@ class MediaError(object):
 
     def getCode(self):
         JS("""
-        return this.code;
+        return this['code'];
         """)
 
 

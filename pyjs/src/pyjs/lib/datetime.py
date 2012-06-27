@@ -6,7 +6,7 @@ MINYEAR = 1
 MAXYEAR = 1000000
 
 # __Jan_01_0001 : local time for Mon Jan 01 0001 00:00:00
-__Jan_01_0001 = JS("""(new Date((new Date('Jan 1 1971')).getTime() - 62167132800000)).getTime()""")
+__Jan_01_0001 = JS("""(new Date((new Date('Jan 1 1971'))['getTime']() - 62167132800000))['getTime']()""")
 
 
 class date:
@@ -48,13 +48,13 @@ class date:
                     y--;
                     m += 12;
                 }
-                return Math.floor(365.25 * y) - Math.floor(y / 100) + Math.floor(y / 400) + Math.floor(30.6 * (m + 1)) + day - 62;
+                return Math['floor'](365.25 * y) - Math['floor'](y / 100) + Math['floor'](y / 400) + Math['floor'](30.6 * (m + 1)) + day - 62;
             };
 
-            var year = @{{_d}}.getFullYear();
-            var month = @{{_d}}.getMonth();
-            var day = @{{_d}}.getDate();
-            var wday = @{{_d}}.getDay();
+            var year = @{{_d}}['getFullYear']();
+            var month = @{{_d}}['getMonth']();
+            var day = @{{_d}}['getDate']();
+            var wday = @{{_d}}['getDay']();
 
             @{{isoweekday}} = ((wday + 6) % 7) + 1;
             @{{isoyear}} = year;
@@ -63,7 +63,7 @@ class date:
             var weekday0 = ((d0 + 4) % 7) + 1;
 
             var d = gregdaynumber(year, month + 1, day);
-            @{{isoweeknr}} = Math.floor((d - d0 + weekday0 + 6) / 7) - Math.floor((weekday0 + 3) / 7);
+            @{{isoweeknr}} = Math['floor']((d - d0 + weekday0 + 6) / 7) - Math['floor']((weekday0 + 3) / 7);
 
             if ((month == 11) && ((day - @{{isoweekday}}) > 27)) {
                 @{{isoweeknr}} = 1;
@@ -73,7 +73,7 @@ class date:
             if ((month == 0) && ((@{{isoweekday}} - day) > 3)) {
                 d0 = gregdaynumber(year - 1, 1, 0);
                 weekday0 = ((d0 + 4) % 7) + 1;
-                @{{isoweeknr}} = Math.floor((d - d0 + weekday0 + 6) / 7) - Math.floor((weekday0 + 3) / 7);
+                @{{isoweeknr}} = Math['floor']((d - d0 + weekday0 + 6) / 7) - Math['floor']((weekday0 + 3) / 7);
                 @{{isoyear}}--;
             }
         """)

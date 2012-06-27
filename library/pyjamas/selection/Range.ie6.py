@@ -25,7 +25,7 @@
 
 def cloneRange(rng):
     JS("""
-    return rng.duplicate();
+    return rng['duplicate']();
     """)
 
 
@@ -33,7 +33,7 @@ def compareBoundaryPoint(rng, compare, how):
     if isinstance(how, int):
         how = BOUNDARY_STRINGS[how]
     JS("""
-    return rng.compareEndPoints(how, compare);
+    return rng['compareEndPoints'](how, compare);
     """)
 
 
@@ -48,7 +48,7 @@ def copyContents(rng, copyInto):
 
 def createFromDocument(doc):
     JS("""
-    return doc.body.createTextRange();
+    return doc['body']['createTextRange']();
     """)
 
 
@@ -118,18 +118,18 @@ def canonicalize(start, end):
 
 def getCommonAncestor(rng):
     JS("""
-    return rng.parentElement();
+    return rng['parentElement']();
     """)
 
 def getHtmlText(rng):
     JS("""
-    return rng.htmlText;
+    return rng['htmlText'];
     """)
 
 
 def getText(rng):
     JS("""
-    return rng.text;
+    return rng['text'];
     """)
 
 
@@ -148,7 +148,7 @@ def surroundContents(rng, copyInto):
 
 def collapseRange(rng, start):
     JS("""
-    rng.collapse(start);
+    rng['collapse'](start);
     """)
 
 
@@ -160,9 +160,9 @@ def createRangeOnFirst(parent):
     * @return
     """
     JS("""
-    var res = parent.ownerDocument.body.createTextRange();
-    res.moveToElementText(parent);
-    res.collapse(true);
+    var res = parent['ownerDocument']['body']['createTextRange']();
+    res['moveToElementText'](parent);
+    res['collapse'](true);
     return res;
     """)
 
@@ -297,7 +297,7 @@ def moveCharacter(rng, chars):
     * Move both the start and end point of this range
     """
     JS("""
-    return rng.move("character", chars);
+    return rng['move']("character", chars);
     """)
 
 
@@ -306,25 +306,25 @@ def moveEndCharacter(rng, chars):
     * Move just the end point of this range
     """
     JS("""
-    return rng.moveEnd("character", chars);
+    return rng['moveEnd']("character", chars);
     """)
 
 
 def moveRangePoint(rng, moveTo, how):
     JS("""
-    rng.setEndPoint(how, moveTo);
+    rng['setEndPoint'](how, moveTo);
     """)
 
 
 def moveToElementText(rng, element):
     JS("""
-    rng.moveToElementText(element);
+    rng['moveToElementText'](element);
     """)
 
 
 def placeholdPaste(rng, str):
     JS("""
-    rng.pasteHTML(str);
+    rng['pasteHTML'](str);
     """)
 
 
