@@ -10,6 +10,7 @@ __output__
 *.pyo
 .*.sw?
 *.py~
+*.sh~
 
 .idea
 /stdlib
@@ -20,3 +21,6 @@ __output__
 
 .lock*
 .waf*
+/.pydevproject
+/.project
+/.settings
