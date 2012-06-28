@@ -7,14 +7,9 @@ from pyjamas import Window
 
 import pygwt
 
-import hello.js
-
 def greet(fred):
     fred.setText("No, really click me!")
-    #Window.alert("Hello, AJAX!")
-    cback = eee()
-    print "cback=",cback 
-    cback()
+    Window.alert("Hello, AJAX!")
 
 if __name__ == '__main__':
     pyjd.setup("public/Hello.html?fred=foo#me")
