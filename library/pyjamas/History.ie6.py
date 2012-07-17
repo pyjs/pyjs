@@ -23,7 +23,7 @@ def init():
     if (tokenElement)
         $wnd['__historyToken'] = tokenElement['value'];
     else
-        historyFrame['src'] = 'history['html']?' + $wnd['__historyToken'];
+        historyFrame['src'] = "history['html']?" + $wnd['__historyToken'];
 
     // Expose the '__onHistoryChanged' function, which will be called by
     // the history frame when it loads.
