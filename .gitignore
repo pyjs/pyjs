@@ -20,3 +20,6 @@ __output__
 
 .lock*
 .waf*
+/.project
+/.pydevproject
+/.settings

@@ -8,6 +8,7 @@ from pyjamas.ui.RootPanel import  RootPanel
 from pyjamas.ui.TextBox import TextBox
 from pyjamas.ui.Button import Button
 from pyjamas.ui.Calendar import DateField, Calendar, CalendarPopup
+from pyjamas.ui.MonthField import MonthField
 
 class App:
     def onModuleLoad(self):
@@ -17,12 +18,14 @@ class App:
         df2 = DateField(format='%Y/%m/%d')
         b = Button("Show Calendar", self)
         self.cal = Calendar()
+        df3 = MonthField()
 
         vp = VerticalPanel()
         vp.setSpacing(10)
         vp.add(df1)
         vp.add(b)
         vp.add(df2)
+        vp.add(df3)
 
         RootPanel().add(vp)
 

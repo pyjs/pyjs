@@ -21,7 +21,7 @@ from pyjamas.ui import HasAlignment
 from pyjamas import DOM
 
 import time
-from datetime import datetime
+from datetime import datetime, date
 
 class Calendar(FocusPanel):
     monthsOfYear = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -200,6 +200,17 @@ class Calendar(FocusPanel):
         self.middlePanel.setWidget(grid)
         self.vp.add(self.middlePanel)
         self.defaultGrid = grid
+
+        self._gridShortcutsLinks()
+        self._gridCancelLink()
+        #
+        # add code to test another way of doing the layout
+        #
+        self.setVisible(True)
+        return
+
+    def _gridShortcutsLinks(self):
+
         #
         # some links & handlers
         #
@@ -209,24 +220,22 @@ class Calendar(FocusPanel):
         bh2.addClickListener(getattr(self, 'onToday'))
         bh3 = Hyperlink(self.tomorrow)
         bh3.addClickListener(getattr(self, 'onTomorrow'))
-        bh4 = Hyperlink(self.cancel)
-        bh4.addClickListener(getattr(self, 'onCancel'))
-        #
-        # add code to test another way of doing the layout
-        #
+
         b = HorizontalPanel()
         b.add(bh1)
         b.add(bh2)
         b.add(bh3)
         b.addStyleName("calendar-shortcuts")
         self.vp.add(b)
+
+    def _gridCancelLink(self):
+        bh4 = Hyperlink(self.cancel)
+        bh4.addClickListener(getattr(self, 'onCancel'))
+
         b2 = SimplePanel()
         b2.add(bh4)
         b2.addStyleName("calendar-cancel")
         self.vp.add(b2)
-
-        self.setVisible(True)
-        return
 
     def drawGrid(self, month, year):
         # draw the grid in the middle of the calendar
@@ -437,6 +446,14 @@ class DateField(Composite):
 
     def getCalendar(self):
         return self.calendar
+
+    def getDate(self):
+        """ returns datetime.date object or None if empty/unparsable by current format"""
+        _sdate = self.tbox.getText()
+        try:
+            return datetime.strptime(_sdate, self.format).date()
+        except ValueError:
+            return None
 
     def setID(self, id):
         self.tbox.setID(id)
