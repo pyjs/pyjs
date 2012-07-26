@@ -20,6 +20,8 @@ from pyjamas.ui.Image import Image
 from pyjamas.ui import HasAlignment
 from pyjamas import DOM
 
+import pygwt
+
 import time
 from datetime import datetime, date
 
@@ -394,7 +396,9 @@ Factory.registerClass('pyjamas.ui.Calendar', 'Calendar', Calendar)
 
 class DateField(Composite):
 
-    icon_img = "icon_calendar.gif"
+    img_base = pygwt.getImageBaseURL(True)
+    icon_img = img_base + "icon_calendar.gif"
+
     icon_style = "calendar-img"
     today_text = "Today"
     today_style = "calendar-today-link"
