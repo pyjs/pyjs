@@ -43,7 +43,7 @@ class ClickableHeader(SimplePanel):
 Factory.registerClass('pyjamas.ui.DisclosurePanel', 'ClickableHeader', ClickableHeader)
 
 class DefaultHeader(Widget):
-    def __init__(self, text, images = False):
+    def __init__(self, text, images=True):
         Widget.__init__(self)
         self.setImageBase(images)
 
