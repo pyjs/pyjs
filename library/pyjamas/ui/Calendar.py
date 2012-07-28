@@ -445,6 +445,32 @@ class DateField(Composite):
         self.todayLink.addClickListener(getattr(self, "onTodayClicked"))
         self.calendarLink.addClickListener(getattr(self, "onShowCalendar"))
 
+        self.tbox.addChangeListener(getattr(self, "onTboxChanged"))
+        self.tbox.addInputListener(getattr(self, "onTboxChanged"))
+
+        self._last_date = None
+        self.listeners = []
+
+    def addSelectedDateListener(self, listener):
+        self.listeners.append(listener)
+
+    def removeSelectedDateListener(self, listener):
+        self.listeners.remove(listener)
+
+    def emitSelectedDate(self):
+        _val = self.getDate()
+        if _val == self._last_date: return
+
+        for listener in self.listeners:
+            if hasattr(listener, "onDateSelected"):
+                listener.onDateSelected(_val)
+            else:
+                listener(_val)
+
+    def onTboxChanged(self, event):
+        self.emitSelectedDate()
+
+
     def getTextBox(self):
         return self.tbox
 
@@ -466,6 +492,7 @@ class DateField(Composite):
         secs = time.mktime((int(yyyy), int(mm), int(dd), 0, 0, 0, 0, 0, -1))
         d = time.strftime(self.format, time.localtime(secs))
         self.tbox.setText(d)
+        self.emitSelectedDate()
 
     def onLostFocus(self, sender):
         #
@@ -475,6 +502,7 @@ class DateField(Composite):
             # ok what format do we have? assume ddmmyyyy --> dd-mm-yyyy
             txt = text[0:2] + self.sep + text[2:4] + self.sep + text[4:8]
             self.tbox.setText(txt)
+        self.emitSelectedDate()
 
     def onFocus(self, sender):
         pass
@@ -482,6 +510,7 @@ class DateField(Composite):
     def onTodayClicked(self, event):
         today = time.strftime(self.format)
         self.tbox.setText(today)
+        self.emitSelectedDate()
 
     def onShowCalendar(self, sender):
         txt = self.tbox.getText().strip()
