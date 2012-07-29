@@ -460,6 +460,7 @@ class DateField(Composite):
     def emitSelectedDate(self):
         _val = self.getDate()
         if _val == self._last_date: return
+        self._last_date = _val
 
         for listener in self.listeners:
             if hasattr(listener, "onDateSelected"):
