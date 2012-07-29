@@ -25,7 +25,48 @@ import pygwt
 import time
 from datetime import datetime, date
 
-class Calendar(FocusPanel):
+class DateSelectedHandler(object):
+    def __init__(self):
+        self.selectedDateListeners = []
+        self.selectedDObjListeners = [] #listeners which will receive datetime.date object rather than y,m,d triple
+
+    def addSelectedDateListener(self, listener, dobj=False):
+        """ - dobj - listener accept datetime.date object rather than y,m,d triple 
+        """
+        if dobj:
+            self.selectedDObjListeners.append(listener)
+        else:
+            self.selectedDateListeners.append(listener)
+
+    def removeSelectedDateListener(self, listener):
+        try:
+            self.selectedDateListeners.remove(listener)
+        except ValueError:pass
+        try:
+            self.selectedDObjListeners.remove(listener)
+        except ValueError:pass
+
+    def fireDateSelectedEvent(self, y=None, m=None, d=None, dateobj=None):
+        """ fire event to listeners with date specified in args. Date can be specified either by separate year,month,day or by datetime.date object
+        """
+        assert (y and m and d) != bool(dateobj) #logical XOR - either y,m,d or date should be specified
+        if not dateobj: dateobj = date(y, m, d)
+        # well if anyone is listening to the listener, fire that event
+        for listener in self.selectedDateListeners:
+            if hasattr(listener, "onDateSelected"):
+                listener.onDateSelected(dateobj.year, dateobj.month, dateobj.day)
+            else:
+                listener(dateobj.year, dateobj.month, dateobj.day)
+
+        for listener in self.selectedDObjListeners:
+            if hasattr(listener, "onDateSelected"):
+                listener.onDateSelected(dateobj)
+            else:
+                listener(dateobj)
+
+
+
+class Calendar(FocusPanel, DateSelectedHandler):
     monthsOfYear = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -36,6 +77,7 @@ class Calendar(FocusPanel):
 
     def __init__(self, **kwargs):
         FocusPanel.__init__(self, **kwargs)
+        DateSelectedHandler.__init__(self)
         yr, mth, day = time.strftime("%Y-%m-%d").split("-")
         self.todayYear = int(yr)
         self.todayMonth = int(mth)  # change to offset 0 as per javascript
@@ -45,7 +87,6 @@ class Calendar(FocusPanel):
         self.currentYear = self.todayYear
         self.currentDay = self.todayDay
 
-        self.selectedDateListeners = []
 
         self.defaultGrid = None # used later
 
@@ -63,12 +104,6 @@ class Calendar(FocusPanel):
 
     def getDaysOfWeek(self):
         return self.daysOfWeek
-
-    def addSelectedDateListener(self, listener):
-        self.selectedDateListeners.append(listener)
-
-    def removeSelectedDateListener(self, listener):
-        self.selectedDateListeners.remove(listener)
 
     def isLeapYear(self, year):
         if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0):
@@ -308,13 +343,8 @@ class Calendar(FocusPanel):
             selectedDay = int(text)
         except ValueError, e:
             return
-        # well if anyone is listening to the listener, fire that event
-        for listener in self.selectedDateListeners:
-            if hasattr(listener, "onDateSelected"):
-                listener.onDateSelected(self.currentYear, self.currentMonth,
-                                        selectedDay)
-            else:
-                listener(self.currentYear, self.currentMonth, selectedDay)
+
+        self.fireDateSelectedEvent(self.currentYear, self.currentMonth, selectedDay)
         self.setVisible(False)
 
 
@@ -331,11 +361,7 @@ class Calendar(FocusPanel):
         self.drawNextYear()
 
     def onDate(self, event, yy, mm, dd):
-        for listener in self.selectedDateListeners:
-            if hasattr(listener, "onDateSelected"):
-                listener.onDateSelected(yy, mm, dd)
-            else:
-                listener(yy, mm, dd)
+        self.fireDateSelectedEvent(yy, mm, dd)
         self.setVisible(False)
 
     def onYesterday(self, event):
@@ -394,7 +420,7 @@ class Calendar(FocusPanel):
 Factory.registerClass('pyjamas.ui.Calendar', 'Calendar', Calendar)
 
 
-class DateField(Composite):
+class DateField(Composite, DateSelectedHandler):
 
     img_base = pygwt.getImageBaseURL(True)
     icon_img = img_base + "icon_calendar.gif"
@@ -404,6 +430,7 @@ class DateField(Composite):
     today_style = "calendar-today-link"
 
     def __init__(self, format='%d-%m-%Y'):
+        DateSelectedHandler.__init__(self)
         self.format = format
         self.tbox = TextBox()
         self.tbox.setVisibleLength(10)
@@ -445,30 +472,18 @@ class DateField(Composite):
         self.todayLink.addClickListener(getattr(self, "onTodayClicked"))
         self.calendarLink.addClickListener(getattr(self, "onShowCalendar"))
 
-        self.tbox.addChangeListener(getattr(self, "onTboxChanged"))
-        self.tbox.addInputListener(getattr(self, "onTboxChanged"))
+        self.tbox.addChangeListener(getattr(self, "onFieldChanged"))
+        self.tbox.addInputListener(getattr(self, "onFieldChanged"))
 
         self._last_date = None
-        self.listeners = []
-
-    def addSelectedDateListener(self, listener):
-        self.listeners.append(listener)
-
-    def removeSelectedDateListener(self, listener):
-        self.listeners.remove(listener)
 
     def emitSelectedDate(self):
-        _val = self.getDate()
-        if _val == self._last_date: return
-        self._last_date = _val
+        _d = self.getDate()
+        if _d == self._last_date: return
+        self._last_date = _d
+        self.fireDateSelectedEvent(dateobj=_d)
 
-        for listener in self.listeners:
-            if hasattr(listener, "onDateSelected"):
-                listener.onDateSelected(_val)
-            else:
-                listener(_val)
-
-    def onTboxChanged(self, event):
+    def onFieldChanged(self, event):
         self.emitSelectedDate()
 
 

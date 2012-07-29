@@ -10,6 +10,9 @@ from pyjamas.ui.Button import Button
 from pyjamas.ui.Calendar import DateField, Calendar, CalendarPopup
 from pyjamas.ui.MonthField import MonthField
 
+from pyjamas import logging
+log = logging.getAppendLogger()
+
 class App:
     def onModuleLoad(self):
 
@@ -29,12 +32,24 @@ class App:
 
         RootPanel().add(vp)
 
+        for obj in [ self.cal, df1, df2, df3 ]:
+            obj.addSelectedDateListener(self, dobj=True)
+            obj.addSelectedDateListener(getattr(self, "onYMDSelected"))
+
     def onClick(self, sender):
         p = CalendarPopup(self.cal)
         x = sender.getAbsoluteLeft() + 10
         y = sender.getAbsoluteTop() + 10
         p.setPopupPosition(x,y)
         p.show()
+
+    def onDateSelected(self, d):
+        log.info("onDateSelected(%s/%r)" % (d, d))
+
+    def onYMDSelected(self, y, m, d):
+        log.info("onYMDSelected(%s,%s,%s)" % (y, m, d))
+
+
 
 if __name__ == '__main__':
     pyjd.setup("./public/DateField.html") # dummy in pyjs
