@@ -15,10 +15,17 @@
 
 # Then run this script. This will reduce the output size to ~50%.
 
-# To run type:
-# python pyjscompressor.py \
-# <path_to_your_pyjamas_output_directory> [<compiler path>]
-# from command line in the directory of this script
+# Usage:
+# python pyjscompressor.py [-c COMPILER] [-j NUM] <pyjs_output_directory>
+#
+# optional arguments:
+#  -h, --help            show this help message and exit
+#  -c COMPILER, --compiler COMPILER
+#                        Path to Google Closure compiler.jar
+#
+#  -j NUM                Run NUM processes in parallel
+#
+# Running with -j 0 will run as many processes as cpu count.
 
 import os
 import re
@@ -48,8 +55,10 @@ def compile(js_file, js_output_file, html_file=''):
     else:
         level = 'SIMPLE_OPTIMIZATIONS'
 
+    global compiler_path
+
     args = ['java',
-            '-jar', COMPILER,
+            '-jar', compiler_path,
             '--compilation_level', level,
             '--js', js_file,
             '--js_output_file', js_output_file]
@@ -194,6 +203,8 @@ def compress_all(path):
     # Print headers for progress output
     print('%45s  %s' % ('Files', 'Compression'))
 
+    global num_procs
+
     p_size = 0
     n_size = 0
 
@@ -205,12 +216,6 @@ def compress_all(path):
         for root, dirs, files in os.walk(path):
             for file in files:
                 files_to_compress.append(os.path.join(root, file))
-
-        if enable_multiprocessing:
-            try:
-                num_procs = multiprocessing.cpu_count()
-            except NotImplementedError:
-                num_procs = 1
 
         if num_procs > 1:
             proc_pool = multiprocessing.Pool(num_procs)
@@ -267,25 +272,88 @@ def compress_all(path):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        print('usage: python pyjs_compressor.py '
-              '<pyjamas_output_dir> [<path to compiler.jar>]')
-        sys.exit()
-    elif len(sys.argv) == 2:
-        dir = sys.argv[1]
-        if not 'COMPILER' in os.environ:
-            sys.exit('environment variable COMPILER is not defined.\n'
-                     'In bash, export '
-                     'COMPILER=/home/me/google/compiler/compiler.jar'
-                     'or pass the path to your compiler.jar'
-                     'as the second argument.')
-        COMPILER = os.environ['COMPILER']
-    else:
-        dir = sys.argv[1]
-        COMPILER = sys.argv[2]
+    try:
+        import argparse
+        # Available only on Python 2.7+
+        mode = 'argparse'
+    except ImportError:
+        import optparse
+        mode = 'optparse'
 
-    if not os.path.isfile(COMPILER):
-        raise Exception('\n'.join([
-            'Compiler path "%s" not valid.' % COMPILER,
+    # Take one position argument (directory)
+    # and optional arguments for compiler path and multiprocessing
+
+    global compiler_path
+    global num_procs
+
+    num_procs = 1  # By default, disable multiprocessing
+
+    if mode == 'argparse':
+        parser = argparse.ArgumentParser(
+            description='Compress HTML, CSS and JS in PYJS output')
+
+        parser.add_argument('directory', type=str,
+                            help='Pyjamas Output Directory')
+        parser.add_argument('-c', '--compiler', type=str, default='',
+                            help='Path to Google Closure compiler.jar')
+        parser.add_argument('-j', metavar='NUM', default=0, type=int,
+                            dest='num_procs',
+                            help='Run NUM processes in parallel')
+        args = parser.parse_args()
+        directory = args.directory
+        compiler_path = args.compiler
+        num_procs = args.num_procs
+    else:
+        # Use optparse
+        usage = 'usage: %prog [options] <pyjamas-output-directory>'
+        parser = optparse.OptionParser(usage=usage)
+        parser.add_option('-c', '--compiler', type=str, default='',
+                          help='Path to Google Closure compiler.jar')
+        parser.add_option('-j', metavar='NUM', default=0, type=int,
+                          dest='num_procs',
+                          help='Run NUM processes in parallel')
+        options, args = parser.parse_args()
+        if len(args) != 1:
+            parser.error('Please specify the directory to compress')
+
+        directory = args[0]
+        compiler_path = options.compiler
+        num_procs = options.num_procs
+
+    if not compiler_path:
+        # Not specified on command line
+        # Try environment
+        try:
+            compiler_path = os.environ['COMPILER']
+        except KeyError:
+            sys.exit('Closure compiler not found\n'
+                     'Either specify it using the -c option,\n'
+                     'or set the COMPILER environment variable to \n'
+                     'the location of compiler.jar')
+
+    if not os.path.isfile(compiler_path):
+        sys.exit('\n'.join([
+            'Compiler path "%s" not valid.' % compiler_path,
             'Check the path to your compiler is correct.']))
-    compress_all(dir)
+
+    if not enable_multiprocessing:
+        # Even if user has specified -j we can't use it if
+        # multiprocessing module doesn't exist
+        num_procs = 1
+        print("multiprocessing not available.")
+
+    if num_procs == 0:
+        print("Detecting cpu_count")
+        try:
+            num_procs = multiprocessing.cpu_count()
+        except NotImplementedError:
+            print("Could not determine CPU Count. Using One process")
+            num_procs = 1
+
+    print("Running %d processes" % num_procs)
+
+try:
+    compress_all(directory)
+except KeyboardInterrupt:
+    print('')
+    print('Compression Aborted')
