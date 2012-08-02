@@ -6,17 +6,12 @@ class Syntax27Test(UnitTest):
         s = {1,2,3,1,2,3,1,2,3}
         self.assertEqual(s, set([1,2,3]))
 
-        self.fail("Bug #XXX - None not supported in sets")
-        return
         s = {1, 2, None, True, False, 2, 2, ('a',)}
-        self.assertEqual(s, set([False, True, 2, ('a',), None]))
+        self.assertEqual(s, set([False, True, 1, 2, ('a',), None]))
 
     def testSetComprehensions(self):
         s = sum({i*i for i in range(100) if i&1 == 1})
         self.assertEqual(s, 166650)
-
-        self.fail("Bug #XXX - Set equality fails")
-        return
 
         s = {2*y + x + 1 for x in (0,) for y in (1,)}
         self.assertEqual(s, set([3]))
@@ -89,4 +84,3 @@ class Syntax27Test(UnitTest):
         g = "outer"
         d = { k: g for k in range(3) }
         self.assertEqual(d, {0: 'outer', 1: 'outer', 2: 'outer'})
-

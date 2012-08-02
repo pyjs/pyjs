@@ -144,7 +144,9 @@ class TypeClass:
         return "<type '%s'>" % cls.__name__
 
 class NoneType(TypeClass):
-    pass
+  def __hash__(self, value):
+      return 0      # always return 0 since value should always be None
+
 class ModuleType(TypeClass):
     pass
 class FunctionType(TypeClass):
@@ -6411,6 +6413,7 @@ if JS("typeof 'a'[0] == 'undefined'"):
     # IE has problems with setting obj.$H on certain DOM objects
     #def __hash(obj):
     JS("""@{{__hash}} = function(obj) {
+        if (obj === null) return null;
         switch (obj['constructor']) {
             case String:
             case Number:
@@ -6475,6 +6478,7 @@ if JS("typeof 'a'[0] == 'undefined'"):
 else:
     #def __hash(obj):
     JS("""@{{__hash}} = function(obj) {
+        if (obj === null) return null;
         switch (obj['constructor']) {
             case String:
             case Number:
