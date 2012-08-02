@@ -657,8 +657,8 @@ class ClassTest(UnitTest):
         MultiInherit2.set_x(i, 5)
         self.assertEqual(MultiInherit1.get_x(i), 5)
 
-        self.assertEqual(i.getName(), 'MultiInherit2', 'Inheritance prolem issue #560')
-        self.assertEqual(str(i), 'MultiInherit2', 'Inheritance prolem issue #560')
+        self.assertEqual(i.getName(), 'MultiInherit2', 'Inheritance problem issue #560')
+        self.assertEqual(str(i), 'MultiInherit2', 'Inheritance problem issue #560')
         i = DoubleInheritReversed(1,2,3)
         self.assertEqual(i.getName(), 'MultiInherit2')
         self.assertEqual(str(i), 'MultiInherit2')

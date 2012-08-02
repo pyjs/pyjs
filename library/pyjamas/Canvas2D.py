@@ -39,6 +39,9 @@ class Canvas(FocusWidget):
         self.context.fillStyle = "black"
         self.context.strokeStyle = "black"
 
+        #add onImageLoad, since some listeners use it
+        self.onImageLoad = self.onLoad
+
     def setWidth(self, width):
         FocusWidget.setWidth(self, width)
         self.canvas.width = width
@@ -93,6 +96,8 @@ class ImageLoadListener:
 
         if listener:
             self.addLoadListener(listener)
+
+        self.onImageLoad = self.onLoad
 
     def add(self, sender):
         self.wait_list.append(sender)

@@ -1,11 +1,12 @@
 from pyjamas.ui.RootPanel import RootPanel
 from pyjamas.ui.Label import Label
 
-from UnitTest import UnitTest
+from UnitTest import UnitTest1
 
 from __pyjamas__ import doc
 
-class LabelTest(UnitTest):
+#TODO: see issue 768
+class LabelTest(UnitTest1):
 
     def testLabelAdd(self):
         self.l = Label("Hello World (label)", StyleName='teststyle')

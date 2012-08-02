@@ -28,3 +28,4 @@ def write(text, do_escape=True):
 def writebr(text, do_escape=True):
     write(text + "<br />\n", do_escape)
 
+write_web=writebr

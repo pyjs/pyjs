@@ -39,6 +39,10 @@ class ImageLoader:
         self.loadedImages = 0
         self.totalImages = 0
 
+        #some listeners want to call onImageLoad, instead of onLoad
+        #fixes issue 746
+        self.onImageLoad = self.onLoad
+
 
     """*
     * Stores the ImageElement reference so that when all the images report
