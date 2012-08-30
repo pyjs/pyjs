@@ -17,8 +17,6 @@ _manager.set_runner()
 
 
 sys.path += [os.path.join(pyjdinitpth, 'library')]
-#TODO: this looks useless ...
-sys.path = [os.path.join(pyjdinitpth, 'pygtkweb', 'library')] + sys.path
 
 
 add_setup_callback = _manager.add_setup_listener
