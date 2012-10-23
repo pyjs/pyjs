@@ -89,6 +89,12 @@ class UIObject(Applier):
     def getAbsoluteTop(self):
         return DOM.getAbsoluteTop(self.getElement())
 
+    def getClientHeight(self):
+        return DOM.getIntAttribute(self.getElement(), "clientHeight")
+
+    def getClientWidth(self):
+    	return DOM.getIntAttribute(self.getElement(), "clientWidth")
+
     def getElement(self):
         """Get the DOM element associated with the UIObject, if any"""
         return self.element
