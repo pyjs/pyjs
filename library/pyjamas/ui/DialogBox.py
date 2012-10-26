@@ -1,5 +1,6 @@
 # Copyright 2006 James Tauber and contributors
 # Copyright (C) 2009, 2010 Luke Kenneth Casson Leighton <lkcl@lkcl.net>
+# Copyright (C) 2012 Alok Parlikar <aup@cs.cmu.edu>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@ from pyjamas import Factory
 from pyjamas.ui.PopupPanel import PopupPanel
 from pyjamas.ui.HTML import HTML
 from pyjamas.ui.FlexTable import FlexTable
+from pyjamas.ui.SimplePanel import SimplePanel
 from pyjamas.ui import HasHorizontalAlignment
 from pyjamas.ui import HasVerticalAlignment
 from pyjamas.ui import GlassWidget
@@ -41,21 +43,60 @@ class DialogBox(PopupPanel):
             CellPadding="0",
             CellSpacing="0",
         )
+
         cf = self.panel.getCellFormatter()
-        cf.setHeight(1, 0, "100%")
-        cf.setWidth(1, 0, "100%")
-        cf.setAlignment(
-            1, 0,
-            HasHorizontalAlignment.ALIGN_CENTER,
-            HasVerticalAlignment.ALIGN_MIDDLE,
-        )
+        rf = self.panel.getRowFormatter()
 
         # Arguments section
         self.modal = modal
         self.caption = HTML()
-        self.panel.setWidget(0, 0, self.caption)
         self.caption.setStyleName("Caption")
         self.caption.addMouseListener(self)
+
+        try:
+            self.generate_gwt15 = kwargs['gwt15']
+            # Make the DialogBox a 3x3 table, like GWT does, with
+            # empty elements with specific style names. These can be
+            # used with CSS to, for example, create border around the
+            # dialog box.
+        except:
+            self.generate_gwt15 = False
+
+        if not self.generate_gwt15:
+            cf.setHeight(1, 0, "100%")
+            cf.setWidth(1, 0, "100%")
+            cf.setAlignment(
+                1, 0,
+                HasHorizontalAlignment.ALIGN_CENTER,
+                HasVerticalAlignment.ALIGN_MIDDLE,
+            )
+            self.panel.setWidget(0, 0, self.caption)
+        else:
+            row_labels = ['Top', 'Middle', 'Bottom']
+            col_labels = ['Left', 'Center', 'Right']
+
+            for r in range(3):
+                rf.setStyleName(r, 'dialog%s' % row_labels[r])
+                for c in range(3):
+                    cf.setStyleName(r, c, 'dialog%s%s' % (row_labels[r],
+                                                          col_labels[c]))
+                    sp = SimplePanel()
+                    sp.setStyleName('dialog%s%sInner' % (row_labels[r],
+                                                         col_labels[c]))
+                    self.panel.setWidget(r, c, sp)
+
+            cf.setAlignment(
+                1, 1,
+                HasHorizontalAlignment.ALIGN_CENTER,
+                HasVerticalAlignment.ALIGN_MIDDLE,
+            )
+
+            self.dialog_content = SimplePanel()
+            self.dialog_content.setStyleName('dialogContent')
+
+            self.panel.getWidget(0, 1).add(self.caption)
+            self.panel.getWidget(1, 1).add(self.dialog_content)
+            del kwargs['gwt15']
 
         # Finalize
         kwargs['StyleName'] = kwargs.get('StyleName', "gwt-DialogBox")
@@ -155,10 +196,16 @@ class DialogBox(PopupPanel):
 
     def setWidget(self, widget):
         if self.child is not None:
-            self.panel.remove(self.child)
+            if not self.generate_gwt15:
+                self.panel.remove(self.child)
+            else:
+                self.dialog_content.remove(self.child)
 
         if widget is not None:
-            self.panel.setWidget(1, 0, widget)
+            if not self.generate_gwt15:
+                self.panel.setWidget(1, 0, widget)
+            else:
+                self.dialog_content.setWidget(widget)
 
         self.child = widget
 
