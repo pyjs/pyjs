@@ -1,6 +1,6 @@
 # Copyright 2006 James Tauber and contributors
 # Copyright (C) 2009 Luke Kenneth Casson Leighton <lkcl@lkcl.net>
-# Copyright (C) 2011 Vsevolod Fedorov <vsevolod.fedorov@gmail.com>
+# Copyright (C) 2011-2012 Vsevolod Fedorov <vsevolod.fedorov@gmail.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,9 @@ class TreeItem(UIObject):
         DOM.appendChild(self.getElement(), self.childSpanElem)
         DOM.appendChild(tdImg, self.imgElem)
         DOM.appendChild(tdContent, self.contentElem)
+
+        self.setStyleName(tdImg, "gwt-TreeItemTdImg", True)
+        self.setStyleName(tdContent, "gwt-TreeItemTdContent", True)
 
         # XXX - can't set pos relative on a div node,
         # or white_space on an HTML Table..
