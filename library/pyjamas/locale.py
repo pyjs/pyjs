@@ -1,4 +1,4 @@
-#encoding: utf8
+# encoding: utf-8
 """
     (C) 2012 by Maho (?ukasz Mach)
 
