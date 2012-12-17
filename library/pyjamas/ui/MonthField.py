@@ -1,4 +1,4 @@
-from pyjamas.ui.Calendar import DateField,Calendar
+from pyjamas.ui.Calendar import DateField, Calendar
 from pyjamas.ui.Button import Button
 from pyjamas.ui.HorizontalPanel import HorizontalPanel
 from pyjamas.ui.Hyperlink import Hyperlink
@@ -34,6 +34,8 @@ class NoDaysCalendar(Calendar):
         b.add(b2)
         b.add(bh3)
 
+        self.vp.setHorizontalAlignment("center")
+        b.setPadding(10)
         self.vp.add(b)
 
     def _gridCancelLink(self):pass
