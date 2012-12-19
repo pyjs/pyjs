@@ -11,17 +11,12 @@ from pyjamas.ui.Calendar import DateField, Calendar, CalendarPopup
 from pyjamas.ui.MonthField import MonthField
 
 
-class DF(DateField):
-    def __init__(self, *args, **kwargs):
-        self.setCSS("datefield", "DateField.css")
-        super(DF, self).__init__(*args, **kwargs)
-
 class App:
     def onModuleLoad(self):
 
-        text = TextBox()
-        df1 = DF()
-        df2 = DF(format='%Y/%m/%d')
+        text = TextBox() 
+        df1 = DateField()
+        df2 = DateField(format='%Y/%m/%d')
         b = Button("Show Calendar", self)
         self.cal = Calendar()
         df3 = MonthField()
