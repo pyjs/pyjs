@@ -260,6 +260,9 @@ class BaseLinker(object):
                 self.visit_modules(self.modules, platform)
                 if not self.list_imports:
                     self.visit_end_platform(platform)
+                    
+            self.merge_css_d()
+                    
             if not self.list_imports:
                 self.visit_end()
         except translator.TranslationError, e:
@@ -408,7 +411,22 @@ class BaseLinker(object):
         """gets a directory path for each module visited, this can be
         used to collect resources e.g. public folders"""
         pass
+    
+    def merge_css_d(self):
+        """ merge all files in public/css.d/ into one , base.css file """
 
+        css_d_dir = os.path.join(self.output,"css.d")
+        base_css_path = os.path.join(self.output,"base.css")
+        
+        with open(base_css_path,"w") as base_css_file:
+            for root,dirs,files in os.walk(css_d_dir):
+                for single_file in files:
+                    sfpath = os.path.join(root,single_file)
+                    base_css_file.write("\n\n/*** %s ***/\n\n"%single_file)
+                    with open(sfpath) as sff:
+                        base_css_file.write(sff.read())
+                            
+                            
     def visit_start(self):
         if not os.path.exists(self.output):
             os.mkdir(self.output)

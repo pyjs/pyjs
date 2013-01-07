@@ -16,6 +16,9 @@ from pyjamas import DOM
 from pyjamas import Factory
 from pyjamas import Window
 from pyjamas.ui import Applier
+from pyjamas.ui.CSS import StyleSheetCssFile
+
+import pygwt
 
 def findStyleName(element, style):
 
@@ -187,6 +190,18 @@ class UIObject(Applier):
         """Remove a dependent style name by specifying the style name's suffix.
         """
         self.removeStyleName(self.getStylePrimaryName()+"-"+styleSuffix)
+
+
+    def setCSS(self, widget_name, css_file, static={}):
+        """Emit css_file to the browser, but only once
+
+            -  widget_name - string name of widget (eg DisclosurePanel)
+            -  css_file     - css which should be loaded on first widget usage
+        """
+        if widget_name not in static:
+            static[widget_name] = StyleSheetCssFile(pygwt.getModuleBaseURL() + css_file)
+
+
 
     # also callable as: setStyleName(self, style)
     def setStyleName(self, element, style=None, add=True):

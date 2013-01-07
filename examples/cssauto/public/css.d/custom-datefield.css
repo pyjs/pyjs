@@ -1,0 +1,2 @@
+/* one way to override default look of widget */
+td.calendar-cell-today { background:yellow; }
