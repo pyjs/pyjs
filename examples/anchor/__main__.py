@@ -8,8 +8,8 @@ TARGETS = [
 
 
 PACKAGE = {
-    'title': 'Anchor',
-    'desc': 'Demonstration of an external link',
+    'title': 'Linking',
+    'desc': 'Demonstration of external and internal links',
 }
 
 
