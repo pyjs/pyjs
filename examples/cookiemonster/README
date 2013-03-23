@@ -1,0 +1,6 @@
+Created by Charles Law.
+
+This is an example of how to set and read cookies.  It includes
+some features, specifically setting the path, that were broken
+in previous versions of pyjs, but are fixed.
+
