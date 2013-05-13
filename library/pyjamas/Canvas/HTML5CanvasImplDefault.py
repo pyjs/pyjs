@@ -38,8 +38,11 @@ class HTML5CanvasImplDefault(GWTCanvasImplDefault):
         return self.canvasContext.shadowOffsetY
 
     def getTextAlign(self):
-        return self.impl.textAlign
-
+        return self.canvasContext.textAlign
+    
+    def getTextBaseline(self):
+        return self.canvasContext.textBaseline
+    
     def measureText(self, text):
         return self.canvasContext.measureText(text).width
 
@@ -60,7 +63,10 @@ class HTML5CanvasImplDefault(GWTCanvasImplDefault):
         self.canvasContext.shadowOffsetY = y
 
     def setTextAlign(self, loc):
-        self.impl.textAlign = loc
+        self.canvasContext.textAlign = loc
+    
+    def setTextBaseline(self, loc):
+        self.canvasContext.textBaseline = loc
 
     def toDataURL(self, type):
         return self.canvasContext.toDataURL(type)

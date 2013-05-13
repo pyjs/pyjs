@@ -110,6 +110,12 @@ class HTML5Canvas(GWTCanvas):
         return self.impl.getTextAlign()
 
     """
+    Returns the current text baseline settings
+    """
+    def getTextBaseline(self):
+        return self.impl.getTextBaseline()
+
+    """
     returns the current vertical shadow offset
     """
     def getShadowOffsetY(self):
@@ -140,3 +146,10 @@ class HTML5Canvas(GWTCanvas):
     """
     def setTextAlign(self, loc):
         self.impl.setTextAlign(loc)
+    
+    """
+    Sets the current text baseline settings. The possible values are alphabetic,
+    bottom, hanging, ideographic, middle, and top
+    """
+    def setTextBaseline(self, loc):
+        self.impl.setTextBaseline(loc)
