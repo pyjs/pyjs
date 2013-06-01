@@ -661,16 +661,16 @@ class GWTCanvasImplIE6:
         self.pathStr.clear()
 
 
-    def transform(m11, m12, m21, m22, dx, dy):
+    def transform(self, m11, m12, m21, m22, dx, dy):
         a = self.matrix[0]
         b = self.matrix[1]
-        self.matrix[0] = a * m11 + b * m21
-        self.matrix[1] = a * m12 + b * m22
+        self.matrix[0] = a * m11 + b * m12
+        self.matrix[1] = a * m21 + b * m22
         self.matrix[2] += a * dx + b * dy
         a = self.matrix[3]
         b = self.matrix[4]
-        self.matrix[3] = a * m11 + b * m21
-        self.matrix[4] = a * m12 + b * m22
+        self.matrix[3] = a * m11 + b * m12
+        self.matrix[4] = a * m21 + b * m22
         self.matrix[5] += a * dx + b * dy
 
 

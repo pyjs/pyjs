@@ -7,6 +7,7 @@ Created on Sun Nov 28 19:22:15 2010
 
 from pyjamas.Canvas.GWTCanvas import GWTCanvas
 from pyjamas.Canvas.HTML5CanvasImplDefault import HTML5CanvasImplDefault
+from pyjamas.Canvas.HTML5CanvasImplIE6 import HTML5CanvasImplIE6
 from pyjamas.Canvas.Color import Color
 from pyjamas.Canvas.ImageData import ImageData
 

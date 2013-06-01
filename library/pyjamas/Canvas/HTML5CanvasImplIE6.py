@@ -45,6 +45,9 @@ class HTML5CanvasImplIE6(GWTCanvasImplIE6):
     def getTextAlign(self):
         raise NotImplementedError
 
+    def getTextBaseline(self):
+        raise NotImplementedError
+
     def measureText(self, text):
         raise NotImplementedError
 
@@ -64,6 +67,9 @@ class HTML5CanvasImplIE6(GWTCanvasImplIE6):
         raise NotImplementedError
 
     def setTextAlign(self, loc):
+        raise NotImplementedError
+
+    def setTextBaseline(self, loc):
         raise NotImplementedError
 
     def toDataURL(self, type):
