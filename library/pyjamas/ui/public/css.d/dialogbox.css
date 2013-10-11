@@ -1,0 +1,67 @@
+/* taken from KitchenSink example */
+
+.gwt-DialogBox {
+  sborder: 8px solid #C3D9FF;
+  border: 2px outset;
+  background-color: white;
+}
+
+.gwt-DialogBox .Caption {
+  background-color: #C3D9FF;
+  padding: 3px;
+  margin: 2px;
+  font-weight: bold;
+  cursor: default;
+}
+
+.gwt-DialogBox .WindowCaption {
+  background-color: #C3D9FF;
+  padding: 0px;
+  margin: 2px;
+  font-weight: bold;
+  cursor: default;
+}
+
+.gwt-DialogBox .Controls td {
+  padding: 1px;
+}
+
+.gwt-DialogBox .Minimize {
+  width: 18px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent url(images/window_minimize.gif) no-repeat center top;
+  text-indent: -1000em;
+  display: block;
+}
+
+.gwt-DialogBox .Maximize {
+  width: 18px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent url(images/window_maximize.gif) no-repeat center top;
+  text-indent: -1000em;
+  display: block;
+}
+
+.gwt-DialogBox .Close {
+  width: 18px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent url(images/window_close.gif) no-repeat center top;
+  text-indent: -1000em;
+  display: block;
+}
+
+.gwt-PopupPanelGlass {
+  background-color: #222;
+  opacity: 0.3;
+  filter: alpha(opacity=30);
+}
+
