@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Copyright (C) 2011, Kees Bos <cornelis.bos@gmail.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,15 +25,15 @@ if [ $# -eq 0 ] ; then
 fi
 
 clean_js( ) {
-	git clean -n|grep 'Would remove .*[.]js$'|awk '{print $3}'|xargs ${ACTION}
+	git clean -n|awk '/Would remove .*[.]js$/ {print $3}'|xargs ${ACTION}
 }
 
 clean_pyc( ) {
-	git clean -n|grep 'Would remove .*[.]pyc$'|awk '{print $3}'|xargs ${ACTION}
+	git clean -n|awk '/Would remove .*[.]pyc$/ {print $3}'|xargs ${ACTION}
 }
 
 clean_patch( ) {
-	git clean -n|egrep 'Would remove .*[.](rej)|(orig)$'|awk '{print $3}'|xargs ${ACTION}
+	git clean -n|awk '/Would remove .*[.](rej)|(orig)$/ {print $3}'|xargs ${ACTION}
 }
 
 for WHAT in $* ; do
