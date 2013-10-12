@@ -3130,10 +3130,7 @@ if os.environ.has_key('PYJS_SYSPATH'):
 
 import pyjs
 
-if pyjs.pyjspth is None:
-    LIBRARY_PATH = os.path.abspath(os.path.dirname(__file__))
-else:
-    LIBRARY_PATH = os.path.join(pyjs.pyjspth, "pyjs", "src", "pyjs")
+LIBRARY_PATH = os.path.abspath(os.path.dirname(__file__))
 
 
 TranslationError = Translator.TranslationError

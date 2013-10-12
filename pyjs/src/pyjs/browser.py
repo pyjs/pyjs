@@ -36,10 +36,7 @@ from pprint import pprint, pformat
 
 AVAILABLE_PLATFORMS = ('IE6', 'Opera', 'OldMoz', 'Safari', 'Mozilla')
 
-if pyjs.pyjspth is None:
-    BOILERPLATE_PATH = os.path.join(os.path.dirname(__file__), 'boilerplate')
-else:
-    BOILERPLATE_PATH = os.path.join(pyjs.pyjspth, 'pyjs', 'src','pyjs', 'boilerplate')
+BOILERPLATE_PATH = os.path.join(os.path.dirname(__file__), 'boilerplate')
 
 
 APP_HTML_TEMPLATE = """\

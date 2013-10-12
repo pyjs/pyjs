@@ -18,10 +18,7 @@ from optparse import OptionParser
 
 import pyjs.translator
 
-if pyjs.pyjspth is None:
-    BASE = os.path.dirname(__file__)
-else:
-    BASE = os.path.join(pyjs.pyjspth, "pyjs", "src", "pyjs")
+BASE = os.path.dirname(__file__)
 
 PYJAMPILER_BASE = os.path.join(BASE, 'boilerplate')
 BUILTIN_PATH = os.path.join(BASE, 'builtin')

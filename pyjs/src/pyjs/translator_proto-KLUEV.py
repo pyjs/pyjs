@@ -41,10 +41,7 @@ import pyjs
 
 escaped_subst = re.compile('@{{(!?[ a-zA-Z0-9_\.]*)}}')
 
-if pyjs.pyjspth is None:
-    LIBRARY_PATH = os.path.abspath(os.path.dirname(__file__))
-else:
-    LIBRARY_PATH = os.path.join(pyjs.pyjspth, "pyjs", "src", "pyjs")
+LIBRARY_PATH = os.path.abspath(os.path.dirname(__file__))
 
 # See http://www.quackit.com/javascript/javascript_reserved_words.cfm
 JavaScript_Reserved_Words = frozenset((

@@ -7,8 +7,8 @@
 import os
 
 # Local imports
-from lib2to3/pgen2 import token
-from lib2to3/pgen2 import driver
+from lib2to3.pgen2 import token
+from lib2to3.pgen2 import driver
 from lib2to3 import pytree
 
 # The grammar file

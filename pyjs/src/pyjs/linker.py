@@ -16,16 +16,18 @@ translate_cmd = 'translator.py'
 translate_cmd_opts = ['--use-translator=%s' % translator.name]
 
 
+PYLIB_PATH = os.path.join(os.path.dirname(__file__), 'lib')
+BUILTIN_PATH = os.path.join(os.path.dirname(__file__), 'builtin')
 if pyjs.pyjspth is None:
-    PYLIB_PATH = os.path.join(os.path.dirname(__file__), 'lib')
-    BUILTIN_PATH = os.path.join(os.path.dirname(__file__), 'builtin')
     PYJAMASLIB_PATH = os.path.split(os.path.dirname(__file__))[0]
     PYJAMASLIB_PATH = os.path.split(PYJAMASLIB_PATH)[0]
     PYJAMASLIB_PATH = os.path.join(os.path.split(PYJAMASLIB_PATH)[0], 'library')
 else:
-    PYLIB_PATH = os.path.join(pyjs.pyjspth, "pyjs", "src", "pyjs", "lib")
-    BUILTIN_PATH = os.path.join(pyjs.pyjspth, "pyjs", "src", "pyjs", "builtin")
-    PYJAMASLIB_PATH = os.path.join(pyjs.pyjspth, "library")
+    try:
+        import pyjamaslibrary
+        PYJAMASLIB_PATH = os.path.dirname(pyjamaslibrary.__file__)
+    except ImportError:
+        PYJAMASLIB_PATH = os.path.join(pyjs.pyjspth, "library")
 
 
 translator_opts = options.all_compile_options.keys()
