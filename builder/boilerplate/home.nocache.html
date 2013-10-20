@@ -17,13 +17,7 @@ window["provider$user.agent"] = function() {
    else if (ua.indexOf('msie7.0') != -1) {
     return 'ie6';
   }
-   else if (ua.indexOf('msie 8.0') != -1) {
-    return 'ie6';
-  }
-   else if (ua.indexOf('msie 9.0') != -1) {
-    return 'ie6';
-  }
-   else if (ua.indexOf('msie 10.0')) != -1 {
+   else if (ua.indexOf('trident')) != -1 {
     return 'ie6';
   }
    else if (ua.indexOf('mozilla') != -1) {
