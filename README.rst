@@ -120,25 +120,31 @@ Installation
 1. Download and unzip/untar the pyjs.tar.gz file
 
 2. Change into the pyjs root directory
-    cd <pyjsroot>
+
+   ``cd <pyjsroot>``
 
 3. Optional step to create your own virtual python sandbox for development purposes
-   virtualenv mypython
-This will create a mypython directory and install sandboxed virtual python installation at
-   <pyjsroot>/mypython
+
+   ``virtualenv mypython``
+   
+   This will create a mypython directory and install sandboxed virtual python installation at
+
+   ``<pyjsroot>/mypython``
 
 4. Install Pyjs-Tools, Pyjs-Pyjamas and all dependencies
-       <pyjsroot>/mypython/bin/pip install <pyjsroot>
+   
+   ``<pyjsroot>/mypython/bin/pip install <pyjsroot>``
+   
    OR the following if you want to develop and modify Pyjs-Compiler or Pyjs-Widgets
    themselves
-       <pyjsroot>/mypython/bin/pip install -e <pyjsroot>
-
+   
+   ``<pyjsroot>/mypython/bin/pip install -e <pyjsroot>``
 
 You are now ready to use Pyjs. Scripts for compiling python code to Javascript
 as well as compiling applications will be installed into the mypython sandbox
-    <pyjsroot>/mypython/bin/pyjscompile
-    <pyjsroot>/mypython/bin/pyjsbuild
-    <pyjsroot>/mypython/bin/pyjampiler
 
+   ``<pyjsroot>/mypython/bin/pyjscompile``
 
+   ``<pyjsroot>/mypython/bin/pyjsbuild``
 
+   ``<pyjsroot>/mypython/bin/pyjampiler``
