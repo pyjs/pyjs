@@ -1,0 +1,15 @@
+== Description ==
+
+This is an example of how to integrate a complex jQuery component with pyjs.
+
+Here we integrate Select2 to implement a tagging component.
+Not all functionality of Select2 is implemented. Only:
+
+- set / get values
+- receive change notifications
+
+== Issues ==
+
+pyjd is not supported (doesn't do javascript)
+
+The CSS is not right
