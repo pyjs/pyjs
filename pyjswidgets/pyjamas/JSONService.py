@@ -45,7 +45,7 @@ class JSONService(object):
     content_type = 'application/json-rpc'
     accept = 'application/json-rpc'
 
-    def __init__(self, url, handler=None, headers=None):
+    def __init__(self, url, handler=None, headers=None, return_object=False):
         """
         Create a JSON remote service object. The url is the URL that will
         receive POST data with the JSON request. See the JSON-RPC spec for
@@ -73,6 +73,7 @@ class JSONService(object):
         self.headers = headers if headers is not None else {}
         if not self.headers.get("Accept"):
             self.headers["Accept"] = self.accept
+        self.return_object = return_object
 
     def callMethod(self, method, params, handler = None):
         if handler is None:
@@ -119,9 +120,12 @@ class JSONService(object):
                "params": params
               }
         msg_data = dumps(msg)
-        if not HTTPRequest().asyncPost(self.url, msg_data, self,
+        request_object = HTTPRequest().asyncPost(self.url, msg_data, self,
                                        False, self.content_type,
-                                       self.headers):
+                                       self.headers)
+        if self.return_object:
+            return id, request_object
+        if not request_object:
             return -1
         return 1
 
@@ -135,10 +139,13 @@ class JSONService(object):
         msg_data = dumps(msg)
 
         request_info = JSONRequestInfo(id, method, handler)
-        if not HTTPRequest().asyncPost(self.url, msg_data,
+        request_object = HTTPRequest().asyncPost(self.url, msg_data,
                                        JSONResponseTextHandler(request_info),
                                        False, self.content_type,
-                                       self.headers):
+                                       self.headers)
+        if self.return_object:
+            return id, request_object
+        if not request_object:
             return -1
         return id
 
@@ -234,8 +241,8 @@ class JSONResponseTextHandler(object):
         self.request.handler.onRemoteError(error_code, error, self.request)
 
 class ServiceProxy(JSONService):
-    def __init__(self, serviceURL, serviceName=None, headers=None):
-        JSONService.__init__(self, serviceURL, headers=headers)
+    def __init__(self, serviceURL, serviceName=None, headers=None, return_object=False):
+        JSONService.__init__(self, serviceURL, headers=headers, return_object=return_object)
         self.__serviceName = serviceName
 
     def __call__(self, *params, **kwargs):
@@ -262,12 +269,13 @@ class ServiceProxy(JSONService):
 
 # reserved names: callMethod, onCompletion
 class JSONProxy(JSONService):
-    def __init__(self, url, methods=None, headers=None):
+    def __init__(self, url, methods=None, headers=None, return_object=False):
         self._serviceURL = url
         self.methods = methods
         self.headers = {} if headers is None else headers
+        self.return_object = return_object
         # Init with JSONService, for the use of callMethod
-        JSONService.__init__(self, url, headers=self.headers)
+        JSONService.__init__(self, url, headers=self.headers, return_object=self.return_object)
         self._registerMethods(methods)
 
     def _registerMethods(self, methods):
@@ -276,7 +284,8 @@ class JSONProxy(JSONService):
                 setattr(self,
                         method,
                         getattr(ServiceProxy(self._serviceURL, method,
-                                             headers=self.headers),
+                                             headers=self.headers,
+                                             return_object=self.return_object),
                                 '__call__')
                        )
 
