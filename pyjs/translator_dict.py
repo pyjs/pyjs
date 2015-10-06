@@ -3126,7 +3126,7 @@ from options import (all_compile_options, add_compile_options,
                      pythonic_options)
 
 if os.environ.has_key('PYJS_SYSPATH'):
-    sys.path[0:0] = [os.environ['PYJS_SYSPATH']]
+    sys.path[0:0] = os.environ['PYJS_SYSPATH'].split(':')
 
 import pyjs
 

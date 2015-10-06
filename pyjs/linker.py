@@ -35,6 +35,11 @@ non_boolean_opts = ['translator']
 assert set(non_boolean_opts) < set(translator_opts)
 
 def is_modified(in_file,out_file):
+    if not exits_casesensitive(outfile):
+        # due to case insensitivee filesystems, os.path.getmtime
+        # can return time for the wrong file
+        return True
+
     modified = False
     in_mtime = os.path.getmtime(in_file)
     try:
@@ -111,7 +116,8 @@ def out_translate(platform, file_names, out_file, module_name,
     if not incremental or do_translate:
         pydir = os.path.abspath(os.path.dirname(__file__))
         if not 'PYJS_SYSPATH' in os.environ:
-            os.environ['PYJS_SYSPATH'] = sys.path[0]
+            #HACK: below assumes all we need is pyjs. how to get six and others?
+            os.environ['PYJS_SYSPATH'] = ':'.join(sys.path)
         opts = ["--module-name", module_name, "-o"]
         if sys.platform == 'win32':
             opts.append(out_file)
@@ -148,6 +154,22 @@ def out_translate(platform, file_names, out_file, module_name,
 
     return deps, js_libs
 
+def isfile_casesensitive(path):
+    if not os.path.isfile(path): return False   # exit early
+    return exits_casesensitive(path)
+
+exists_cache = {}
+def exits_casesensitive(path):
+    if not os.path.exists(path): return False   # exit early
+    if exists_cache.get(path): return True
+    directory, filename = os.path.split(path)
+    if not directory or not filename:
+        return True
+    if not filename in os.listdir(directory): return False
+    exists_cache[path] = exits_casesensitive(directory)
+    return exists_cache[path]
+
+
 _path_cache= {}
 def module_path(name, path, platform=None):
     if name == '__pyjamas__' or name == '__javascript__':
@@ -177,7 +199,7 @@ def module_path(name, path, platform=None):
             else:
                 cache = {}
                 _path_cache[name] = cache
-            if os.path.exists(cp + '.py'):
+            if exits_casesensitive(cp + '.py'):
                 cache[p] = cp + '.py'
         else:
             tail = []
@@ -193,12 +215,12 @@ def module_path(name, path, platform=None):
                 if p in cache:
                     if cache[p] is None:
                         break
-                elif os.path.isdir(cp) and os.path.exists(
+                elif os.path.isdir(cp) and exits_casesensitive(
                     os.path.join(cp, '__init__.py')):
                     cache[p] = os.path.join(cp, '__init__.py')
-                elif os.path.exists(cp + '.py'):
+                elif exits_casesensitive(cp + '.py'):
                     cache[p] = cp + '.py'
-                elif pn.endswith('.js') and os.path.exists(cp):
+                elif pn.endswith('.js') and exits_casesensitive(cp):
                     cache[p] = cp
                 else:
                     cache[p] = None

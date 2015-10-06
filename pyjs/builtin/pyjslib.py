@@ -135,6 +135,9 @@ object.__str__ = JS("""function (self) {
     return s + "<unknown>";
 }""")
 
+#HACK
+object.__reduce__ = object.__str__
+
 
 class basestring(object):
     pass

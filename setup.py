@@ -26,7 +26,7 @@ setup(
     package_data=package_data,
     zip_safe = False,
     entry_points = entry_points,
-    install_requires=['six'],
+    install_requires=['six>=1.9.0'],
 
     license="Apache",
     keywords=["js", "javascript"],

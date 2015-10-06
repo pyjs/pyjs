@@ -17,6 +17,7 @@ import sys
 import types
 import os
 import copy
+import six
 from six.moves import cStringIO as StringIO
 import re
 try:
@@ -28,11 +29,10 @@ import logging
 from pyjs.options import (all_compile_options, add_compile_options,
                      get_compile_options, debug_options, speed_options,
                      pythonic_options)
-
 if 'PYJS_SYSPATH' in os.environ:
-    sys.path[0:0] = [os.environ['PYJS_SYSPATH']]
+    sys.path[0:0] = os.environ['PYJS_SYSPATH'].split(':')
 
-sys.path[1:1] = [os.path.join(os.path.dirname(__file__), "lib_trans")]
+sys.path += [os.path.join(os.path.dirname(__file__), "lib_trans")]
 
 import pycompiler as compiler
 from pycompiler.visitor import ASTVisitor
@@ -4449,16 +4449,43 @@ def translate(sources, output_file, module_name=None, **kw):
         compiler.walk(tree, v)
         return v.imported_modules, v.imported_js
 
+    deps = []
     if hasattr(output_file, 'write'):
         output = output_file
     elif output_file == '-':
         output = sys.stdout
     else:
-        output = file(output_file, 'w')
+        # due to case insenstive filesystems two different modules might have to be in one file.
+        # open file and remove this modules code
+        # read in dep and remove
+        # open file in append mode and write
+        # combine dep and write them
+        matches = None
+        if os.path.exists(output_file):
+            with open(output_file, "r") as output:
+                compiled = output.read()
+                modules = re.findall("^/\* start module: (.*) \*/$", compiled, flags=re.MULTILINE)
+                if module_name in modules and len(modules) > 1:
+                    r="(?ms)(.*)^/\* start module: %s \*/$(.*)^/\* end module: %s \*/$(.*)(/\*.*^PYJS_DEPS: (.*)$.*\*/).*"
+                    matches = re.match(r % (module_name, module_name), compiled)
+                    compiled = '\n'.join([matches.group(1), matches.group(3)])
+                    deps = eval(matches.group(5))
+                elif module_name not in modules:
+                    matches = re.match("(?ms)(.*)(/\*.*^PYJS_DEPS: (.*)$.*\*/).*", compiled)
+                    compiled = '\n'.join([matches.group(1)])
+                    deps = eval(matches.group(3))
+                #TODO: combine PYJS_DEPS
+
+        if matches:
+            with open(output_file, "w") as output:
+                output.write(compiled)
+            output = file(output_file, "a")
+        else:
+            output = file(output_file, 'w')
 
     t = Translator(compiler,
                    module_name, sources[0], src, tree, output, **kw)
-    return t.imported_modules, t.imported_js
+    return t.imported_modules+deps, t.imported_js
 
 def merge(ast, module_name, tree1, tree2, flags):
     if 'FULL_OVERRIDE' in flags:
@@ -4661,6 +4688,18 @@ def dotreplace(fname):
     path, ext = os.path.splitext(fname)
     return path.replace(".", "/") + ext
 
+def isfile_casesensitive(path):
+    if not os.path.isfile(path): return False   # exit early
+    return exits_casesensitive(path)
+
+def exits_casesensitive(path):
+    if not os.path.exists(path): return False   # exit early
+    directory, filename = os.path.split(path)
+    if not directory or not filename:
+        return True
+    if not filename in os.listdir(directory): return False
+    return exits_casesensitive(directory)
+
 class ImportVisitor(object):
 
     def __init__(self, module_name):
@@ -4768,14 +4807,14 @@ class AppTranslator:
         self.parser.dynamic = dynamic
 
     def findFile(self, file_name):
-        if os.path.isfile(file_name):
+        if isfile_casesensitive(file_name):
             return file_name
 
         for library_dir in self.library_dirs:
             file_name = dotreplace(file_name)
             full_file_name = os.path.join(
                     LIBRARY_PATH, library_dir, file_name)
-            if os.path.isfile(full_file_name):
+            if isfile_casesensitive(full_file_name):
                 return full_file_name
 
             fnameinit, ext = os.path.splitext(file_name)
@@ -4783,7 +4822,7 @@ class AppTranslator:
 
             full_file_name = os.path.join(
                     LIBRARY_PATH, library_dir, fnameinit)
-            if os.path.isfile(full_file_name):
+            if isfile_casesensitive(full_file_name):
                 return full_file_name
 
         raise Exception("file not found: " + file_name)
