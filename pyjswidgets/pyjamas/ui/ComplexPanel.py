@@ -41,7 +41,7 @@ class ComplexPanel(Panel):
             beforeIndex = container
             container = self.getElement()
 
-        self.adopt(widget, container)
+        self.adopt(widget, container, beforeIndex)
         self.children.insert(beforeIndex, widget)
 
     def remove(self, widget):
