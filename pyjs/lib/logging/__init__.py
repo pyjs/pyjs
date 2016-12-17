@@ -48,7 +48,7 @@ __date__    = "16 February 2007"
 # caller stack frame.
 #
 _srcfile = __file__
-#_srcfile = os.path.normcase(_srcfile)
+_srcfile = os.path.normcase(_srcfile)
 
 # next bit filched from 1.5.2's inspect.py
 def currentframe():
