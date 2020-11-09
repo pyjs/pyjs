@@ -22,7 +22,7 @@ else:
 
 from pyjs import util
 from pyjs import options
-from cStringIO import StringIO
+from io import StringIO
 from optparse import OptionParser, OptionGroup
 import pyjs
 import re
