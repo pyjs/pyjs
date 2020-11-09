@@ -38,10 +38,10 @@ def copytree_exists(src, dst, symlinks=False,
                 copytree_exists(srcname, dstname, symlinks, skip_files=skip_files)
             else:
                 shutil.copy2(srcname, dstname)
-        except (IOError, os.error), why:
+        except (IOError, os.error) as why:
             errors.append((srcname, dstname, why))
     if errors:
-        print errors
+        print(errors)
 
 def copy_exists(srcname, dstname, symlinks=False):
     if not os.path.exists(srcname):
@@ -54,8 +54,8 @@ def copy_exists(srcname, dstname, symlinks=False):
         else:
             shutil.copyfile(srcname, dstname)
             shutil.copystat(srcname, dstname)
-    except (IOError, os.error), why:
+    except (IOError, os.error) as why:
         errors.append((srcname, dstname, why))
     if errors:
-        print errors
+        print(errors)
 
