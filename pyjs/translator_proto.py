@@ -2131,7 +2131,7 @@ var %s = arguments['length'] >= %d ? arguments[arguments['length']-1] : argument
                         self.add_lookup("__pyjamas__", ass_name, name[0])
                     else:
                         self.add_lookup("__pyjamas__", ass_name, jsname)
-                except AttributeError, e:
+                except AttributeError as e:
                     #raise TranslationError("Unknown __pyjamas__ import: %s" % name, node)
                     pass
             return
