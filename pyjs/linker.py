@@ -48,7 +48,7 @@ def is_modified(in_file,out_file):
 def get_translator_opts(args):
     opts = []
     for k in options.mappings:
-        if args.has_key(k):
+        if k in args:
             #XXX somewhat of a hack ... should have a method
             # for default positive and default negative
             nk = options.mappings[k]['names'][0]
@@ -264,7 +264,7 @@ class BaseLinker(object):
                     self.visit_end_platform(platform)
             if not self.list_imports:
                 self.visit_end()
-        except translator.TranslationError, e:
+        except translator.TranslationError as e:
             raise
 
     def visit_modules(self, module_names, platform=None, parent_file = None):
