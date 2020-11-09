@@ -238,7 +238,7 @@ class Mappings(object):
 
     def bind(self, parser):
         for x in (self._groups, self):
-            for k, o in x.iteritems():
+            for k, o in x.items():
                 for key, pub, pos, alt in [('names', True, True, None),
                                            ('nonames', False, False, None),
                                            ('aliases', False, True, o['names']),
