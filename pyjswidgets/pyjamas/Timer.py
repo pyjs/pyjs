@@ -135,7 +135,7 @@ class Timer(object):
         The method that gets fired when the timer goes off.
         The base class raises a NotImplementedError if it is not
         overridden by a subclass or if Timer isn't instantiated with
-        the notify keyword arguement.
+        the notify keyword argument.
         """
         raise NotImplementedError, ('''Timer.run() must be overridden or Timer
                                        must be instantiated with notify keyword

@@ -99,7 +99,7 @@ class TimeGrid(FlexTable):
             self.currentCol = col
             self.getWidget(self.currentRow, self.currentCol).setFocus(True)
             return
-        # Now we're moving to new postition, just make sure
+        # Now we're moving to new position, just make sure
         # that the previous cells are filled in correctly
         if not self.checkCell(self.currentRow, self.currentCol, True):
             # Nope. We won't move

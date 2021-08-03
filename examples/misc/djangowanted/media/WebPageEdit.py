@@ -70,7 +70,7 @@ class WebPageEdit(Composite):
 
     def onKeyPress(self, sender, keyCode, modifiers):
         """
-        This functon handles the onKeyPress event, and will add the item in the text box to the list when the user presses the enter key.  In the future, this method will also handle the auto complete feature.
+        This function handles the onKeyPress event, and will add the item in the text box to the list when the user presses the enter key.  In the future, this method will also handle the auto complete feature.
         """
         pass
 

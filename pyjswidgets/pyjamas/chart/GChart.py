@@ -3825,7 +3825,7 @@ class GChart (Composite, FocusHandler, KeyboardHandler,
     * tests) when the canvas is re-inserted into the DOM.
     *
     * See TestGChart55.java and TestGChart55a.java for more
-    * info on the GWTCanvas bug that makes this code neccessary.
+    * info on the GWTCanvas bug that makes this code necessary.
     *
     * TODO: Implement technique of GWTCanvasIssue293.patch to
     * override removeFromParent and store/restore innerHTML

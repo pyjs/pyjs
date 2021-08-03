@@ -7694,7 +7694,7 @@ class Formatter(BaseFormatter):
             out.append(num[to_remainder:])
         if spec.n_rpadding:
             out.append_multiple_char(fill_char[0], spec.n_rpadding)
-        #if complex, need to call twice - just retun the buffer
+        #if complex, need to call twice - just return the buffer
         return out.build()
 
     def _format_int_or_long(self, w_num, kind):

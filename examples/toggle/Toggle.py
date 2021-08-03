@@ -1,4 +1,4 @@
-""" testint our demo slider
+""" testing our demo slider
 """
 import pyjd # dummy in pyjs
 

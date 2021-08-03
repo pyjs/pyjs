@@ -31,7 +31,7 @@ def createHttpRequest():
 #
 #  @param url                   URL to load
 #  @param onreadystatechange    function to be used for onreadystatechange
-#  @param on_load_fn            function to be called on succes, with parameters event, request
+#  @param on_load_fn            function to be called on success, with parameters event, request
 #  @param async                 request mode
 #  @returns                     async == False: request object, async == True: None
 #

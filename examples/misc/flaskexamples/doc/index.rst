@@ -169,7 +169,7 @@ More Fun with Asynchronicity
 ============================
 
 By using Pyjamas, Flask, and Celery we can have multiple levels of 
-asynchonicity.  There is an included example that shows how one can use
+asynchronicity.  There is an included example that shows how one can use
 JSON-RPC from a pyjamas application to initiate an asynchonous job on 
 a Flask server.  Since we are using RabbitMQ, we can off-load the 
 resource intensive RPC requests to machines other than the webserver.  
