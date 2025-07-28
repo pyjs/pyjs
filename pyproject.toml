@@ -1,17 +1,15 @@
 [build-system]
-requires = ["setuptools>=80.9.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pyjs"
 dynamic = ["version"]
-requires-python = ">= 3.12"
-authors = [
-  {name = "Lex Berezhny", email = "lex@damoti.com"},
-]
 description = "Python to JavaScript transpiler."
 readme = "README.md"
-license = {text = "BSD-3-Clause"}
+requires-python = ">= 3.12"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Lex Berezhny", email = "lex@damoti.com" }]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Web Environment",
@@ -40,6 +38,12 @@ Funding = "https://www.pyjs.org/fundraising"
 Source = "https://github.com/pyjs/pyjs"
 Tracker = "https://github.com/pyjs/pyjs/issues"
 
+[tool.hatch.version]
+path = "pyjs/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pyjs"]
+
 [tool.black]
 target-version = ["py312"]
 
@@ -47,9 +51,3 @@ target-version = ["py312"]
 profile = "black"
 default_section = "THIRDPARTY"
 known_first_party = "pyjs"
-
-[tool.setuptools.dynamic]
-version = {attr = "pyjs.__version__"}
-
-[tool.setuptools.packages.find]
-include = ["pyjs*"]

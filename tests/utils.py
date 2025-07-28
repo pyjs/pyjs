@@ -7,9 +7,9 @@ from unittest import TestCase
 from importlib import import_module
 
 from types import SimpleNamespace
-from pyjs.analyze import Module, analyze_module
-from pyjs.transpile import Transpiler, transpile
-from pyjs.utils import write_types
+from pyjs.transpiler.analyzer import Module, analyze_module
+from pyjs.transpiler.transpiler import Transpiler, transpile
+from pyjs.transpiler.utils import write_types
 
 
 WIDTH = 80
