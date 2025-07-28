@@ -1,0 +1,32 @@
+class A:
+
+    def __init__():
+        self.text = 'alpha'
+
+class B:
+
+    def __init__():
+        self.a = A()
+        self.beta = 'beta'
+
+class C:
+
+    def __init__():
+        self.b = B()
+        self.ceta = 'ceta'
+
+class D(C):
+
+    def __init__():
+        super().__init__()
+        self.c = C()
+        self.deta = 'deta'
+
+def main():
+    d: D = D()
+    print(d.deta)
+    print(d.ceta)
+    print(d.c.ceta)
+    print(d.c.b.beta)
+    print(d.c.b.a.text)
+    print(d.b.a.text)

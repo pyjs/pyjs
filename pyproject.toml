@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyjs"
+dynamic = ["version"]
+requires-python = ">= 3.12"
+authors = [
+  {name = "Lex Berezhny", email = "lex@damoti.com"},
+]
+description = "Python to JavaScript transpiler."
+readme = "README.md"
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.scripts]
+pyjs = "pyjs.cli:main"
+
+[project.urls]
+Homepage = "https://www.pyjs.org"
+Documentation = "https://docs.pyjs.org"
+"Release notes" = "https://docs.pyjs.org/en/stable/releases"
+Funding = "https://www.pyjs.org/fundraising"
+Source = "https://github.com/pyjs/pyjs"
+Tracker = "https://github.com/pyjs/pyjs/issues"
+
+[tool.black]
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+default_section = "THIRDPARTY"
+known_first_party = "pyjs"
+
+[tool.setuptools.dynamic]
+version = {attr = "pyjs.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["pyjs*"]
