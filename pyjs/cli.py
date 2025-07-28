@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("module", help="module where to look for main entry point, to specify entry point as well use colon, eg. module.submodule:entry_point")
     #parser.add_argument("--js-output", "-js", help="js output file, defaults to module+'.js'", metavar="FILE")
-    parser.add_argument("--ssr-entry-point", help="server side rendering entry point function, in module.submodule:function format")
+    parser.add_argument("--ssr", help="server side rendering entry point function, in module.submodule:function format")
     parser.add_argument("--ssr-args", help="list of arguments to pass to entry point in JSON format")
     #parser.add_argument("--html-output", "-html", help="html output file", metavar="FILE")
     parser.add_argument("--serve", action="store_true", help="html output file")
@@ -33,8 +33,8 @@ def main():
             print("--serve requires --css file argument")
         with open(args.css) as css_file:
             css = css_file.read()
-        if not args.ssr_entry_point:
-            print("--serve requires --ssr_entry_point argument")
+        if not args.ssr:
+            print("--serve requires --ssr argument")
         ssr_args = []
         if args.ssr_args:
             ssr_args = json.loads(args.ssr_args)
@@ -44,7 +44,7 @@ def main():
             module_name,
             client_entry,
             css,
-            args.ssr_entry_point,
+            args.ssr,
             *ssr_args
         )
     else:
@@ -55,16 +55,16 @@ def main():
         print(f"transpiling {module_name}:{client_entry} to ./{js_file_name}")
         with open(js_file_name, "w") as jsfile:
             jsfile.write(js)
-        if args.ssr_entry_point:
+        if args.ssr:
             ssr_args = []
             if args.ssr_args:
                 ssr_args = json.loads(args.ssr_args)
                 if not isinstance(ssr_args, list):
                     print("--ssr_args must be a list of arguments")
-            ssr_entry_point = getattr(module, args.ssr_entry_point)
-            html = page(ssr_entry_point(ssr_args), js_file_name)
-            html_file_name = f"{module_name}.{args.ssr_entry_point}.html"
-            print(f"transpiling {module_name}:{args.ssr_entry_point} to ./{html_file_name}")
+            ssr_entry_point = getattr(module, args.ssr)
+            html = page(ssr_entry_point(*ssr_args), js_file_name)
+            html_file_name = f"{module_name}.{args.ssr}.html"
+            print(f"transpiling {module_name}:{args.ssr} to ./{html_file_name}")
             with open(html_file_name, "w") as htmlfile:
                 htmlfile.write(html)
 
