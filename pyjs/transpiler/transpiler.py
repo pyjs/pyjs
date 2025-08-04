@@ -1,20 +1,81 @@
 import textwrap
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 
+from pyjs.domx import CustomElement, HTMLElement, ProxyElement
 from .analyzer import *
+from .utils import TailwindCSS
 
 
-def transpile(entry_point):
-    module = from_entry_point(entry_point)
-    src = Transpiler(module).visit(module.node)
-    return src
+def transpile_module(module, importer=None, exporter=None):
+    return Transpiler(module, importer, exporter).visit(module.node)
+
+
+def generate_css(tailwind_classes: set):
+    return TailwindCSS().get_css(tailwind_classes)
+
+
+def prepare_bundle(entry_point_py_func, importer=None, exporter=None, include_main=False):
+    entry_point, tailwind_classes = from_entry_point(entry_point_py_func)
+    if include_main:
+        entry_point.py_func.__js_include__ = True
+    module = entry_point.container
+    package = {}
+    css = ""
+    if tailwind_classes:
+        css = generate_css(tailwind_classes)
+    for module_name, module_obj in module.container.items():
+        package[module_name] = transpile_module(module_obj, importer, exporter)
+    return package, entry_point, css
+
+
+def bundle(entry_point_py_func, include_main=False):
+    package, entry_point, css = prepare_bundle(
+        entry_point_py_func,
+        lambda module, names: f"const {{{', '.join(names)}}} = __import_js__({repr(module)});",
+        lambda name: f"__export_js__.{name} = {name};",
+        include_main=include_main
+    )
+    source = []
+    w = source.append
+    w(textwrap.dedent("""\
+    const modules = new Map();
+    const define = (name, moduleFactory) => {
+      modules.set(name, moduleFactory);
+    };
+    const moduleCache = new Map();
+    const importModule = (name) => {
+      if (moduleCache.has(name)) {
+        return moduleCache.get(name).exports;
+      }
+      if (!modules.has(name)) {
+        throw new Error(`Module '${name}' does not exist.`);
+      }
+      const moduleFactory = modules.get(name);
+      const module = {exports: {}};
+      moduleCache.set(name, module);
+      moduleFactory(module.exports, importModule);
+      return module.exports;
+    };
+    """))
+    for module_name, module_js in package.items():
+        if module_js:
+            w(f"define({repr(module_name)}, function (__export_js__, __import_js__) {{\n")
+            w(module_js)
+            w("\n});\n")
+    w(f"importModule({repr(entry_point.container.name)})")
+    if entry_point.has_include_decorator:
+        w(f".{entry_point.name}()")
+    w(";\n")
+    return "".join(source), css
 
 
 class Transpiler(ast._Unparser):
 
-    def __init__(self, entry_point: Function):
+    def __init__(self, entry_point: Function, importer=None, exporter=None):
         super().__init__()
         self.entry_point = entry_point
+        self.importer = importer
+        self.exporter = exporter
 
     def isolated_visit(self, node):
         return Transpiler(self.entry_point).visit(node)
@@ -28,23 +89,32 @@ class Transpiler(ast._Unparser):
         self.fill(f"}}")
 
     def visit_ModuleDef(self, node: ModuleDef):
-        self.write(f"// {node.obj.name}")
         module = node.obj
-        #for node in module.imports.values():
-        #    self.transpile(node)
+        for imported_module, imported_objs in module.imported.items():
+            imported_names = [o.name for o in imported_objs if should_include(o)]
+            if imported_names:
+                if self.importer is not None:
+                    self.fill(self.importer(imported_module, imported_names))
+                else:
+                    self.fill(f"import {{ {", ".join(imported_names)} }} from './{imported_module}.js';")
         for n in node.body:
-            if should_include(n.obj):
+            if should_include(n.obj) and n.obj.container.name == module.name:
                 self.traverse(n)
 
     def visit_ClassDef(self, node):
         self.maybe_newline()
-        self.fill("class " + node.name)
+        export = "export " if self.exporter is None else ""
+        self.fill(f"{export}class {node.name}")
         if node.bases:
             assert len(node.bases) == 1
             self.write(" extends ")
             self.traverse(node.bases[0])
         with self.block():
             self.traverse(node.body)
+        if js_append := getattr(node.obj.py_cls, '__js_append__', None):
+            self.fill(js_append())
+        if self.exporter is not None:
+            self.fill(self.exporter(node.name))
 
     def visit_FunctionDef(self, node):
         self._function_helper(node, "function")
@@ -55,7 +125,15 @@ class Transpiler(ast._Unparser):
     def _function_helper(self, node, fill_suffix):
         self.maybe_newline()
         func = node.obj
-        if node.name == "__init__":
+        is_custom_element_init = (
+            func.name == "__init__" and
+            func.is_method and
+            issubclass(func.cls.py_obj, (CustomElement, ProxyElement)) and
+            func.cls.py_obj != CustomElement
+        )
+        if is_custom_element_init:
+            def_str = "_create"
+        elif node.name == "__init__":
             def_str = "constructor"
         elif func.is_method:
             def_str = ""
@@ -63,8 +141,8 @@ class Transpiler(ast._Unparser):
                 def_str = "static "
             def_str += node.name
         else:
-            if hasattr(func.py_func, "__js_export__"):
-                fill_suffix = "export "+fill_suffix
+            if self.exporter is None and isinstance(func.container, Module):
+                fill_suffix = "export " + fill_suffix
             def_str = fill_suffix + " " + node.name
         self.fill(def_str)
         with self.delimit("(", ")"):
@@ -78,27 +156,38 @@ class Transpiler(ast._Unparser):
                         self.fill(line)
             else:
                 self.traverse(node.body)
+                if is_custom_element_init:
+                    self.fill("return this;")
+        if is_custom_element_init and issubclass(func.cls.py_obj, CustomElement):
+            self.generate_bind_method(func)
+        if self.exporter is not None and isinstance(func.container, Module):
+            self.fill(self.exporter(node.name))
+
+    def generate_bind_method(self, func):
+        self.maybe_newline()
+        self.fill("_hydrate()")
+        with self.block():
+            generator = HydrateGenerator(func, self)
+            for line in func.body:
+                generator.visit(line)
 
     def visit_arguments(self, node):
         first = True
         started_kw = False
-        # normal arguments
-        all_args = node.posonlyargs + node.args
-        defaults = [None] * (len(all_args) - len(node.defaults)) + node.defaults
-        for index, elements in enumerate(zip(all_args, defaults), 1):
-            a, d = elements
+        defaults = [None] * (len(node.args) - len(node.defaults)) + node.defaults
+        for index, (arg, default) in enumerate(zip(node.args, defaults), 1):
             if first:
                 first = False
             else:
                 self.write(", ")
-            if d and not started_kw:
+            if default and not started_kw:
                 started_kw = True
                 self.write("{ ")
-            self.traverse(a)
-            if d:
+            self.traverse(arg)
+            if default:
                 self.write("=")
-                self.traverse(d)
-            if index == len(all_args) and started_kw:
+                self.traverse(default)
+            if index == len(node.args) and started_kw:
                 self.write("} = {}")
 
         if node.vararg:
@@ -113,11 +202,16 @@ class Transpiler(ast._Unparser):
     def visit_Call(self, node: Call):
         self.set_precedence(ast._Precedence.ATOM, node.func)
 
-        if node.func.obj.has_inline_decorator:
-            src = node.func.obj.rewrite_call(
+        if decorator_func := node.func.obj.inline_decorator:
+            self_ = None
+            if isinstance(node.func, Attribute):
+                self_ = self.isolated_visit(node.func.value)
+            elif isinstance(node.func.obj, Class):
+                self_ = node.func.obj._self
+            src = decorator_func.rewrite_call(
                 [self.isolated_visit(arg) for arg in node.args],
                 [arg.obj if isinstance(arg.obj, (GenericClass, Class)) else arg.obj.cls for arg in node.args],
-                self.isolated_visit(node.func.value) if isinstance(node.func, Attribute) else None,
+                self_,
             )
             self.write(src)
             return
@@ -132,12 +226,16 @@ class Transpiler(ast._Unparser):
         if super_call:
             if node.func.attr == "__init__":
                 self.write("super")
+                if issubclass(node.func.value.obj.py_obj, CustomElement):
+                    self.write("._create")
             else:
                 self.write("super.")
                 self.write(node.func.attr)
         elif isinstance(node.func.obj, Class):
             self.write("new ")
             self.traverse(node.func)
+            if issubclass(node.func.obj.py_obj, CustomElement):
+                self.write("()._create")
         else:
             self.traverse(node.func)
 
@@ -218,6 +316,8 @@ class Transpiler(ast._Unparser):
         self.fill()
         if isinstance(node.annotation, ast.Name) and node.annotation.id == "__static__":
             self.write("static ")
+        elif isinstance(node.annotation, ast.Name) and node.annotation.id == "__const__":
+            self.write("const ")
         else:
             self.write("var ")
         with self.delimit_if("(", ")", not node.simple and isinstance(node.target, ast.Name)):
@@ -241,6 +341,8 @@ class Transpiler(ast._Unparser):
             self.write("...")
         elif isinstance(node.value, bool):
             self.write(repr(node.value).lower())
+        elif isinstance(node.value, type(None)):
+            self.write("null")
         else:
             if node.kind == "u":
                 self.write("u")
@@ -312,6 +414,9 @@ class Transpiler(ast._Unparser):
             self.traverse(node.value)
         self.write(";")
 
+    def visit_Pass(self, node: ast.Pass):
+        pass
+
     def visit_Raise(self, node: ast.Raise):
         self.fill("throw ")
         if node.exc:
@@ -341,3 +446,46 @@ class Transpiler(ast._Unparser):
 
     def visit_FormattedValue(self, node: ast.FormattedValue):
         self.traverse(node.value)
+
+
+class HydrateGenerator(ast.NodeVisitor):
+
+    def __init__(self, func: Function, transpiler: Transpiler):
+        self.func = func
+        self.transpiler = transpiler
+        self.fill = transpiler.fill
+        self.write = transpiler.write
+        self.elements = {func.scope.names["self"]}
+        self.self_id_set = False
+
+    def add_self_id(self, self_):
+        if not self.self_id_set:
+            self.self_id_set = True
+            self.fill("const self_id = this.get_data('self-id');")
+
+    def visit_Assign(self, node: ast.Assign):
+        targets = []
+        for target in node.targets:
+            if (isinstance(target, ast.Attribute) and
+                isinstance(target.value, Name) and
+                target.value.id == "self" and
+                issubclass(node.value.obj.py_cls, (HTMLElement, ProxyElement))
+            ):
+                assert len(node.targets) == 1
+                self.elements.add(target.obj)
+                targets.append(target)
+        if targets:
+            target = targets[0]
+            self.add_self_id(target.value)
+            self.fill()
+            self.transpiler.traverse(target)
+            if issubclass(node.value.obj.py_cls, HTMLElement):
+                self.write(f" = document.getElementById(self_id+'-{target.attr}');")
+            elif issubclass(node.value.obj.py_cls, ProxyElement):
+                self.write(f" = new {node.value.obj.name}()._hydrate(document.getElementById(self_id+'-{target.attr}'));")
+
+    def visit_Expr(self, node: ast.Expr):
+        if isinstance(node.value, ast.Call):
+            func = node.value.func
+            if isinstance(func, Attribute) and func.value.obj in self.elements and func.attr != "add":
+                self.transpiler.traverse(node)

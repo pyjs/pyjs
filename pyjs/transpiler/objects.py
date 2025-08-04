@@ -45,14 +45,15 @@ def py_to_ast(value):
         raise TypeError(f"Unsupported type: {type(value)}")
 
 
-def traverse_imported(obj_name: str, obj: object, container: 'Module'):
+def traverse_imported(obj_name: str, obj: object, current_module: 'Module'):
     module_name = obj.__module__
-    if module_name not in container.imported:
-        other_module = Module(inspect.getmodule(obj)).build()
-        container.imported[module_name] = other_module
-    imported_module = container.imported[module_name]
+    package = current_module.container
+    if module_name not in package:
+        package[module_name] = Module(inspect.getmodule(obj), package).build()
+    imported_module = package[module_name]
     imported_object = imported_module.search(obj_name)
-    container.scope.add(imported_object, obj_name)
+    current_module.scope.add(imported_object, obj_name)
+    current_module.imported.setdefault(module_name, []).append(imported_object)
 
 
 class Scope:
@@ -116,6 +117,10 @@ class Object:
     def py_obj(self):
         raise NotImplementedError
 
+    @property
+    def type(self):
+        raise NotImplementedError
+
     def add(self, other: 'Object'):
         self.scope.add(other)
 
@@ -159,8 +164,8 @@ class Module(Object):
 
     scope: ModuleScope
 
-    def __init__(self, module, is_builtins: bool=False):
-        super().__init__(module.__name__, ModuleScope(is_builtins))
+    def __init__(self, module, package, is_builtins: bool=False):
+        super().__init__(module.__name__, ModuleScope(is_builtins), package)
         self.py_module = module
         self.imported = {}
 
@@ -200,15 +205,25 @@ class UnionType:
         new = Instance(name, self, scope, container)
         return new
 
+    @property
+    def types(self):
+        return self._types.values()
+
+    @property
+    def first(self):
+        return next(iter(self.types))
+
+    @property
+    def type(self):
+        if len(self._types) == 1:
+            return self.first
+        return self
+
     def add(self, cls: 'Class'):
         self._types.setdefault(cls.name, cls)
 
     def reassign(self, name, *args, **kwargs):
         return UnionType(name, self.types)
-
-    @property
-    def types(self):
-        return self._types.values()
 
     def to_annotation_str(self, delim="|"):
         return delim.join(t.name for t in self.types)
@@ -259,6 +274,10 @@ class Class(Object):
         return self.py_cls
 
     @property
+    def type(self):
+        return self
+
+    @property
     def node(self) -> ast.ClassDef:
         body = [
             o.node for o in self.internal_scope.names.values()
@@ -289,8 +308,8 @@ class Class(Object):
         return bool(py_cls.__type_params__)
 
     @property
-    def has_inline_decorator(self):
-        return has_inline_decorator(self.py_cls)
+    def inline_decorator(self):
+        return self.find("__init__").inline_decorator
 
     @classmethod
     def from_py_cls(cls, py_cls: type, container: Module):
@@ -308,19 +327,20 @@ class Class(Object):
     def add(self, other: Object):
         self.internal_scope.add(other)
 
-    def find(self, name, context=None):
+    def find(self, name):
         if value := self.find_attrs(name):
             return value
         raise NameError(f"Can't find {name} on {self.name} class.")
 
-    def find_attrs(self, name, context=None):
+    def find_attrs(self, name, search_bases=True):
         if value := self.internal_scope.names.get(name):
             return value
-        return self.find_bases(name, context)
+        if search_bases:
+            return self.find_bases(name)
 
-    def find_bases(self, name, context=None):
+    def find_bases(self, name):
         if self.super is not None:
-            return self.super.find_attrs(name, context)
+            return self.super.find_attrs(name)
 
 
 class GenericClass(Object):
@@ -412,13 +432,19 @@ class Function(Object):
         self.vararg = None
         self.kwarg = None
         self.body = []
+        self.return_type = None
 
     @property
     def py_obj(self):
         return self.py_func
 
+    @property
+    def type(self):
+        return self.return_type
+
     @classmethod
     def from_py_func(cls, py_func: callable, container: Module | Class):
+        py_func = getattr(py_func, "__js_replace__", py_func)
         lines, lineno = inspect.getsourcelines(py_func)
         is_method = isinstance(container, Class)
 
@@ -458,7 +484,7 @@ class Function(Object):
                 defaults=self.defaults
             ),
             body=self.body,
-            returns=None if self.return_type is None else Name(self.return_type),
+            returns=None if self.return_type is None else self.return_type.annotation,
             type_params=[],
             decorator_list=[],
             lineno=self.lineno,
@@ -486,12 +512,17 @@ class Function(Object):
         return isinstance(self.py_func, staticmethod)
 
     @property
-    def has_inline_decorator(self):
-        return has_inline_decorator(self.py_func)
+    def inline_decorator(self):
+        if has_inline_decorator(self.py_func):
+            return self
 
     @property
     def has_source_decorator(self):
         return getattr(self.py_func, "__js_rewrite_func__", False)
+
+    @property
+    def has_include_decorator(self):
+        return has_include_decorator(self.py_func)
 
     def get_predefined_source(self):
         return self.py_func.__js_rewrite_func__()
@@ -511,7 +542,7 @@ class Function(Object):
                 args["_arg_strs"].append(arg_str)
                 args["_arg_types"].append(arg_type)
                 args[param.arg] = arg_str
-        if self.is_method and not self.name == "__init__":
+        if self.is_method:
             args["self"] = self_
         return rewrite(**args)
 
@@ -543,19 +574,19 @@ class Instance(Object):
         self.static_value: ast.expr = static_value
         self.py_value = py_obj
 
-    def find(self, name, context=None):
+    def find(self, name):
         if value := self.find_attrs(name):
             return value
-        return self.cls.find(name, context)
+        return self.cls.find(name)
 
-    def find_attrs(self, name, context=None):
+    def find_attrs(self, name):
         if value := self.attrs.get(name):
             return value
-        return self.find_super_instances(name, context)
+        return self.find_super_instances(name)
 
-    def find_super_instances(self, name, context=None):
+    def find_super_instances(self, name):
         if self.cls.super is not None:
-            return self.cls.super._self.find_attrs(name, context)
+            return self.cls.super._self.find_attrs(name)
 
     def reassign(self, name: str, scope: Scope, container: Object):
         new = Instance(name, self.cls, scope, container)
@@ -568,6 +599,10 @@ class Instance(Object):
     @property
     def py_obj(self):
         return self.py_value
+
+    @property
+    def type(self):
+        return self.cls
 
     @property
     def node(self) -> ast.AnnAssign:
@@ -644,6 +679,13 @@ class Attribute(ast.Attribute):
     def __init__(self, obj: Object, **kwargs):
         self.obj = obj
         assert isinstance(self.obj, (Object, UnionType)), f"{self.obj} is not an Object"
+        super().__init__(**kwargs)
+
+
+class Tuple(ast.Tuple):
+    def __init__(self, obj: Class, **kwargs):
+        self.obj = obj
+        assert isinstance(self.obj, (GenericClass, Class))
         super().__init__(**kwargs)
 
 

@@ -1,4 +1,5 @@
 import ast
+import subprocess
 from io import StringIO
 
 from .objects import Function
@@ -36,9 +37,29 @@ class TypeWriter(ast._Unparser):
         if isinstance(node.obj, Function):
             self.write(f"[{node.obj.cls.name}]")
         self.write(node.attr)
-        if isinstance(node.obj, Function) and node.obj.has_inline_decorator:
+        if isinstance(node.obj, Function) and node.obj.inline_decorator:
             self.write("!")
 
 
 def write_types(ast_obj):
     return TypeWriter().visit(ast_obj)
+
+
+class TailwindCSS:
+
+    def __init__(self, tailwindcss="tailwindcss"):
+        self.tailwindcss = tailwindcss
+
+    def get_css(self, classes: set):
+        html = f'<div class="{" ".join(classes)}"></div>'
+        try:
+            process = subprocess.run(
+                [self.tailwindcss, "--content", "-"],
+                input=html.encode(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True
+            )
+            return process.stdout.decode()
+        except subprocess.CalledProcessError as e:
+            print("Tailwind CLI failed:", e.stderr.decode())

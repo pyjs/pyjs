@@ -1,1 +1,1 @@
-from .transpiler import transpile
+from .transpiler import bundle, prepare_bundle, transpile_module

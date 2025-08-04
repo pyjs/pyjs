@@ -7,9 +7,9 @@ from unittest import TestCase
 from importlib import import_module
 
 from types import SimpleNamespace
-from pyjs.analyze import Module, analyze_module
-from pyjs.transpile import Transpiler, transpile
-from pyjs.utils import write_types
+from pyjs.transpiler.analyzer import Module, analyze_module
+from pyjs.transpiler.transpiler import Transpiler
+from pyjs.transpiler.utils import write_types
 
 
 WIDTH = 80
@@ -52,14 +52,14 @@ def create_module(src, filename="_test_.py"):
 
 def module_from_src(line_or_lines):
     if '\n' in line_or_lines:
-        src = f"from pyjs import js\n{textwrap.dedent(line_or_lines)}"
+        src = f"from pyjs import js\n{textwrap.dedent(line_or_lines)}\nmain.__js_include__ = True"
     else:
         src = textwrap.dedent(
             f"""\
         def main():
             {line_or_lines}
         main.__js__ = True
-        main.__js_export__ = True
+        main.__js_include__ = True
         """
         )
     return create_module(src)
@@ -71,7 +71,8 @@ class BaseTestCase(TestCase):
         super().setUp()
 
     def analyze_line(self, line):
-        module = analyze_module(module_from_src(line))
+        entry_point, _ = analyze_module(module_from_src(line))
+        module = entry_point.container
         type_info = write_types(module.node)
         if '\n' in line:
             return type_info
@@ -79,7 +80,8 @@ class BaseTestCase(TestCase):
             return '\n'.join([l.strip() for l in type_info.splitlines()[1:]])
 
     def transpile_line(self, line):
-        module = analyze_module(module_from_src(line))
+        entry_point, _ = analyze_module(module_from_src(line))
+        module = entry_point.container
         js_src = Transpiler(module.scope.search("main")).visit(module.node)
         if '\n' in line:
             return js_src
@@ -87,7 +89,8 @@ class BaseTestCase(TestCase):
             return '\n'.join([l.strip() for l in js_src.splitlines()[1:]])
 
     def analyze_file(self, module_name, write=False, no_assert=False):
-        module = analyze_module(import_module(f"tests.cases.{module_name}"))
+        entry_point, _ = analyze_module(import_module(f"tests.cases.{module_name}"))
+        module = entry_point.container
         actual = write_types(module.node).splitlines()
 
         if no_assert:
@@ -120,7 +123,8 @@ class BaseTestCase(TestCase):
             )
 
     def transpile_file(self, module_name, write=False, no_assert=False):
-        module = analyze_module(import_module(f"tests.cases.{module_name}"))
+        entry_point, _ = analyze_module(import_module(f"tests.cases.{module_name}"))
+        module = entry_point.container
         actual = Transpiler(module.scope.search("main")).visit(module.node).splitlines()
 
         if no_assert:

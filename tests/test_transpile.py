@@ -1,4 +1,4 @@
-from tests.utils import BaseTestCase
+from pyjs.testing import BaseTestCase
 
 
 class TestTranspileConditionals(BaseTestCase):
@@ -17,9 +17,7 @@ class TestTranspileConditionals(BaseTestCase):
                     print('no value')
             """,
             """
-            // _test_
-            
-            function main() {
+            export function main() {
                 var a = 9;
                 if (a == 9) {
                     console.log('a is 9');
@@ -45,11 +43,9 @@ class TestTranspileLoops(BaseTestCase):
                     print(i)
             """,
             """
-            // _test_
-            
-            function main() {
+            export function main() {
                 var l = ['a', 'b', 'c'];
-                for (var i in l) {
+                for (var i of l) {
                     console.log(i);
                 }
             }

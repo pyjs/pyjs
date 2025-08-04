@@ -41,6 +41,8 @@ class InferenceVisitor(ast.NodeVisitor):
                 body.append(stmt)
         return body
 
+    # region assignment & lookup
+
     def make_assignment(self, target, value_type: Class, value):
         if isinstance(target, ast.Attribute):
             try:
@@ -162,6 +164,53 @@ class InferenceVisitor(ast.NodeVisitor):
         )
         return self.assign_name_value([node.target], bin_op_value, None)
 
+    def visit_Attribute(self, node: ast.Attribute):
+        value = self.visit(node.value)
+        try:
+            maybe_narrowed_attr = ast.unparse(node)
+            attr = self.scope.lookup(maybe_narrowed_attr)
+        except NameError:
+            try:
+                attr = value.obj.find(node.attr)
+            except NameError:
+                value_init = value.obj.cls.init
+                if value_init and not value_init.is_analyzed:
+                    raise DependencyError(value_init)
+                raise
+
+        return Attribute(
+            attr,
+            value=value,
+            attr=node.attr,
+            lineno=node.lineno,
+        )
+
+    def visit_Name(self, node: ast.Name):
+        value = self.scope.search(node.id)
+        if node.id == "super":
+            return Name(value, id="super")
+        elif node.id == "cls" and self.func.cls == value:
+            return Name(value, id="this")
+        return Name(value)
+
+    def visit_Starred(self, node: ast.Starred):
+        value = self.visit(node.value)
+        item_type = next(iter(value.obj.cls.generic_types.values()))
+        return Starred(item_type, value=value)
+
+    def visit_Subscript(self, node: ast.Subscript):
+        slice = self.visit(node.slice)
+        value = self.visit(node.value)
+        getitem = value.obj.find("__getitem__")
+        assert isinstance(getitem.return_type, (Class, UnionType))
+        # TODO: replace value with Attribute Call
+        # result = next(iter(value.obj.cls.generic_types.values()))
+        return Subscript(getitem.return_type, slice=slice, value=value)
+
+    # endregion
+
+    # region functions
+
     def visit_Call(self, node: ast.Call):
         """
         Instantiating a class in Python is an ast.Call, for generic class instantiation
@@ -206,15 +255,18 @@ class InferenceVisitor(ast.NodeVisitor):
         return Call(return_type, func=func, args=args, keywords=keywords)
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        self.func.vararg = node.args.vararg
-        self.func.kwarg = node.args.kwarg
-        self.func.defaults = node.args.defaults
+        self.func.params = []
+        self.func.vararg = None
+        self.func.kwarg = None
+        self.func.defaults = defaults = [
+            self.visit(default) for default in node.args.defaults
+        ]
 
         pos_params = list(node.args.args)
         if node.args.vararg: pos_params.append(node.args.vararg)
         if node.args.kwarg: pos_params.append(node.args.kwarg)
-        no_defaults = len(pos_params) - len(node.args.defaults)
-        pos_defaults = [None] * no_defaults + node.args.defaults
+        no_defaults = len(pos_params) - len(defaults)
+        pos_defaults = [None] * no_defaults + defaults
 
         if self.func.is_method:
             if self.func.is_classmethod:
@@ -233,7 +285,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 continue
             default_value_type = None
             if default is not None:
-                default_value_type = self.visit(default).obj
+                default_value_type = default.obj
                 assert isinstance(default_value_type, Class)
             annotation_type = None
             if param.annotation is not None:
@@ -246,15 +298,21 @@ class InferenceVisitor(ast.NodeVisitor):
                 if annotation_type is None:
                     annotation_type = BUILTINS.search("object")
                 arg_type = BUILTINS.search("tuple")(annotation_type)
+                self.func.vararg = ast.arg(arg=node.args.vararg.arg, annotation=Name(arg_type))
             elif param == node.args.kwarg:
                 key_type = BUILTINS.search("str")
                 value_type = annotation_type
                 if value_type is None:
                     value_type = BUILTINS.search("object")
                 arg_type = BUILTINS.search("dict")(key_type, value_type)
+                self.func.kwarg = ast.arg(arg=node.args.kwarg.arg, annotation=Name(arg_type))
             else:
                 arg_type = annotation_type or default_value_type
-                self.func.params.append(param)
+                if not arg_type:
+                    raise TypeError(
+                        "Concrete type could not be determined from type annotation or value."
+                    )
+                self.func.params.append(ast.arg(arg=param.arg, annotation=Name(arg_type)))
             self.func.scope.add(arg_type(param.arg, self.func.scope, self.func))
         if should_analyze_func_body(self.func.py_func):
             self.func.body = self.visit_body(node.body)
@@ -309,13 +367,7 @@ class InferenceVisitor(ast.NodeVisitor):
             return self.visit(node)
 
     def visit_Pass(self, node: ast.Pass):
-        return []
-
-    def visit_Lambda(self, node: ast.Lambda):
-        return ast.Lambda(args=node.args, body=self.visit(node.body))
-
-    def visit_Expr(self, node: ast.Expr):
-        return ast.Expr(value=self.visit(node.value))
+        return node
 
     def visit_Return(self, node: ast.Return):
         if (value := node.value) is not None:
@@ -329,24 +381,15 @@ class InferenceVisitor(ast.NodeVisitor):
             self.func.return_type = return_type
         return ast.Return(value=value)
 
-    def visit_Attribute(self, node: ast.Attribute):
-        # for function, need to return a bound method if a method
-        value = self.visit(node.value)
+    def visit_Lambda(self, node: ast.Lambda):
+        return ast.Lambda(args=node.args, body=self.visit(node.body))
 
-        try:
-            attr = value.obj.find(node.attr)
-        except NameError:
-            value_init = value.obj.cls.init
-            if value_init and not value_init.is_analyzed:
-                raise DependencyError(value_init)
-            raise
+    # endregion
 
-        return Attribute(
-            attr,
-            value=value,
-            attr=node.attr,
-            lineno=node.lineno,
-        )
+    # region expressions & operators
+
+    def visit_Expr(self, node: ast.Expr):
+        return ast.Expr(value=self.visit(node.value))
 
     def visit_JoinedStr(self, node: ast.JoinedStr):
         return JoinedStr(
@@ -359,126 +402,6 @@ class InferenceVisitor(ast.NodeVisitor):
             value=self.visit(node.value),
             conversion=node.conversion,
             format_spec=node.format_spec,
-        )
-
-    def visit_Constant(self, node: ast.Constant):
-        type_name = type(node.value).__name__
-        type_cls = BUILTINS.search(type_name)
-        assert isinstance(type_cls, Class)
-        return Constant(type_cls, value=node.value)
-
-    def visit_List(self, node: ast.List):
-        generic_list = BUILTINS.search('list')
-        assert isinstance(generic_list, GenericClass)
-        V = UnionType()
-        elts = []
-        for item in node.elts:
-            elt = self.visit(item)
-            elts.append(elt)
-            if isinstance(elt.obj, Instance):
-                V.add(elt.obj.cls)
-            else:
-                assert isinstance(elt.obj, Class)
-                V.add(elt.obj)
-        list_type = generic_list(V) if V.types else generic_list
-        return List(list_type, elts=elts)
-
-    def visit_Dict(self, node: ast.Dict):
-        generic_dict = BUILTINS.search("dict")
-        assert isinstance(generic_dict, GenericClass)
-        K, keys, V, values = UnionType(), [], UnionType(), []
-        for key, value in zip(node.keys, node.values):
-            keys.append(self.visit(key))
-            K.add(keys[-1].obj)
-            values.append(self.visit(value))
-            if isinstance(values[-1].obj, Instance):
-                V.add(values[-1].obj.cls)
-            else:
-                V.add(values[-1].obj)
-        dict_type = generic_dict(K, V) if K.types and V.types else generic_dict
-        return Dict(dict_type, keys=keys, values=values)
-
-    def visit_Name(self, node: ast.Name):
-        value = self.scope.search(node.id)
-        if node.id == "super":
-            return Name(value, id="super")
-        return Name(value)
-
-    def visit_Starred(self, node: ast.Starred):
-        value = self.visit(node.value)
-        item_type = next(iter(value.obj.cls.generic_types.values()))
-        return Starred(item_type, value=value)
-
-    def visit_Subscript(self, node: ast.Subscript):
-        slice = self.visit(node.slice)
-        value = self.visit(node.value)
-        getitem = value.obj.find("__getitem__")
-        assert isinstance(getitem.return_type, (Class, UnionType))
-        # TODO: replace value with Attribute Call
-        # result = next(iter(value.obj.cls.generic_types.values()))
-        return Subscript(getitem.return_type, slice=slice, value=value)
-
-    def visit_For(self, node: ast.For):
-        node_iter = self.visit(node.iter)
-
-        if isinstance(node.target, ast.Name):
-            iter_cls = node_iter.obj
-            if isinstance(iter_cls, Instance):
-                iter_cls = iter_cls.cls
-            assert len(iter_cls.generic_types) == 1
-            item_type = next(iter(iter_cls.generic_types.values()))
-            assert isinstance(iter_cls, (UnionType, Class))
-            self.scope.add(
-                item_type(node.target.id, self.scope, self.func)
-            )
-        elif isinstance(node.target, ast.Tuple):
-            assert node_iter.obj.generic_name == "Iterable"
-            types = list(node_iter.obj.generic_types["V"].generic_types.values())
-            assert len(node.target.elts) == len(types)
-            for val, val_type in zip(node.target.elts, types):
-                self.scope.add(
-                    val_type(val.id, self.scope, self.func)
-                )
-        else:
-            raise NotImplementedError
-
-        target = self.visit(node.target)
-        body = self.visit_body(node.body)
-        orelse = self.visit(node.orelse) if node.orelse else node.orelse
-        return ast.For(
-            target=target,
-            iter=node_iter,
-            body=body,
-            orelse=orelse,
-        )
-
-    def visit_Tuple(self, node: ast.Tuple):
-        elts = [self.visit(elt) for elt in node.elts]
-        return ast.Tuple(elts=elts)
-
-    def visit_ListComp(self, node: ast.ListComp):
-        gen = node.generators[0]
-        gen.iter = self.visit(gen.iter)
-        if isinstance(gen.target, ast.Name):
-            iter_cls = gen.iter.obj
-            if isinstance(iter_cls, Instance):
-                iter_cls = iter_cls.cls
-            item_type = next(iter(iter_cls.generic_types.values()))
-            if isinstance(item_type, UnionType):
-                # TODO: don't just pick the first type here
-                item_type = next(iter(item_type.types))
-            self.scope.add(
-                item_type(gen.target.id, self.scope, self.func)
-            )
-        else:
-            raise NotImplementedError
-        target = self.visit(gen.target)
-        elt = self.visit(node.elt)
-        return ListComp(
-            BUILTINS.search("list")(item_type),
-            elt=elt,
-            target=target,
-            generators=node.generators,
         )
 
     COMPARE_OPS = {
@@ -609,6 +532,118 @@ class InferenceVisitor(ast.NodeVisitor):
                 )
         raise NotImplementedError
 
+    # endregion
+
+    # region constants
+
+    def visit_Constant(self, node: ast.Constant):
+        type_name = type(node.value).__name__
+        type_cls = BUILTINS.search(type_name)
+        assert isinstance(type_cls, Class)
+        return Constant(type_cls, value=node.value)
+
+    def visit_Tuple(self, node: ast.Tuple):
+        generic_tuple = BUILTINS.search('tuple')
+        assert isinstance(generic_tuple, GenericClass)
+        elts = []
+        types = []
+        for item in node.elts:
+            elt = self.visit(item)
+            elts.append(elt)
+            types.append(elt.obj.type)
+        tuple_type = generic_tuple(*types)
+        return Tuple(tuple_type, elts=elts)
+
+    def visit_List(self, node: ast.List):
+        generic_list = BUILTINS.search('list')
+        assert isinstance(generic_list, GenericClass)
+        V = UnionType()
+        elts = []
+        for item in node.elts:
+            elt = self.visit(item)
+            elts.append(elt)
+            V.add(elt.obj.type)
+        list_type = generic_list(V.type) if V.types else generic_list
+        return List(list_type, elts=elts)
+
+    def visit_Dict(self, node: ast.Dict):
+        generic_dict = BUILTINS.search("dict")
+        assert isinstance(generic_dict, GenericClass)
+        K, keys, V, values = UnionType(), [], UnionType(), []
+        for key, value in zip(node.keys, node.values):
+            keys.append(self.visit(key))
+            K.add(keys[-1].obj)
+            values.append(self.visit(value))
+            V.add(values[-1].obj.type)
+        dict_type = generic_dict(K.type, V.type) if K.types and V.types else generic_dict
+        return Dict(dict_type, keys=keys, values=values)
+
+    # endregion
+
+    # region looping
+
+    def visit_For(self, node: ast.For):
+        node_iter = self.visit(node.iter)
+
+        if isinstance(node.target, ast.Name):
+            iter_cls = node_iter.obj.type
+            assert len(iter_cls.generic_types) == 1
+            item_type = next(iter(iter_cls.generic_types.values()))
+            assert isinstance(iter_cls, (UnionType, Class))
+            self.scope.add(item_type(node.target.id, self.scope, self.func))
+            target = ast.arg(arg=node.target.id, annotation=item_type.annotation)
+        elif isinstance(node.target, ast.Tuple):
+            iter_type = node_iter.obj.type
+            assert iter_type.generic_name in ("Iterable", "list")
+            types = list(iter_type.generic_types["V"].generic_types.values())
+            assert len(node.target.elts) == len(types)
+            elts = []
+            for val, val_type in zip(node.target.elts, types):
+                elts.append(ast.arg(arg=val.id, annotation=val_type.annotation))
+                self.scope.add(val_type(val.id, self.scope, self.func))
+            target = ast.Tuple(elts=elts)
+        else:
+            raise NotImplementedError
+
+        body = self.visit_body(node.body)
+        orelse = self.visit(node.orelse) if node.orelse else node.orelse
+        return ast.For(
+            target=target,
+            iter=node_iter,
+            body=body,
+            orelse=orelse,
+            lineno=node.lineno,
+        )
+
+    def visit_ListComp(self, node: ast.ListComp):
+        gen = node.generators[0]
+        gen.iter = self.visit(gen.iter)
+        if isinstance(gen.target, ast.Name):
+            iter_cls = gen.iter.obj
+            if isinstance(iter_cls, Instance):
+                iter_cls = iter_cls.cls
+            item_type = next(iter(iter_cls.generic_types.values()))
+            if isinstance(item_type, UnionType):
+                # TODO: don't just pick the first type here
+                item_type = next(iter(item_type.types))
+            self.scope.add(
+                item_type(gen.target.id, self.scope, self.func)
+            )
+        else:
+            raise NotImplementedError
+        target = self.visit(gen.target)
+        elt = self.visit(node.elt)
+        return ListComp(
+            BUILTINS.search("list")(item_type),
+            elt=elt,
+            target=target,
+            generators=node.generators,
+        )
+
+    # endregion
+
+    # region conditionals
+
     def visit_If(self, node: ast.If):
         test = self.visit(node.test)
         if isinstance(test.obj, Instance):
@@ -623,7 +658,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 func.return_type,
                 func=Attribute(
                     func,
-                    value=node.test,
+                    value=test,
                     attr=func.name
                 ),
                 args=[],
@@ -636,8 +671,12 @@ class InferenceVisitor(ast.NodeVisitor):
         ):
             args = test.args
             assert len(args) == 2
-            assert all(isinstance(a, ast.Name) for a in args)
-            value_name = args[0].id
+            if isinstance(args[0], ast.Attribute):
+                value_name = ast.unparse(args[0])
+            else:
+                assert isinstance(args[0], ast.Name)
+                value_name = args[0].id
+            assert isinstance(args[1], ast.Name)
             value_type = args[1].obj
             assert isinstance(value_type, (Class, GenericClass))
             if isinstance(value_type, GenericClass):
@@ -699,6 +738,8 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_Raise(self, node: ast.Raise):
         return node
 
+    # endregion
+
 
 class CallGraphVisitor(ast.NodeVisitor):
 
@@ -720,9 +761,19 @@ class CallGraphVisitor(ast.NodeVisitor):
             if self.entry_point not in cls.visited:
                 cls.visited.add(self.entry_point)
                 for attr in cls.children:
-                    if has_include_decorator(attr.py_obj):
+                    if has_include_decorator(attr.py_obj) or self.parent_has_include(attr):
                         self.isolated_visit(attr)
             cls = cls.super
+
+    def parent_has_include(self, obj):
+        if isinstance(obj, Function):
+            parent = obj.cls.super
+            while parent is not None:
+                parent_func = parent.find_attrs(obj.name, search_bases=False)
+                if parent_func and has_include_decorator(parent_func.py_obj):
+                    return True
+                parent = parent.super
+        return False
 
     def isolated_visit(self, func: Function):
         assert isinstance(func, Function)
@@ -737,6 +788,10 @@ class CallGraphVisitor(ast.NodeVisitor):
             self.visit(stmt)
 
     def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, Name) and node.func.id == "tw":
+            self.entry_point.tailwind_classes.update(
+                set(node.args[0].value.split(" "))
+            )
         func = node.func.obj
         if isinstance(func, Function):
             self.enter(func)
@@ -761,13 +816,16 @@ class CallGraphVisitor(ast.NodeVisitor):
                 self.enter(node.obj.find("__init__"))
             elif isinstance(node.obj, Function):
                 self.enter(node.obj)
+            elif isinstance(node.obj, UnionType):
+                for obj_type in node.obj.types:
+                    self.enter_class(obj_type)
+                    self.enter(obj_type.find("__init__"))
             else:
                 node.obj.visited.add(self.entry_point)
 
 
 def from_entry_point(entry_point: callable):
     entry_point.__js__ = True
-    #entry_point.__js_export__ = True
     py_module = inspect.getmodule(entry_point)
     return analyze_module(py_module, entry_point)
 
@@ -777,12 +835,23 @@ def analyze_module(py_module, entry_point=None):
         assert hasattr(py_module, "main"), "No entry_point specified and no main() function found."
         py_module.main.__js__ = True
         entry_point = py_module.main
-    module = Module(py_module).build()
-    for imported in module.imported.values():
+    package = {}
+    module = Module(py_module, package).build()
+    package[module.name] = module
+    for imported in package.values():
         annotate_types(imported)
     annotate_types(module)
-    visit_entry_point(module, entry_point)
-    return module
+    entry_point_function, tailwind_classes = visit_entry_point(module, entry_point)
+    entry_point_function.visited.clear()
+    return entry_point_function, tailwind_classes
+
+
+def visit_entry_point(module: Module, py_func):
+    entry_point_func = module.search(py_func.__name__)
+    assert isinstance(entry_point_func, Function)
+    entry_point_func.tailwind_classes = set()
+    CallGraphVisitor.start(entry_point_func)
+    return entry_point_func, entry_point_func.tailwind_classes
 
 
 def flatten_objects(parent: Object) -> Iterator[Function]:
@@ -816,12 +885,6 @@ def annotate_types(parent: Object):
         functions = dependencies.static_order()
 
 
-def visit_entry_point(module: Module, py_func):
-    entry_point_func = module.search(py_func.__name__)
-    assert isinstance(entry_point_func, Function)
-    CallGraphVisitor.start(entry_point_func)
-
-
 def load_builtins():
     from . import _builtins
     for name, value in list(vars(_builtins).items()):
@@ -837,7 +900,7 @@ def load_builtins():
             # very hacky, should fix sometime
             delattr(_builtins, name)
             setattr(_builtins, name, value)
-    return Module(_builtins, is_builtins=True).build()
+    return Module(_builtins, {}, is_builtins=True).build()
 
 
 ModuleScope.BUILTINS = BUILTINS = load_builtins()
