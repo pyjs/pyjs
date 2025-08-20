@@ -12,9 +12,6 @@ DECORATIONS = {
     # include in output even if not visited
     "__js_include__",  # bool
 
-    # export this function from javascript module
-    "__js_export__",  # bool
-
     # use different implementation of a Python method on client by
     # replacing it with the function in the decoration, which is then
     # transpiled
@@ -27,6 +24,10 @@ DECORATIONS = {
     # returns JavaScript source as string, replaces the code at
     # every call site where this function is called
     "__js_rewrite_call_site__",  # function
+
+    # returns JavaScript source as string, appending the code
+    # after the definition of the wrapped code object
+    "__js_append__",  # function
 
     # safe to analyze but don't include in output
     "__builtin__",  # bool
@@ -64,14 +65,9 @@ def has_include_decorator(obj):
     return obj.__dict__.get("__js_include__", False)
 
 
-def has_export_decorator(obj):
-    return obj.__dict__.get("__js_export__", False)
-
-
 def should_include(obj):
     return (
         has_include_decorator(obj.py_obj) or
-        has_export_decorator(obj.py_obj) or
         bool(obj.visited)
     ) and not obj.py_obj.__dict__.get("__builtin__", False)
 

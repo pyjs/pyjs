@@ -1,4 +1,4 @@
-from tests.utils import BaseTestCase
+from pyjs.testing import BaseTestCase
 
 
 class TestAnalyzeAssignments(BaseTestCase):
@@ -24,13 +24,13 @@ class TestAnalyzeAssignments(BaseTestCase):
             """
         )
 
-    def test_explicit_types(self):
+    def test_annotated_types(self):
         self.a("b: str=''", "b: str = ''")
         self.a("c: list[str]=[]", "c: list[str] = []")
         self.a("c: list[int|list[int]]=[]", "c: list[int | list[int]] = []")
         self.a("d: dict[str,str|int]={}", "d: dict[str, str | int] = {}")
 
-    def test_infer_types(self):
+    def test_inferred_types(self):
         self.a("b=''", "b: str = ''")
         self.a("c=['']", "c: list[str] = ['']")
         self.a("c=[9,[10]]", "c: list[int | list[int]] = [9, [10]]")
@@ -48,52 +48,112 @@ class TestAnalyzeAssignments(BaseTestCase):
             self.a("c=[]", "")
 
 
-class TestAnalyzeConditionals(BaseTestCase):
+class TestAnalyzeFunctions(BaseTestCase):
 
-    def test_basic_conditionals(self):
+    def test_returns_None(self):
         self.a(
             """
-            @js
             def main():
-                a = 9
-                if a == 9:
-                    print('a is 9')
-                elif a:
-                    print('a has value')
-                else:
-                    print('no value')
+                return
             """,
             """
             def main():
-                a: int = 9
-                if a.[int]__eq__!(9):
-                    print('a is 9')
-                elif a.[int]__bool__!():
-                    print('a has value')
-                else:
-                    print('no value')
+                return
             """
         )
-
-
-class TestAnalyzeLoops(BaseTestCase):
-
-    def test_basic_for_loop(self):
         self.a(
             """
             @js
+            class Foo:
+                def main(self):
+                    return
             def main():
-                l = ["a", "b", "c"]
-                for i in l:
-                    print(i)
+                Foo().main()
             """,
             """
+            class Foo:
+
+                def main():
+                    return
+
             def main():
-                l: list[str] = ['a', 'b', 'c']
-                for i in l:
-                    print(i)
+                Foo().[Foo]main()
             """
         )
+
+    def test_inferred(self):
+        self.a(
+            """
+            def main(n = 1):
+                return n + n
+            """,
+            """
+            def main(n: int=1) -> int:
+                return n.[int]__add__!(n)
+            """
+        )
+        self.a(
+            """
+            @js
+            class Foo:
+                def main(self, n=1):
+                    return n+n
+            def main():
+                a = Foo().main()
+            """,
+            """
+            class Foo:
+
+                def main(n: int=1) -> int:
+                    return n.[int]__add__!(n)
+
+            def main():
+                a: int = Foo().[Foo]main()
+            """
+        )
+
+    def test_annotated(self):
+        self.a(
+            """
+            def main(n: int):
+                return n + n
+            """,
+            """
+            def main(n: int) -> int:
+                return n.[int]__add__!(n)
+            """
+        )
+        self.a(
+            """
+            @js
+            def foo() -> int:
+                pass
+            def main():
+                a = foo()
+            """,
+            """
+            def foo() -> int:
+                pass
+
+            def main():
+                a: int = foo()
+            """
+        )
+
+    def test_incomplete_info(self):
+        with self.assertRaisesRegex(
+                TypeError,
+                "Concrete type could not be determined "
+                "from type annotation or value."
+        ):
+            self.a(
+                """
+                def main(n):
+                    return n + n
+                """,
+                """
+                """
+            )
 
 
 class TestAnalyzeComparators(BaseTestCase):
@@ -148,6 +208,7 @@ class TestAnalyzeComparators(BaseTestCase):
                     class A:
 
                         def {func_op}(other: B) -> bool:
+                            pass
 
                     def main():
                         a: A = A()
@@ -176,6 +237,7 @@ class TestAnalyzeComparators(BaseTestCase):
                     class B:
 
                         def {func_op}(other: A) -> bool:
+                            pass
 
                     def main():
                         a: A = A()
@@ -252,9 +314,6 @@ class TestAnalyzeOperators(BaseTestCase):
                     f"""
                     class B:
 
-                        def {right_func}(other: str) -> str:
-                            return other
-
                     class A:
 
                         def {left_func}(other: B) -> A:
@@ -287,9 +346,6 @@ class TestAnalyzeOperators(BaseTestCase):
                     f"""
                     class A:
 
-                        def {left_func}(other: str) -> A:
-                            return self
-
                     class B:
 
                         def {right_func}(other: A) -> A:
@@ -301,3 +357,118 @@ class TestAnalyzeOperators(BaseTestCase):
                         c: A = b.[B]{right_func}(a)
                     """
                 )
+
+
+class TestAnalyzeLoops(BaseTestCase):
+
+    def test_basic_for_loop(self):
+        self.a(
+            """
+            def main():
+                l = ["a", "b", "c"]
+                for i in l:
+                    x = i
+            """,
+            """
+            def main():
+                l: list[str] = ['a', 'b', 'c']
+                for i: str in l:
+                    x: str = i
+            """
+        )
+        self.a(
+            """
+            @js
+            def foo():
+                return ["a", "b", "c"]
+            def main():
+                for i in foo():
+                    x = i
+            """,
+            """
+            def foo() -> list[str]:
+                return ['a', 'b', 'c']
+
+            def main():
+                for i: str in foo():
+                    x: str = i
+            """
+        )
+
+    def test_destructuring_tuples_for_loop(self):
+        self.a(
+            """
+            def main():
+                l = [("a", 1, ["a"]), ("b", 2, ["b"]), ("c", 3, ["c"])]
+                for a, b, c in l:
+                    x = a
+                    y = b
+                    for d in c:
+                        zz = d
+                    z = c
+            """,
+            """
+            def main():
+                l: list[tuple[str, int, list[str]]] = [('a', 1, ['a']), ('b', 2, ['b']), ('c', 3, ['c'])]
+                for a: str, b: int, c: list[str] in l:
+                    x: str = a
+                    y: int = b
+                    for d: str in c:
+                        zz: str = d
+                    z: list[str] = c
+            """
+        )
+
+    def test_destructuring_dict_for_loop(self):
+        self.a(
+            """
+            def main():
+                l = {"a": {"aa": 1}}
+                for a, b in l.items():
+                    x = a
+                    y = b
+                    for d in b.keys():
+                        key = d
+                    for c in b.values():
+                        value = c
+            """,
+            """
+            def main():
+                l: dict[str, dict[str, int]] = {'a': {'aa': 1}}
+                for a: str, b: dict[str, int] in l.[dict__str_dict__str_int]items!():
+                    x: str = a
+                    y: dict[str, int] = b
+                    for d: str in b.[dict__str_int]keys():
+                        key: str = d
+                    for c: int in b.[dict__str_int]values():
+                        value: int = c
+            """
+        )
+
+
+class TestAnalyzeConditionals(BaseTestCase):
+
+    def test_basic_conditionals(self):
+        self.a(
+            """
+            def main():
+                a = 9
+                if a == 9:
+                    print('a is 9')
+                elif a:
+                    print('a has value')
+                else:
+                    print('no value')
+            """,
+            """
+            def main():
+                a: int = 9
+                if a.[int]__eq__!(9):
+                    print('a is 9')
+                elif a.[int]__bool__!():
+                    print('a has value')
+                else:
+                    print('no value')
+            """
+        )
+

@@ -68,6 +68,15 @@ def int_op(name, op, r=False, wrap=""):
 
 class _int(_object):
 
+    @js
+    def __init__(self, other: object = 0):
+        super().__init__()
+    @__init__.inline
+    def init_inline(self, other, _arg_types, **kwargs):
+        arg_type = _arg_types[0].name
+        if arg_type == "str":
+            return f"parseInt({other}, 10)"
+
     @js(inline="{self}")
     def __bool__(self) -> bool:
         pass
@@ -151,6 +160,15 @@ class _bool(_int):
 
 
 class _str(_object):
+
+    @js
+    def __init__(self, other: object = 0):
+        super().__init__()
+    @__init__.inline
+    def init_inline(self, other, _arg_types, **kwargs):
+        #arg_type = _arg_types[0].name
+        #if arg_type == "int":
+        return f"String({other})"
 
     @js(inline="{self}")
     def __bool__(self) -> bool:
@@ -239,6 +257,10 @@ class _dict[K, V](_object):
 
     @js(inline="{self}[{key}]")
     def __getitem__(self, key: K) -> V:
+        pass
+
+    @js(inline="{self}.has({key}) ? {self}[{key}] : {default}")
+    def get(self, key: K, default: V) -> V:
         pass
 
     @js(inline="{self}[{key}] = {value}")

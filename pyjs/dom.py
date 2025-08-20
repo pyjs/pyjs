@@ -1,14 +1,4 @@
-import re
-from pyjs import js, js_str, js_object
-
-
-class TagNameSetterMetaclass(type):
-    def __new__(mcls, name, bases, namespace, /, **kwargs):
-        tag = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
-        tag = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1-\2', tag)
-        namespace = {"tagName": js_str(tag.lower()), **namespace}
-        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
-        return cls
+from pyjs import js, js_object
 
 
 @js(builtin=True)
@@ -75,6 +65,7 @@ class EventTarget:
 
 @js(builtin=True)
 class Node(EventTarget):
+    nodeName = "undefined"
 
     def __init__(self):
         super().__init__()
@@ -83,16 +74,19 @@ class Node(EventTarget):
 
 @js(builtin=True)
 class Element(Node):
-    tagName = ""
+    tagName = "undefined"
 
     def __init__(self):
         super().__init__()
         self.children: list[Element] = []
-        self.attributes: dict[str,str|int] = {}
+        self.attributes: dict[str,str] = {}
         self.classList = DOMTokenList()
 
     def setAttribute(self, name: str, value: str):
-        self.attributes[name] = value
+        self.attributes[name] = str(value)
+
+    def getAttribute(self, name: str) -> str:
+        return self.attributes.get(name, None)
 
     def append(self, *child: Node):
         self.children.extend(child)
@@ -145,6 +139,18 @@ class HTMLElement(Element):
 
 
 @js(builtin=True)
+class HTMLDivElement(HTMLElement):
+    def __init__(self):
+        super().__init__()
+        self.align = "left"
+
+
+@js(builtin=True)
+class HTMLSpanElement(HTMLElement):
+    pass
+
+
+@js(builtin=True)
 class HTMLInputElement(HTMLElement):
     def __init__(self):
         super().__init__()
@@ -153,13 +159,25 @@ class HTMLInputElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLButtonElement(HTMLElement):
+    def __init__(self):
+        super().__init__()
+        self.type = ""
+
+
+@js(builtin=True)
 class Document:
+
+    nodeName = "#document"
 
     @js(analyze=False)
     def createElement(self, name: str) -> HTMLElement:
         e = HTMLElement()
-        e.tagName = name
+        e.nodeName = e.tagName = name.upper()
         return e
+
+    def getElementById(self, id: str) -> HTMLElement:
+        pass
 
 document = Document()
 js_object(document, builtin=True)
