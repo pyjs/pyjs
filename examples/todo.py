@@ -1,5 +1,5 @@
 from pyjs import js, js_str
-from pyjs.dom import HTMLElement, HTMLInputElement, CustomEvent, Event, KeyboardEvent
+from pyjs.dom import HTMLElement, CustomEvent, Event, KeyboardEvent
 from pyjs.domx import CustomElement, tag, input, tw
 
 

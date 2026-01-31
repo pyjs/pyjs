@@ -4,43 +4,17 @@ from pyjs.dom import *
 from pyjs import js, nojs, js_str
 
 
-@js
-def tw(classes: str) -> dict[str,str]:
-    return {"class": classes}
-
-
-@js
-def tag(name_or_element: str|HTMLElement, *args: str|dict[str,str]|HTMLElement) -> HTMLElement:
-    if isinstance(name_or_element, str):
-        e = document.createElement(name_or_element)
-    else:
-        e = name_or_element
-    assert isinstance(e, HTMLElement)
-    for arg in args:
-        if isinstance(arg, str):
-            e.append(arg)
-        elif isinstance(arg, HTMLElement):
-            e.append(arg)
-        elif isinstance(arg, ProxyElement):
-            e.append(arg.element)
-        elif isinstance(arg, dict):
-            attrs: dict[str,str] = arg
-            for attr, value in attrs.items():
-                e.setAttribute(attr, value)
-        else:
-            raise TypeError
-    return e
-
-
 class CustomElementMetaclass(type):
     def __new__(mcls, name, bases, namespace, /, **kwargs):
         if name not in ("CustomElement", "Widget"):
             tag = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
             tag = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1-\2', tag)
+            lower_tag, upper_tag = tag.lower(), tag.upper()
             namespace = {
-                "nodeName": js_str(tag.upper()),
-                "tagName": js_str(tag.lower()),
-                "__js_append__": lambda *args: f"customElements.define({repr(tag.lower())}, {name})",
+                "nodeName": js_str(upper_tag),
+                "tagName": js_str(upper_tag),
+                "localName": js_str(lower_tag),
+                "__js_append__": lambda *args: f"customElements.define({repr(lower_tag)}, {name})",
                 **namespace
             }
         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
@@ -66,7 +40,7 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
 
     @nojs
     def __setattr__(self, name: str, value: HTMLElement):
-        if isinstance(value, (HTMLElement, ProxyElement)):
+        if isinstance(value, (HTMLElement, ProxyElement)) and name != "parentElement":
             if value.getAttribute("id") is not None:
                 raise ValueError("element ids are used for hydration and should not be set")
             value.setAttribute("id", f"{self.get_data("self-id")}-{name}")
@@ -104,7 +78,7 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
 class ProxyElement:
 
     @js(include=True)
-    def _hydrate(self, e: HTMLElement):
+    def _hydrate(self, e: Element):
         self.element = e
         return self
 
@@ -113,6 +87,91 @@ class ProxyElement:
 
     def getAttribute(self, name: str):
         return self.element.getAttribute(name)
+
+
+#@js
+class ContextProxy[V]:
+    def __init__(self):
+        self._context: V = None
+
+    def set(self, context: V):
+        self._context = context
+
+    def get(self) -> V:
+        return self._context
+
+
+#@js
+class ContextProvider:
+
+    def __init__(self):
+        self.contexts: dict[type,ContextProxy[object]] = {}
+
+    def register(self, context_type: type, context: object):
+        self.contexts[context_type].set(context)
+        self.contexts[context_type] = ContextProxy[object]()
+
+    def get_proxy(self, context_type: type):
+        if context_type not in self.contexts:
+            self.contexts[context_type] = ContextProxy[object]()
+        return self.contexts[context_type]
+
+
+context = ContextProvider()
+#js_object(context)
+
+
+@js
+def tw(classes: str) -> dict[str,str]:
+    return {"class": classes}
+
+
+@js
+def tag(name_or_element: str|HTMLElement|ProxyElement, *args: str|dict[str,str]|HTMLElement) -> HTMLElement:
+    if isinstance(name_or_element, str):
+        e = document.createElement(name_or_element)
+    else:
+        e = name_or_element
+    assert isinstance(e, Element)
+    for arg in args:
+        if isinstance(arg, str):
+            e.append(arg)
+        elif isinstance(arg, Element):
+            arg.parentElement = e
+            e.append(arg)
+        elif isinstance(arg, ProxyElement):
+            arg.element.parentElement = e
+            e.append(arg.element)
+        elif isinstance(arg, dict):
+            attrs: dict[str,str] = arg
+            for attr, value in attrs.items():
+                e.setAttribute(attr, value)
+        else:
+            raise TypeError
+    return e
+
+
+@tag.client
+def tag(name_or_element: str|HTMLElement|ProxyElement, *args: str|dict[str,str]|HTMLElement) -> HTMLElement:
+    if isinstance(name_or_element, str):
+        e = document.createElement(name_or_element)
+    else:
+        e = name_or_element
+    assert isinstance(e, Element)
+    for arg in args:
+        if isinstance(arg, str):
+            e.append(arg)
+        elif isinstance(arg, Element):
+            e.append(arg)
+        elif isinstance(arg, ProxyElement):
+            e.append(arg.element)
+        elif isinstance(arg, dict):
+            attrs: dict[str,str] = arg
+            for attr, value in attrs.items():
+                e.setAttribute(attr, value)
+        else:
+            raise TypeError
+    return e
 
 
 @js
@@ -126,6 +185,11 @@ def span(*args) -> HTMLSpanElement:
 
 
 @js
+def form(*args) -> HTMLFormElement:
+    return tag("form", *args)
+
+
+@js
 def input(*args) -> HTMLInputElement:
     return tag("input", *args)
 
@@ -133,6 +197,16 @@ def input(*args) -> HTMLInputElement:
 @js
 def button(*args) -> HTMLButtonElement:
     return tag("button", *args)
+
+
+@js
+def a(*args) -> HTMLAnchorElement:
+    return tag("a", *args)
+
+
+@js
+def p(*args):
+    return tag("p", *args)
 
 
 @js

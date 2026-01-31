@@ -50,17 +50,18 @@ def create_module(src, filename="_test_.py"):
     return SimpleNamespace(**namespace)
 
 
-def module_from_src(line_or_lines):
-    if '\n' in line_or_lines:
+def module_from_src(line_or_lines, complete_src=False):
+    if complete_src:
         src = f"from pyjs import js\n{textwrap.dedent(line_or_lines)}\nmain.__js_include__ = True"
     else:
+        lines = textwrap.indent(textwrap.dedent(line_or_lines), ' '*16)
         src = textwrap.dedent(
             f"""\
-        def main():
-            {line_or_lines}
-        main.__js__ = True
-        main.__js_include__ = True
-        """
+            def main():
+{lines}
+            main.__js__ = True
+            main.__js_include__ = True
+            """
         )
     return create_module(src)
 
@@ -70,23 +71,23 @@ class BaseTestCase(TestCase):
     def setUp(self):
         super().setUp()
 
-    def analyze_line(self, line):
-        entry_point, _ = analyze_module(module_from_src(line))
+    def analyze_line(self, line, complete_src=False):
+        entry_point, _ = analyze_module(module_from_src(line, complete_src))
         module = entry_point.container
         type_info = write_types(module.node)
-        if '\n' in line:
+        if complete_src:
             return type_info
         else:
             return '\n'.join([l.strip() for l in type_info.splitlines()[1:]])
 
-    def transpile_line(self, line):
-        entry_point, _ = analyze_module(module_from_src(line))
+    def transpile_line(self, line, complete_src=False):
+        entry_point, _ = analyze_module(module_from_src(line, complete_src))
         module = entry_point.container
         js_src = Transpiler(module.scope.search("main")).visit(module.node)
-        if '\n' in line:
+        if complete_src:
             return js_src
         else:
-            return '\n'.join([l.strip() for l in js_src.splitlines()[1:]])
+            return '\n'.join([l.strip() for l in js_src.splitlines()[1:-1]])
 
     def analyze_file(self, module_name, write=False, no_assert=False):
         entry_point, _ = analyze_module(import_module(f"tests.cases.{module_name}"))
@@ -156,12 +157,23 @@ class BaseTestCase(TestCase):
                 "Assertion is correct but remember to remove write=True argument."
             )
 
-    def a(self, py, expected):
+    def a(self, py, expected, complete_src=False):
         """ assert analysis of expression """
-        actual = self.analyze_line(py)
+        actual = self.analyze_line(py, complete_src)
         self.assertEqual(textwrap.dedent(expected).strip(), actual)
 
-    def t(self, py, expected):
+    def t(self, py, expected, complete_src=False):
         """ assert transpilation of expression """
-        actual = self.transpile_line(py)
+        actual = self.transpile_line(py, complete_src)
         self.assertEqual(textwrap.dedent(expected).strip(), actual)
+
+    def at(self, py, expected_py, expected_js, complete_src=False):
+        """ assert analysis and transpile"""
+        self.a(py, expected_py, complete_src)
+        self.t(py, expected_js, complete_src)
+
+    def aat(self, py, expected_py, expected_js, complete_src=False):
+        """ assert analysis, round trip analysis and transpile"""
+        self.a(py, expected_py, complete_src)
+        self.a(expected_py, expected_py, complete_src)
+        self.t(py, expected_js, complete_src)

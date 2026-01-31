@@ -1,7 +1,8 @@
 import textwrap
+from itertools import chain
 from contextlib import contextmanager
 
-from pyjs.domx import CustomElement, HTMLElement, ProxyElement
+from pyjs.domx import CustomElement, HTMLElement, ProxyElement, ContextProxy
 from .analyzer import *
 from .utils import TailwindCSS
 
@@ -317,7 +318,7 @@ class Transpiler(ast._Unparser):
         if isinstance(node.annotation, ast.Name) and node.annotation.id == "__static__":
             self.write("static ")
         elif isinstance(node.annotation, ast.Name) and node.annotation.id == "__const__":
-            self.write("const ")
+            self.write("export const ")
         else:
             self.write("var ")
         with self.delimit_if("(", ")", not node.simple and isinstance(node.target, ast.Name)):
@@ -388,6 +389,15 @@ class Transpiler(ast._Unparser):
             with self.block():
                 self.traverse(node.orelse)
 
+    def visit_While(self, node):
+        self.fill("while ")
+        with self.delimit("(", ")"):
+            self.traverse(node.test)
+        with self.block():
+            self.traverse(node.body)
+        if node.orelse:
+            raise NotImplementedError
+
     def _for_helper(self, fill, node):
         self.fill(fill)
         self.set_precedence(ast._Precedence.TUPLE, node.target)
@@ -455,7 +465,7 @@ class HydrateGenerator(ast.NodeVisitor):
         self.transpiler = transpiler
         self.fill = transpiler.fill
         self.write = transpiler.write
-        self.elements = {func.scope.names["self"]}
+        self.elements = set()
         self.self_id_set = False
 
     def add_self_id(self, self_):
@@ -483,9 +493,13 @@ class HydrateGenerator(ast.NodeVisitor):
                 self.write(f" = document.getElementById(self_id+'-{target.attr}');")
             elif issubclass(node.value.obj.py_cls, ProxyElement):
                 self.write(f" = new {node.value.obj.name}()._hydrate(document.getElementById(self_id+'-{target.attr}'));")
+            elif issubclass(node.value.obj.py_cls, ContextProxy):
+                self.write(f" = document.getElementById(self_id+'-{target.attr}');")
 
     def visit_Expr(self, node: ast.Expr):
         if isinstance(node.value, ast.Call):
             func = node.value.func
-            if isinstance(func, Attribute) and func.value.obj in self.elements and func.attr != "add":
+            # TODO: this should probably just only allow addEventListener,
+            #       a general customizable solution would be even better
+            if isinstance(func, Attribute) and (func.value.obj in self.elements or func.attr == "addEventListener"):
                 self.transpiler.traverse(node)

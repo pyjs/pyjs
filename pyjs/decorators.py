@@ -134,10 +134,12 @@ def nojs(cls_func):
 
 
 class js_str(str):
-    def __new__(cls, value):
+    def __new__(cls, value, builtin=None):
         obj = super().__new__(cls, value)
         obj.__js__ = True
         obj.__static__ = True
+        if builtin is True:
+            obj.__builtin__ = builtin
         return obj
 
 

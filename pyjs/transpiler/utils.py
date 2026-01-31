@@ -6,8 +6,9 @@ from .objects import Function
 
 
 class SourceWriter(StringIO):
-    def __init__(self):
+    def __init__(self, indent_char="  "):
         super().__init__()
+        self.indent_char = indent_char
         self.indent_level = 0
 
     def indent(self, depth=1):
@@ -17,7 +18,7 @@ class SourceWriter(StringIO):
         self.indent_level -= depth
 
     def write_space(self):
-        self.write("  "*self.indent_level)
+        self.write(self.indent_char*self.indent_level)
 
     def write_line(self, line):
         self.write_space()

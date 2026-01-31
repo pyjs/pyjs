@@ -1,4 +1,4 @@
-from pyjs import js, js_object
+from pyjs import js, js_object, js_str
 
 
 @js(builtin=True)
@@ -70,11 +70,12 @@ class Node(EventTarget):
     def __init__(self):
         super().__init__()
         self.textContent = ""
+        self.parentElement: Element = None
 
 
 @js(builtin=True)
 class Element(Node):
-    tagName = "undefined"
+    tagName = js_str("UNDEFINED")
 
     def __init__(self):
         super().__init__()
@@ -92,6 +93,9 @@ class Element(Node):
         self.children.extend(child)
 
     def remove(self):
+        pass
+
+    def replaceChildren(self, *args):
         pass
 
     def querySelector(self, selector: str):
@@ -151,6 +155,16 @@ class HTMLSpanElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLAnchorElement(HTMLElement):
+    pass
+
+
+@js(builtin=True)
+class HTMLFormElement(HTMLElement):
+    pass
+
+
+@js(builtin=True)
 class HTMLInputElement(HTMLElement):
     def __init__(self):
         super().__init__()
@@ -169,6 +183,9 @@ class HTMLButtonElement(HTMLElement):
 class Document:
 
     nodeName = "#document"
+
+    def __init__(self):
+        self.body = self.createElement("body")
 
     @js(analyze=False)
     def createElement(self, name: str) -> HTMLElement:

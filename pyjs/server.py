@@ -54,6 +54,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         server: PyjsServer = self.server
+        server.refresh()
         if self.path == '/':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')

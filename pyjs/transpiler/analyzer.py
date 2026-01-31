@@ -427,7 +427,7 @@ class InferenceVisitor(ast.NodeVisitor):
         right = self.visit(node.comparators[0])
         right_self = right.obj if isinstance(right.obj, Instance) else right.obj._self
         if isinstance(node.ops[0], (ast.In, ast.NotIn)):
-            left, right = right, left
+            left_self, right_self = right_self, left_self
 
         left_op_method, right_op_method = self.COMPARE_OPS[type(node.ops[0])]
 
@@ -581,6 +581,17 @@ class InferenceVisitor(ast.NodeVisitor):
     # endregion
 
     # region looping
+
+    def visit_While(self, node: ast.While):
+        test = self.visit(node.test)
+        body = self.visit_body(node.body)
+        orelse = self.visit(node.orelse) if node.orelse else node.orelse
+        return ast.While(
+            test=test,
+            body=body,
+            orelse=orelse,
+            lineno=node.lineno,
+        )
 
     def visit_For(self, node: ast.For):
         node_iter = self.visit(node.iter)

@@ -262,8 +262,8 @@ class Class(Object):
             self.super: Class = self.search(cls.__base__.__name__)
             assert isinstance(self.super, Class)
 
-    def __call__(self, name, scope, container):
-        return self._self.reassign(name, scope, container)
+    def __call__(self, name, scope, container, ast_value=None, value=None, is_const=None):
+        return self._self.reassign(name, scope, container, ast_value=ast_value, value=value, is_const=is_const)
 
     @property
     def init(self) -> 'Function':
@@ -285,7 +285,7 @@ class Class(Object):
         ]
         return ClassDef(
             self,
-            bases=[self.super.annotation] if self.super.name != "object" else [],
+            bases=[self.super.annotation] if (self.super and self.super.name != "object") else [],
             body=body,
             keywords=[],
             decorator_list=[],
@@ -565,7 +565,8 @@ class Instance(Object):
 
     def __init__(
         self, name: str, cls: Class, scope: Scope,
-        container: Object, static_value: ast.expr = None, py_obj = None
+        container: Object, static_value: ast.expr = None,
+        py_obj = None, is_const = False
     ):
         super().__init__(name, scope, container)
         self.cls = cls
@@ -573,6 +574,7 @@ class Instance(Object):
         assert static_value is None or isinstance(static_value, ast.expr)
         self.static_value: ast.expr = static_value
         self.py_value = py_obj
+        self.is_const = is_const
 
     def find(self, name):
         if value := self.find_attrs(name):
@@ -588,8 +590,8 @@ class Instance(Object):
         if self.cls.super is not None:
             return self.cls.super._self.find_attrs(name)
 
-    def reassign(self, name: str, scope: Scope, container: Object):
-        new = Instance(name, self.cls, scope, container)
+    def reassign(self, name: str, scope: Scope, container: Object, ast_value=None, value=None, is_const=None):
+        new = Instance(name, self.cls, scope, container, static_value=ast_value, py_obj=value, is_const=is_const)
         new.attrs = self.attrs
         return new
 
@@ -607,12 +609,14 @@ class Instance(Object):
     @property
     def node(self) -> ast.AnnAssign:
         assert self.static_value is not None
-        return ast.AnnAssign(
+        assign = ast.AnnAssign(
             target=Name(self),
-            annotation=ast.Name(id="__static__"),
+            annotation=ast.Name(id="__const__" if self.is_const else "__static__"),
             value=self.static_value,
             simple=True,
         )
+        assign.obj = self
+        return assign
 
     @classmethod
     def from_static_value(cls, name, value, container):
@@ -635,8 +639,8 @@ class Instance(Object):
                     args=args,
                     keywords=[]
                 )
-        return Instance(
-            name, value_type, container.scope, container, value_ast, value
+        return value_type(
+            name, container.scope, container, value_ast, value, is_const=isinstance(container, Module)
         )
 
 

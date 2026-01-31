@@ -267,6 +267,10 @@ class _dict[K, V](_object):
     def __setitem__(self, key: K, value: V) -> V:
         pass
 
+    @js(inline="{self}.has({key})")
+    def __contains__(self, key: K) -> bool:
+        pass
+
 
 @js
 def _len(obj: object) -> int:
