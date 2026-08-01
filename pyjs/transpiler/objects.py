@@ -44,7 +44,7 @@ IGNORE_NAMES = {
 def py_to_ast(value):
     import ast
 
-    if isinstance(value, (bool, int, float, str, js_str, type(None))):
+    if isinstance(value, (bool, int, float, str, type(None))):
         return ast.Constant(value=value)
     elif isinstance(value, (list, tuple, set)):
         return {list: ast.List, tuple: ast.Tuple, set: ast.Set}[type(value)](
@@ -241,6 +241,13 @@ class Object:
                     Class.from_py_cls(py_obj, container).build()
             elif callable(py_obj) or isinstance(py_obj, (classmethod, staticmethod)):
                 Function.from_py_func(py_obj, container)
+            elif (
+                propagate_js
+                and isinstance(container, Class)
+                and not name.startswith("__")
+                and isinstance(py_obj, (bool, int, float, str))
+            ):
+                container.add(Instance.from_static_value(name, py_obj, container))
             else:
                 if getattr(py_obj, "__js__", False):
                     container.add(Instance.from_static_value(name, py_obj, container))
@@ -816,8 +823,6 @@ class Instance(Object):
     @classmethod
     def from_static_value(cls, name, value, container):
         value_type_name = type(value).__name__
-        if type(value) is js_str:
-            value_type_name = "str"
         value_type = container.search(value_type_name)
         assert isinstance(value_type, Class), "Can't determine type."
         value_ast = None

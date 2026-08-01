@@ -374,6 +374,52 @@ class MessageEventInit(EventInit):
 
 
 @js(builtin=True)
+class ProgressEvent(Event):
+    """WebIDL source: @webref/idl/xhr.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ProgressEvent
+
+    Browser support: Chrome 1, Safari 3.1"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        composed: bool = False,
+        lengthComputable: bool = False,
+        loaded: float = 0,
+        total: float = 0,
+    ):
+        super().__init__(type, bubbles=bubbles, cancelable=cancelable, composed=composed)
+        self.lengthComputable: bool = lengthComputable
+        self.loaded: float = loaded
+        self.total: float = total
+
+
+@js
+class ProgressEventInit(EventInit):
+    """WebIDL source: @webref/idl/xhr.idl"""
+
+    def __init__(
+        self,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        composed: bool = False,
+        lengthComputable: bool = False,
+        loaded: float = 0,
+        total: float = 0,
+    ):
+        self.bubbles = bubbles
+        self.cancelable = cancelable
+        self.composed = composed
+        self.lengthComputable = lengthComputable
+        self.loaded = loaded
+        self.total = total
+
+
+@js(builtin=True)
 class PromiseRejectionEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1000,6 +1046,88 @@ class PointerEvent(MouseEvent):
     def getPredictedEvents(self) -> list[PointerEvent]: ...
 
 
+@js(builtin=True)
+class WheelEvent(MouseEvent):
+    """WebIDL source: @webref/idl/pointerevents.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/WheelEvent
+
+    Browser support: Chrome 1, Safari 3"""
+
+    DOM_DELTA_LINE = 1
+    DOM_DELTA_PAGE = 2
+    DOM_DELTA_PIXEL = 0
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        composed: bool = False,
+        sourceCapabilities: InputDeviceCapabilities | None = None,
+        view: Window | None = None,
+        detail: int = 0,
+        which: int = 0,
+        ctrlKey: bool = False,
+        shiftKey: bool = False,
+        altKey: bool = False,
+        metaKey: bool = False,
+        modifierAltGraph: bool = False,
+        modifierCapsLock: bool = False,
+        modifierFn: bool = False,
+        modifierFnLock: bool = False,
+        modifierHyper: bool = False,
+        modifierNumLock: bool = False,
+        modifierScrollLock: bool = False,
+        modifierSuper: bool = False,
+        modifierSymbol: bool = False,
+        modifierSymbolLock: bool = False,
+        screenX: int = 0,
+        screenY: int = 0,
+        clientX: int = 0,
+        clientY: int = 0,
+        button: int = 0,
+        buttons: int = 0,
+        relatedTarget: EventTarget | None = None,
+        movementX: float = 0,
+        movementY: float = 0,
+        deltaX: float = 0.0,
+        deltaY: float = 0.0,
+        deltaZ: float = 0.0,
+        deltaMode: int = 0,
+        momentum: bool = False,
+    ):
+        super().__init__(
+            type,
+            bubbles=bubbles,
+            cancelable=cancelable,
+            composed=composed,
+            sourceCapabilities=sourceCapabilities,
+            view=view,
+            detail=detail,
+            which=which,
+            ctrlKey=ctrlKey,
+            shiftKey=shiftKey,
+            altKey=altKey,
+            metaKey=metaKey,
+            screenX=screenX,
+            screenY=screenY,
+            clientX=clientX,
+            clientY=clientY,
+            button=button,
+            buttons=buttons,
+            relatedTarget=relatedTarget,
+            movementX=movementX,
+            movementY=movementY,
+        )
+        self.deltaMode: int = deltaMode
+        self.deltaX: float = deltaX
+        self.deltaY: float = deltaY
+        self.deltaZ: float = deltaZ
+        self.momentum: bool = momentum
+
+
 @js
 class PointerEventInit(MouseEventInit):
     """WebIDL source: @webref/idl/pointerevents.idl"""
@@ -1097,3 +1225,82 @@ class PointerEventInit(MouseEventInit):
         self.view = view
         self.which = which
         self.width = width
+
+
+@js
+class WheelEventInit(MouseEventInit):
+    """WebIDL source: @webref/idl/pointerevents.idl"""
+
+    def __init__(
+        self,
+        altKey: bool = False,
+        bubbles: bool = False,
+        button: int = 0,
+        buttons: int = 0,
+        cancelable: bool = False,
+        clientX: int = 0,
+        clientY: int = 0,
+        composed: bool = False,
+        ctrlKey: bool = False,
+        deltaMode: int = 0,
+        deltaX: float = 0.0,
+        deltaY: float = 0.0,
+        deltaZ: float = 0.0,
+        detail: int = 0,
+        metaKey: bool = False,
+        modifierAltGraph: bool = False,
+        modifierCapsLock: bool = False,
+        modifierFn: bool = False,
+        modifierFnLock: bool = False,
+        modifierHyper: bool = False,
+        modifierNumLock: bool = False,
+        modifierScrollLock: bool = False,
+        modifierSuper: bool = False,
+        modifierSymbol: bool = False,
+        modifierSymbolLock: bool = False,
+        momentum: bool = False,
+        movementX: float = 0,
+        movementY: float = 0,
+        relatedTarget: EventTarget | None = None,
+        screenX: int = 0,
+        screenY: int = 0,
+        shiftKey: bool = False,
+        sourceCapabilities: InputDeviceCapabilities | None = None,
+        view: Window | None = None,
+        which: int = 0,
+    ):
+        self.altKey = altKey
+        self.bubbles = bubbles
+        self.button = button
+        self.buttons = buttons
+        self.cancelable = cancelable
+        self.clientX = clientX
+        self.clientY = clientY
+        self.composed = composed
+        self.ctrlKey = ctrlKey
+        self.deltaMode = deltaMode
+        self.deltaX = deltaX
+        self.deltaY = deltaY
+        self.deltaZ = deltaZ
+        self.detail = detail
+        self.metaKey = metaKey
+        self.modifierAltGraph = modifierAltGraph
+        self.modifierCapsLock = modifierCapsLock
+        self.modifierFn = modifierFn
+        self.modifierFnLock = modifierFnLock
+        self.modifierHyper = modifierHyper
+        self.modifierNumLock = modifierNumLock
+        self.modifierScrollLock = modifierScrollLock
+        self.modifierSuper = modifierSuper
+        self.modifierSymbol = modifierSymbol
+        self.modifierSymbolLock = modifierSymbolLock
+        self.momentum = momentum
+        self.movementX = movementX
+        self.movementY = movementY
+        self.relatedTarget = relatedTarget
+        self.screenX = screenX
+        self.screenY = screenY
+        self.shiftKey = shiftKey
+        self.sourceCapabilities = sourceCapabilities
+        self.view = view
+        self.which = which

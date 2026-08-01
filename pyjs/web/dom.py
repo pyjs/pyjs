@@ -1,4 +1,4 @@
-from pyjs import js, js_object, js_str, nojs
+from pyjs import js, js_object, nojs
 from pyjs.web.console import Console
 from pyjs.web.events import Event, EventTarget
 
@@ -25,6 +25,17 @@ class CustomElementRegistry:
     MDN: https://developer.mozilla.org/docs/Web/API/CustomElementRegistry
 
     Browser support: Chrome 54, Safari 10.1"""
+
+    pass
+
+
+@js(builtin=True)
+class DOMException:
+    """WebIDL source: @webref/idl/webidl.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMException
+
+    Browser support: Chrome 1, Safari 1"""
 
     pass
 
@@ -568,7 +579,7 @@ class Element(Node):
 
     Browser support: Chrome 1, Safari 1"""
 
-    tagName = js_str("UNDEFINED")
+    tagName = "UNDEFINED"
     observedAttributes = []
 
     def __init__(self):
@@ -692,6 +703,8 @@ class Element(Node):
                     self.children._append(node)
         self.childElementCount = len(self.children)
 
+    def releasePointerCapture(self, pointerId: int) -> None: ...
+
     def remove(self) -> None:
         if self.parentElement is None:
             return
@@ -732,6 +745,8 @@ class Element(Node):
 
     def hasAttributes(self) -> bool: ...
 
+    def hasPointerCapture(self, pointerId: int) -> bool: ...
+
     def insertAdjacentElement(self, where: str, element: Element) -> Element | None: ...
 
     def insertAdjacentText(self, where: str, data: str) -> None: ...
@@ -757,6 +772,8 @@ class Element(Node):
     def setAttributeNS(
         self, namespace: str | None, qualifiedName: str, value: object | str
     ) -> None: ...
+
+    def setPointerCapture(self, pointerId: int) -> None: ...
 
     def toggleAttribute(self, qualifiedName: str, force: bool | None = None) -> bool: ...
 
@@ -1123,6 +1140,17 @@ class Document(Node):
         self.implementation: DOMImplementation = None
         self.inputEncoding: str = ""
         self.lastElementChild: Element | None = None
+        self.ongotpointercapture: callable = None
+        self.onlostpointercapture: callable = None
+        self.onpointercancel: callable = None
+        self.onpointerdown: callable = None
+        self.onpointerenter: callable = None
+        self.onpointerleave: callable = None
+        self.onpointermove: callable = None
+        self.onpointerout: callable = None
+        self.onpointerover: callable = None
+        self.onpointerrawupdate: callable = None
+        self.onpointerup: callable = None
         self.styleSheets: StyleSheetList = None
         self.URL: str = ""
 
@@ -1154,6 +1182,7 @@ class Document(Node):
         e.nodeName = e.tagName = name.upper()
         return e
 
+    @js(analyze=False)
     def createElementNS(
         self,
         namespace: str | None,
@@ -1161,7 +1190,35 @@ class Document(Node):
         *,
         customElementRegistry: CustomElementRegistry | None = None,
         is_: str | None = None,
-    ) -> Element: ...
+    ) -> Element:
+        if namespace == "http://www.w3.org/2000/svg":
+            from pyjs.web.svg import (
+                SVGCircleElement,
+                SVGElement,
+                SVGGElement,
+                SVGLineElement,
+                SVGPathElement,
+                SVGRectElement,
+                SVGSVGElement,
+                SVGTextElement,
+            )
+
+            element_types = {
+                "circle": SVGCircleElement,
+                "g": SVGGElement,
+                "line": SVGLineElement,
+                "path": SVGPathElement,
+                "rect": SVGRectElement,
+                "svg": SVGSVGElement,
+                "text": SVGTextElement,
+            }
+            element = element_types.get(qualifiedName, SVGElement)()
+        else:
+            element = Element()
+        element.localName = qualifiedName
+        element.namespaceURI = namespace
+        element.nodeName = element.tagName = qualifiedName
+        return element
 
     def createEvent(self, interface: str) -> Event: ...
 
@@ -1246,6 +1303,8 @@ js_object(localStorage, builtin=True)
 
 @js(builtin=True)
 class Clipboard:
+    async def readText(self) -> str: ...
+
     async def writeText(self, value: str): ...
 
 
@@ -1253,6 +1312,7 @@ class Clipboard:
 class Navigator:
     def __init__(self):
         self.clipboard = Clipboard()
+        self.userAgent: str = ""
 
 
 navigator = Navigator()

@@ -1,10 +1,9 @@
 import pytest
-
 from pyjs import js
 from pyjs.web.dom import document
 from pyjs.web.events import Event
 
-from app import App
+from __PYJS_PACKAGE__.__PYJS_PACKAGE__ import App
 
 pytestmark = pytest.mark.pyjs_web
 

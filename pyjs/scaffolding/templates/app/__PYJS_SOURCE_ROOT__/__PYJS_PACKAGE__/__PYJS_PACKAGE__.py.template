@@ -1,6 +1,6 @@
 from pyjs import effect, js, state
-from pyjs.web.events import Event
 from pyjs.web.domx import CustomElement, button, ref, tag
+from pyjs.web.events import Event
 
 
 @js
@@ -75,10 +75,7 @@ def main():
     return App()
 
 
-__PYJS_INLINE_TEST__
-
-
-if __name__ == "__main__":
+__PYJS_INLINE_TEST__if __name__ == "__main__":
     from pyjs.server import serve
 
     serve(__file__)

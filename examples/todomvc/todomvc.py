@@ -1,4 +1,4 @@
-from pyjs import effect, js, js_str, state
+from pyjs import effect, js, state
 from pyjs.web.dom import localStorage, location, window
 from pyjs.web.domx import CustomElement, button, input, ref, tag
 from pyjs.web.events import CustomEvent, Event, KeyboardEvent
@@ -21,7 +21,7 @@ class TodoItemEvent(CustomEvent):
 
 @js
 class ChangeTodoEvent(TodoItemEvent):
-    event_name = js_str("todo-change")
+    event_name = "todo-change"
 
     def __init__(self, item: TodoItem):
         super().__init__(ChangeTodoEvent.event_name, item)
@@ -29,7 +29,7 @@ class ChangeTodoEvent(TodoItemEvent):
 
 @js
 class DeleteTodoEvent(TodoItemEvent):
-    event_name = js_str("todo-delete")
+    event_name = "todo-delete"
 
     def __init__(self, item: TodoItem):
         super().__init__(DeleteTodoEvent.event_name, item)
@@ -162,7 +162,7 @@ class HashChangeListener:
 
 @js
 class TodoApp(CustomElement):
-    storage_key = js_str("todos-pyjs")
+    storage_key = "todos-pyjs"
     filter = state("all")
     next_id = state(1)
 

@@ -76,5 +76,6 @@ namespaces = false
 "pyjs.scaffolding" = [
     "templates/*.template",
     "templates/app/*.template",
+    "templates/app/*/*/*.template",
     "templates/app/tests/*.template",
 ]

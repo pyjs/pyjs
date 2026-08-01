@@ -35,10 +35,10 @@ Install PyJS and create a project:
 
 ```bash
 python -m pip install pyjs
-pyjs create hello-pyjs
-cd hello-pyjs
+pyjs create hello_pyjs
+cd hello_pyjs
 python -m pip install -e ".[test]"
-python app.py
+python -m hello_pyjs
 ```
 
 Open <http://127.0.0.1:8000/>. The generated project has no Node.js configuration or JavaScript
@@ -73,17 +73,21 @@ python -m pyjs_examples.calculator
 pyjs template
 pyjs template pyjs_examples.calculator
 pyjs template pyjs_examples.calculator --src
-pyjs create my-calculator --template pyjs_examples.calculator
-pyjs create counter-demo --template pyjs_examples.counter
-pyjs create --single-file my_counter.py --template pyjs_examples.counter
-pyjs create counter-demo --template pyjs_examples.samples.state_counter
-pyjs create dialog-demo --template pyjs_examples.samples.ui_dialog
+pyjs create my_calculator --template pyjs_examples.calculator
+pyjs create counter_demo --template pyjs_examples.counter
+pyjs create my_counter --single-file --template pyjs_examples.counter
+pyjs create state_counter_demo --template pyjs_examples.samples.state_counter
+pyjs create dialog_demo --template pyjs_examples.samples.ui_dialog
 ```
 
-By default, `pyjs create` always creates a project directory. `--single-file` explicitly requests
-one standalone Python file and requires a file template. The `pyjs-examples` distribution registers
-both file and directory templates and contains the source copied by `pyjs create`; templates are not
-embedded in the scaffolding implementation.
+`pyjs create NAME` creates a project in `NAME/`, with application code in
+`NAME/NAME/NAME.py` and tests in `NAME/tests/`. Pass a destination as the second positional argument
+to populate another directory, such as `pyjs create routine .`. Add `--src-layout` to put the
+package under `src/`. After installation, `python -m NAME` starts either package layout.
+`--single-file` explicitly requests one standalone Python file and requires a file template when
+combined with `--template`. The `pyjs-examples` distribution registers both file and directory
+templates and contains the source copied by `pyjs create`; templates are not embedded in the
+scaffolding implementation.
 
 ## Run or inspect Python as JavaScript
 
@@ -109,7 +113,7 @@ The application server builds and serves browser assets automatically. To write 
 JavaScript, CSS, and HTML explicitly:
 
 ```bash
-pyjs build app:main
+pyjs build hello_pyjs.hello_pyjs:main
 ```
 
 Use `--only-js` when only the browser bundle is needed.
@@ -339,7 +343,7 @@ preview, and render assertions can compare screenshots against checked-in PNG ba
 | `pyjs --src INPUT` | Print generated JavaScript without running it |
 | `pyjs --src-all INPUT` | Include all tree-shaken dependency sources |
 | `pyjs --perf INPUT` | Compare Python and generated-JavaScript performance |
-| `pyjs create TARGET` | Create a starter project |
+| `pyjs create NAME [DESTINATION]` | Create a starter project |
 | `pyjs template` | List templates registered by installed packages |
 | `pyjs template NAME` | Print the complete materialized template source |
 | `pyjs template NAME --src` | Print the transpiled entry-module JavaScript |

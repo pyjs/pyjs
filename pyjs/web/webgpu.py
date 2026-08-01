@@ -1,27 +1,7 @@
 from pyjs import js, js_object
 from pyjs.web.events import EventTarget
 from pyjs.web.html import HTMLCanvasElement
-
-
-@js(builtin=True)
-class Float32Array:
-    def __init__(self, values: list[float] | int):
-        self.byteLength = 0
-        self.length = 0
-
-
-@js(builtin=True)
-class Uint16Array:
-    def __init__(self, values: list[int] | int):
-        self.byteLength = 0
-        self.length = 0
-
-
-@js(builtin=True)
-class Uint32Array:
-    def __init__(self, values: list[int] | int):
-        self.byteLength = 0
-        self.length = 0
+from pyjs.web.javascript import Float32Array, Uint16Array, Uint32Array
 
 
 @js(builtin=True)
@@ -514,11 +494,3 @@ class GPUCanvasContext:
 
 @js(builtin=True, inline="{canvas}.getContext('webgpu')")
 def get_webgpu_context(canvas: HTMLCanvasElement) -> GPUCanvasContext: ...
-
-
-@js(builtin=True)
-def requestAnimationFrame(callback: callable) -> int: ...
-
-
-@js(builtin=True)
-def cancelAnimationFrame(request_id: int): ...

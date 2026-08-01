@@ -1,4 +1,4 @@
-from pyjs import js, js_object, js_str
+from pyjs import js, js_object
 
 
 @js(builtin=True)
@@ -57,7 +57,7 @@ class Label(View):
 
 @js(builtin=True)
 class Button(View):
-    tapEvent = js_str("tap")
+    tapEvent = "tap"
 
     def __init__(self):
         super().__init__()

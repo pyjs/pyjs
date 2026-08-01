@@ -1,65 +1,24 @@
 from pyjs import js
 from pyjs.web.events import EventTarget
-
-
-@js(builtin=True)
-class ArrayBuffer:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class BigInt64Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class BigUint64Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Blob:
-    """WebIDL source: @webref/idl/FileAPI.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/Blob
-
-    Browser support: Chrome 5, Safari 6"""
-
-    pass
-
-
-@js(builtin=True)
-class DataView:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Float16Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Float32Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Float64Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
+from pyjs.web.files import Blob
+from pyjs.web.javascript import (
+    ArrayBuffer,
+    BigInt64Array,
+    BigUint64Array,
+    DataView,
+    Float16Array,
+    Float32Array,
+    Float64Array,
+    Int8Array,
+    Int16Array,
+    Int32Array,
+    Uint8Array,
+    Uint8ClampedArray,
+    Uint16Array,
+    Uint32Array,
+)
+from pyjs.web.streams import ReadableStream
+from pyjs.web.url import URLSearchParams
 
 
 @js(builtin=True)
@@ -80,38 +39,6 @@ class Headers:
     MDN: https://developer.mozilla.org/docs/Web/API/Headers
 
     Browser support: Chrome 42, Safari 10.1"""
-
-    pass
-
-
-@js(builtin=True)
-class Int16Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Int32Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Int8Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class ReadableStream:
-    """WebIDL source: @webref/idl/streams.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/ReadableStream
-
-    Browser support: Chrome 43, Safari 10.1"""
 
     pass
 
@@ -204,45 +131,6 @@ class ResponseInit:
         self.headers = headers
         self.status = status
         self.statusText = statusText
-
-
-@js(builtin=True)
-class Uint16Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Uint32Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Uint8Array:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class Uint8ClampedArray:
-    """WebIDL source: @webref/idl/unknown"""
-
-    pass
-
-
-@js(builtin=True)
-class URLSearchParams:
-    """WebIDL source: @webref/idl/url.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/URLSearchParams
-
-    Browser support: Chrome 49, Safari 10.1"""
-
-    pass
 
 
 @js(builtin=True)

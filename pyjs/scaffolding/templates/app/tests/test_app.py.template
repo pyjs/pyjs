@@ -2,7 +2,7 @@ import pytest
 from pyjs import js
 from pyjs.web.events import Event
 
-from app import App, main
+from __PYJS_PACKAGE__.__PYJS_PACKAGE__ import App, main
 
 
 @pytest.mark.pyjs_python

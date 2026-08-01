@@ -326,6 +326,18 @@ class InferenceVisitor(ast.NodeVisitor):
             raise NotImplementedError
 
     def visit_Assign(self, node: ast.Assign):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Subscript):
+            target = node.targets[0]
+            method = ast.copy_location(
+                ast.Attribute(value=target.value, attr="__setitem__", ctx=ast.Load()),
+                target,
+            )
+            call = ast.copy_location(
+                ast.Call(func=method, args=[target.slice, node.value], keywords=[]),
+                node,
+            )
+            return ast.Expr(value=self.visit(call))
+
         assignment_value = self.analyze_assignment_value(node.value)
         if len(node.targets) == 1:
             self.apply_contextual_collection_type(assignment_value, node.targets[0])
@@ -448,11 +460,22 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript):
         slice = self.visit(node.slice)
         value = self.visit(node.value)
-        getitem = value.obj.find("__getitem__")
+        receiver_obj = value.value_obj if isinstance(value, (Call, Subscript)) else value.obj
+        getitem = receiver_obj.find("__getitem__")
         assert isinstance(getitem.return_type, (Class, UnionType))
         value_obj = getitem.return_type
         if isinstance(getitem.return_type, Class):
             value_obj = getitem.return_type("__subscript_result__", self.scope, self.func)
+        if isinstance(receiver_obj, Instance) and receiver_obj.cls.generic_name == "dict":
+            if not getitem.is_analyzed:
+                raise DependencyError(getitem)
+            return Call(
+                getitem.return_type,
+                value_obj=value_obj,
+                func=Attribute(getitem, value=value, attr="__getitem__"),
+                args=[slice],
+                keywords=[],
+            )
         return Subscript(
             getitem.return_type,
             value_obj=value_obj,
@@ -1250,6 +1273,8 @@ class CallGraphVisitor(ast.NodeVisitor):
             if self.entry_point not in cls.visited:
                 cls.visited.add(self.entry_point)
                 for attr in cls.children:
+                    if not isinstance(attr, Function):
+                        continue
                     if has_include_decorator(attr.py_obj) or self.parent_has_include(
                         attr
                     ):

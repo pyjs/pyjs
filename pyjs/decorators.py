@@ -52,15 +52,15 @@ def is_cls_or_func(obj):
 
 
 def has_inline_decorator(obj):
-    return obj.__dict__.get("__js_rewrite_call_site__", False)
+    return getattr(obj, "__dict__", {}).get("__js_rewrite_call_site__", False)
 
 
 def has_source_decorator(obj):
-    return obj.__dict__.get("__js_rewrite_func__", False)
+    return getattr(obj, "__dict__", {}).get("__js_rewrite_func__", False)
 
 
 def has_no_analyze(obj):
-    return obj.__dict__.get("__no_analyze__", False)
+    return getattr(obj, "__dict__", {}).get("__no_analyze__", False)
 
 
 def should_analyze_func_body(obj):
@@ -72,7 +72,7 @@ def should_analyze_func_body(obj):
 
 
 def has_include_decorator(obj):
-    return obj.__dict__.get("__js_include__", False)
+    return getattr(obj, "__dict__", {}).get("__js_include__", False)
 
 
 def should_include(obj):
@@ -81,7 +81,7 @@ def should_include(obj):
     return (
         has_include_decorator(obj.py_obj) or
         bool(obj.visited)
-    ) and not obj.py_obj.__dict__.get("__builtin__", False)
+    ) and not getattr(obj.py_obj, "__dict__", {}).get("__builtin__", False)
 
 
 def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, client=None):
@@ -158,16 +158,6 @@ def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, cl
 def nojs(cls_func):
     cls_func.__js__ = False
     return cls_func
-
-
-class js_str(str):
-    def __new__(cls, value, builtin=None):
-        obj = super().__new__(cls, value)
-        obj.__js__ = True
-        obj.__static__ = True
-        if builtin is True:
-            obj.__builtin__ = builtin
-        return obj
 
 
 def js_object(obj, builtin=None, include=None):

@@ -1,4 +1,4 @@
-from pyjs import js, js_object, js_str
+from pyjs import js, js_object
 from pyjs.web.dom import (
     CSSStyleProperties,
     Document,
@@ -6,8 +6,10 @@ from pyjs.web.dom import (
     DOMTokenList,
     Element,
     Node,
+    NodeList,
     Window,
 )
+from pyjs.web.files import FileList
 
 
 @js(builtin=True)
@@ -48,6 +50,23 @@ class CustomElementRegistry:
 
 customElements = CustomElementRegistry()
 js_object(customElements, builtin=True)
+
+
+@js(builtin=True)
+class DOMStringList:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMStringList
+
+    Browser support: Chrome 1, Safari 5.1"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def contains(self, string: str) -> bool: ...
+
+    @js(inline="{self}[{index}]")
+    def item(self, index: int) -> str | None: ...
 
 
 @js(builtin=True)
@@ -99,17 +118,6 @@ class ElementInternals:
     MDN: https://developer.mozilla.org/docs/Web/API/ElementInternals
 
     Browser support: Chrome 77, Safari 16.4"""
-
-    pass
-
-
-@js(builtin=True)
-class FileList:
-    """WebIDL source: @webref/idl/FileAPI.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/FileList
-
-    Browser support: Chrome 2, Safari 4"""
 
     pass
 
@@ -364,17 +372,6 @@ class MediaStream:
 
 
 @js(builtin=True)
-class NodeList[T]:
-    """WebIDL source: @webref/idl/dom.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/NodeList
-
-    Browser support: Chrome 1, Safari 1"""
-
-    pass
-
-
-@js(builtin=True)
 class OffscreenCanvas:
     """WebIDL source: @webref/idl/html.idl
 
@@ -472,7 +469,7 @@ class HTMLAnchorElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 1"""
 
-    tagName = nodeName = js_str("A")
+    tagName = nodeName = "A"
 
     def __init__(self):
         super().__init__()
@@ -512,7 +509,7 @@ class HTMLButtonElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 3"""
 
-    tagName = nodeName = js_str("BUTTON")
+    tagName = nodeName = "BUTTON"
 
     def __init__(self):
         super().__init__()
@@ -550,7 +547,7 @@ class HTMLCanvasElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 2"""
 
-    tagName = nodeName = js_str("CANVAS")
+    tagName = nodeName = "CANVAS"
 
     def __init__(self):
         super().__init__()
@@ -589,7 +586,7 @@ class HTMLDialogElement(HTMLElement):
 
     Browser support: Chrome 37, Safari 15.4"""
 
-    tagName = nodeName = js_str("DIALOG")
+    tagName = nodeName = "DIALOG"
 
     def __init__(self):
         super().__init__()
@@ -614,7 +611,7 @@ class HTMLDivElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 3"""
 
-    tagName = nodeName = js_str("DIV")
+    tagName = nodeName = "DIV"
 
     def __init__(self):
         super().__init__()
@@ -629,7 +626,7 @@ class HTMLFormElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 3"""
 
-    tagName = nodeName = js_str("FORM")
+    tagName = nodeName = "FORM"
 
     def __init__(self):
         super().__init__()
@@ -682,7 +679,7 @@ class HTMLIFrameElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 3"""
 
-    tagName = nodeName = js_str("IFRAME")
+    tagName = nodeName = "IFRAME"
 
     def __init__(self):
         super().__init__()
@@ -720,7 +717,7 @@ class HTMLImageElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 1"""
 
-    tagName = nodeName = js_str("IMG")
+    tagName = nodeName = "IMG"
 
     def __init__(self):
         super().__init__()
@@ -763,7 +760,7 @@ class HTMLInputElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 1"""
 
-    tagName = nodeName = js_str("INPUT")
+    tagName = nodeName = "INPUT"
 
     def __init__(self):
         super().__init__()
@@ -848,7 +845,7 @@ class HTMLParagraphElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 3"""
 
-    tagName = nodeName = js_str("P")
+    tagName = nodeName = "P"
 
     def __init__(self):
         super().__init__()
@@ -863,7 +860,7 @@ class HTMLSpanElement(HTMLElement):
 
     Browser support: Chrome 15, Safari 6"""
 
-    tagName = nodeName = js_str("SPAN")
+    tagName = nodeName = "SPAN"
 
     def __init__(self):
         super().__init__()
@@ -877,7 +874,7 @@ class HTMLTextAreaElement(HTMLElement):
 
     Browser support: Chrome 1, Safari 1"""
 
-    tagName = nodeName = js_str("TEXTAREA")
+    tagName = nodeName = "TEXTAREA"
 
     def __init__(self):
         super().__init__()

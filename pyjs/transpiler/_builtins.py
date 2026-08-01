@@ -358,10 +358,10 @@ class _dict[K, V](_object):
     @js(inline="{self}?.size")
     def __bool__(self) -> bool: ...
 
-    @js(inline="{self}[{key}]")
+    @js(inline="{self}.get({key})")
     def __getitem__(self, key: K) -> V: ...
 
-    @js(inline="{self}.has({key}) ? {self}[{key}] : {default}")
+    @js(inline="{self}.has({key}) ? {self}.get({key}) : {default}")
     def get(self, key: K, default: V) -> V: ...
 
     @js(
@@ -370,7 +370,7 @@ class _dict[K, V](_object):
     )
     def pop(self, key: K) -> V: ...
 
-    @js(inline="{self}[{key}] = {value}")
+    @js(inline="{self}.set({key}, {value})")
     def __setitem__(self, key: K, value: V) -> V: ...
 
     @js(inline="{self}.has({key})")

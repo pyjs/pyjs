@@ -21,4 +21,5 @@ dist/
 /site/
 /website/site/
 /screenshots/
+/test-artifacts/
 /testing-daemon.log

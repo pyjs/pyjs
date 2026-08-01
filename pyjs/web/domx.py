@@ -1,7 +1,7 @@
 import re
 from functools import partial
 
-from pyjs import js, js_str, nojs
+from pyjs import js, nojs
 from pyjs.state import StateField
 from pyjs.web.dom import Element, document
 from pyjs.web.html import (
@@ -96,9 +96,9 @@ class CustomElementMetaclass(type):
                 lower_tag = "pyjs-" + lower_tag
             upper_tag = lower_tag.upper()
             namespace = {
-                "nodeName": js_str(upper_tag),
-                "tagName": js_str(upper_tag),
-                "localName": js_str(lower_tag),
+                "nodeName": upper_tag,
+                "tagName": upper_tag,
+                "localName": lower_tag,
                 "__js_append__": lambda *args: custom_element_javascript(
                     name, lower_tag, state_fields, state_effects
                 ),

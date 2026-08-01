@@ -460,5 +460,9 @@ def serve(
         host=host,
         port=port,
     )
-    httpd.serve_forever()
-    # print(httpd.get_js(httpd.get_module()))
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    finally:
+        httpd.server_close()

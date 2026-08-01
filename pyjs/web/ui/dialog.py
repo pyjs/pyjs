@@ -1,4 +1,4 @@
-from pyjs import js, js_str
+from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, div, p, ref, tag, tw
 from pyjs.web.domx import dialog as dialog_element
@@ -8,7 +8,7 @@ from pyjs.web.ui import Widget
 
 @js
 class DialogCloseRequest(CustomEvent):
-    event_name = js_str("dialog-close-request")
+    event_name = "dialog-close-request"
 
     def __init__(self):
         super().__init__(DialogCloseRequest.event_name, bubbles=True, cancelable=True)

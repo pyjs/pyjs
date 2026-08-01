@@ -3,6 +3,7 @@ from pyjs.web.dom import document
 from pyjs.web.domx import canvas, ref, tag, tw
 from pyjs.web.events import KeyboardEvent
 from pyjs.web.html import HTMLCanvasElement
+from pyjs.web.timers import requestAnimationFrame
 from pyjs.web.ui import Widget
 from pyjs.web.webgpu import (
     Float32Array,
@@ -32,7 +33,6 @@ from pyjs.web.webgpu import (
     GPUVertexState,
     get_webgpu_context,
     navigator,
-    requestAnimationFrame,
 )
 
 

@@ -13,7 +13,8 @@ Use the installed examples as the source of truth for this version of PyJS.
 2. Run `pyjs template NAME` and inspect the closest application or component example. Add `--src`
    to compare it with the transpiled entry-module JavaScript.
 3. Prefer adapting a working example over inventing framework APIs.
-4. Create a project with `pyjs create APP`, optionally adding `--template NAME`.
+4. Create a project with `pyjs create APP [DESTINATION]`, optionally adding `--src-layout` or
+   `--template NAME`.
 5. Add `--single-file` and use a file template when the application should be one Python file.
 6. Probe language support with `pyjs -c CODE`; add `-v` to inspect generated JavaScript and get a
    compiler traceback if the probe fails.
@@ -23,9 +24,12 @@ Install the official examples with `python -m pip install "pyjs[examples]"` if n
 `pyjs_examples.*` templates are listed.
 
 ```bash
-pyjs create my-app
-pyjs create my-app --template pyjs_examples.calculator
-pyjs create --single-file app.py --template pyjs_examples.counter
+pyjs create my_app
+pyjs create my_app .
+pyjs create my_app --src-layout
+python -m my_app
+pyjs create calculator_demo --template pyjs_examples.calculator
+pyjs create counter --single-file --template pyjs_examples.counter
 ```
 
 For a small, Node-compatible language experiment, avoid creating a temporary file:

@@ -75,10 +75,20 @@ def parser() -> argparse.ArgumentParser:
 
     create_command = subcommands.add_parser("create", help="create a PyJS project or file")
     create_command.add_argument(
-        "target",
-        help="new project directory, or a .py path with --single-file",
+        "name",
+        help="application and Python package name",
+    )
+    create_command.add_argument(
+        "destination",
+        nargs="?",
+        help="directory to populate; defaults to NAME",
     )
     create_command.add_argument("--template", help="start from a registered template")
+    create_command.add_argument(
+        "--src-layout",
+        action="store_true",
+        help="place the application package under a src directory",
+    )
     create_command.add_argument(
         "--single-file",
         action="store_true",
@@ -612,9 +622,11 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
 def _create(args, command_parser: argparse.ArgumentParser) -> int:
     try:
         destination = create(
-            args.target,
+            args.name,
+            args.destination,
             template=args.template,
             single_file=args.single_file,
+            src_layout=args.src_layout,
         )
     except (FileExistsError, OSError, ValueError) as error:
         command_parser.error(str(error))
@@ -627,10 +639,11 @@ def _create(args, command_parser: argparse.ArgumentParser) -> int:
 
     print(f"Created PyJS project in {destination}")
     print()
-    print(f"  cd {destination}")
+    if Path.cwd().resolve() != destination:
+        print(f"  cd {destination}")
     print('  python -m pip install -e ".[test]"')
     if args.template is None:
-        print("  python app.py")
+        print(f"  python -m {args.name}")
     else:
         print("  See README.md for the run command")
     return 0

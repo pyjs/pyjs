@@ -1,0 +1,5 @@
+from pyjs.server import serve
+
+from . import __PYJS_PACKAGE__ as application
+
+serve(application.__file__)

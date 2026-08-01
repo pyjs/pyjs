@@ -2,6 +2,7 @@ import importlib
 import importlib.metadata
 import inspect
 import json
+import keyword
 import re
 import shutil
 import tempfile
@@ -170,6 +171,15 @@ def _distribution_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def _package_name(name: str) -> str:
+    if not name.isidentifier() or keyword.iskeyword(name):
+        raise ValueError(
+            "application names must be valid Python identifiers because they are also "
+            "used as package names"
+        )
+    return name
+
+
 def _render(value: str, context: dict[str, str]) -> str:
     for name, replacement in context.items():
         value = value.replace(f"__PYJS_{name}__", replacement)
@@ -182,6 +192,7 @@ def _copy_template(source, destination: Path, context: dict[str, str]):
         output_name = ".gitignore" if child.name == "gitignore.template" else child.name
         if output_name.endswith(".template"):
             output_name = output_name.removesuffix(".template")
+        output_name = _render(output_name, context)
         output = destination / output_name
         if child.is_dir():
             _copy_template(child, output, context)
@@ -205,10 +216,21 @@ def _project_toml(
     name: str,
     description: str,
     modules: tuple[str, ...],
+    package: str | None = None,
+    src_layout: bool = False,
 ) -> str:
-    module_list = ", ".join(f'"{module}"' for module in modules)
     version = version_string()
     description_value = json.dumps(description)
+    if package is None:
+        module_list = ", ".join(f'"{module}"' for module in modules)
+        setuptools = f"[tool.setuptools]\npy-modules = [{module_list}]"
+    else:
+        source = 'where = ["src"]\n' if src_layout else ""
+        setuptools = (
+            "[tool.setuptools.packages.find]\n"
+            f"{source}"
+            f'include = ["{package}", "{package}.*"]'
+        )
     return f"""\
 [build-system]
 requires = ["setuptools>=82.0.1"]
@@ -225,8 +247,7 @@ dependencies = ["pyjs~={version}"]
 [project.optional-dependencies]
 test = ["pytest>=9.0"]
 
-[tool.setuptools]
-py-modules = [{module_list}]
+{setuptools}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -245,9 +266,11 @@ def _write_project_files(
     name: str,
     description: str,
     modules: tuple[str, ...],
+    package: str | None = None,
+    src_layout: bool = False,
 ):
     (destination / "pyproject.toml").write_text(
-        _project_toml(name, description, modules),
+        _project_toml(name, description, modules, package, src_layout),
         encoding="utf-8",
     )
     (destination / ".gitignore").write_text(
@@ -261,20 +284,24 @@ def _populate(
     destination: Path,
     project_name: str,
     template: Template | None,
+    src_layout: bool = False,
 ):
     title = project_name.replace("-", " ").replace("_", " ").title()
     description = "A browser application built with PyJS."
     context = {
         "INLINE_TEST": "",
+        "PACKAGE": _package_name(project_name),
         "PROJECT_NAME": _distribution_name(project_name),
         "PROJECT_TITLE": title,
+        "SOURCE_ROOT": "src" if src_layout else "",
         "VERSION": version_string(),
     }
 
     starter = resources.files(__package__).joinpath("templates", "app")
     if template is None:
         _copy_template(starter, destination, context)
-        modules = ("app",)
+        modules = ()
+        package = context["PACKAGE"]
     else:
         description = template.description
         _copy_source(template, destination)
@@ -286,20 +313,35 @@ def _populate(
                 encoding="utf-8",
             )
         modules = template.modules
+        package = None
 
-    _write_project_files(destination, project_name, description, modules)
+    _write_project_files(
+        destination,
+        project_name,
+        description,
+        modules,
+        package,
+        src_layout,
+    )
 
 
 def _populate_file(destination: Path, project_name: str, template: Template | None):
     if template is None:
         inline_test = resources.files(__package__).joinpath("templates", "app_test.py.template")
         context = {
-            "INLINE_TEST": inline_test.read_text(encoding="utf-8").rstrip(),
+            "INLINE_TEST": inline_test.read_text(encoding="utf-8").rstrip() + "\n\n\n",
+            "PACKAGE": _package_name(project_name),
             "PROJECT_NAME": _distribution_name(project_name),
             "PROJECT_TITLE": project_name.replace("-", " ").replace("_", " ").title(),
             "VERSION": version_string(),
         }
-        source = resources.files(__package__).joinpath("templates", "app", "app.py.template")
+        source = resources.files(__package__).joinpath(
+            "templates",
+            "app",
+            "__PYJS_SOURCE_ROOT__",
+            "__PYJS_PACKAGE__",
+            "__PYJS_PACKAGE__.py.template",
+        )
         destination.write_text(
             _render(source.read_text(encoding="utf-8"), context), encoding="utf-8"
         )
@@ -310,49 +352,51 @@ def _populate_file(destination: Path, project_name: str, template: Template | No
 
 
 def create(
-    target: str | Path,
+    name: str,
+    destination: str | Path | None = None,
     *,
     template: str | None = None,
     single_file: bool = False,
+    src_layout: bool = False,
 ) -> Path:
-    destination = Path(target).resolve()
+    project_name = _package_name(name)
+    if destination is None:
+        destination = Path.cwd() if single_file else Path(project_name)
+    destination = Path(destination).resolve()
     selected_template = find_template(template) if template is not None else None
+    if src_layout and single_file:
+        raise ValueError("--src-layout cannot be combined with --single-file")
+    if src_layout and selected_template is not None:
+        raise ValueError("--src-layout cannot be combined with --template")
     if single_file:
-        if destination.suffix != ".py":
-            raise ValueError("a single-file destination must end in .py")
         if selected_template is not None and selected_template.kind != "file":
             raise ValueError(
                 f"template {selected_template.name!r} is a directory template "
                 "and cannot create a single file"
             )
-        if destination.exists():
-            raise FileExistsError(f"destination already exists: {destination}")
+        if destination.exists() and not destination.is_dir():
+            raise FileExistsError(f"destination is not a directory: {destination}")
+        destination.mkdir(parents=True, exist_ok=True)
+        application = destination / f"{project_name}.py"
+        if application.exists():
+            raise FileExistsError(f"destination already exists: {application}")
 
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = Path(tempfile.mkdtemp(prefix=f".{destination.stem}-", dir=destination.parent))
+        temporary = Path(tempfile.mkdtemp(prefix=f".{project_name}-", dir=destination))
         try:
-            temporary_file = temporary / destination.name
-            _populate_file(temporary_file, destination.stem, selected_template)
-            temporary_file.replace(destination)
+            temporary_file = temporary / application.name
+            _populate_file(temporary_file, project_name, selected_template)
+            temporary_file.replace(application)
         finally:
             shutil.rmtree(temporary, ignore_errors=True)
-        return destination
+        return application
 
-    if destination.suffix == ".py":
-        raise ValueError(
-            f"{destination.name} looks like a file destination; use --single-file "
-            "to create a standalone file"
-        )
-
-    project_name = destination.name
-    _distribution_name(project_name)
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise FileExistsError(f"destination is not empty: {destination}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{project_name}-", dir=destination.parent))
     try:
-        _populate(temporary, project_name, selected_template)
+        _populate(temporary, project_name, selected_template, src_layout)
         if destination.exists():
             shutil.copytree(temporary, destination, dirs_exist_ok=True)
         else:
