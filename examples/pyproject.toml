@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyjs-examples"
+version = "0.1.0"
+requires-python = ">=3.14"
+authors = [
+    {name = "Lex Berezhny", email = "lex@damoti.com"},
+]
+description = "Official example applications for PyJS."
+readme = "README.md"
+license = "BSD-3-Clause"
+dependencies = [
+    "pyjs==0.1.0",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://pyjs.org"
+Source = "https://github.com/pyjs/pyjs"
+
+[project.optional-dependencies]
+test = ["pytest>=9.0"]
+
+[project.entry-points."pyjs.templates"]
+calculator = "pyjs_examples.calculator"
+chatroom = "pyjs_examples.chatroom"
+counter = "pyjs_examples.counter"
+nativescript_counter = "pyjs_examples.nativescript_counter"
+space_invaders = "pyjs_examples.space_invaders"
+todomvc = "pyjs_examples.todomvc"
+workspace = "pyjs_examples.workspace"
+state_counter = "pyjs_examples.samples.state_counter"
+ui_dialog = "pyjs_examples.samples.ui_dialog"
+
+[tool.setuptools]
+packages = [
+    "pyjs_examples",
+    "pyjs_examples.calculator",
+    "pyjs_examples.chatroom",
+    "pyjs_examples.nativescript_counter",
+    "pyjs_examples.samples",
+    "pyjs_examples.samples.state_counter",
+    "pyjs_examples.samples.ui_dialog",
+    "pyjs_examples.space_invaders",
+    "pyjs_examples.todomvc",
+    "pyjs_examples.workspace",
+]
+
+[tool.setuptools.package-dir]
+"pyjs_examples" = "."
+
+[tool.setuptools.package-data]
+"pyjs_examples.calculator" = ["README.md", "tests/*.py"]
+"pyjs_examples.chatroom" = ["README.md", "tests/*.py"]
+"pyjs_examples.nativescript_counter" = ["README.md", "tests/*.py"]
+"pyjs_examples.samples.state_counter" = ["README.md", "tests/*.py"]
+"pyjs_examples.samples.ui_dialog" = ["README.md", "tests/*.py"]
+"pyjs_examples.space_invaders" = [
+    "README.md",
+    "tests/*.py",
+    "tests/renders/*.png",
+]
+"pyjs_examples.todomvc" = ["*.css", "README.md", "tests/*.py"]
+"pyjs_examples.workspace" = ["README.md", "tests/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "calculator/tests",
+    "chatroom/tests",
+    "nativescript_counter/tests",
+    "samples/state_counter/tests",
+    "samples/ui_dialog/tests",
+    "space_invaders/tests",
+    "todomvc/tests",
+    "workspace/tests",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["B", "I", "UP"]

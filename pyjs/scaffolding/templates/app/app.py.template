@@ -1,0 +1,84 @@
+from pyjs import effect, js, state
+from pyjs.web.events import Event
+from pyjs.web.domx import CustomElement, button, ref, tag
+
+
+@js
+class App(CustomElement):
+    status = state("Ready")
+
+    def __init__(self):
+        super().__init__()
+        self.status_text = ref(tag("strong", "Ready"))
+        self.action_button = ref(
+            button(
+                {
+                    "style": (
+                        "border:0;border-radius:8px;background:#111827;color:white;"
+                        "padding:10px 16px;font:inherit;cursor:pointer"
+                    ),
+                    "type": "button",
+                },
+                "Test interaction",
+            )
+        )
+        self.action_button.addEventListener("click", self.activate)
+        tag(
+            self,
+            tag(
+                "main",
+                {
+                    "style": (
+                        "min-height:100vh;display:grid;place-items:center;background:#f8fafc;"
+                        "color:#111827;font:16px system-ui,sans-serif"
+                    )
+                },
+                tag(
+                    "section",
+                    {
+                        "style": (
+                            "width:min(28rem,calc(100% - 3rem));padding:2rem;border:1px solid "
+                            "#e2e8f0;border-radius:16px;background:white;box-shadow:"
+                            "0 20px 50px rgb(15 23 42 / 10%)"
+                        )
+                    },
+                    tag("p", {"style": "margin:0;color:#6366f1;font-weight:700"}, "PYJS"),
+                    tag(
+                        "h1",
+                        {"style": "margin:.5rem 0;font-size:2rem"},
+                        "__PYJS_PROJECT_TITLE__",
+                    ),
+                    tag(
+                        "p",
+                        {"style": "margin:0 0 1.5rem;color:#475569"},
+                        "Server-rendered HTML, hydrated with browser-native Python.",
+                    ),
+                    tag(
+                        "div",
+                        {"style": "display:flex;align-items:center;gap:1rem"},
+                        self.action_button,
+                        self.status_text,
+                    ),
+                ),
+            ),
+        )
+
+    @effect(status)
+    def render_status(self):
+        self.status_text.textContent = self.status
+
+    def activate(self, event: Event):
+        self.status = "Browser connected"
+
+
+def main():
+    return App()
+
+
+__PYJS_INLINE_TEST__
+
+
+if __name__ == "__main__":
+    from pyjs.server import serve
+
+    serve(__file__)

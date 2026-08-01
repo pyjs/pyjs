@@ -1,0 +1,8 @@
+@js
+def test_app_updates_its_status():
+    app = App()
+
+    app.activate(Event("click"))
+
+    assert app.status == "Browser connected"
+    assert app.status_text.textContent == "Browser connected"

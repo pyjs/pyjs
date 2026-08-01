@@ -1,6 +1,5 @@
 import inspect
 
-
 DECORATIONS = {
     # safe to analyze and transpile
     "__js__",  # bool
@@ -29,12 +28,23 @@ DECORATIONS = {
     # after the definition of the wrapped code object
     "__js_append__",  # function
 
+    # dispatch a builtin function through a special method on its first argument
+    "__js_dunder_dispatch__",  # str
+
     # safe to analyze but don't include in output
     "__builtin__",  # bool
 
     # do not analyze function
     "__no_analyze__",  # bool
 }
+
+
+def dunder_dispatch(method_name: str):
+    def decorate(func):
+        func.__js_dunder_dispatch__ = method_name
+        return func
+
+    return decorate
 
 
 def is_cls_or_func(obj):
@@ -66,21 +76,24 @@ def has_include_decorator(obj):
 
 
 def should_include(obj):
+    if has_inline_decorator(obj.py_obj) and not has_include_decorator(obj.py_obj):
+        return False
     return (
         has_include_decorator(obj.py_obj) or
         bool(obj.visited)
     ) and not obj.py_obj.__dict__.get("__builtin__", False)
 
 
-def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None):
+def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, client=None):
 
     class Wrapper:
 
-        def __init__(self, inline, builtin, include, analyze):
+        def __init__(self, inline, builtin, include, analyze, client):
             self.inline = inline
             self.builtin = builtin
             self.include = include
             self.analyze = analyze
+            self.client_implementation = client
 
         def __call__(self, cls_func):
             cls_func.__js__ = True
@@ -90,16 +103,30 @@ def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None):
 
             if self.inline is not None:
                 if isinstance(self.inline, str):
-                    cls_func.__js_rewrite_call_site__ = lambda **kwargs: self.inline.format(**kwargs)
+                    inline_template = self.inline.replace("{*args}", "{_args_suffix}")
+                    cls_func.__js_rewrite_call_site__ = (
+                        lambda **kwargs: inline_template.format(**kwargs)
+                    )
                 else:
                     cls_func.__js_rewrite_call_site__ = self.inline
 
             if inspect.isclass(cls_func):
-                assert self.include is None, "@js(include=True) is only supported for class methods."
+                assert self.include is None, (
+                    "@js(include=True) is only supported for class methods."
+                )
+                assert self.client_implementation is None, (
+                    "@js(client=...) is not supported for classes."
+                )
                 return cls_func
 
+            if self.client_implementation is not None:
+                assert self.inline is None, "@js(client=...) cannot be combined with inline=."
+                cls_func.__js_replace__ = self.client_implementation
+
             if self.include is True:
-                assert "." in cls_func.__qualname__, "@js(include=True) is only supported for class methods."
+                assert "." in cls_func.__qualname__, (
+                    "@js(include=True) is only supported for class methods."
+                )
                 cls_func.__js_include__ = True
 
             if self.analyze is False:
@@ -123,9 +150,9 @@ def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None):
             return cls_func
 
     if cls_func_args and is_cls_or_func(cls_func_args[0]):
-        return Wrapper(inline, builtin, include, analyze)(cls_func_args[0])
+        return Wrapper(inline, builtin, include, analyze, client)(cls_func_args[0])
 
-    return Wrapper(inline, builtin, include, analyze)
+    return Wrapper(inline, builtin, include, analyze, client)
 
 
 def nojs(cls_func):

@@ -1,0 +1,248 @@
+import re
+import time
+import xml.etree.ElementTree as ET
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+
+from pyjs.tooling.android import AndroidDevice, AndroidSDK
+
+from .artifacts import Artifact, ArtifactManifest
+
+BOUNDS_PATTERN = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
+ANDROID_ERROR_PATTERN = re.compile(
+    r"FATAL EXCEPTION|TypeError|Calling js method|Uncaught Exception", re.IGNORECASE
+)
+
+
+@dataclass(frozen=True)
+class AndroidBounds:
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return ((self.left + self.right) // 2, (self.top + self.bottom) // 2)
+
+    @classmethod
+    def parse(cls, value: str) -> AndroidBounds:
+        match = BOUNDS_PATTERN.fullmatch(value)
+        if match is None:
+            raise ValueError(f"Invalid Android bounds: {value!r}")
+        return cls(*(int(part) for part in match.groups()))
+
+
+@dataclass(frozen=True)
+class AndroidElement:
+    text: str
+    test_id: str
+    resource_id: str
+    description: str
+    class_name: str
+    clickable: bool
+    enabled: bool
+    bounds: AndroidBounds
+
+
+def parse_ui_tree(source: str) -> list[AndroidElement]:
+    root = ET.fromstring(source)
+    elements = []
+    for node in root.iter("node"):
+        attributes = node.attrib
+        bounds = attributes.get("bounds")
+        if not bounds:
+            continue
+        resource_id = attributes.get("resource-id", "")
+        elements.append(
+            AndroidElement(
+                text=attributes.get("text", ""),
+                test_id=resource_id.rsplit("/", 1)[-1],
+                resource_id=resource_id,
+                description=attributes.get("content-desc", ""),
+                class_name=attributes.get("class", ""),
+                clickable=attributes.get("clickable") == "true",
+                enabled=attributes.get("enabled") == "true",
+                bounds=AndroidBounds.parse(bounds),
+            )
+        )
+    return elements
+
+
+class AndroidTestSession:
+    def __init__(self, sdk: AndroidSDK, device: AndroidDevice, app_id: str):
+        self.sdk = sdk
+        self.device = device
+        self.app_id = app_id
+
+    def adb(self, *arguments: str, text: bool = True, check: bool = True):
+        return self.sdk.runner.run(
+            [self.sdk.adb, "-s", self.device.identifier, *arguments],
+            environment=self.sdk.environment(),
+            capture_output=True,
+            text=text,
+            check=check,
+        )
+
+    def clear_logcat(self) -> None:
+        self.adb("logcat", "-c")
+
+    def force_stop(self) -> None:
+        self.adb("shell", "am", "force-stop", self.app_id)
+
+    def launch(self) -> None:
+        self.force_stop()
+        self.clear_logcat()
+        self.adb(
+            "shell",
+            "monkey",
+            "-p",
+            self.app_id,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+        )
+
+    def ui_tree(self) -> str:
+        remote_path = "/data/local/tmp/pyjs-window.xml"
+        self.adb("shell", "uiautomator", "dump", remote_path)
+        return self.adb("shell", "cat", remote_path).stdout
+
+    def elements(self) -> list[AndroidElement]:
+        return parse_ui_tree(self.ui_tree())
+
+    def find_element(
+        self,
+        *,
+        text: str | None = None,
+        test_id: str | None = None,
+        resource_id: str | None = None,
+    ) -> AndroidElement | None:
+        for element in self.elements():
+            if text is not None and element.text != text:
+                continue
+            if test_id is not None and element.test_id != test_id:
+                continue
+            if resource_id is not None and element.resource_id != resource_id:
+                continue
+            return element
+        return None
+
+    def wait_for_element(
+        self,
+        *,
+        text: str | None = None,
+        test_id: str | None = None,
+        resource_id: str | None = None,
+        timeout: float = 15,
+        interval: float = 0.25,
+    ) -> AndroidElement:
+        deadline = time.monotonic() + timeout
+        last_error = None
+        while time.monotonic() < deadline:
+            try:
+                element = self.find_element(text=text, test_id=test_id, resource_id=resource_id)
+                if element is not None:
+                    return element
+            except Exception as exc:
+                last_error = exc
+            time.sleep(interval)
+        selector = {"text": text, "test_id": test_id, "resource_id": resource_id}
+        details = ", ".join(f"{key}={value!r}" for key, value in selector.items() if value)
+        message = f"Timed out waiting for Android element with {details}."
+        if last_error is not None:
+            message += f" Last UI inspection failed: {last_error}"
+        raise TimeoutError(message)
+
+    def tap(self, element: AndroidElement) -> None:
+        x, y = element.bounds.center
+        self.adb("shell", "input", "tap", str(x), str(y))
+
+    def tap_element(self, **selector) -> AndroidElement:
+        element = self.wait_for_element(**selector)
+        self.tap(element)
+        return element
+
+    def screenshot(self, path: Path) -> Path:
+        result = self.adb("exec-out", "screencap", "-p", text=False)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(result.stdout)
+        return path
+
+    def logcat(self, lines: int = 1000) -> str:
+        process = self.adb("shell", "pidof", self.app_id, check=False).stdout.strip()
+        arguments = ["logcat"]
+        if process:
+            arguments.extend(["--pid", process.split()[0]])
+        arguments.extend(["-d", "-t", str(lines)])
+        return self.adb(*arguments).stdout
+
+    def log_errors(self, lines: int = 1000) -> str:
+        return "\n".join(
+            line for line in self.logcat(lines).splitlines() if ANDROID_ERROR_PATTERN.search(line)
+        )
+
+    def capture_artifacts(self, directory: Path, name: str) -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        prefix = re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip("-") or "android"
+        artifacts = []
+        errors = {}
+
+        def capture(
+            artifact_name: str,
+            kind: str,
+            path: Path,
+            media_type: str,
+            writer,
+        ) -> None:
+            try:
+                writer(path)
+            except Exception as exc:
+                errors[artifact_name] = f"{type(exc).__name__}: {exc}"
+            else:
+                artifacts.append(Artifact(artifact_name, kind, path.resolve(), media_type))
+
+        capture(
+            "screenshot",
+            "image",
+            directory / f"{prefix}.png",
+            "image/png",
+            self.screenshot,
+        )
+        capture(
+            "ui_tree",
+            "tree",
+            directory / f"{prefix}.xml",
+            "application/xml",
+            lambda path: path.write_text(self.ui_tree(), encoding="utf-8"),
+        )
+        capture(
+            "logcat",
+            "log",
+            directory / f"{prefix}.logcat.txt",
+            "text/plain",
+            lambda path: path.write_text(self.logcat(), encoding="utf-8"),
+        )
+        metadata = {"app_id": self.app_id, "device": self.device.identifier}
+        if errors:
+            metadata["capture_errors"] = errors
+        manifest = ArtifactManifest(
+            target="android",
+            metadata=metadata,
+            artifacts=artifacts,
+        )
+        return manifest.write(directory / f"{prefix}.manifest.json")
+
+    @contextmanager
+    def artifacts_on_failure(self, directory: Path, name: str):
+        try:
+            yield
+        except BaseException as exc:
+            try:
+                manifest = self.capture_artifacts(directory, name)
+            except Exception as capture_error:
+                exc.add_note(f"Android failure artifact capture failed: {capture_error}")
+            else:
+                exc.add_note(f"Android failure artifacts: {manifest}")
+            raise

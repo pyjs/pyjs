@@ -1,0 +1,33 @@
+# __PYJS_PROJECT_TITLE__
+
+A small browser application built with PyJS.
+
+## Install
+
+Create and activate a virtual environment, then install the application:
+
+```bash
+python -m pip install -e ".[test]"
+```
+
+## Run
+
+```bash
+python app.py
+```
+
+Open <http://127.0.0.1:8000/>.
+
+## Test
+
+Run the Python target:
+
+```bash
+python -m pytest -q
+```
+
+Run the web target:
+
+```bash
+python -m pytest -q --pyjs-target=web
+```

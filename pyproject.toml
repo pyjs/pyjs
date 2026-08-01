@@ -1,17 +1,24 @@
 [build-system]
-requires = ["setuptools>=80.9.0"]
+requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyjs"
 dynamic = ["version"]
-requires-python = ">= 3.12"
+requires-python = ">= 3.14"
 authors = [
   {name = "Lex Berezhny", email = "lex@damoti.com"},
 ]
 description = "Python to JavaScript transpiler."
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
+dependencies = [
+    "markdown>=3.8",
+    "pillow",
+    "pyyaml>=6.0",
+    "pytest",
+    "websockets",
+]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Web Environment",
@@ -21,8 +28,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
@@ -32,24 +38,43 @@ classifiers = [
 [project.scripts]
 pyjs = "pyjs.cli:main"
 
+[project.entry-points.pytest11]
+pyjs = "pyjs.testing.pytest_plugin"
+
+[project.optional-dependencies]
+examples = ["pyjs-examples==0.1.0"]
+
 [project.urls]
-Homepage = "https://www.pyjs.org"
-Documentation = "https://docs.pyjs.org"
-"Release notes" = "https://docs.pyjs.org/en/stable/releases"
-Funding = "https://www.pyjs.org/fundraising"
+Homepage = "https://pyjs.org"
+Documentation = "https://pyjs.org/docs/"
+"Release notes" = "https://github.com/pyjs/pyjs/releases"
 Source = "https://github.com/pyjs/pyjs"
 Tracker = "https://github.com/pyjs/pyjs/issues"
 
-[tool.black]
-target-version = ["py312"]
+[tool.ruff]
+target-version = "py314"
+line-length = 90
+extend-exclude = ["tests"]
 
-[tool.isort]
-profile = "black"
-default_section = "THIRDPARTY"
-known_first_party = "pyjs"
+[tool.ruff.lint]
+extend-select = ["B", "I", "UP"]
+ignore = ["F403", "F405"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools.dynamic]
 version = {attr = "pyjs.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["pyjs*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"pyjs" = ["skills/pyjs/SKILL.md"]
+"pyjs.docs" = ["*.css", "*.svg"]
+"pyjs.scaffolding" = [
+    "templates/*.template",
+    "templates/app/*.template",
+    "templates/app/tests/*.template",
+]

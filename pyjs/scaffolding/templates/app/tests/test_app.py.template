@@ -1,0 +1,22 @@
+import pytest
+from pyjs import js
+from pyjs.web.events import Event
+
+from app import App, main
+
+
+@pytest.mark.pyjs_python
+@js
+def test_app_state_updates_the_rendered_status():
+    app = App()
+
+    assert app.status == "Ready"
+    app.activate(Event("click"))
+
+    assert app.status == "Browser connected"
+    assert app.status_text.textContent == "Browser connected"
+
+
+@pytest.mark.pyjs_python
+def test_main_returns_the_application():
+    assert isinstance(main(), App)
