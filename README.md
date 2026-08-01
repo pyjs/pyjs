@@ -1,12 +1,13 @@
-# PyJS: Python for the browser
+# PyJS: Python to JavaScript
 
 > Pre-alpha: useful applications and tests work today, but APIs may change before the first
 > release.
 
-PyJS builds server-rendered applications and browser-native custom elements in Python. It
-compiles reachable browser code to JavaScript without shipping a Python runtime. Application code
-can render on the server, hydrate as native custom elements, and continue running in the browser.
-PyJS uses static analysis, so public APIs and values that cannot be inferred need type annotations.
+PyJS is a statically analyzed Python-to-JavaScript compiler. It turns reachable, typed Python code
+into readable, tree-shaken JavaScript without shipping a Python runtime. Its current libraries make
+it especially useful for server-rendered web applications and browser-native custom elements:
+application code can render on the server, hydrate as native custom elements, and continue running
+in the browser. Public APIs and values whose types cannot be inferred need type annotations.
 
 Coding agents can run `pyjs skill` for version-matched instructions, then use `pyjs template` and
 `pyjs template NAME` to discover installed examples and inspect their complete source. The
@@ -15,7 +16,7 @@ directly from the public repository.
 
 ## Goals
 
-- No Python runtime in generated browser bundles
+- No Python runtime in generated JavaScript
 - Readable, performant JavaScript comparable to handwritten output
 - Server rendering and browser behavior expressed with the same typed Python objects
 - Browser-native custom elements as the application framework
