@@ -23,6 +23,14 @@ SESSION_COOKIE_NAME = "pyjs-session"
 MAX_REQUEST_BODY_SIZE = 64 * 1024
 
 
+def _server_url(host, port):
+    if not host or host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
+    elif ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{port}/"
+
+
 def _module_name(module):
     path = Path(module)
     if not path.is_file():
@@ -290,7 +298,7 @@ class PyjsServer(HTTPServer, PyjsApplication):
         )
 
     def serve_forever(self, poll_interval=0.5):
-        print(f"Serving on port {self.server_port}...")
+        print(f"Serving at {_server_url(self.server_address[0], self.server_port)}")
         super().serve_forever(poll_interval)
 
 
@@ -380,7 +388,7 @@ class WebSocketPyjsServer(PyjsApplication):
         ) as server:
             self.server_port = server.sockets[0].getsockname()[1]
             self.started.set()
-            print(f"Serving on port {self.server_port}...")
+            print(f"Serving at {_server_url(self.host, self.server_port)}")
             await self._shutdown_event.wait()
 
     def serve_forever(self):
