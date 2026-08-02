@@ -358,6 +358,7 @@ class Class(Object):
         self.internal_scope = ClassScope(self.scope)
         self.py_cls = cls
         self._self = Instance("self", self, self.scope, self)
+        self.subclasses = []
         if self.name == "object" and getattr(cls, "__builtin__", False):
             self.super = None
         elif cls.__base__ is Generic:
@@ -365,6 +366,8 @@ class Class(Object):
         else:
             self.super: Class = self.search(cls.__base__.__name__)
             assert isinstance(self.super, Class)
+            if not self.super.container.scope.is_builtins:
+                self.super.subclasses.append(self)
         for state_name, state_field in getattr(cls, "__pyjs_state_fields__", {}).items():
             state_type = self.search(state_field.value_type.__name__)
             self._self.add(
@@ -564,6 +567,7 @@ class Function(Object):
         self.original_node: FunctionNode | None = None
         self.is_async = False
         self.is_partial_client = False
+        self.virtual_visited = set()
 
     def reset(self):
         self.is_analyzed = False

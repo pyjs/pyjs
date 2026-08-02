@@ -23,3 +23,8 @@ dist/
 /screenshots/
 /test-artifacts/
 /testing-daemon.log
+
+# Local external review artifacts
+/pyjs-shakedown/
+/pyjsshakedown.txt
+/pyjsshakedown.zip

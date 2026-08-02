@@ -22,6 +22,7 @@ Run any complete application as a module:
 | --- | --- |
 | [Calculator](calculator/) | `python -m pyjs_examples.calculator` |
 | [Chatroom](chatroom/) | `python -m pyjs_examples.chatroom` |
+| [Kanban board](kanban/) | `python -m pyjs_examples.kanban` |
 | [NativeScript Counter](nativescript_counter/) | `python -m pyjs_examples.nativescript_counter` |
 | [Space Invaders](space_invaders/) | `python -m pyjs_examples.space_invaders` |
 | [TodoMVC](todomvc/) | `python -m pyjs_examples.todomvc` |

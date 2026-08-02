@@ -74,8 +74,23 @@ class DragEvent(MouseEvent):
 
     Browser support: Chrome 46, Safari 14"""
 
-    def __init__(self, type: str, *, dataTransfer: DataTransfer | None = None):
-        super().__init__(type)
+    def __init__(
+        self,
+        type: str,
+        *,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        clientX: int = 0,
+        clientY: int = 0,
+        dataTransfer: DataTransfer | None = None,
+    ):
+        super().__init__(
+            type,
+            bubbles=bubbles,
+            cancelable=cancelable,
+            clientX=clientX,
+            clientY=clientY,
+        )
         self.dataTransfer: DataTransfer | None = dataTransfer
 
 

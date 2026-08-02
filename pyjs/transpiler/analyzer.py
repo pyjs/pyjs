@@ -798,6 +798,9 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_Break(self, node: ast.Break):
         return node
 
+    def visit_Continue(self, node: ast.Continue):
+        return node
+
     def visit_Return(self, node: ast.Return):
         value = node.value
         if value is None:
@@ -1268,6 +1271,23 @@ class CallGraphVisitor(ast.NodeVisitor):
             self.enter_class(func.cls)
         self.isolated_visit(func)
 
+    def enter_virtual(self, func: Function):
+        self.enter(func)
+        if self.entry_point in func.virtual_visited:
+            return
+        func.virtual_visited.add(self.entry_point)
+        self.enter_overrides(func, func.cls)
+
+    def enter_overrides(self, func: Function, cls: Class):
+        for subclass in cls.subclasses:
+            if self.entry_point not in subclass.visited:
+                continue
+            override = subclass.find_attrs(func.name, search_bases=False)
+            if isinstance(override, Function):
+                self.enter_virtual(override)
+            else:
+                self.enter_overrides(func, subclass)
+
     def enter_class(self, cls: Class):
         while cls is not None:
             if self.entry_point not in cls.visited:
@@ -1279,6 +1299,8 @@ class CallGraphVisitor(ast.NodeVisitor):
                         attr
                     ):
                         self.isolated_visit(attr)
+                    elif self.parent_is_virtual(attr):
+                        self.enter_virtual(attr)
             cls = cls.super
 
     def parent_has_include(self, obj):
@@ -1290,6 +1312,33 @@ class CallGraphVisitor(ast.NodeVisitor):
                     return True
                 parent = parent.super
         return False
+
+    def parent_is_virtual(self, obj):
+        if isinstance(obj, Function):
+            parent = obj.cls.super
+            while parent is not None:
+                parent_func = parent.find_attrs(obj.name, search_bases=False)
+                if (
+                    parent_func is not None
+                    and self.entry_point in parent_func.virtual_visited
+                ):
+                    return True
+                parent = parent.super
+        return False
+
+    @staticmethod
+    def is_virtual_method_reference(node):
+        if not isinstance(node, ast.Attribute) or not node.obj.is_method:
+            return False
+        receiver = node.value
+        if isinstance(receiver, Name) and isinstance(receiver.obj, Class):
+            return False
+        if isinstance(receiver, Call):
+            if isinstance(receiver.func, Name) and receiver.func.id == "super":
+                return False
+            if isinstance(receiver.func.obj, Class):
+                return False
+        return True
 
     def isolated_visit(self, func: Function):
         assert isinstance(func, Function)
@@ -1328,7 +1377,10 @@ class CallGraphVisitor(ast.NodeVisitor):
 
     def visit_Attribute(self, node: ast.Attribute):
         if isinstance(node.obj, Function):
-            self.enter(node.obj)
+            if self.is_virtual_method_reference(node):
+                self.enter_virtual(node.obj)
+            else:
+                self.enter(node.obj)
         elif isinstance(node.obj, Instance):
             node.obj.visited.add(self.entry_point)
         self.generic_visit(node)

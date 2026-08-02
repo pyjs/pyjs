@@ -108,6 +108,11 @@ class CDPSession:
     def listen(self, method: str, callback: Callable[[dict[str, Any]], None]) -> None:
         self.listeners.setdefault(method, []).append(callback)
 
+    def unlisten(self, method: str, callback: Callable[[dict[str, Any]], None]) -> None:
+        callbacks = self.listeners.get(method)
+        if callbacks is not None and callback in callbacks:
+            callbacks.remove(callback)
+
     async def close(self) -> None:
         await self.connection.close()
         await self.reader
@@ -241,6 +246,100 @@ class BrowserPage:
             }})()""",
             user_gesture=True,
         )
+
+    async def drag(
+        self,
+        source: str,
+        target: str,
+        *,
+        target_x_ratio: float = 0.5,
+        target_y_ratio: float = 0.5,
+        steps: int = 12,
+    ) -> None:
+        if steps < 1:
+            raise ValueError("steps must be at least 1")
+        if not 0 <= target_x_ratio <= 1 or not 0 <= target_y_ratio <= 1:
+            raise ValueError("target ratios must be between 0 and 1")
+
+        source_bounds = await self._selector_bounds(source)
+        target_bounds = await self._selector_bounds(target)
+        source_x = source_bounds["x"] + source_bounds["width"] / 2
+        source_y = source_bounds["y"] + source_bounds["height"] / 2
+        target_x = target_bounds["x"] + target_bounds["width"] * target_x_ratio
+        target_y = target_bounds["y"] + target_bounds["height"] * target_y_ratio
+
+        drag_intercepted = asyncio.get_running_loop().create_future()
+
+        def capture_drag(params: dict[str, Any]) -> None:
+            if not drag_intercepted.done():
+                drag_intercepted.set_result(params["data"])
+
+        self.session.listen("Input.dragIntercepted", capture_drag)
+        await self.session.send("Input.setInterceptDrags", {"enabled": True})
+        try:
+            try:
+                await self.session.send(
+                    "Input.dispatchMouseEvent",
+                    {"type": "mouseMoved", "x": source_x, "y": source_y},
+                )
+                await self.session.send(
+                    "Input.dispatchMouseEvent",
+                    {
+                        "type": "mousePressed",
+                        "x": source_x,
+                        "y": source_y,
+                        "button": "left",
+                        "buttons": 1,
+                        "clickCount": 1,
+                    },
+                )
+                for step in range(1, steps + 1):
+                    progress = step / steps
+                    await self.session.send(
+                        "Input.dispatchMouseEvent",
+                        {
+                            "type": "mouseMoved",
+                            "x": source_x + (target_x - source_x) * progress,
+                            "y": source_y + (target_y - source_y) * progress,
+                            "button": "left",
+                            "buttons": 1,
+                        },
+                    )
+                drag_data = await asyncio.wait_for(drag_intercepted, 2)
+            finally:
+                await self.session.send("Input.setInterceptDrags", {"enabled": False})
+                self.session.unlisten("Input.dragIntercepted", capture_drag)
+
+            for event_type in ("dragEnter", "dragOver", "drop"):
+                await self.session.send(
+                    "Input.dispatchDragEvent",
+                    {"type": event_type, "x": target_x, "y": target_y, "data": drag_data},
+                )
+        finally:
+            await self.session.send(
+                "Input.dispatchMouseEvent",
+                {
+                    "type": "mouseReleased",
+                    "x": target_x,
+                    "y": target_y,
+                    "button": "left",
+                    "buttons": 0,
+                    "clickCount": 1,
+                },
+            )
+
+    async def _selector_bounds(self, selector: str) -> dict[str, float]:
+        bounds = await self.evaluate_json(
+            f"""(() => {{
+                const element = document.querySelector({json.dumps(selector)});
+                if (!element) throw new Error('Could not find selector: ' + {json.dumps(selector)});
+                const bounds = element.getBoundingClientRect();
+                return {{x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height}};
+            }})()"""
+        )
+        if not bounds or bounds["width"] <= 0 or bounds["height"] <= 0:
+            raise RuntimeError(f"Selector {selector!r} has no visible geometry")
+        return bounds
 
     async def fill(self, selector: str, value: str) -> None:
         selector_source = json.dumps(selector)

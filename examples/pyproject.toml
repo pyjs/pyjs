@@ -39,6 +39,7 @@ test = ["pytest>=9.0"]
 calculator = "pyjs_examples.calculator"
 chatroom = "pyjs_examples.chatroom"
 counter = "pyjs_examples.counter"
+kanban = "pyjs_examples.kanban"
 nativescript_counter = "pyjs_examples.nativescript_counter"
 space_invaders = "pyjs_examples.space_invaders"
 todomvc = "pyjs_examples.todomvc"
@@ -51,6 +52,7 @@ packages = [
     "pyjs_examples",
     "pyjs_examples.calculator",
     "pyjs_examples.chatroom",
+    "pyjs_examples.kanban",
     "pyjs_examples.nativescript_counter",
     "pyjs_examples.samples",
     "pyjs_examples.samples.state_counter",
@@ -66,6 +68,7 @@ packages = [
 [tool.setuptools.package-data]
 "pyjs_examples.calculator" = ["README.md", "tests/*.py"]
 "pyjs_examples.chatroom" = ["README.md", "tests/*.py"]
+"pyjs_examples.kanban" = ["README.md", "visual_test.py", "tests/*.py", "tests/renders/*.png"]
 "pyjs_examples.nativescript_counter" = ["README.md", "tests/*.py"]
 "pyjs_examples.samples.state_counter" = ["README.md", "tests/*.py"]
 "pyjs_examples.samples.ui_dialog" = ["README.md", "tests/*.py"]
@@ -81,6 +84,7 @@ packages = [
 testpaths = [
     "calculator/tests",
     "chatroom/tests",
+    "kanban/tests",
     "nativescript_counter/tests",
     "samples/state_counter/tests",
     "samples/ui_dialog/tests",
