@@ -42,7 +42,7 @@ pyjs = "pyjs.cli:main"
 pyjs = "pyjs.testing.pytest_plugin"
 
 [project.optional-dependencies]
-examples = ["pyjs-examples==0.1.0"]
+examples = ["pyjs-examples==0.0.1"]
 
 [project.urls]
 Homepage = "https://pyjs.org"

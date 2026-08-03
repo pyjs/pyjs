@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyjs-examples"
-version = "0.1.0"
+version = "0.0.1"
 requires-python = ">=3.14"
 authors = [
     {name = "Lex Berezhny", email = "lex@damoti.com"},
@@ -13,7 +13,7 @@ description = "Official example applications for PyJS."
 readme = "README.md"
 license = "BSD-3-Clause"
 dependencies = [
-    "pyjs==0.1.0",
+    "pyjs==0.0.1",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
