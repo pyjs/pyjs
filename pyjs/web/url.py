@@ -1,9 +1,10 @@
 from pyjs import js
+from pyjs.web.events import EventTarget
 from pyjs.web.files import Blob
 
 
 @js(builtin=True)
-class MediaSource:
+class MediaSource(EventTarget):
     """WebIDL source: @webref/idl/media-source.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/MediaSource

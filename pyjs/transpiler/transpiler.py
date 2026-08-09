@@ -1,3 +1,4 @@
+import re
 import textwrap
 from _ast_unparse import Unparser as _Unparser
 from _ast_unparse import _Precedence
@@ -7,6 +8,10 @@ from pyjs.web.domx import ContextProxy, CustomElement, HTMLElement, ProxyElement
 
 from .analyzer import *
 from .utils import TailwindCSS
+
+FORMAT_SPEC = re.compile(
+    r"(?P<zero>0)?(?P<width>\d+)?(?:\.(?P<precision>\d+))?(?P<type>[df%])"
+)
 
 
 def transpile_module(module, importer=None, exporter=None):
@@ -24,8 +29,13 @@ def prepare_bundle(
     include_main=False,
     extensions: tuple[CompilationExtension, ...] = (),
     include_css=True,
+    additional_entry_points: tuple[callable, ...] = (),
 ):
-    entry_point, tailwind_classes = from_entry_point(entry_point_py_func, extensions)
+    entry_point, tailwind_classes = from_entry_point(
+        entry_point_py_func,
+        extensions,
+        additional_entry_points,
+    )
     if include_main:
         entry_point.py_func.__js_include__ = True
     module = entry_point.container
@@ -51,6 +61,7 @@ def bundle(
     extensions: tuple[CompilationExtension, ...] = (),
     include_css=True,
     *,
+    additional_entry_points: tuple[callable, ...] = (),
     call_main: bool | None = None,
     expose_entry: bool = False,
 ):
@@ -65,6 +76,7 @@ def bundle(
         include_main=include_main,
         extensions=extensions,
         include_css=include_css,
+        additional_entry_points=additional_entry_points,
     )
     source = _write_bundle(
         package, entry_point, call_main=call_main, expose_entry=expose_entry
@@ -174,6 +186,9 @@ class Transpiler(_Unparser):
                         for source, local in imported_names
                     )
                     self.fill(f"import {{ {names} }} from './{imported_module}.js';")
+        for dependency, alias in module.inline_dependencies.items():
+            if dependency.container is module and should_include(dependency):
+                self.fill(f"const {alias} = {dependency.name};")
         for n in node.body:
             if should_include(n.obj) and n.obj.container.name == module.name:
                 self.traverse(n)
@@ -185,7 +200,10 @@ class Transpiler(_Unparser):
         if node.bases:
             assert len(node.bases) == 1
             self.write(" extends ")
-            self.traverse(node.bases[0])
+            if node.obj.super.name == "Exception":
+                self.write("Error")
+            else:
+                self.traverse(node.bases[0])
         with self.block():
             self.traverse(node.body)
         if js_append := getattr(node.obj.py_cls, "__js_append__", None):
@@ -319,6 +337,7 @@ class Transpiler(_Unparser):
                     for keyword in node.keywords
                     if keyword.arg is not None
                 },
+                inline_dependencies=node.inline_dependencies,
             )
             if operator_precedence is None:
                 self.write(src)
@@ -343,11 +362,12 @@ class Transpiler(_Unparser):
                 self.write("super.")
                 self.write(node.func.attr)
         elif isinstance(node.func.obj, Class):
-            cls = node.func.obj
+            called_class = node.func.obj
+            cls = called_class
             while cls is not None and cls.name != "Exception":
                 cls = cls.super
             self.write("new ")
-            if cls is not None:
+            if cls is not None and called_class.container.scope.is_builtins:
                 self.write("Error")
             else:
                 self.traverse(node.func)
@@ -362,7 +382,13 @@ class Transpiler(_Unparser):
         called_function = node.func.obj
         is_builtin = False
         if isinstance(called_function, Class):
-            is_builtin = called_function.py_obj.__dict__.get("__builtin__", False)
+            base = called_function
+            while base is not None and base.name != "Exception":
+                base = base.super
+            is_builtin = (
+                base is not None
+                or called_function.py_obj.__dict__.get("__builtin__", False)
+            )
         elif isinstance(called_function, Function):
             is_builtin = getattr(called_function.py_obj, "__builtin__", False) or (
                 called_function.cls is not None
@@ -372,6 +398,25 @@ class Transpiler(_Unparser):
             called_function = called_function.find("__init__")
         needs_empty_options = False
         if not is_builtin and isinstance(called_function, Function):
+            required_count = len(called_function.params) - len(
+                called_function.defaults
+            )
+            if len(args) < required_count:
+                keyword_values = {
+                    keyword.arg: keyword.value for keyword in keywords
+                }
+                lowered_names = set()
+                for param in called_function.params[len(args) : required_count]:
+                    if param.arg not in keyword_values:
+                        break
+                    args.append(keyword_values[param.arg])
+                    lowered_names.add(param.arg)
+                keywords = [
+                    keyword
+                    for keyword in keywords
+                    if keyword.arg not in lowered_names
+                ]
+
             lowered_default_args = False
             if called_function.defaults:
                 first_default = len(called_function.params) - len(
@@ -476,12 +521,47 @@ class Transpiler(_Unparser):
 
     def visit_ListComp(self, node):
         iter_node = node.generators[0]
+        self.write("Array.from(")
         self.traverse(iter_node.iter)
+        self.write(")")
+        for condition in iter_node.ifs:
+            self.write(".filter")
+            with self.delimit("(", ")"):
+                self.traverse(iter_node.target)
+                self.write(" => ")
+                self.traverse(condition)
         self.write(".map")
         with self.delimit("(", ")"):
             self.traverse(iter_node.target)
             self.write(" => ")
             self.traverse(node.elt)
+
+    def visit_Subscript(self, node):
+        receiver_obj = (
+            node.value.value_obj
+            if isinstance(node.value, (Call, Subscript))
+            else node.value.obj
+        )
+        receiver_type = (
+            receiver_obj.cls if isinstance(receiver_obj, Instance) else receiver_obj
+        )
+        negative_index = (
+            isinstance(node.slice, UnaryOp)
+            and isinstance(node.slice.op, ast.USub)
+            and isinstance(node.slice.operand, Constant)
+            and isinstance(node.slice.operand.value, int)
+        )
+        if negative_index and getattr(receiver_type, "generic_name", None) in {
+            "list",
+            "str",
+            "tuple",
+        }:
+            self.traverse(node.value)
+            self.write(".at(")
+            self.traverse(node.slice)
+            self.write(")")
+            return
+        super().visit_Subscript(node)
 
     def visit_Assign(self, node):
         self.fill()
@@ -493,17 +573,31 @@ class Transpiler(_Unparser):
         self.traverse(node.value)
         self.write(";")
 
+    def visit_Delete(self, node):
+        for target in node.targets:
+            self.fill()
+            if isinstance(target, ast.Name):
+                self.traverse(target)
+                self.write(" = undefined;")
+            else:
+                self.write("delete ")
+                self.traverse(target)
+                self.write(";")
+
     def visit_AnnAssign(self, node):
         self.fill()
         annotation_id = (
             node.annotation.id if isinstance(node.annotation, ast.Name) else None
         )
+        is_module_binding = annotation_id in {"__const__", "__module__"}
         if isinstance(node.target, ast.Attribute):
             pass
         elif annotation_id == "__static__":
             self.write("static ")
         elif annotation_id == "__const__":
-            self.write("export const ")
+            self.write("export const " if self.exporter is None else "const ")
+        elif annotation_id == "__module__":
+            self.write("export let " if self.exporter is None else "let ")
         else:
             self.write("var ")
         with self.delimit_if(
@@ -513,6 +607,8 @@ class Transpiler(_Unparser):
         self.write(" = ")
         self.traverse(node.value)
         self.write(";")
+        if is_module_binding and self.exporter is not None:
+            self.fill(self.exporter(node.target.id))
 
     def visit_Name(self, node):
         if node.id == "self" and isinstance(node.obj, Instance):
@@ -523,7 +619,7 @@ class Transpiler(_Unparser):
     def visit_Constant(self, node):
         value = node.value
         if isinstance(value, tuple):
-            with self.delimit("(", ")"):
+            with self.delimit("[", "]"):
                 self.items_view(self._write_constant, value)
         elif value is ...:
             self.write("...")
@@ -537,6 +633,25 @@ class Transpiler(_Unparser):
             self._write_constant(node.value)
 
     def visit_Dict(self, node: ast.Dict):
+        if isinstance(node.obj, TypedDictClass):
+            def write_object_item(item):
+                key, value = item
+                if key is None:
+                    self.write("...")
+                    self.traverse(value)
+                    return
+                self.traverse(key)
+                self.write(": ")
+                self.traverse(value)
+
+            with self.delimit("{", "}"):
+                self.interleave(
+                    lambda: self.write(", "),
+                    write_object_item,
+                    zip(node.keys, node.values, strict=True),
+                )
+            return
+
         def write_key_value_pair(k, v):
             with self.delimit("[", "]"):
                 self.traverse(k)
@@ -609,8 +724,7 @@ class Transpiler(_Unparser):
         with self.delimit("(", ")"):
             self.write("var ")
             if isinstance(node.target, ast.Tuple):
-                with self.delimit("[", "]"):
-                    self.traverse(node.target)
+                self.traverse(node.target)
             else:
                 self.traverse(node.target)
             self.write(" of ")
@@ -628,6 +742,10 @@ class Transpiler(_Unparser):
             self.write(" ")
             self.traverse(node.value)
         self.write(";")
+
+    def visit_Tuple(self, node: ast.Tuple):
+        with self.delimit("[", "]"):
+            self.interleave(lambda: self.write(", "), self.traverse, node.elts)
 
     def visit_Await(self, node: ast.Await):
         self.write("await ")
@@ -674,7 +792,49 @@ class Transpiler(_Unparser):
                 self.write("+")
 
     def visit_FormattedValue(self, node: ast.FormattedValue):
-        self.traverse(node.value)
+        value = self.isolated_visit(node.value, _Precedence.ATOM)
+        spec = self.constant_format_spec(node.format_spec)
+        match = FORMAT_SPEC.fullmatch(spec) if spec is not None else None
+        if match is None:
+            self.write(value)
+            return
+
+        number_type = match.group("type")
+        precision = match.group("precision")
+        if number_type == "d":
+            formatted = f"String(Math.trunc({value}))"
+            absolute = "String(Math.abs(Math.trunc(value)))"
+        else:
+            precision = precision or "6"
+            number = f"Number({value})"
+            absolute_number = "Math.abs(Number(value))"
+            if number_type == "%":
+                number = f"({number} * 100)"
+                absolute_number = f"({absolute_number} * 100)"
+            suffix = " + '%'" if number_type == "%" else ""
+            formatted = f"{number}.toFixed({precision}){suffix}"
+            absolute = f"{absolute_number}.toFixed({precision}){suffix}"
+
+        width = match.group("width")
+        if width is None:
+            self.write(formatted)
+        elif match.group("zero"):
+            self.write(
+                "((value) => (value < 0 ? '-' : '') + "
+                f"({absolute}).padStart({width} - (value < 0 ? 1 : 0), '0'))"
+                f"({value})"
+            )
+        else:
+            self.write(f"({formatted}).padStart({width}, ' ')")
+
+    @staticmethod
+    def constant_format_spec(node: ast.JoinedStr | None) -> str | None:
+        if node is None or not all(
+            isinstance(value, ast.Constant) and isinstance(value.value, str)
+            for value in node.values
+        ):
+            return None
+        return "".join(value.value for value in node.values)
 
     def visit_Assert(self, node: ast.Assert):
         self.fill("__pyjsAssert__(")

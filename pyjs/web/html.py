@@ -1,15 +1,135 @@
 from pyjs import js, js_object
+from pyjs.javascript import Float16Array, Uint8ClampedArray
 from pyjs.web.dom import (
     CSSStyleProperties,
     Document,
+    DocumentFragment,
     DOMRect,
     DOMTokenList,
     Element,
+    HTMLCollection,
     Node,
     NodeList,
+    ShadowRoot,
+    Storage,
+    Text,
     Window,
 )
-from pyjs.web.files import FileList
+from pyjs.web.events import AbortSignal, Event, EventTarget, MessagePort
+from pyjs.web.files import Blob, File, FileList
+from pyjs.web.geometry import DOMMatrix, DOMMatrix2DInit, DOMPointInit
+from pyjs.web.svg import SVGImageElement
+
+
+@js
+class AssignedNodesOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, flatten: bool = False):
+        self.flatten = flatten
+
+
+@js(builtin=True)
+class AudioTrack:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/AudioTrack
+
+    Browser support: Safari 8"""
+
+    def __init__(self):
+        self.enabled: bool = False
+        self.id: str = ""
+        self.kind: str = ""
+        self.label: str = ""
+        self.language: str = ""
+
+
+@js(builtin=True)
+class AudioTrackList(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/AudioTrackList
+
+    Browser support: Safari 7"""
+
+    def __init__(self):
+        super().__init__()
+        self.length: int = 0
+        self.onaddtrack: callable = None
+        self.onchange: callable = None
+        self.onremovetrack: callable = None
+
+    @js(inline="{self}[{index}]")
+    def __getitem__(self, index: int) -> AudioTrack: ...
+
+    def getTrackById(self, id: str) -> AudioTrack | None: ...
+
+
+@js(builtin=True)
+class BarProp:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/BarProp
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        self.visible: bool = False
+
+
+@js(builtin=True)
+class BeforeUnloadEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/BeforeUnloadEvent
+
+    Browser support: Chrome 30, Safari 7"""
+
+    def __init__(self):
+        super().__init__()
+        self.returnValue: str = ""
+
+
+@js(builtin=True)
+class BroadcastChannel(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/BroadcastChannel
+
+    Browser support: Chrome 54, Safari 15.4"""
+
+    def __init__(self, name: str):
+        super().__init__()
+        self.name: str = name
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+
+    def close(self) -> None: ...
+
+    def postMessage(self, message: object) -> None: ...
+
+
+@js(builtin=True)
+class CanvasGradient:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CanvasGradient
+
+    Browser support: Chrome 1, Safari 2"""
+
+    def addColorStop(self, offset: float, color: str) -> None: ...
+
+
+@js(builtin=True)
+class CanvasPattern:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CanvasPattern
+
+    Browser support: Chrome 1, Safari 2"""
+
+    def setTransform(self, transform: DOMMatrix2DInit | None = None) -> None: ...
 
 
 @js(builtin=True)
@@ -21,6 +141,277 @@ class CanvasRenderingContext2D:
     Browser support: Chrome 1, Safari 2"""
 
     pass
+
+    def __init__(self):
+        self.canvas: HTMLCanvasElement = None
+        self.direction: str = ""
+        self.fillStyle: str | CanvasGradient | CanvasPattern = None
+        self.filter: str = ""
+        self.font: str = ""
+        self.fontKerning: str = ""
+        self.fontStretch: str = ""
+        self.fontVariantCaps: str = ""
+        self.globalAlpha: float = 0.0
+        self.globalCompositeOperation: str = ""
+        self.imageSmoothingEnabled: bool = False
+        self.imageSmoothingQuality: str = ""
+        self.lang: str = ""
+        self.letterSpacing: str = ""
+        self.lineCap: str = ""
+        self.lineDashOffset: float = 0.0
+        self.lineJoin: str = ""
+        self.lineWidth: float = 0.0
+        self.miterLimit: float = 0.0
+        self.shadowBlur: float = 0.0
+        self.shadowColor: str = ""
+        self.shadowOffsetX: float = 0.0
+        self.shadowOffsetY: float = 0.0
+        self.strokeStyle: str | CanvasGradient | CanvasPattern = None
+        self.textAlign: str = ""
+        self.textBaseline: str = ""
+        self.textRendering: str = ""
+        self.wordSpacing: str = ""
+
+    def arc(
+        self,
+        x: float,
+        y: float,
+        radius: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def arcTo(
+        self, x1: float, y1: float, x2: float, y2: float, radius: float
+    ) -> None: ...
+
+    def beginPath(self) -> None: ...
+
+    def bezierCurveTo(
+        self, cp1x: float, cp1y: float, cp2x: float, cp2y: float, x: float, y: float
+    ) -> None: ...
+
+    def clearRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def clip(self, fillRule: str = "nonzero") -> None: ...
+
+    def closePath(self) -> None: ...
+
+    def createConicGradient(
+        self, startAngle: float, x: float, y: float
+    ) -> CanvasGradient: ...
+
+    def createImageData(
+        self,
+        sw: int,
+        sh: int,
+        *,
+        colorSpace: str | None = None,
+        pixelFormat: str = "rgba-unorm8",
+    ) -> ImageData: ...
+
+    def createLinearGradient(
+        self, x0: float, y0: float, x1: float, y1: float
+    ) -> CanvasGradient: ...
+
+    def createPattern(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame,
+        repetition: str,
+    ) -> CanvasPattern | None: ...
+
+    def createRadialGradient(
+        self, x0: float, y0: float, r0: float, x1: float, y1: float, r1: float
+    ) -> CanvasGradient: ...
+
+    def drawFocusIfNeeded(self, element: Element) -> None: ...
+
+    def drawImage(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame,
+        dx: float,
+        dy: float,
+    ) -> None: ...
+
+    def ellipse(
+        self,
+        x: float,
+        y: float,
+        radiusX: float,
+        radiusY: float,
+        rotation: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def fill(self, fillRule: str = "nonzero") -> None: ...
+
+    def fillRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def fillText(
+        self, text: str, x: float, y: float, maxWidth: float | None = None
+    ) -> None: ...
+
+    def getContextAttributes(self) -> CanvasRenderingContext2DSettings: ...
+
+    def getImageData(
+        self,
+        sx: int,
+        sy: int,
+        sw: int,
+        sh: int,
+        *,
+        colorSpace: str | None = None,
+        pixelFormat: str = "rgba-unorm8",
+    ) -> ImageData: ...
+
+    def getLineDash(self) -> list[float]: ...
+
+    def getTransform(self) -> DOMMatrix: ...
+
+    def isContextLost(self) -> bool: ...
+
+    def isPointInPath(self, x: float, y: float, fillRule: str = "nonzero") -> bool: ...
+
+    def isPointInStroke(self, x: float, y: float) -> bool: ...
+
+    def lineTo(self, x: float, y: float) -> None: ...
+
+    def measureText(self, text: str) -> TextMetrics: ...
+
+    def moveTo(self, x: float, y: float) -> None: ...
+
+    def putImageData(self, imageData: ImageData, dx: int, dy: int) -> None: ...
+
+    def quadraticCurveTo(self, cpx: float, cpy: float, x: float, y: float) -> None: ...
+
+    def rect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def reset(self) -> None: ...
+
+    def resetTransform(self) -> None: ...
+
+    def restore(self) -> None: ...
+
+    def rotate(self, angle: float) -> None: ...
+
+    def roundRect(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        radii: float | DOMPointInit | list[float | DOMPointInit] = 0,
+    ) -> None: ...
+
+    def save(self) -> None: ...
+
+    def scale(self, x: float, y: float) -> None: ...
+
+    def setLineDash(self, segments: list[float]) -> None: ...
+
+    def setTransform(
+        self, a: float, b: float, c: float, d: float, e: float, f: float
+    ) -> None: ...
+
+    def stroke(self) -> None: ...
+
+    def strokeRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def strokeText(
+        self, text: str, x: float, y: float, maxWidth: float | None = None
+    ) -> None: ...
+
+    def transform(
+        self, a: float, b: float, c: float, d: float, e: float, f: float
+    ) -> None: ...
+
+    def translate(self, x: float, y: float) -> None: ...
+
+
+@js
+class CanvasRenderingContext2DSettings:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        alpha: bool = True,
+        colorSpace: str = "srgb",
+        colorType: str = "unorm8",
+        desynchronized: bool = False,
+        willReadFrequently: bool = False,
+    ):
+        self.alpha = alpha
+        self.colorSpace = colorSpace
+        self.colorType = colorType
+        self.desynchronized = desynchronized
+        self.willReadFrequently = willReadFrequently
+
+
+@js(builtin=True)
+class CloseWatcher(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CloseWatcher
+
+    Browser support: Chrome 126, Safari preview"""
+
+    def __init__(self, *, signal: AbortSignal | None = None):
+        super().__init__()
+        self.oncancel: callable = None
+        self.onclose: callable = None
+
+    def close(self) -> None: ...
+
+    def destroy(self) -> None: ...
+
+    def requestClose(self) -> None: ...
+
+
+@js
+class CloseWatcherOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, signal: AbortSignal | None = None):
+        if signal is not None:
+            self.signal = signal
+
+
+@js(builtin=True)
+class CommandEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CommandEvent
+
+    Browser support: Chrome 135, Safari 26.2"""
+
+    def __init__(self, type: str, *, source: Element | None = None, command: str = ""):
+        super().__init__()
+        self.command: str = command
+        self.source: Element | None = source
+
+
+@js
+class CommandEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, command: str = "", source: Element | None = None):
+        self.command = command
+        self.source = source
 
 
 @js(builtin=True)
@@ -53,6 +444,30 @@ js_object(customElements, builtin=True)
 
 
 @js(builtin=True)
+class CustomStateSet:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CustomStateSet
+
+    Browser support: Chrome 90, Safari 17.4"""
+
+    pass
+
+
+@js(builtin=True)
+class DOMParser:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMParser
+
+    Browser support: Chrome 1, Safari 1.3"""
+
+    def __init__(self): ...
+
+    def parseFromString(self, string: TrustedHTML | str, type: str) -> Document: ...
+
+
+@js(builtin=True)
 class DOMStringList:
     """WebIDL source: @webref/idl/html.idl
 
@@ -65,7 +480,6 @@ class DOMStringList:
 
     def contains(self, string: str) -> bool: ...
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> str | None: ...
 
 
@@ -93,7 +507,7 @@ class DOMStringMap:
 
 
 @js(builtin=True)
-class EditContext:
+class EditContext(EventTarget):
     """WebIDL source: @webref/idl/edit-context.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/EditContext
@@ -121,6 +535,75 @@ class ElementInternals:
 
     pass
 
+    def __init__(self):
+        self.form: HTMLFormElement | None = None
+        self.labels: NodeList[Node] = None
+        self.shadowRoot: ShadowRoot | None = None
+        self.states: CustomStateSet = None
+        self.validationMessage: str = ""
+        self.validity: ValidityState = None
+        self.willValidate: bool = False
+
+    def checkValidity(self) -> bool: ...
+
+    def reportValidity(self) -> bool: ...
+
+    def setFormValue(
+        self,
+        value: File | str | FormData | None,
+        state: File | str | FormData | None = None,
+    ) -> None: ...
+
+    def setValidity(
+        self,
+        flags: ValidityStateFlags | None = None,
+        message: str | None = None,
+        anchor: HTMLElement | None = None,
+    ) -> None: ...
+
+
+@js(builtin=True)
+class EventSource(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/EventSource
+
+    Browser support: Chrome 6, Safari 5"""
+
+    CLOSED = 2
+    CONNECTING = 0
+    OPEN = 1
+
+    def __init__(self, url: str, *, withCredentials: bool = False):
+        super().__init__()
+        self.onerror: callable = None
+        self.onmessage: callable = None
+        self.onopen: callable = None
+        self.readyState: int = 0
+        self.url: str = url
+        self.withCredentials: bool = withCredentials
+
+    def close(self) -> None: ...
+
+
+@js
+class EventSourceInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, withCredentials: bool = False):
+        self.withCredentials = withCredentials
+
+
+@js(builtin=True)
+class External:
+    """WebIDL source: @webref/idl/html.idl
+
+    Browser support: Chrome 1"""
+
+    def AddSearchProvider(self) -> None: ...
+
+    def IsSearchProviderInstalled(self) -> None: ...
+
 
 @js(builtin=True)
 class FileSystemEntry:
@@ -143,6 +626,53 @@ class FocusOptions:
 
 
 @js(builtin=True)
+class FormData:
+    """WebIDL source: @webref/idl/xhr.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/FormData
+
+    Browser support: Chrome 5, Safari 5"""
+
+    pass
+
+
+@js(builtin=True)
+class FormDataEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/FormDataEvent
+
+    Browser support: Chrome 77, Safari 15"""
+
+    def __init__(self, type: str, *, formData: FormData):
+        super().__init__()
+        self.formData: FormData = formData
+
+
+@js
+class FormDataEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, formData: FormData):
+        self.formData = formData
+
+
+@js
+class GetHTMLOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        serializableShadowRoots: bool = False,
+        shadowRoots: list[ShadowRoot] | None = None,
+    ):
+        self.serializableShadowRoots = serializableShadowRoots
+        if shadowRoots is None:
+            shadowRoots = []
+        self.shadowRoots = shadowRoots
+
+
+@js(builtin=True)
 class GPUCanvasContext:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -154,14 +684,47 @@ class GPUCanvasContext:
 
 
 @js(builtin=True)
-class HTMLDataListElement:
+class HashChangeEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
-    MDN: https://developer.mozilla.org/docs/Web/API/HTMLDataListElement
+    MDN: https://developer.mozilla.org/docs/Web/API/HashChangeEvent
 
-    Browser support: Chrome 20, Safari 12.1"""
+    Browser support: Chrome 8, Safari 5"""
 
-    pass
+    def __init__(self, type: str, *, oldURL: str = "", newURL: str = ""):
+        super().__init__()
+        self.newURL: str = newURL
+        self.oldURL: str = oldURL
+
+
+@js
+class HashChangeEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, newURL: str = "", oldURL: str = ""):
+        self.newURL = newURL
+        self.oldURL = oldURL
+
+
+@js(builtin=True)
+class HTMLAllCollection:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLAllCollection
+
+    Browser support: Chrome 5, Safari 5"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    @js(inline="{self}[{index}]")
+    def __getitem__(self, index: int) -> Element: ...
+
+    def item(
+        self, nameOrIndex: str | None = None
+    ) -> HTMLCollection[Element] | Element | None: ...
+
+    def namedItem(self, name: str) -> HTMLCollection[Element] | Element | None: ...
 
 
 @js(builtin=True)
@@ -339,7 +902,7 @@ class HTMLElement(Element):
 
 
 @js(builtin=True)
-class HTMLFormControlsCollection:
+class HTMLFormControlsCollection(HTMLCollection[Element]):
     """WebIDL source: @webref/idl/html.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/HTMLFormControlsCollection
@@ -347,6 +910,71 @@ class HTMLFormControlsCollection:
     Browser support: Chrome 1, Safari 3"""
 
     pass
+
+    def namedItem(self, name: str) -> RadioNodeList | Element | None: ...
+
+
+@js(builtin=True)
+class HTMLOptionsCollection(HTMLCollection[Element]):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLOptionsCollection
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.length: int = 0
+        self.selectedIndex: int = 0
+
+    @js(inline="{self}[{index}] = {option}")
+    def __setitem__(self, index: int, option: HTMLOptionElement | None) -> None: ...
+
+    def add(
+        self,
+        element: HTMLOptionElement | HTMLOptGroupElement,
+        before: HTMLElement | int | None = None,
+    ) -> None: ...
+
+    def remove(self, index: int) -> None: ...
+
+
+@js(builtin=True)
+class ImageBitmap:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ImageBitmap
+
+    Browser support: Chrome 50, Safari 15"""
+
+    def __init__(self):
+        self.height: int = 0
+        self.width: int = 0
+
+    def close(self) -> None: ...
+
+
+@js
+class ImageBitmapOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        colorSpaceConversion: str = "default",
+        imageOrientation: str = "from-image",
+        premultiplyAlpha: str = "default",
+        resizeHeight: int | None = None,
+        resizeQuality: str = "low",
+        resizeWidth: int | None = None,
+    ):
+        self.colorSpaceConversion = colorSpaceConversion
+        self.imageOrientation = imageOrientation
+        self.premultiplyAlpha = premultiplyAlpha
+        if resizeHeight is not None:
+            self.resizeHeight = resizeHeight
+        self.resizeQuality = resizeQuality
+        if resizeWidth is not None:
+            self.resizeWidth = resizeWidth
 
 
 @js(builtin=True)
@@ -359,9 +987,94 @@ class ImageBitmapRenderingContext:
 
     pass
 
+    def __init__(self):
+        self.canvas: HTMLCanvasElement | OffscreenCanvas = None
+
+    def transferFromImageBitmap(self, bitmap: ImageBitmap | None) -> None: ...
+
+
+@js
+class ImageBitmapRenderingContextSettings:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, alpha: bool = True):
+        self.alpha = alpha
+
 
 @js(builtin=True)
-class MediaStream:
+class ImageData:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ImageData
+
+    Browser support: Chrome 1, Safari 3.1"""
+
+    def __init__(
+        self,
+        sw: int,
+        sh: int,
+        *,
+        colorSpace: str | None = None,
+        pixelFormat: str = "rgba-unorm8",
+    ):
+        self.colorSpace: str = colorSpace
+        self.data: Uint8ClampedArray | Float16Array = None
+        self.height: int = 0
+        self.pixelFormat: str = pixelFormat
+        self.width: int = 0
+
+
+@js
+class ImageDataSettings:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, colorSpace: str | None = None, pixelFormat: str = "rgba-unorm8"):
+        if colorSpace is not None:
+            self.colorSpace = colorSpace
+        self.pixelFormat = pixelFormat
+
+
+@js
+class ImageEncodeOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, quality: float | None = None, type: str = "image/png"):
+        if quality is not None:
+            self.quality = quality
+        self.type = type
+
+
+@js(builtin=True)
+class MediaError:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MediaError
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    MEDIA_ERR_ABORTED = 1
+    MEDIA_ERR_DECODE = 3
+    MEDIA_ERR_NETWORK = 2
+    MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+
+    def __init__(self):
+        self.code: int = 0
+        self.message: str = ""
+
+
+@js(builtin=True)
+class MediaSource(EventTarget):
+    """WebIDL source: @webref/idl/media-source.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MediaSource
+
+    Browser support: Chrome 31, Safari 8"""
+
+    pass
+
+
+@js(builtin=True)
+class MediaStream(EventTarget):
     """WebIDL source: @webref/idl/mediacapture-streams.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/MediaStream
@@ -372,12 +1085,788 @@ class MediaStream:
 
 
 @js(builtin=True)
-class OffscreenCanvas:
+class MessageChannel:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MessageChannel
+
+    Browser support: Chrome 2, Safari 5"""
+
+    def __init__(self):
+        self.port1: MessagePort = None
+        self.port2: MessagePort = None
+
+
+@js(builtin=True)
+class MimeType:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MimeType
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.description: str = ""
+        self.enabledPlugin: Plugin = None
+        self.suffixes: str = ""
+        self.type: str = ""
+
+
+@js(builtin=True)
+class MimeTypeArray:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MimeTypeArray
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def item(self, index: int) -> MimeType | None: ...
+
+    def namedItem(self, name: str) -> MimeType | None: ...
+
+
+@js(builtin=True)
+class NavigateEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigateEvent
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        navigationType: str = "push",
+        destination: NavigationDestination,
+        canIntercept: bool = False,
+        userInitiated: bool = False,
+        hashChange: bool = False,
+        signal: AbortSignal,
+        formData: FormData | None = None,
+        downloadRequest: str | None = None,
+        info: object | None = None,
+        hasUAVisualTransition: bool = False,
+        sourceElement: Element | None = None,
+    ):
+        super().__init__()
+        self.canIntercept: bool = canIntercept
+        self.destination: NavigationDestination = destination
+        self.downloadRequest: str | None = downloadRequest
+        self.formData: FormData | None = formData
+        self.hashChange: bool = hashChange
+        self.hasUAVisualTransition: bool = hasUAVisualTransition
+        self.info: object = info
+        self.navigationType: str = navigationType
+        self.signal: AbortSignal = signal
+        self.sourceElement: Element | None = sourceElement
+        self.userInitiated: bool = userInitiated
+
+    def intercept(
+        self,
+        *,
+        precommitHandler: callable | None = None,
+        handler: callable | None = None,
+        focusReset: str | None = None,
+        scroll: str | None = None,
+    ) -> None: ...
+
+    def scroll(self) -> None: ...
+
+
+@js
+class NavigateEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        destination: NavigationDestination,
+        signal: AbortSignal,
+        canIntercept: bool = False,
+        downloadRequest: str | None = None,
+        formData: FormData | None = None,
+        hashChange: bool = False,
+        hasUAVisualTransition: bool = False,
+        info: object | None = None,
+        navigationType: str = "push",
+        sourceElement: Element | None = None,
+        userInitiated: bool = False,
+    ):
+        self.destination = destination
+        self.signal = signal
+        self.canIntercept = canIntercept
+        self.downloadRequest = downloadRequest
+        self.formData = formData
+        self.hashChange = hashChange
+        self.hasUAVisualTransition = hasUAVisualTransition
+        if info is not None:
+            self.info = info
+        self.navigationType = navigationType
+        self.sourceElement = sourceElement
+        self.userInitiated = userInitiated
+
+
+@js(builtin=True)
+class Navigation(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Navigation
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(self):
+        super().__init__()
+        self.activation: NavigationActivation | None = None
+        self.canGoBack: bool = False
+        self.canGoForward: bool = False
+        self.currentEntry: NavigationHistoryEntry | None = None
+        self.oncurrententrychange: callable = None
+        self.onnavigate: callable = None
+        self.onnavigateerror: callable = None
+        self.onnavigatesuccess: callable = None
+        self.transition: NavigationTransition | None = None
+
+    def back(self, *, info: object | None = None) -> NavigationResult: ...
+
+    def entries(self) -> list[NavigationHistoryEntry]: ...
+
+    def forward(self, *, info: object | None = None) -> NavigationResult: ...
+
+    def navigate(
+        self,
+        url: str,
+        *,
+        info: object | None = None,
+        state: object | None = None,
+        history: str = "auto",
+    ) -> NavigationResult: ...
+
+    def reload(
+        self, *, info: object | None = None, state: object | None = None
+    ) -> NavigationResult: ...
+
+    def traverseTo(self, key: str, *, info: object | None = None) -> NavigationResult: ...
+
+    def updateCurrentEntry(self, *, state: object) -> None: ...
+
+
+@js(builtin=True)
+class NavigationActivation:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationActivation
+
+    Browser support: Chrome 123, Safari 26.2"""
+
+    def __init__(self):
+        self.entry: NavigationHistoryEntry = None
+        self.navigationType: str = ""
+
+
+@js(builtin=True)
+class NavigationCurrentEntryChangeEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationCurrentEntryChangeEvent
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        navigationType: str | None = None,
+        from_: NavigationHistoryEntry,
+    ):
+        super().__init__()
+        self.navigationType: str | None = navigationType
+
+
+@js
+class NavigationCurrentEntryChangeEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, from_: NavigationHistoryEntry, navigationType: str | None = None):
+        self.from_ = from_
+        self.navigationType = navigationType
+
+
+@js(builtin=True)
+class NavigationDestination:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationDestination
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(self):
+        self.id: str = ""
+        self.index: int = 0
+        self.key: str = ""
+        self.sameDocument: bool = False
+        self.url: str = ""
+
+    def getState(self) -> object: ...
+
+
+@js(builtin=True)
+class NavigationHistoryEntry(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationHistoryEntry
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(self):
+        super().__init__()
+        self.id: str = ""
+        self.index: int = 0
+        self.key: str = ""
+        self.ondispose: callable = None
+        self.sameDocument: bool = False
+        self.url: str | None = None
+
+    def getState(self) -> object: ...
+
+
+@js
+class NavigationInterceptOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        focusReset: str | None = None,
+        handler: callable | None = None,
+        precommitHandler: callable | None = None,
+        scroll: str | None = None,
+    ):
+        if focusReset is not None:
+            self.focusReset = focusReset
+        if handler is not None:
+            self.handler = handler
+        if precommitHandler is not None:
+            self.precommitHandler = precommitHandler
+        if scroll is not None:
+            self.scroll = scroll
+
+
+@js
+class NavigationOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, info: object | None = None):
+        if info is not None:
+            self.info = info
+
+
+@js(builtin=True)
+class NavigationPrecommitController:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationPrecommitController
+
+    Browser support: Chrome 141"""
+
+    def addHandler(self, handler: callable) -> None: ...
+
+    def redirect(
+        self,
+        url: str,
+        *,
+        info: object | None = None,
+        state: object | None = None,
+        history: str = "auto",
+    ) -> None: ...
+
+
+@js
+class NavigationResult:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        committed: NavigationHistoryEntry | None = None,
+        finished: NavigationHistoryEntry | None = None,
+    ):
+        if committed is not None:
+            self.committed = committed
+        if finished is not None:
+            self.finished = finished
+
+
+@js(builtin=True)
+class NavigationTransition:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NavigationTransition
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    def __init__(self):
+        self.committed: None = None
+        self.finished: None = None
+        self.navigationType: str = ""
+        self.to: NavigationDestination = None
+
+
+@js
+class NavigationUpdateCurrentEntryOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, state: object):
+        self.state = state
+
+
+@js(builtin=True)
+class NotRestoredReasonDetails:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NotRestoredReasonDetails
+
+    Browser support: Chrome 125"""
+
+    def __init__(self):
+        self.reason: str = ""
+
+    def toJSON(self) -> object: ...
+
+
+@js(builtin=True)
+class NotRestoredReasons:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/NotRestoredReasons
+
+    Browser support: Chrome 125"""
+
+    def __init__(self):
+        self.children: list[NotRestoredReasons] | None = None
+        self.id: str | None = None
+        self.name: str | None = None
+        self.reasons: list[NotRestoredReasonDetails] | None = None
+        self.src: str | None = None
+        self.url: str | None = None
+
+    def toJSON(self) -> object: ...
+
+
+@js(builtin=True)
+class OffscreenCanvas(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/OffscreenCanvas
 
     Browser support: Chrome 69, Safari 16.4"""
+
+    pass
+
+    def __init__(self, width: int, height: int):
+        super().__init__()
+        self.height: int = height
+        self.oncontextlost: callable = None
+        self.oncontextrestored: callable = None
+        self.width: int = width
+
+    async def convertToBlob(
+        self, *, type: str = "image/png", quality: float | None = None
+    ) -> Blob: ...
+
+    def getContext(
+        self, contextId: str, options: object | None = None
+    ) -> (
+        OffscreenCanvasRenderingContext2D
+        | ImageBitmapRenderingContext
+        | WebGLRenderingContext
+        | WebGL2RenderingContext
+        | GPUCanvasContext
+        | None
+    ): ...
+
+    def transferToImageBitmap(self) -> ImageBitmap: ...
+
+
+@js(builtin=True)
+class OffscreenCanvasRenderingContext2D:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/OffscreenCanvasRenderingContext2D
+
+    Browser support: Chrome 69, Safari 16.4"""
+
+    def __init__(self):
+        self.canvas: OffscreenCanvas = None
+        self.direction: str = ""
+        self.fillStyle: str | CanvasGradient | CanvasPattern = None
+        self.filter: str = ""
+        self.font: str = ""
+        self.fontKerning: str = ""
+        self.fontStretch: str = ""
+        self.fontVariantCaps: str = ""
+        self.globalAlpha: float = 0.0
+        self.globalCompositeOperation: str = ""
+        self.imageSmoothingEnabled: bool = False
+        self.imageSmoothingQuality: str = ""
+        self.lang: str = ""
+        self.letterSpacing: str = ""
+        self.lineCap: str = ""
+        self.lineDashOffset: float = 0.0
+        self.lineJoin: str = ""
+        self.lineWidth: float = 0.0
+        self.miterLimit: float = 0.0
+        self.shadowBlur: float = 0.0
+        self.shadowColor: str = ""
+        self.shadowOffsetX: float = 0.0
+        self.shadowOffsetY: float = 0.0
+        self.strokeStyle: str | CanvasGradient | CanvasPattern = None
+        self.textAlign: str = ""
+        self.textBaseline: str = ""
+        self.textRendering: str = ""
+        self.wordSpacing: str = ""
+
+    def arc(
+        self,
+        x: float,
+        y: float,
+        radius: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def arcTo(
+        self, x1: float, y1: float, x2: float, y2: float, radius: float
+    ) -> None: ...
+
+    def beginPath(self) -> None: ...
+
+    def bezierCurveTo(
+        self, cp1x: float, cp1y: float, cp2x: float, cp2y: float, x: float, y: float
+    ) -> None: ...
+
+    def clearRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def clip(self, fillRule: str = "nonzero") -> None: ...
+
+    def closePath(self) -> None: ...
+
+    def createConicGradient(
+        self, startAngle: float, x: float, y: float
+    ) -> CanvasGradient: ...
+
+    def createImageData(
+        self,
+        sw: int,
+        sh: int,
+        *,
+        colorSpace: str | None = None,
+        pixelFormat: str = "rgba-unorm8",
+    ) -> ImageData: ...
+
+    def createLinearGradient(
+        self, x0: float, y0: float, x1: float, y1: float
+    ) -> CanvasGradient: ...
+
+    def createPattern(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame,
+        repetition: str,
+    ) -> CanvasPattern | None: ...
+
+    def createRadialGradient(
+        self, x0: float, y0: float, r0: float, x1: float, y1: float, r1: float
+    ) -> CanvasGradient: ...
+
+    def drawImage(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame,
+        dx: float,
+        dy: float,
+    ) -> None: ...
+
+    def ellipse(
+        self,
+        x: float,
+        y: float,
+        radiusX: float,
+        radiusY: float,
+        rotation: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def fill(self, fillRule: str = "nonzero") -> None: ...
+
+    def fillRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def fillText(
+        self, text: str, x: float, y: float, maxWidth: float | None = None
+    ) -> None: ...
+
+    def getContextAttributes(self) -> CanvasRenderingContext2DSettings: ...
+
+    def getImageData(
+        self,
+        sx: int,
+        sy: int,
+        sw: int,
+        sh: int,
+        *,
+        colorSpace: str | None = None,
+        pixelFormat: str = "rgba-unorm8",
+    ) -> ImageData: ...
+
+    def getLineDash(self) -> list[float]: ...
+
+    def getTransform(self) -> DOMMatrix: ...
+
+    def isContextLost(self) -> bool: ...
+
+    def isPointInPath(self, x: float, y: float, fillRule: str = "nonzero") -> bool: ...
+
+    def isPointInStroke(self, x: float, y: float) -> bool: ...
+
+    def lineTo(self, x: float, y: float) -> None: ...
+
+    def measureText(self, text: str) -> TextMetrics: ...
+
+    def moveTo(self, x: float, y: float) -> None: ...
+
+    def putImageData(self, imageData: ImageData, dx: int, dy: int) -> None: ...
+
+    def quadraticCurveTo(self, cpx: float, cpy: float, x: float, y: float) -> None: ...
+
+    def rect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def reset(self) -> None: ...
+
+    def resetTransform(self) -> None: ...
+
+    def restore(self) -> None: ...
+
+    def rotate(self, angle: float) -> None: ...
+
+    def roundRect(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        radii: float | DOMPointInit | list[float | DOMPointInit] = 0,
+    ) -> None: ...
+
+    def save(self) -> None: ...
+
+    def scale(self, x: float, y: float) -> None: ...
+
+    def setLineDash(self, segments: list[float]) -> None: ...
+
+    def setTransform(
+        self, a: float, b: float, c: float, d: float, e: float, f: float
+    ) -> None: ...
+
+    def stroke(self) -> None: ...
+
+    def strokeRect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def strokeText(
+        self, text: str, x: float, y: float, maxWidth: float | None = None
+    ) -> None: ...
+
+    def transform(
+        self, a: float, b: float, c: float, d: float, e: float, f: float
+    ) -> None: ...
+
+    def translate(self, x: float, y: float) -> None: ...
+
+
+@js(builtin=True)
+class Origin:
+    """WebIDL source: @webref/idl/html.idl
+
+    Browser support: Chrome 145, Safari 26.5"""
+
+    def __init__(self):
+        self.opaque: bool = False
+
+    @staticmethod
+    @js(inline="{self}.from({_args_joined})")
+    def from_(value: object) -> Origin: ...
+
+    def isSameOrigin(self, other: Origin) -> bool: ...
+
+    def isSameSite(self, other: Origin) -> bool: ...
+
+
+@js(builtin=True)
+class PageRevealEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PageRevealEvent
+
+    Browser support: Chrome 123, Safari 18.2"""
+
+    def __init__(self, type: str, *, viewTransition: ViewTransition | None = None):
+        super().__init__()
+        self.viewTransition: ViewTransition | None = viewTransition
+
+
+@js
+class PageRevealEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, viewTransition: ViewTransition | None = None):
+        self.viewTransition = viewTransition
+
+
+@js(builtin=True)
+class PageSwapEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PageSwapEvent
+
+    Browser support: Chrome 124, Safari 18.2"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        activation: NavigationActivation | None = None,
+        viewTransition: ViewTransition | None = None,
+    ):
+        super().__init__()
+        self.activation: NavigationActivation | None = activation
+        self.viewTransition: ViewTransition | None = viewTransition
+
+
+@js
+class PageSwapEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        activation: NavigationActivation | None = None,
+        viewTransition: ViewTransition | None = None,
+    ):
+        self.activation = activation
+        self.viewTransition = viewTransition
+
+
+@js(builtin=True)
+class PageTransitionEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PageTransitionEvent
+
+    Browser support: Chrome 4, Safari 5"""
+
+    def __init__(self, type: str, *, persisted: bool = False):
+        super().__init__()
+        self.persisted: bool = persisted
+
+
+@js
+class PageTransitionEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, persisted: bool = False):
+        self.persisted = persisted
+
+
+@js
+class ParseHTMLUnsafeOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, sanitizer: Sanitizer | SanitizerConfig | str | None = None):
+        if sanitizer is None:
+            sanitizer = Sanitizer()
+        self.sanitizer = sanitizer
+
+
+@js(builtin=True)
+class Path2D:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Path2D
+
+    Browser support: Chrome 36, Safari 8"""
+
+    def __init__(self, path: Path2D | str | None = None): ...
+
+    def addPath(self, path: Path2D, transform: DOMMatrix2DInit | None = None) -> None: ...
+
+    def arc(
+        self,
+        x: float,
+        y: float,
+        radius: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def arcTo(
+        self, x1: float, y1: float, x2: float, y2: float, radius: float
+    ) -> None: ...
+
+    def bezierCurveTo(
+        self, cp1x: float, cp1y: float, cp2x: float, cp2y: float, x: float, y: float
+    ) -> None: ...
+
+    def closePath(self) -> None: ...
+
+    def ellipse(
+        self,
+        x: float,
+        y: float,
+        radiusX: float,
+        radiusY: float,
+        rotation: float,
+        startAngle: float,
+        endAngle: float,
+        counterclockwise: bool = False,
+    ) -> None: ...
+
+    def lineTo(self, x: float, y: float) -> None: ...
+
+    def moveTo(self, x: float, y: float) -> None: ...
+
+    def quadraticCurveTo(self, cpx: float, cpy: float, x: float, y: float) -> None: ...
+
+    def rect(self, x: float, y: float, w: float, h: float) -> None: ...
+
+    def roundRect(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        radii: float | DOMPointInit | list[float | DOMPointInit] = 0,
+    ) -> None: ...
+
+
+@js(builtin=True)
+class PerformanceEntry:
+    """WebIDL source: @webref/idl/performance-timeline.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PerformanceEntry
+
+    Browser support: Chrome 46, Safari 11"""
 
     pass
 
@@ -391,6 +1880,250 @@ class PermissionsPolicy:
     pass
 
 
+@js(builtin=True)
+class Plugin:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Plugin
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.description: str = ""
+        self.filename: str = ""
+        self.length: int = 0
+        self.name: str = ""
+
+    def item(self, index: int) -> MimeType | None: ...
+
+    def namedItem(self, name: str) -> MimeType | None: ...
+
+
+@js(builtin=True)
+class PluginArray:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PluginArray
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def item(self, index: int) -> Plugin | None: ...
+
+    def namedItem(self, name: str) -> Plugin | None: ...
+
+    def refresh(self) -> None: ...
+
+
+@js(builtin=True)
+class PopStateEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PopStateEvent
+
+    Browser support: Chrome 4, Safari 6"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        state: object | None = None,
+        hasUAVisualTransition: bool = False,
+    ):
+        super().__init__()
+        self.hasUAVisualTransition: bool = hasUAVisualTransition
+        self.state: object = state
+
+
+@js
+class PopStateEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, hasUAVisualTransition: bool = False, state: object | None = None):
+        self.hasUAVisualTransition = hasUAVisualTransition
+        self.state = state
+
+
+@js(builtin=True)
+class RadioNodeList(NodeList[Node]):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/RadioNodeList
+
+    Browser support: Chrome 21, Safari 7"""
+
+    def __init__(self):
+        super().__init__()
+        self.value: str = ""
+
+
+@js(builtin=True)
+class Sanitizer:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Sanitizer
+
+    Browser support: Chrome 146"""
+
+    def __init__(
+        self,
+        *,
+        elements: list[str | SanitizerElementNamespaceWithAttributes] | None = None,
+        removeElements: list[str | SanitizerElementNamespace] | None = None,
+        replaceWithChildrenElements: list[str | SanitizerElementNamespace] | None = None,
+        processingInstructions: list[str | SanitizerProcessingInstruction] | None = None,
+        removeProcessingInstructions: list[str | SanitizerProcessingInstruction]
+        | None = None,
+        attributes: list[str | SanitizerAttributeNamespace] | None = None,
+        removeAttributes: list[str | SanitizerAttributeNamespace] | None = None,
+        comments: bool | None = None,
+        dataAttributes: bool | None = None,
+    ): ...
+
+    def allowAttribute(self, *, name: str, namespace: str | None = None) -> bool: ...
+
+    def allowElement(
+        self,
+        *,
+        name: str,
+        namespace: str | None = "http://www.w3.org/1999/xhtml",
+        attributes: list[str | SanitizerAttributeNamespace] | None = None,
+        removeAttributes: list[str | SanitizerAttributeNamespace] | None = None,
+    ) -> bool: ...
+
+    def allowProcessingInstruction(self, *, target: str) -> bool: ...
+
+    def get(self) -> SanitizerConfig: ...
+
+    def removeAttribute(self, *, name: str, namespace: str | None = None) -> bool: ...
+
+    def removeElement(
+        self, *, name: str, namespace: str | None = "http://www.w3.org/1999/xhtml"
+    ) -> bool: ...
+
+    def removeProcessingInstruction(self, *, target: str) -> bool: ...
+
+    def removeUnsafe(self) -> bool: ...
+
+    def replaceElementWithChildren(
+        self, *, name: str, namespace: str | None = "http://www.w3.org/1999/xhtml"
+    ) -> bool: ...
+
+    def setComments(self, allow: bool) -> bool: ...
+
+    def setDataAttributes(self, allow: bool) -> bool: ...
+
+
+@js
+class SanitizerAttributeNamespace:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, name: str, namespace: str | None = None):
+        self.name = name
+        self.namespace = namespace
+
+
+@js
+class SanitizerConfig:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        attributes: list[str | SanitizerAttributeNamespace] | None = None,
+        comments: bool | None = None,
+        dataAttributes: bool | None = None,
+        elements: list[str | SanitizerElementNamespaceWithAttributes] | None = None,
+        processingInstructions: list[str | SanitizerProcessingInstruction] | None = None,
+        removeAttributes: list[str | SanitizerAttributeNamespace] | None = None,
+        removeElements: list[str | SanitizerElementNamespace] | None = None,
+        removeProcessingInstructions: list[str | SanitizerProcessingInstruction]
+        | None = None,
+        replaceWithChildrenElements: list[str | SanitizerElementNamespace] | None = None,
+    ):
+        if attributes is not None:
+            self.attributes = attributes
+        if comments is not None:
+            self.comments = comments
+        if dataAttributes is not None:
+            self.dataAttributes = dataAttributes
+        if elements is not None:
+            self.elements = elements
+        if processingInstructions is not None:
+            self.processingInstructions = processingInstructions
+        if removeAttributes is not None:
+            self.removeAttributes = removeAttributes
+        if removeElements is not None:
+            self.removeElements = removeElements
+        if removeProcessingInstructions is not None:
+            self.removeProcessingInstructions = removeProcessingInstructions
+        if replaceWithChildrenElements is not None:
+            self.replaceWithChildrenElements = replaceWithChildrenElements
+
+
+@js
+class SanitizerElementNamespace:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, name: str, namespace: str | None = "http://www.w3.org/1999/xhtml"):
+        self.name = name
+        self.namespace = namespace
+
+
+@js
+class SanitizerProcessingInstruction:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, target: str):
+        self.target = target
+
+
+@js
+class SetHTMLOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, sanitizer: Sanitizer | SanitizerConfig | str = "default"):
+        self.sanitizer = sanitizer
+
+
+@js
+class SetHTMLUnsafeOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        runScripts: bool = False,
+        sanitizer: Sanitizer | SanitizerConfig | str | None = None,
+    ):
+        self.runScripts = runScripts
+        if sanitizer is None:
+            sanitizer = Sanitizer()
+        self.sanitizer = sanitizer
+
+
+@js(builtin=True)
+class SharedWorker(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SharedWorker
+
+    Browser support: Chrome 5, Safari 16"""
+
+    def __init__(
+        self,
+        scriptURL: TrustedScriptURL | str,
+        *,
+        name: str = "",
+        type: str = "classic",
+        credentials: str = "same-origin",
+        extendedLifetime: bool = False,
+    ):
+        super().__init__()
+        self.onerror: callable = None
+        self.port: MessagePort = None
+
+
 @js
 class ShowPopoverOptions:
     """WebIDL source: @webref/idl/html.idl"""
@@ -400,14 +2133,280 @@ class ShowPopoverOptions:
 
 
 @js(builtin=True)
-class StylePropertyMap:
+class StorageEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/StorageEvent
+
+    Browser support: Chrome 1, Safari 4"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        key: str | None = None,
+        oldValue: str | None = None,
+        newValue: str | None = None,
+        url: str = "",
+        storageArea: Storage | None = None,
+    ):
+        super().__init__()
+        self.key: str | None = key
+        self.newValue: str | None = newValue
+        self.oldValue: str | None = oldValue
+        self.storageArea: Storage | None = storageArea
+        self.url: str = url
+
+    def initStorageEvent(
+        self,
+        type: str,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        key: str | None = None,
+        oldValue: str | None = None,
+        newValue: str | None = None,
+        url: str = "",
+        storageArea: Storage | None = None,
+    ) -> None: ...
+
+
+@js
+class StorageEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        key: str | None = None,
+        newValue: str | None = None,
+        oldValue: str | None = None,
+        storageArea: Storage | None = None,
+        url: str = "",
+    ):
+        self.key = key
+        self.newValue = newValue
+        self.oldValue = oldValue
+        self.storageArea = storageArea
+        self.url = url
+
+
+@js
+class StructuredSerializeOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, transfer: list[object] | None = None):
+        if transfer is None:
+            transfer = []
+        self.transfer = transfer
+
+
+@js(builtin=True)
+class StylePropertyMapReadOnly:
     """WebIDL source: @webref/idl/css-typed-om.idl
 
-    MDN: https://developer.mozilla.org/docs/Web/API/StylePropertyMap
+    MDN: https://developer.mozilla.org/docs/Web/API/StylePropertyMapReadOnly
 
     Browser support: Chrome 66, Safari 16.4"""
 
     pass
+
+
+@js(builtin=True)
+class SubmitEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SubmitEvent
+
+    Browser support: Chrome 81, Safari 15"""
+
+    def __init__(self, type: str, *, submitter: HTMLElement | None = None):
+        super().__init__()
+        self.submitter: HTMLElement | None = submitter
+
+
+@js
+class SubmitEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, submitter: HTMLElement | None = None):
+        self.submitter = submitter
+
+
+@js(builtin=True)
+class TextMetrics:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TextMetrics
+
+    Browser support: Chrome 2, Safari 4"""
+
+    def __init__(self):
+        self.actualBoundingBoxAscent: float = 0.0
+        self.actualBoundingBoxDescent: float = 0.0
+        self.actualBoundingBoxLeft: float = 0.0
+        self.actualBoundingBoxRight: float = 0.0
+        self.alphabeticBaseline: float = 0.0
+        self.emHeightAscent: float = 0.0
+        self.emHeightDescent: float = 0.0
+        self.fontBoundingBoxAscent: float = 0.0
+        self.fontBoundingBoxDescent: float = 0.0
+        self.hangingBaseline: float = 0.0
+        self.ideographicBaseline: float = 0.0
+        self.width: float = 0.0
+
+
+@js(builtin=True)
+class TextTrack(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TextTrack
+
+    Browser support: Chrome 23, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.activeCues: TextTrackCueList | None = None
+        self.cues: TextTrackCueList | None = None
+        self.id: str = ""
+        self.inBandMetadataTrackDispatchType: str = ""
+        self.kind: str = ""
+        self.label: str = ""
+        self.language: str = ""
+        self.mode: str = ""
+        self.oncuechange: callable = None
+
+    def addCue(self, cue: TextTrackCue) -> None: ...
+
+    def removeCue(self, cue: TextTrackCue) -> None: ...
+
+
+@js(builtin=True)
+class TextTrackCue(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TextTrackCue
+
+    Browser support: Chrome 23, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.endTime: float = 0.0
+        self.id: str = ""
+        self.onenter: callable = None
+        self.onexit: callable = None
+        self.pauseOnExit: bool = False
+        self.startTime: float = 0.0
+        self.track: TextTrack | None = None
+
+
+@js(builtin=True)
+class TextTrackCueList:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TextTrackCueList
+
+    Browser support: Chrome 23, Safari 6"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    @js(inline="{self}[{index}]")
+    def __getitem__(self, index: int) -> TextTrackCue: ...
+
+    def getCueById(self, id: str) -> TextTrackCue | None: ...
+
+
+@js(builtin=True)
+class TextTrackList(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TextTrackList
+
+    Browser support: Chrome 23, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.length: int = 0
+        self.onaddtrack: callable = None
+        self.onchange: callable = None
+        self.onremovetrack: callable = None
+
+    @js(inline="{self}[{index}]")
+    def __getitem__(self, index: int) -> TextTrack: ...
+
+    def getTrackById(self, id: str) -> TextTrack | None: ...
+
+
+@js(builtin=True)
+class TimeRanges:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TimeRanges
+
+    Browser support: Chrome 6, Safari 3.1"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def end(self, index: int) -> float: ...
+
+    def start(self, index: int) -> float: ...
+
+
+@js(builtin=True)
+class ToggleEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ToggleEvent
+
+    Browser support: Chrome 114, Safari 17"""
+
+    def __init__(
+        self,
+        type: str,
+        *,
+        oldState: str = "",
+        newState: str = "",
+        source: Element | None = None,
+    ):
+        super().__init__()
+        self.newState: str = newState
+        self.oldState: str = oldState
+        self.source: Element | None = source
+
+
+@js
+class ToggleEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self, newState: str = "", oldState: str = "", source: Element | None = None
+    ):
+        self.newState = newState
+        self.oldState = oldState
+        self.source = source
+
+
+@js(builtin=True)
+class TrackEvent(Event):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TrackEvent
+
+    Browser support: Chrome 23, Safari 6"""
+
+    def __init__(
+        self, type: str, *, track: VideoTrack | AudioTrack | TextTrack | None = None
+    ):
+        super().__init__()
+        self.track: VideoTrack | AudioTrack | TextTrack | None = track
+
+
+@js
+class TrackEventInit:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, track: VideoTrack | AudioTrack | TextTrack | None = None):
+        self.track = track
 
 
 @js(builtin=True)
@@ -422,12 +2421,149 @@ class TrustedHTML:
 
 
 @js(builtin=True)
+class TrustedScript:
+    """WebIDL source: @webref/idl/trusted-types.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TrustedScript
+
+    Browser support: Chrome 83, Safari 26"""
+
+    pass
+
+
+@js(builtin=True)
+class TrustedScriptURL:
+    """WebIDL source: @webref/idl/trusted-types.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TrustedScriptURL
+
+    Browser support: Chrome 83, Safari 26"""
+
+    pass
+
+
+@js(builtin=True)
+class UserActivation:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/UserActivation
+
+    Browser support: Chrome 72, Safari 16.4"""
+
+    def __init__(self):
+        self.hasBeenActive: bool = False
+        self.isActive: bool = False
+
+
+@js(builtin=True)
 class ValidityState:
     """WebIDL source: @webref/idl/html.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/ValidityState
 
     Browser support: Chrome 4, Safari 5"""
+
+    pass
+
+    def __init__(self):
+        self.badInput: bool = False
+        self.customError: bool = False
+        self.patternMismatch: bool = False
+        self.rangeOverflow: bool = False
+        self.rangeUnderflow: bool = False
+        self.stepMismatch: bool = False
+        self.tooLong: bool = False
+        self.tooShort: bool = False
+        self.typeMismatch: bool = False
+        self.valid: bool = False
+        self.valueMissing: bool = False
+
+
+@js
+class ValidityStateFlags:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        badInput: bool = False,
+        customError: bool = False,
+        patternMismatch: bool = False,
+        rangeOverflow: bool = False,
+        rangeUnderflow: bool = False,
+        stepMismatch: bool = False,
+        tooLong: bool = False,
+        tooShort: bool = False,
+        typeMismatch: bool = False,
+        valueMissing: bool = False,
+    ):
+        self.badInput = badInput
+        self.customError = customError
+        self.patternMismatch = patternMismatch
+        self.rangeOverflow = rangeOverflow
+        self.rangeUnderflow = rangeUnderflow
+        self.stepMismatch = stepMismatch
+        self.tooLong = tooLong
+        self.tooShort = tooShort
+        self.typeMismatch = typeMismatch
+        self.valueMissing = valueMissing
+
+
+@js(builtin=True)
+class VideoFrame:
+    """WebIDL source: @webref/idl/webcodecs.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/VideoFrame
+
+    Browser support: Chrome 94, Safari 16.4"""
+
+    pass
+
+
+@js(builtin=True)
+class VideoTrack:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/VideoTrack
+
+    Browser support: Safari 7"""
+
+    def __init__(self):
+        self.id: str = ""
+        self.kind: str = ""
+        self.label: str = ""
+        self.language: str = ""
+        self.selected: bool = False
+
+
+@js(builtin=True)
+class VideoTrackList(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/VideoTrackList
+
+    Browser support: Safari 7"""
+
+    def __init__(self):
+        super().__init__()
+        self.length: int = 0
+        self.onaddtrack: callable = None
+        self.onchange: callable = None
+        self.onremovetrack: callable = None
+        self.selectedIndex: int = 0
+
+    @js(inline="{self}[{index}]")
+    def __getitem__(self, index: int) -> VideoTrack: ...
+
+    def getTrackById(self, id: str) -> VideoTrack | None: ...
+
+
+@js(builtin=True)
+class ViewTransition:
+    """WebIDL source: @webref/idl/css-view-transitions.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ViewTransition
+
+    Browser support: Chrome 111, Safari 18"""
 
     pass
 
@@ -455,10 +2591,446 @@ class WebGLRenderingContext:
 
 
 @js(builtin=True)
-class WindowProxy:
-    """WebIDL source: @webref/idl/unknown"""
+class Worker(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Worker
+
+    Browser support: Chrome 2, Safari 4"""
+
+    def __init__(
+        self,
+        scriptURL: TrustedScriptURL | str,
+        *,
+        name: str = "",
+        type: str = "classic",
+        credentials: str = "same-origin",
+    ):
+        super().__init__()
+        self.onerror: callable = None
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+
+    def postMessage(self, message: object, transfer: list[object]) -> None: ...
+
+    def terminate(self) -> None: ...
+
+
+@js(builtin=True)
+class WorkerGlobalScope(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/WorkerGlobalScope
+
+    Browser support: Chrome 4, Safari 4"""
+
+    def __init__(self):
+        super().__init__()
+        self.crossOriginIsolated: bool = False
+        self.isSecureContext: bool = False
+        self.location: WorkerLocation = None
+        self.navigator: WorkerNavigator = None
+        self.onerror: callable | None = None
+        self.onlanguagechange: callable = None
+        self.onoffline: callable = None
+        self.ononline: callable = None
+        self.onrejectionhandled: callable = None
+        self.onunhandledrejection: callable = None
+        self.origin: str = ""
+        self.self: WorkerGlobalScope = None
+
+    def atob(self, data: str) -> str: ...
+
+    def btoa(self, data: str) -> str: ...
+
+    def clearInterval(self, id: int = 0) -> None: ...
+
+    def clearTimeout(self, id: int = 0) -> None: ...
+
+    async def createImageBitmap(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame
+        | Blob
+        | ImageData,
+        *,
+        imageOrientation: str = "from-image",
+        premultiplyAlpha: str = "default",
+        colorSpaceConversion: str = "default",
+        resizeWidth: int | None = None,
+        resizeHeight: int | None = None,
+        resizeQuality: str = "low",
+    ) -> ImageBitmap: ...
+
+    def importScripts(self, *urls: TrustedScriptURL | str) -> None: ...
+
+    def queueMicrotask(self, callback: callable) -> None: ...
+
+    def reportError(self, e: object) -> None: ...
+
+    def setInterval(
+        self,
+        handler: str | callable | TrustedScript,
+        timeout: int = 0,
+        *arguments: object,
+    ) -> int: ...
+
+    def setTimeout(
+        self,
+        handler: str | callable | TrustedScript,
+        timeout: int = 0,
+        *arguments: object,
+    ) -> int: ...
+
+    def structuredClone(
+        self, value: object, *, transfer: list[object] | None = None
+    ) -> object: ...
+
+
+@js(builtin=True)
+class WorkerLocation:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/WorkerLocation
+
+    Browser support: Chrome 4, Safari 4"""
+
+    def __init__(self):
+        self.hash: str = ""
+        self.host: str = ""
+        self.hostname: str = ""
+        self.href: str = ""
+        self.origin: str = ""
+        self.pathname: str = ""
+        self.port: str = ""
+        self.protocol: str = ""
+        self.search: str = ""
+
+
+@js(builtin=True)
+class WorkerNavigator:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/WorkerNavigator
+
+    Browser support: Chrome 4, Safari 4"""
+
+    def __init__(self):
+        self.appCodeName: str = ""
+        self.appName: str = ""
+        self.appVersion: str = ""
+        self.hardwareConcurrency: int = 0
+        self.language: str = ""
+        self.languages: list[str] = []
+        self.onLine: bool = False
+        self.oscpu: str = ""
+        self.platform: str = ""
+        self.product: str = ""
+        self.productSub: str = ""
+        self.userAgent: str = ""
+        self.vendor: str = ""
+        self.vendorSub: str = ""
+
+    def taintEnabled(self) -> bool: ...
+
+
+@js
+class WorkerOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self, credentials: str = "same-origin", name: str = "", type: str = "classic"
+    ):
+        self.credentials = credentials
+        self.name = name
+        self.type = type
+
+
+@js(builtin=True)
+class Worklet:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Worklet
+
+    Browser support: Chrome 65, Safari 14.1"""
+
+    async def addModule(
+        self, moduleURL: str, *, credentials: str = "same-origin"
+    ) -> None: ...
+
+
+@js(builtin=True)
+class WorkletGlobalScope:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/WorkletGlobalScope
+
+    Browser support: Chrome 65, Safari 14.1"""
 
     pass
+
+
+@js
+class WorkletOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, credentials: str = "same-origin"):
+        self.credentials = credentials
+
+
+@js(builtin=True)
+class XMLSerializer:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/XMLSerializer
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self): ...
+
+    def serializeToString(self, root: Node) -> str: ...
+
+
+@js
+class NavigationNavigateOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        history: str = "auto",
+        info: object | None = None,
+        state: object | None = None,
+    ):
+        self.history = history
+        if info is not None:
+            self.info = info
+        if state is not None:
+            self.state = state
+
+
+@js
+class NavigationReloadOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, info: object | None = None, state: object | None = None):
+        if info is not None:
+            self.info = info
+        if state is not None:
+            self.state = state
+
+
+@js
+class SanitizerElementNamespaceWithAttributes:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        name: str,
+        attributes: list[str | SanitizerAttributeNamespace] | None = None,
+        namespace: str | None = "http://www.w3.org/1999/xhtml",
+        removeAttributes: list[str | SanitizerAttributeNamespace] | None = None,
+    ):
+        self.name = name
+        if attributes is not None:
+            self.attributes = attributes
+        self.namespace = namespace
+        if removeAttributes is not None:
+            self.removeAttributes = removeAttributes
+
+
+@js
+class SharedWorkerOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        credentials: str = "same-origin",
+        extendedLifetime: bool = False,
+        name: str = "",
+        type: str = "classic",
+    ):
+        self.credentials = credentials
+        self.extendedLifetime = extendedLifetime
+        self.name = name
+        self.type = type
+
+
+@js
+class TogglePopoverOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, force: bool | None = None, source: HTMLElement | None = None):
+        self.force = force
+        self.source = source
+
+
+@js
+class WindowPostMessageOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, targetOrigin: str = "/", transfer: list[object] | None = None):
+        self.targetOrigin = targetOrigin
+        if transfer is None:
+            transfer = []
+        self.transfer = transfer
+
+
+@js(builtin=True)
+class HTMLDataListElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLDataListElement
+
+    Browser support: Chrome 20, Safari 12.1"""
+
+    pass
+
+    def __init__(self):
+        super().__init__()
+        self.options: HTMLCollection[Element] = None
+
+
+@js(builtin=True)
+class HTMLDataElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLDataElement
+
+    Browser support: Chrome 62, Safari 10"""
+
+    def __init__(self):
+        super().__init__()
+        self.value: str = ""
+
+
+@js(builtin=True)
+class HTMLTimeElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTimeElement
+
+    Browser support: Chrome 62, Safari 10"""
+
+    def __init__(self):
+        super().__init__()
+        self.dateTime: str = ""
+
+
+@js(builtin=True)
+class HTMLTitleElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTitleElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.text: str = ""
+
+
+@js(builtin=True)
+class HTMLTrackElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTrackElement
+
+    Browser support: Chrome 23, Safari 6"""
+
+    ERROR = 3
+    LOADED = 2
+    LOADING = 1
+    NONE = 0
+
+    def __init__(self):
+        super().__init__()
+        self.default: bool = False
+        self.kind: str = ""
+        self.label: str = ""
+        self.readyState: int = 0
+        self.src: str = ""
+        self.srclang: str = ""
+        self.track: TextTrack = None
+
+
+@js(builtin=True)
+class HTMLUListElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLUListElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.compact: bool = False
+        self.type: str = ""
+
+
+@js(builtin=True)
+class HTMLUnknownElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLUnknownElement
+
+    Browser support: Chrome 15, Safari 6"""
+
+    pass
+
+
+@js(builtin=True)
+class StylePropertyMap(StylePropertyMapReadOnly):
+    """WebIDL source: @webref/idl/css-typed-om.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/StylePropertyMap
+
+    Browser support: Chrome 66, Safari 16.4"""
+
+    pass
+
+
+@js(builtin=True)
+class SharedWorkerGlobalScope(WorkerGlobalScope):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SharedWorkerGlobalScope
+
+    Browser support: Chrome 4, Safari 16"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.onconnect: callable = None
+
+    def close(self) -> None: ...
+
+
+@js(builtin=True)
+class DedicatedWorkerGlobalScope(WorkerGlobalScope):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DedicatedWorkerGlobalScope
+
+    Browser support: Chrome 4, Safari 4"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+
+    def cancelAnimationFrame(self, handle: int) -> None: ...
+
+    def close(self) -> None: ...
+
+    def postMessage(self, message: object, transfer: list[object]) -> None: ...
+
+    def requestAnimationFrame(self, callback: callable) -> int: ...
 
 
 @js(builtin=True)
@@ -499,6 +3071,102 @@ class HTMLAnchorElement(HTMLElement):
         self.text: str = ""
         self.type: str = ""
         self.username: str = ""
+
+
+@js(builtin=True)
+class HTMLAreaElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLAreaElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.alt: str = ""
+        self.coords: str = ""
+        self.download: str = ""
+        self.hash: str = ""
+        self.host: str = ""
+        self.hostname: str = ""
+        self.href: str = ""
+        self.noHref: bool = False
+        self.origin: str = ""
+        self.password: str = ""
+        self.pathname: str = ""
+        self.ping: str = ""
+        self.port: str = ""
+        self.protocol: str = ""
+        self.referrerPolicy: str = ""
+        self.rel: str = ""
+        self.relList: DOMTokenList = None
+        self.search: str = ""
+        self.shape: str = ""
+        self.target: str = ""
+        self.username: str = ""
+
+
+@js(builtin=True)
+class HTMLBaseElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLBaseElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.href: str = ""
+        self.target: str = ""
+
+
+@js(builtin=True)
+class HTMLBodyElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLBodyElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.aLink: str = ""
+        self.background: str = ""
+        self.bgColor: str = ""
+        self.link: str = ""
+        self.onafterprint: callable = None
+        self.onbeforeprint: callable = None
+        self.onbeforeunload: callable | None = None
+        self.onhashchange: callable = None
+        self.onlanguagechange: callable = None
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+        self.onoffline: callable = None
+        self.ononline: callable = None
+        self.onpagehide: callable = None
+        self.onpagereveal: callable = None
+        self.onpageshow: callable = None
+        self.onpageswap: callable = None
+        self.onpopstate: callable = None
+        self.onrejectionhandled: callable = None
+        self.onstorage: callable = None
+        self.onunhandledrejection: callable = None
+        self.onunload: callable = None
+        self.text: str = ""
+        self.vLink: str = ""
+
+
+@js(builtin=True)
+class HTMLBRElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLBRElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.clear: str = ""
 
 
 @js(builtin=True)
@@ -579,6 +3247,20 @@ class HTMLCanvasElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLDetailsElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLDetailsElement
+
+    Browser support: Chrome 10, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.open: bool = False
+
+
+@js(builtin=True)
 class HTMLDialogElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -604,6 +3286,17 @@ class HTMLDialogElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLDirectoryElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.compact: bool = False
+
+
+@js(builtin=True)
 class HTMLDivElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -616,6 +3309,80 @@ class HTMLDivElement(HTMLElement):
     def __init__(self):
         super().__init__()
         self.align: str = "left"
+
+
+@js(builtin=True)
+class HTMLDListElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLDListElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.compact: bool = False
+
+
+@js(builtin=True)
+class HTMLEmbedElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLEmbedElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.height: str = ""
+        self.name: str = ""
+        self.src: str = ""
+        self.type: str = ""
+        self.width: str = ""
+
+    def getSVGDocument(self) -> Document | None: ...
+
+
+@js(builtin=True)
+class HTMLFieldSetElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLFieldSetElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.disabled: bool = False
+        self.elements: HTMLCollection[Element] = None
+        self.form: HTMLFormElement | None = None
+        self.name: str = ""
+        self.type: str = ""
+        self.validationMessage: str = ""
+        self.validity: ValidityState = None
+        self.willValidate: bool = False
+
+    def checkValidity(self) -> bool: ...
+
+    def reportValidity(self) -> bool: ...
+
+    def setCustomValidity(self, error: str) -> None: ...
+
+
+@js(builtin=True)
+class HTMLFontElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLFontElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.color: str = ""
+        self.face: str = ""
+        self.size: str = ""
 
 
 @js(builtin=True)
@@ -659,6 +3426,70 @@ class HTMLFormElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLFrameElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.contentDocument: Document | None = None
+        self.contentWindow: Window | None = None
+        self.frameBorder: str = ""
+        self.longDesc: str = ""
+        self.marginHeight: str = ""
+        self.marginWidth: str = ""
+        self.name: str = ""
+        self.noResize: bool = False
+        self.scrolling: str = ""
+        self.src: str = ""
+
+
+@js(builtin=True)
+class HTMLFrameSetElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLFrameSetElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.cols: str = ""
+        self.onafterprint: callable = None
+        self.onbeforeprint: callable = None
+        self.onbeforeunload: callable | None = None
+        self.onhashchange: callable = None
+        self.onlanguagechange: callable = None
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+        self.onoffline: callable = None
+        self.ononline: callable = None
+        self.onpagehide: callable = None
+        self.onpagereveal: callable = None
+        self.onpageshow: callable = None
+        self.onpageswap: callable = None
+        self.onpopstate: callable = None
+        self.onrejectionhandled: callable = None
+        self.onstorage: callable = None
+        self.onunhandledrejection: callable = None
+        self.onunload: callable = None
+        self.rows: str = ""
+
+
+@js(builtin=True)
+class HTMLHeadElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLHeadElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+
+
+@js(builtin=True)
 class HTMLHeadingElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -669,6 +3500,36 @@ class HTMLHeadingElement(HTMLElement):
     def __init__(self):
         super().__init__()
         self.align: str = ""
+
+
+@js(builtin=True)
+class HTMLHRElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLHRElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.color: str = ""
+        self.noShade: bool = False
+        self.size: str = ""
+        self.width: str = ""
+
+
+@js(builtin=True)
+class HTMLHtmlElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLHtmlElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.version: str = ""
 
 
 @js(builtin=True)
@@ -838,6 +3699,370 @@ class HTMLInputElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLLabelElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLLabelElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.control: HTMLElement | None = None
+        self.form: HTMLFormElement | None = None
+        self.htmlFor: str = ""
+
+
+@js(builtin=True)
+class HTMLLegendElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLLegendElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.form: HTMLFormElement | None = None
+
+
+@js(builtin=True)
+class HTMLLIElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLLIElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.type: str = ""
+        self.value: int = 0
+
+
+@js(builtin=True)
+class HTMLLinkElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLLinkElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.blocking: DOMTokenList = None
+        self.charset: str = ""
+        self.crossOrigin: str | None = None
+        self.disabled: bool = False
+        self.fetchPriority: str = ""
+        self.href: str = ""
+        self.hreflang: str = ""
+        self.imageSizes: str = ""
+        self.imageSrcset: str = ""
+        self.integrity: str = ""
+        self.media: str = ""
+        self.referrerPolicy: str = ""
+        self.rel: str = ""
+        self.relList: DOMTokenList = None
+        self.rev: str = ""
+        self.sizes: DOMTokenList = None
+        self.target: str = ""
+        self.type: str = ""
+
+
+@js(builtin=True)
+class HTMLMapElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMapElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.areas: HTMLCollection[Element] = None
+        self.name: str = ""
+
+
+@js(builtin=True)
+class HTMLMarqueeElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMarqueeElement
+
+    Browser support: Chrome 1, Safari 1.2"""
+
+    def __init__(self):
+        super().__init__()
+        self.behavior: str = ""
+        self.bgColor: str = ""
+        self.direction: str = ""
+        self.height: str = ""
+        self.hspace: int = 0
+        self.loop: int = 0
+        self.scrollAmount: int = 0
+        self.scrollDelay: int = 0
+        self.trueSpeed: bool = False
+        self.vspace: int = 0
+        self.width: str = ""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
+@js(builtin=True)
+class HTMLMediaElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMediaElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    HAVE_CURRENT_DATA = 2
+    HAVE_ENOUGH_DATA = 4
+    HAVE_FUTURE_DATA = 3
+    HAVE_METADATA = 1
+    HAVE_NOTHING = 0
+    NETWORK_EMPTY = 0
+    NETWORK_IDLE = 1
+    NETWORK_LOADING = 2
+    NETWORK_NO_SOURCE = 3
+
+    def __init__(self):
+        super().__init__()
+        self.audioTracks: AudioTrackList = None
+        self.autoplay: bool = False
+        self.buffered: TimeRanges = None
+        self.controls: bool = False
+        self.crossOrigin: str | None = None
+        self.currentSrc: str = ""
+        self.currentTime: float = 0.0
+        self.defaultMuted: bool = False
+        self.defaultPlaybackRate: float = 0.0
+        self.duration: float = 0.0
+        self.ended: bool = False
+        self.error: MediaError | None = None
+        self.loading: str = ""
+        self.loop: bool = False
+        self.muted: bool = False
+        self.networkState: int = 0
+        self.paused: bool = False
+        self.playbackRate: float = 0.0
+        self.played: TimeRanges = None
+        self.preload: str = ""
+        self.preservesPitch: bool = False
+        self.readyState: int = 0
+        self.seekable: TimeRanges = None
+        self.seeking: bool = False
+        self.src: str = ""
+        self.srcObject: MediaStream | MediaSource | Blob | None = None
+        self.textTracks: TextTrackList = None
+        self.videoTracks: VideoTrackList = None
+        self.volume: float = 0.0
+
+    def addTextTrack(
+        self, kind: str, label: str = "", language: str = ""
+    ) -> TextTrack: ...
+
+    def canPlayType(self, type: str) -> str: ...
+
+    def fastSeek(self, time: float) -> None: ...
+
+    def getStartDate(self) -> object: ...
+
+    def load(self) -> None: ...
+
+    def pause(self) -> None: ...
+
+    async def play(self) -> None: ...
+
+
+@js(builtin=True)
+class HTMLMenuElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMenuElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.compact: bool = False
+
+
+@js(builtin=True)
+class HTMLMetaElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMetaElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.content: str = ""
+        self.httpEquiv: str = ""
+        self.media: str = ""
+        self.name: str = ""
+        self.scheme: str = ""
+
+
+@js(builtin=True)
+class HTMLMeterElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMeterElement
+
+    Browser support: Chrome 6, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.high: float = 0.0
+        self.labels: NodeList[Node] = None
+        self.low: float = 0.0
+        self.max: float = 0.0
+        self.min: float = 0.0
+        self.optimum: float = 0.0
+        self.value: float = 0.0
+
+
+@js(builtin=True)
+class HTMLModElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLModElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.cite: str = ""
+        self.dateTime: str = ""
+
+
+@js(builtin=True)
+class HTMLObjectElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLObjectElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.archive: str = ""
+        self.border: str = ""
+        self.code: str = ""
+        self.codeBase: str = ""
+        self.codeType: str = ""
+        self.contentDocument: Document | None = None
+        self.contentWindow: Window | None = None
+        self.data: str = ""
+        self.declare: bool = False
+        self.form: HTMLFormElement | None = None
+        self.height: str = ""
+        self.hspace: int = 0
+        self.name: str = ""
+        self.standby: str = ""
+        self.type: str = ""
+        self.useMap: str = ""
+        self.validationMessage: str = ""
+        self.validity: ValidityState = None
+        self.vspace: int = 0
+        self.width: str = ""
+        self.willValidate: bool = False
+
+    def checkValidity(self) -> bool: ...
+
+    def getSVGDocument(self) -> Document | None: ...
+
+    def reportValidity(self) -> bool: ...
+
+    def setCustomValidity(self, error: str) -> None: ...
+
+
+@js(builtin=True)
+class HTMLOListElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLOListElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.compact: bool = False
+        self.reversed: bool = False
+        self.start: int = 0
+        self.type: str = ""
+
+
+@js(builtin=True)
+class HTMLOptGroupElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLOptGroupElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.disabled: bool = False
+        self.label: str = ""
+
+
+@js(builtin=True)
+class HTMLOptionElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLOptionElement
+
+    Browser support: Chrome 1, Safari 1.2"""
+
+    def __init__(self):
+        super().__init__()
+        self.defaultSelected: bool = False
+        self.disabled: bool = False
+        self.form: HTMLFormElement | None = None
+        self.index: int = 0
+        self.label: str = ""
+        self.selected: bool = False
+        self.text: str = ""
+        self.value: str = ""
+
+
+@js(builtin=True)
+class HTMLOutputElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLOutputElement
+
+    Browser support: Chrome 9, Safari 5.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.defaultValue: str = ""
+        self.form: HTMLFormElement | None = None
+        self.htmlFor: DOMTokenList = None
+        self.labels: NodeList[Node] = None
+        self.name: str = ""
+        self.type: str = ""
+        self.validationMessage: str = ""
+        self.validity: ValidityState = None
+        self.value: str = ""
+        self.willValidate: bool = False
+
+    def checkValidity(self) -> bool: ...
+
+    def reportValidity(self) -> bool: ...
+
+    def setCustomValidity(self, error: str) -> None: ...
+
+
+@js(builtin=True)
 class HTMLParagraphElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -853,6 +4078,206 @@ class HTMLParagraphElement(HTMLElement):
 
 
 @js(builtin=True)
+class HTMLParamElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLParamElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.type: str = ""
+        self.value: str = ""
+        self.valueType: str = ""
+
+
+@js(builtin=True)
+class HTMLPictureElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLPictureElement
+
+    Browser support: Chrome 38, Safari 9.1"""
+
+    def __init__(self):
+        super().__init__()
+
+
+@js(builtin=True)
+class HTMLPreElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLPreElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.width: int = 0
+
+
+@js(builtin=True)
+class HTMLProgressElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLProgressElement
+
+    Browser support: Chrome 6, Safari 6"""
+
+    def __init__(self):
+        super().__init__()
+        self.labels: NodeList[Node] = None
+        self.max: float = 0.0
+        self.position: float = 0.0
+        self.value: float = 0.0
+
+
+@js(builtin=True)
+class HTMLQuoteElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLQuoteElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.cite: str = ""
+
+
+@js(builtin=True)
+class HTMLScriptElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLScriptElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.blocking: DOMTokenList = None
+        self.charset: str = ""
+        self.crossOrigin: str | None = None
+        self.defer: bool = False
+        self.event: str = ""
+        self.fetchPriority: str = ""
+        self.htmlFor: str = ""
+        self.integrity: str = ""
+        self.noModule: bool = False
+        self.referrerPolicy: str = ""
+        self.src: str = ""
+        self.text: str = ""
+        self.type: str = ""
+
+    @staticmethod
+    def supports(type: str) -> bool: ...
+
+
+@js(builtin=True)
+class HTMLSelectedContentElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSelectedContentElement
+
+    Browser support: Chrome 135, Safari 27"""
+
+    def __init__(self):
+        super().__init__()
+
+
+@js(builtin=True)
+class HTMLSelectElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSelectElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.autocomplete: str = ""
+        self.disabled: bool = False
+        self.form: HTMLFormElement | None = None
+        self.labels: NodeList[Node] = None
+        self.length: int = 0
+        self.multiple: bool = False
+        self.name: str = ""
+        self.options: HTMLOptionsCollection = None
+        self.required: bool = False
+        self.selectedIndex: int = 0
+        self.selectedOptions: HTMLCollection[Element] = None
+        self.size: int = 0
+        self.type: str = ""
+        self.validationMessage: str = ""
+        self.validity: ValidityState = None
+        self.value: str = ""
+        self.willValidate: bool = False
+
+    @js(inline="{self}[{index}] = {option}")
+    def __setitem__(self, index: int, option: HTMLOptionElement | None) -> None: ...
+
+    def add(
+        self,
+        element: HTMLOptionElement | HTMLOptGroupElement,
+        before: HTMLElement | int | None = None,
+    ) -> None: ...
+
+    def checkValidity(self) -> bool: ...
+
+    def item(self, index: int) -> HTMLOptionElement | None: ...
+
+    def namedItem(self, name: str) -> HTMLOptionElement | None: ...
+
+    def remove(self) -> None: ...
+
+    def reportValidity(self) -> bool: ...
+
+    def setCustomValidity(self, error: str) -> None: ...
+
+    def showPicker(self) -> None: ...
+
+
+@js(builtin=True)
+class HTMLSlotElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSlotElement
+
+    Browser support: Chrome 53, Safari 10"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+
+    def assign(self, *nodes: Element | Text) -> None: ...
+
+    def assignedElements(self, *, flatten: bool = False) -> list[Element]: ...
+
+    def assignedNodes(self, *, flatten: bool = False) -> list[Node]: ...
+
+
+@js(builtin=True)
+class HTMLSourceElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSourceElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: int = 0
+        self.media: str = ""
+        self.sizes: str = ""
+        self.src: str = ""
+        self.srcset: str = ""
+        self.type: str = ""
+        self.width: int = 0
+
+
+@js(builtin=True)
 class HTMLSpanElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -864,6 +4289,188 @@ class HTMLSpanElement(HTMLElement):
 
     def __init__(self):
         super().__init__()
+
+
+@js(builtin=True)
+class HTMLStyleElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLStyleElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.blocking: DOMTokenList = None
+        self.disabled: bool = False
+        self.media: str = ""
+        self.type: str = ""
+
+
+@js(builtin=True)
+class HTMLTableCaptionElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableCaptionElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+
+
+@js(builtin=True)
+class HTMLTableCellElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableCellElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.abbr: str = ""
+        self.align: str = ""
+        self.axis: str = ""
+        self.bgColor: str = ""
+        self.cellIndex: int = 0
+        self.ch: str = ""
+        self.chOff: str = ""
+        self.colSpan: int = 0
+        self.headers: str = ""
+        self.height: str = ""
+        self.noWrap: bool = False
+        self.rowSpan: int = 0
+        self.scope: str = ""
+        self.vAlign: str = ""
+        self.width: str = ""
+
+
+@js(builtin=True)
+class HTMLTableColElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableColElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.ch: str = ""
+        self.chOff: str = ""
+        self.span: int = 0
+        self.vAlign: str = ""
+        self.width: str = ""
+
+
+@js(builtin=True)
+class HTMLTableElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.bgColor: str = ""
+        self.border: str = ""
+        self.caption: HTMLTableCaptionElement | None = None
+        self.cellPadding: str = ""
+        self.cellSpacing: str = ""
+        self.frame: str = ""
+        self.rows: HTMLCollection[Element] = None
+        self.rules: str = ""
+        self.summary: str = ""
+        self.tBodies: HTMLCollection[Element] = None
+        self.tFoot: HTMLTableSectionElement | None = None
+        self.tHead: HTMLTableSectionElement | None = None
+        self.width: str = ""
+
+    def createCaption(self) -> HTMLTableCaptionElement: ...
+
+    def createTBody(self) -> HTMLTableSectionElement: ...
+
+    def createTFoot(self) -> HTMLTableSectionElement: ...
+
+    def createTHead(self) -> HTMLTableSectionElement: ...
+
+    def deleteCaption(self) -> None: ...
+
+    def deleteRow(self, index: int) -> None: ...
+
+    def deleteTFoot(self) -> None: ...
+
+    def deleteTHead(self) -> None: ...
+
+    def insertRow(self, index: int = -1) -> HTMLTableRowElement: ...
+
+
+@js(builtin=True)
+class HTMLTableRowElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableRowElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.bgColor: str = ""
+        self.cells: HTMLCollection[Element] = None
+        self.ch: str = ""
+        self.chOff: str = ""
+        self.rowIndex: int = 0
+        self.sectionRowIndex: int = 0
+        self.vAlign: str = ""
+
+    def deleteCell(self, index: int) -> None: ...
+
+    def insertCell(self, index: int = -1) -> HTMLTableCellElement: ...
+
+
+@js(builtin=True)
+class HTMLTableSectionElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTableSectionElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.align: str = ""
+        self.ch: str = ""
+        self.chOff: str = ""
+        self.rows: HTMLCollection[Element] = None
+        self.vAlign: str = ""
+
+    def deleteRow(self, index: int) -> None: ...
+
+    def insertRow(self, index: int = -1) -> HTMLTableRowElement: ...
+
+
+@js(builtin=True)
+class HTMLTemplateElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLTemplateElement
+
+    Browser support: Chrome 26, Safari 8"""
+
+    def __init__(self):
+        super().__init__()
+        self.content: DocumentFragment = None
+        self.shadowRootClonable: bool = False
+        self.shadowRootCustomElementRegistry: str = ""
+        self.shadowRootDelegatesFocus: bool = False
+        self.shadowRootMode: str = ""
+        self.shadowRootSerializable: bool = False
+        self.shadowRootSlotAssignment: str = ""
 
 
 @js(builtin=True)
@@ -918,10 +4525,47 @@ class HTMLTextAreaElement(HTMLElement):
     ) -> None: ...
 
 
-@js
-class TogglePopoverOptions(ShowPopoverOptions):
-    """WebIDL source: @webref/idl/html.idl"""
+@js(builtin=True)
+class VisibilityStateEntry(PerformanceEntry):
+    """WebIDL source: @webref/idl/html.idl
 
-    def __init__(self, force: bool | None = None, source: HTMLElement | None = None):
-        self.force = force
-        self.source = source
+    MDN: https://developer.mozilla.org/docs/Web/API/VisibilityStateEntry
+
+    Browser support: Chrome 115"""
+
+    def __init__(self):
+        super().__init__()
+        self.duration: int = 0
+        self.entryType: str = ""
+        self.name: str = ""
+        self.startTime: float = 0.0
+
+
+@js(builtin=True)
+class HTMLAudioElement(HTMLMediaElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLAudioElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    def __init__(self):
+        super().__init__()
+
+
+@js(builtin=True)
+class HTMLVideoElement(HTMLMediaElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLVideoElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: int = 0
+        self.playsInline: bool = False
+        self.poster: str = ""
+        self.videoHeight: int = 0
+        self.videoWidth: int = 0
+        self.width: int = 0

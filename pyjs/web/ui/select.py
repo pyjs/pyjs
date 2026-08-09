@@ -1,5 +1,5 @@
 from pyjs import js
-from pyjs.web.domx import span, tw
+from pyjs.web.domx import require_element, span, tw
 from pyjs.web.ui.dropdown_menu import (
     DropdownMenu,
     DropdownMenuContent,
@@ -20,9 +20,7 @@ class SelectTrigger(DropdownMenuTrigger):
         self.setAttribute("data-slot", "select-trigger")
 
     def set_value_text(self, value: str):
-        value_element = self.element.querySelector("[data-slot=select-value]")
-        if value_element is None:
-            raise Exception("SelectTrigger requires an element with data-slot=select-value")
+        value_element = require_element(self.element, "[data-slot=select-value]")
         value_element.textContent = value
 
 

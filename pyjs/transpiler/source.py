@@ -52,8 +52,26 @@ class SourceCompilation:
         return tuple(self.sources)
 
 
+def is_js_module_annotation(annotation: ast.expr) -> bool:
+    if not isinstance(annotation, ast.Subscript):
+        return False
+    if isinstance(annotation.value, ast.Name) and annotation.value.id == "JS":
+        return True
+    if isinstance(annotation.value, ast.Name) and annotation.value.id == "Final":
+        return is_js_module_annotation(annotation.slice)
+    if isinstance(annotation.value, ast.Name) and annotation.value.id == "Annotated":
+        values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else []
+        return any(isinstance(value, ast.Name) and value.id == "js" for value in values[1:])
+    return False
+
+
 def create_module(
-    source: str, filename: str = "_pyjs_source_.py", module_name: str | None = None
+    source: str,
+    filename: str = "_pyjs_source_.py",
+    module_name: str | None = None,
+    *,
+    display_source: str | None = None,
+    simple_wrapper: bool = False,
 ):
     """Execute source in an inspectable in-memory module.
 
@@ -71,6 +89,8 @@ def create_module(
     module = ModuleType(name)
     module.__file__ = filename
     module.__package__ = name.rpartition(".")[0]
+    module.__pyjs_source__ = display_source if display_source is not None else source
+    module.__pyjs_simple_wrapper__ = simple_wrapper
     previous = sys.modules.get(name)
     sys.modules[name] = module
     try:
@@ -84,7 +104,7 @@ def create_module(
     return module
 
 
-def wrap_source(source: str) -> str:
+def wrap_source(source: str) -> tuple[str, bool]:
     source = textwrap.dedent(source)
     module = ast.parse(source)
     declaration_types = (
@@ -94,8 +114,16 @@ def wrap_source(source: str) -> str:
         ast.AsyncFunctionDef,
         ast.ClassDef,
     )
-    declarations = [node for node in module.body if isinstance(node, declaration_types)]
-    statements = [node for node in module.body if not isinstance(node, declaration_types)]
+    declarations = [
+        node
+        for node in module.body
+        if isinstance(node, declaration_types)
+        or (
+            isinstance(node, ast.AnnAssign)
+            and is_js_module_annotation(node.annotation)
+        )
+    ]
+    statements = [node for node in module.body if node not in declarations]
     if declarations:
         main = ast.FunctionDef(
             name="main",
@@ -113,17 +141,21 @@ def wrap_source(source: str) -> str:
             type_params=[],
         )
         module = ast.Module(body=declarations + [main], type_ignores=[])
-        return ast.unparse(ast.fix_missing_locations(module)) + "\n"
+        return ast.unparse(ast.fix_missing_locations(module)) + "\n", False
 
     body = textwrap.indent(source, "    ")
     if not body.strip():
         body = "    pass\n"
     elif not body.endswith("\n"):
         body += "\n"
-    return f"def main():\n{body}"
+    return f"def main():\n{body}", True
 
 
-def _prepare_source(source: str, filename: str, wrap: bool | None) -> tuple[str, bool]:
+def _prepare_source(
+    source: str,
+    filename: str,
+    wrap: bool | None,
+) -> tuple[str, bool, str, bool]:
     source = textwrap.dedent(source)
     if wrap is None:
         wrap = not any(
@@ -131,7 +163,11 @@ def _prepare_source(source: str, filename: str, wrap: bool | None) -> tuple[str,
             and node.name == "main"
             for node in ast.parse(source, filename).body
         )
-    return (wrap_source(source) if wrap else source), wrap
+    if not wrap:
+        return source, False, source, False
+    wrapped_source, simple_wrapper = wrap_source(source)
+    display_source = source if simple_wrapper else wrapped_source
+    return wrapped_source, True, display_source, simple_wrapper
 
 
 def analyze_source(
@@ -142,8 +178,18 @@ def analyze_source(
     wrap: bool | None = None,
     extensions: tuple[CompilationExtension, ...] = (),
 ) -> SourceAnalysis:
-    source, wrapped = _prepare_source(source, filename, wrap)
-    module = create_module(source, filename, module_name)
+    source, wrapped, display_source, simple_wrapper = _prepare_source(
+        source,
+        filename,
+        wrap,
+    )
+    module = create_module(
+        source,
+        filename,
+        module_name,
+        display_source=display_source,
+        simple_wrapper=simple_wrapper,
+    )
     entry = module.main
     entry.__js__ = True
     entry.__js_include__ = True
@@ -161,8 +207,18 @@ def compile_source(
     extensions: tuple[CompilationExtension, ...] = (),
 ) -> SourceCompilation:
     started = time.perf_counter()
-    source, wrapped = _prepare_source(source, filename, wrap)
-    module = create_module(source, filename, module_name)
+    source, wrapped, display_source, simple_wrapper = _prepare_source(
+        source,
+        filename,
+        wrap,
+    )
+    module = create_module(
+        source,
+        filename,
+        module_name,
+        display_source=display_source,
+        simple_wrapper=simple_wrapper,
+    )
     module.main.__js__ = True
     module.main.__js_include__ = True
     package, entry_point, css = prepare_bundle(

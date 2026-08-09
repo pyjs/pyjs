@@ -1,0 +1,23 @@
+{
+  "name": "$package_name",
+  "version": "$version",
+  "description": "Portable PyJS runtime for $target",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyjs/pyjs.git",
+    "directory": "npm"
+  },
+  "homepage": "https://pyjs.org",
+  "os": ["$os"],
+  "cpu": ["$cpu"]$libc,
+  "files": [
+    "python",
+    "LICENSE"
+  ],
+  "pyjsRuntime": {
+    "python": "$python_executable",
+    "pythonVersion": "$python_version",
+    "pythonBuild": "$python_build"
+  }
+}

@@ -1,7 +1,7 @@
 # PyJS: Python to JavaScript
 
-> Pre-alpha: useful applications and tests work today, but APIs may change before the first
-> release.
+> Pre-alpha: useful applications and tests work today, but APIs may change during the early
+> releases.
 
 PyJS is a statically analyzed Python-to-JavaScript compiler. It turns reachable, typed Python code
 into readable, tree-shaken JavaScript without shipping a Python runtime. Its current libraries make
@@ -51,17 +51,8 @@ python -m pytest -q
 python -m pytest -q --pyjs-target=web
 ```
 
-To work on PyJS from a source checkout:
-
-```bash
-python -m pip install -e .
-```
-
-Install the separate examples distribution when working on the examples:
-
-```bash
-python -m pip install -e examples
-```
+To develop PyJS itself from a source checkout, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Start from an example
 
@@ -83,7 +74,9 @@ pyjs create dialog_demo --template pyjs_examples.samples.ui_dialog
 `pyjs create NAME` creates a project in `NAME/`, with application code in
 `NAME/NAME/NAME.py` and tests in `NAME/tests/`. Pass a destination as the second positional argument
 to populate another directory, such as `pyjs create routine .`. Add `--src-layout` to put the
-package under `src/`. After installation, `python -m NAME` starts either package layout.
+package under `src/`. After installation, `python -m NAME` starts either package layout through its
+ordinary Python entry point. `pyjs serve` is also available as a convenience and uses the
+application recorded in `pyproject.toml`.
 `--single-file` explicitly requests one standalone Python file and requires a file template when
 combined with `--template`. The `pyjs-examples` distribution registers both file and directory
 templates and contains the source copied by `pyjs create`; templates are not embedded in the
@@ -124,6 +117,10 @@ An application entry point returns a server-rendered DOM tree. Classes decorated
 available to the browser compiler, and reachable methods are included in the generated bundle.
 `CustomElement` subclasses render on the server and hydrate as browser-native custom elements.
 `ref()` reconnects Python attributes to existing server-rendered nodes rather than recreating them.
+
+Module values cross the same explicit compilation boundary through a `JS[T]` annotation. Combine
+it with `Final` for constants, such as `heartbeat_interval: Final[JS[int]] = 5_000`; unmarked
+module values remain server-only and cannot be included by an accidental browser-side reference.
 
 Values that must survive rendering and hydration can live on the custom element as DOM attributes.
 The `state()` descriptor and `@effect(...)` provide a small typed reactive layer for updating the
@@ -327,8 +324,9 @@ python -m pytest -q
 python -m pytest -q --pyjs-target=web
 ```
 
-Use `pytest.mark.pyjs_web` for tests requiring native browser behavior and
-`pytest.mark.pyjs_python` for tests that cannot be compiled. A filename such as
+Use `pytest.mark.pyjs_web` for tests that should be compiled and run in the browser.
+Unmarked tests run only as ordinary Python tests; `pytest.mark.pyjs_python` can make that intent
+explicit. A filename such as
 `test_browser_dialog.py` is only an organizational convention and has no implicit behavior.
 
 Browser tests retain console output and errors. Tests that render meaningful UI retain their iframe
@@ -344,12 +342,14 @@ preview, and render assertions can compare screenshots against checked-in PNG ba
 | `pyjs --src-all INPUT` | Include all tree-shaken dependency sources |
 | `pyjs --perf INPUT` | Compare Python and generated-JavaScript performance |
 | `pyjs create NAME [DESTINATION]` | Create a starter project |
+| `pyjs serve [TARGET]` | Serve a configured project, module, or Python file |
 | `pyjs template` | List templates registered by installed packages |
 | `pyjs template NAME` | Print the complete materialized template source |
 | `pyjs template NAME --src` | Print the transpiled entry-module JavaScript |
 | `pyjs build MODULE[:ENTRY]` | Write generated JavaScript, CSS, and HTML |
 | `pyjs docs build` | Build a static documentation site |
 | `pyjs docs serve` | Build and serve documentation locally |
+| `pyjs inspect URL` | Capture a screenshot and structured browser diagnostics |
 | `pyjs skill` | Print version-matched instructions for coding agents |
 
 The built-in application server is run from Python source with `serve(__file__)`; the generated
@@ -357,7 +357,7 @@ starter and examples already provide this entry point.
 
 ## Current limitations and missing features
 
-PyJS is intentionally a typed subset of Python, and the first release remains pre-alpha:
+PyJS is intentionally a typed subset of Python, and the current releases remain pre-alpha:
 
 - Multiple inheritance is not supported.
 - Reflection, runtime monkey-patching, `eval()`, and arbitrary dynamic imports are outside the
@@ -379,27 +379,13 @@ PyJS is intentionally a typed subset of Python, and the first release remains pr
 - NativeScript output is experimental; the first proof of concept currently targets Android and
   covers a small set of core views.
 
-See [TESTING.md](TESTING.md) and [TREE_SHAKING.md](TREE_SHAKING.md) for focused implementation
+See the [testing guide](docs/guide/testing.md) and
+[TREE_SHAKING.md](TREE_SHAKING.md) for focused behavior and implementation
 status. The broader guides and references live in [docs/](docs/).
 
-## Development from a checkout
+## Contributing
 
-PyJS currently requires Python 3.14:
-
-```bash
-python -m pip install -e .
-python -m pytest -q
-```
-
-The examples are a separate distribution:
-
-```bash
-python -m pip install -e examples
-cd examples
-python -m pytest -q
-```
-
-Run Ruff against changed Python files before submitting changes. Generated `.main.js`, `.main.css`,
-and `.main.html` files are build artifacts rather than hand-authored source.
+The development environment, repository structure, compiler contracts, and
+verification workflow are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 PyJS is distributed under the [BSD 3-Clause License](LICENSE).

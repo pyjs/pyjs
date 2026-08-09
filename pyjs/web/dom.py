@@ -1,6 +1,6 @@
 from pyjs import js, js_object, nojs
 from pyjs.web.console import Console
-from pyjs.web.events import Event, EventTarget
+from pyjs.web.events import AbortSignal, Event, EventListener, EventTarget
 
 
 @js
@@ -38,6 +38,36 @@ class DOMException:
     Browser support: Chrome 1, Safari 1"""
 
     pass
+    ABORT_ERR = 20
+    DATA_CLONE_ERR = 25
+    DOMSTRING_SIZE_ERR = 2
+    HIERARCHY_REQUEST_ERR = 3
+    INDEX_SIZE_ERR = 1
+    INUSE_ATTRIBUTE_ERR = 10
+    INVALID_ACCESS_ERR = 15
+    INVALID_CHARACTER_ERR = 5
+    INVALID_MODIFICATION_ERR = 13
+    INVALID_NODE_TYPE_ERR = 24
+    INVALID_STATE_ERR = 11
+    NAMESPACE_ERR = 14
+    NETWORK_ERR = 19
+    NO_DATA_ALLOWED_ERR = 6
+    NO_MODIFICATION_ALLOWED_ERR = 7
+    NOT_FOUND_ERR = 8
+    NOT_SUPPORTED_ERR = 9
+    QUOTA_EXCEEDED_ERR = 22
+    SECURITY_ERR = 18
+    SYNTAX_ERR = 12
+    TIMEOUT_ERR = 23
+    TYPE_MISMATCH_ERR = 17
+    URL_MISMATCH_ERR = 21
+    VALIDATION_ERR = 16
+    WRONG_DOCUMENT_ERR = 4
+
+    def __init__(self, message: str = "", name: str = "Error"):
+        self.code: int = 0
+        self.message: str = message
+        self.name: str = name
 
 
 @js(builtin=True)
@@ -65,6 +95,60 @@ class DOMImplementation:
 
 
 @js
+class DOMPointInit:
+    """WebIDL source: @webref/idl/geometry.idl"""
+
+    def __init__(self, w: float = 1, x: float = 0, y: float = 0, z: float = 0):
+        self.w = w
+        self.x = x
+        self.y = y
+        self.z = z
+
+
+@js(builtin=True)
+class DOMPointReadOnly:
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMPointReadOnly
+
+    Browser support: Chrome 61, Safari 10.1"""
+
+    pass
+
+
+@js(builtin=True)
+class DOMQuad:
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMQuad
+
+    Browser support: Chrome 61, Safari 11"""
+
+    pass
+
+
+@js
+class DOMQuadInit:
+    """WebIDL source: @webref/idl/geometry.idl"""
+
+    def __init__(
+        self,
+        p1: DOMPointInit | None = None,
+        p2: DOMPointInit | None = None,
+        p3: DOMPointInit | None = None,
+        p4: DOMPointInit | None = None,
+    ):
+        if p1 is not None:
+            self.p1 = p1
+        if p2 is not None:
+            self.p2 = p2
+        if p3 is not None:
+            self.p3 = p3
+        if p4 is not None:
+            self.p4 = p4
+
+
+@js
 class DOMRectInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -73,6 +157,17 @@ class DOMRectInit:
         self.width = width
         self.x = x
         self.y = y
+
+
+@js(builtin=True)
+class DOMRectList:
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMRectList
+
+    Browser support: Chrome 61, Safari 10.1"""
+
+    pass
 
 
 @js(builtin=True)
@@ -102,6 +197,17 @@ class DOMRectReadOnly:
 
 
 @js(builtin=True)
+class DOMStringList:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMStringList
+
+    Browser support: Chrome 1, Safari 5.1"""
+
+    pass
+
+
+@js(builtin=True)
 class DOMTokenList:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -117,7 +223,6 @@ class DOMTokenList:
     def add(self, *tokens: str) -> None:
         self.tokens.extend(tokens)
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> str | None: ...
 
     def remove(self, *tokens: str) -> None:
@@ -136,6 +241,20 @@ class DOMTokenList:
 
 
 @js(builtin=True)
+class AbortController:
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/AbortController
+
+    Browser support: Chrome 66, Safari 12.1"""
+
+    def __init__(self):
+        self.signal: AbortSignal = None
+
+    def abort(self, reason: object | None = None) -> None: ...
+
+
+@js(builtin=True)
 class AbstractRange:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -149,6 +268,106 @@ class AbstractRange:
         self.endOffset: int = 0
         self.startContainer: Node = None
         self.startOffset: int = 0
+
+
+@js(builtin=True)
+class BarProp:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/BarProp
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class Blob:
+    """WebIDL source: @webref/idl/FileAPI.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Blob
+
+    Browser support: Chrome 5, Safari 6"""
+
+    pass
+
+
+@js
+class BoxQuadOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(
+        self,
+        box: str = "border",
+        relativeTo: Text | Element | CSSPseudoElement | Document | None = None,
+    ):
+        self.box = box
+        if relativeTo is not None:
+            self.relativeTo = relativeTo
+
+
+@js(builtin=True)
+class CaretPosition:
+    """WebIDL source: @webref/idl/cssom-view.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CaretPosition
+
+    Browser support: Chrome 128, Safari 26.2"""
+
+    def __init__(self):
+        self.offset: int = 0
+        self.offsetNode: Node = None
+
+    def getClientRect(self) -> DOMRect | None: ...
+
+
+@js
+class CaretPositionFromPointOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(self, shadowRoots: list[ShadowRoot] | None = None):
+        if shadowRoots is None:
+            shadowRoots = []
+        self.shadowRoots = shadowRoots
+
+
+@js
+class CheckVisibilityOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(
+        self,
+        checkOpacity: bool = False,
+        checkVisibilityCSS: bool = False,
+        contentVisibilityAuto: bool = False,
+        opacityProperty: bool = False,
+        visibilityProperty: bool = False,
+    ):
+        self.checkOpacity = checkOpacity
+        self.checkVisibilityCSS = checkVisibilityCSS
+        self.contentVisibilityAuto = contentVisibilityAuto
+        self.opacityProperty = opacityProperty
+        self.visibilityProperty = visibilityProperty
+
+
+@js
+class ConvertCoordinateOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(self, fromBox: str = "border", toBox: str = "border"):
+        self.fromBox = fromBox
+        self.toBox = toBox
+
+
+@js(builtin=True)
+class CSSPseudoElement:
+    """WebIDL source: @webref/idl/css-pseudo.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSPseudoElement
+
+    Browser support: Chrome 149"""
+
+    pass
 
 
 @js(builtin=True)
@@ -186,7 +405,6 @@ class CSSRuleList:
     def __init__(self):
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> CSSRule | None: ...
 
 
@@ -220,37 +438,11 @@ class CSSStyleDeclaration:
 
     def getPropertyValue(self, property: str) -> str: ...
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> str: ...
 
     def removeProperty(self, property: str) -> str: ...
 
     def setProperty(self, property: str, value: str, priority: str = "") -> None: ...
-
-
-@js(builtin=True)
-class DOMRect(DOMRectReadOnly):
-    """WebIDL source: @webref/idl/geometry.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/DOMRect
-
-    Browser support: Chrome 61, Safari 10.1"""
-
-    def __init__(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0):
-        super().__init__(x, y, width, height)
-        self.x: float = x
-        self.y: float = y
-        self.left = x
-        self.top = y
-        self.right = x + width
-        self.bottom = y + height
-        self.width: float = width
-        self.height: float = height
-
-    @staticmethod
-    def fromRect(
-        *, x: float = 0, y: float = 0, width: float = 0, height: float = 0
-    ) -> DOMRect: ...
 
 
 @js
@@ -266,12 +458,45 @@ class ElementCreationOptions:
         self.is_ = is_
 
 
+@js(builtin=True)
+class External:
+    """WebIDL source: @webref/idl/html.idl
+
+    Browser support: Chrome 1"""
+
+    pass
+
+
 @js
 class GetRootNodeOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
     def __init__(self, composed: bool = False):
         self.composed = composed
+
+
+@js(builtin=True)
+class History:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/History
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.length: int = 0
+        self.scrollRestoration: str = ""
+        self.state: object = None
+
+    def back(self) -> None: ...
+
+    def forward(self) -> None: ...
+
+    def go(self, delta: int = 0) -> None: ...
+
+    def pushState(self, data: object, unused: str, url: str | None = None) -> None: ...
+
+    def replaceState(self, data: object, unused: str, url: str | None = None) -> None: ...
 
 
 @js(builtin=True)
@@ -326,12 +551,46 @@ class HTMLCollection[T]:
 
 
 @js(builtin=True)
-class HTMLSlotElement:
+class ImageBitmap:
     """WebIDL source: @webref/idl/html.idl
 
-    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSlotElement
+    MDN: https://developer.mozilla.org/docs/Web/API/ImageBitmap
 
-    Browser support: Chrome 53, Safari 10"""
+    Browser support: Chrome 50, Safari 15"""
+
+    pass
+
+
+@js
+class ImageBitmapOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(
+        self,
+        colorSpaceConversion: str = "default",
+        imageOrientation: str = "from-image",
+        premultiplyAlpha: str = "default",
+        resizeHeight: int | None = None,
+        resizeQuality: str = "low",
+        resizeWidth: int | None = None,
+    ):
+        self.colorSpaceConversion = colorSpaceConversion
+        self.imageOrientation = imageOrientation
+        self.premultiplyAlpha = premultiplyAlpha
+        if resizeHeight is not None:
+            self.resizeHeight = resizeHeight
+        self.resizeQuality = resizeQuality
+        if resizeWidth is not None:
+            self.resizeWidth = resizeWidth
+
+
+@js(builtin=True)
+class ImageData:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ImageData
+
+    Browser support: Chrome 1, Safari 3.1"""
 
     pass
 
@@ -365,8 +624,117 @@ class MediaList:
 
     def deleteMedium(self, medium: str) -> None: ...
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> str | None: ...
+
+
+@js(builtin=True)
+class MediaQueryListEvent(Event):
+    """WebIDL source: @webref/idl/cssom-view.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MediaQueryListEvent
+
+    Browser support: Chrome 39, Safari 14"""
+
+    def __init__(self, type: str, *, media: str = "", matches: bool = False):
+        super().__init__()
+        self.matches: bool = matches
+        self.media: str = media
+
+
+@js
+class MediaQueryListEventInit:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(self, matches: bool = False, media: str = ""):
+        self.matches = matches
+        self.media = media
+
+
+@js(builtin=True)
+class MimeTypeArray:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MimeTypeArray
+
+    Browser support: Chrome 1, Safari 1"""
+
+    pass
+
+
+@js(builtin=True)
+class MutationObserver:
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MutationObserver
+
+    Browser support: Chrome 26, Safari 7"""
+
+    def __init__(self, callback: callable): ...
+
+    def disconnect(self) -> None: ...
+
+    def observe(
+        self,
+        target: Node,
+        *,
+        childList: bool = False,
+        attributes: bool | None = None,
+        characterData: bool | None = None,
+        subtree: bool = False,
+        attributeOldValue: bool | None = None,
+        characterDataOldValue: bool | None = None,
+        attributeFilter: list[str] | None = None,
+    ) -> None: ...
+
+    def takeRecords(self) -> list[MutationRecord]: ...
+
+
+@js
+class MutationObserverInit:
+    """WebIDL source: @webref/idl/dom.idl"""
+
+    def __init__(
+        self,
+        attributeFilter: list[str] | None = None,
+        attributeOldValue: bool | None = None,
+        attributes: bool | None = None,
+        characterData: bool | None = None,
+        characterDataOldValue: bool | None = None,
+        childList: bool = False,
+        subtree: bool = False,
+    ):
+        if attributeFilter is not None:
+            self.attributeFilter = attributeFilter
+        if attributeOldValue is not None:
+            self.attributeOldValue = attributeOldValue
+        if attributes is not None:
+            self.attributes = attributes
+        if characterData is not None:
+            self.characterData = characterData
+        if characterDataOldValue is not None:
+            self.characterDataOldValue = characterDataOldValue
+        self.childList = childList
+        self.subtree = subtree
+
+
+@js(builtin=True)
+class MutationRecord:
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MutationRecord
+
+    Browser support: Chrome 16, Safari 7"""
+
+    def __init__(self):
+        self.addedNodes: NodeList[Node] = None
+        self.attributeName: str | None = None
+        self.attributeNamespace: str | None = None
+        self.nextSibling: Node | None = None
+        self.oldValue: str | None = None
+        self.previousSibling: Node | None = None
+        self.removedNodes: NodeList[Node] = None
+        self.target: Node = None
+        self.type: str = ""
 
 
 @js(builtin=True)
@@ -519,268 +887,6 @@ class Node(EventTarget):
 
 
 @js(builtin=True)
-class DocumentType(Node):
-    """WebIDL source: @webref/idl/dom.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/DocumentType
-
-    Browser support: Chrome 1, Safari 3"""
-
-    def __init__(self):
-        super().__init__()
-        self.name: str = ""
-        self.publicId: str = ""
-        self.systemId: str = ""
-
-    def after(self, *nodes: Node | str) -> None: ...
-
-    def before(self, *nodes: Node | str) -> None: ...
-
-    def remove(self) -> None: ...
-
-    def replaceWith(self, *nodes: Node | str) -> None: ...
-
-
-@js(builtin=True)
-class DocumentFragment(Node):
-    """WebIDL source: @webref/idl/dom.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/DocumentFragment
-
-    Browser support: Chrome 1, Safari 3"""
-
-    def __init__(self):
-        super().__init__()
-        self.childElementCount: int = 0
-        self.children: HTMLCollection[Element] = None
-        self.firstElementChild: Element | None = None
-        self.lastElementChild: Element | None = None
-
-    def append(self, *nodes: Node | str) -> None: ...
-
-    def getElementById(self, elementId: str) -> Element | None: ...
-
-    def moveBefore(self, node: Node, child: Node | None) -> None: ...
-
-    def prepend(self, *nodes: Node | str) -> None: ...
-
-    def querySelector(self, selectors: str) -> Element | None: ...
-
-    def querySelectorAll(self, selectors: str) -> NodeList[Element]: ...
-
-    def replaceChildren(self, *nodes: Node | str) -> None: ...
-
-
-@js(builtin=True)
-class Element(Node):
-    """WebIDL source: @webref/idl/dom.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/Element
-
-    Browser support: Chrome 1, Safari 1"""
-
-    tagName = "UNDEFINED"
-    observedAttributes = []
-
-    def __init__(self):
-        super().__init__()
-        self.children: HTMLCollection[Element] = HTMLCollection[Element]()
-        self.childElementCount: int = 0
-        self.assignedSlot: HTMLSlotElement | None = None
-        self.attributes: NamedNodeMap[Attr] = NamedNodeMap[Attr]()
-        self.classList: DOMTokenList = DOMTokenList()
-        self.style = CSSStyleDeclaration()
-        self.className: str = ""
-        self.customElementRegistry: CustomElementRegistry | None = None
-        self.firstElementChild: Element | None = None
-        self.id: str = ""
-        self.lastElementChild: Element | None = None
-        self.localName: str = ""
-        self.namespaceURI: str | None = None
-        self.nextElementSibling: Element | None = None
-        self.prefix: str | None = None
-        self.previousElementSibling: Element | None = None
-        self.shadowRoot: ShadowRoot | None = None
-        self.slot: str = ""
-        self.textContent: str = ""
-
-    def getBoundingClientRect(self) -> DOMRect:
-        return DOMRect()
-
-    def replaceWith(self, *nodes: Node | str) -> None: ...
-
-    @js
-    def setAttribute(self, name: str, value: object | str) -> None:
-        attribute = self.attributes.getNamedItem(name)
-        old_value: str | None = None
-        if attribute is not None:
-            old_value = attribute.value
-        if attribute is None:
-            attribute = Attr()
-            attribute.localName = name
-            attribute.name = name
-        attribute.value = str(value)
-        attribute.ownerElement = self
-        self.attributes.setNamedItem(attribute)
-        if self._is_observed_attribute(name):
-            self.attributeChangedCallback(name, old_value, str(value))
-
-    @setAttribute.client
-    def setAttribute(self, name: str, value: object | str) -> None:
-        pass
-
-    def getAttribute(self, name: str) -> str | None:
-        attribute = self.attributes.getNamedItem(name)
-        if attribute is None:
-            return None
-        return attribute.value
-
-    @js
-    def removeAttribute(self, name: str) -> None:
-        attribute = self.attributes.getNamedItem(name)
-        if attribute is not None:
-            self.attributes.removeNamedItem(name)
-            if self._is_observed_attribute(name):
-                self.attributeChangedCallback(name, attribute.value, None)
-
-    @removeAttribute.client
-    def removeAttribute(self, name: str) -> None:
-        pass
-
-    def getAttributeNames(self) -> list[str]:
-        names: list[str] = []
-        for attribute in self.attributes:
-            names.append(attribute.name)
-        return names
-
-    def getAttributeNode(self, qualifiedName: str) -> Attr | None: ...
-
-    def getAttributeNodeNS(
-        self, namespace: str | None, localName: str
-    ) -> Attr | None: ...
-
-    def getAttributeNS(self, namespace: str | None, localName: str) -> str | None: ...
-
-    def getElementsByClassName(self, classNames: str) -> HTMLCollection[Element]: ...
-
-    def getElementsByTagName(self, qualifiedName: str) -> HTMLCollection[Element]: ...
-
-    def getElementsByTagNameNS(
-        self, namespace: str | None, localName: str
-    ) -> HTMLCollection[Element]: ...
-
-    @js
-    def hasAttribute(self, name: str) -> bool:
-        return name in self.attributes
-
-    @hasAttribute.client
-    def hasAttribute(self, name: str) -> bool:
-        return False
-
-    @js
-    def _is_observed_attribute(self, name: str) -> bool:
-        return name in getattr(type(self), "observedAttributes", [])
-
-    @_is_observed_attribute.client
-    def _is_observed_attribute(self, name: str) -> bool:
-        return False
-
-    def attributeChangedCallback(
-        self, name: str, old_value: str | None, new_value: str | None
-    ):
-        pass
-
-    def after(self, *nodes: Node | str) -> None: ...
-
-    def append(self, *nodes: Node | str) -> None:
-        for node in nodes:
-            if isinstance(node, str):
-                text = Text(node)
-                self.childNodes._append(text)
-            elif isinstance(node, Node):
-                self.childNodes._append(node)
-                if isinstance(node, Element):
-                    self.children._append(node)
-        self.childElementCount = len(self.children)
-
-    def releasePointerCapture(self, pointerId: int) -> None: ...
-
-    def remove(self) -> None:
-        if self.parentElement is None:
-            return
-        self.parentElement.childNodes._remove(self)
-        self.parentElement.children._remove(self)
-        self.parentElement.childElementCount = len(self.parentElement.children)
-
-    def removeAttributeNode(self, attr: Attr) -> Attr: ...
-
-    def removeAttributeNS(self, namespace: str | None, localName: str) -> None: ...
-
-    def replaceChildren(self, *nodes: Node | str) -> None:
-        self.childNodes._clear()
-        self.children._clear()
-        for node in nodes:
-            self.append(node)
-
-    def contains(self, node: Node) -> bool:
-        return False
-
-    def attachShadow(
-        self,
-        *,
-        mode: str,
-        delegatesFocus: bool = False,
-        slotAssignment: str = "named",
-        clonable: bool = False,
-        serializable: bool = False,
-        customElementRegistry: CustomElementRegistry | None = None,
-    ) -> ShadowRoot: ...
-
-    def before(self, *nodes: Node | str) -> None: ...
-
-    def closest(self, selectors: str) -> Element | None:
-        return self
-
-    def hasAttributeNS(self, namespace: str | None, localName: str) -> bool: ...
-
-    def hasAttributes(self) -> bool: ...
-
-    def hasPointerCapture(self, pointerId: int) -> bool: ...
-
-    def insertAdjacentElement(self, where: str, element: Element) -> Element | None: ...
-
-    def insertAdjacentText(self, where: str, data: str) -> None: ...
-
-    def matches(self, selectors: str) -> bool: ...
-
-    def moveBefore(self, node: Node, child: Node | None) -> None: ...
-
-    def prepend(self, *nodes: Node | str) -> None: ...
-
-    def querySelector(self, selector: str) -> Element | None:
-        return self
-
-    def querySelectorAll(self, selector: str) -> NodeList[Element]:
-        result: NodeList[Element] = NodeList[Element]()
-        result._append(self)
-        return result
-
-    def setAttributeNode(self, attr: Attr) -> Attr | None: ...
-
-    def setAttributeNodeNS(self, attr: Attr) -> Attr | None: ...
-
-    def setAttributeNS(
-        self, namespace: str | None, qualifiedName: str, value: object | str
-    ) -> None: ...
-
-    def setPointerCapture(self, pointerId: int) -> None: ...
-
-    def toggleAttribute(self, qualifiedName: str, force: bool | None = None) -> bool: ...
-
-    def webkitMatchesSelector(self, selectors: str) -> bool: ...
-
-
-@js(builtin=True)
 class NodeFilter:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -870,6 +976,64 @@ class NodeList[T]:
         self.length = len(self._items)
 
 
+@js(builtin=True)
+class OffscreenCanvas(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/OffscreenCanvas
+
+    Browser support: Chrome 69, Safari 16.4"""
+
+    pass
+
+
+@js(builtin=True)
+class PluginArray:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/PluginArray
+
+    Browser support: Chrome 1, Safari 1"""
+
+    pass
+
+
+@js
+class QuotaExceededErrorOptions:
+    """WebIDL source: @webref/idl/webidl.idl"""
+
+    def __init__(self, quota: float | None = None, requested: float | None = None):
+        if quota is not None:
+            self.quota = quota
+        if requested is not None:
+            self.requested = requested
+
+
+@js(builtin=True)
+class Screen:
+    """WebIDL source: @webref/idl/cssom-view.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Screen
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.availHeight: int = 0
+        self.availWidth: int = 0
+        self.colorDepth: int = 0
+        self.height: int = 0
+        self.pixelDepth: int = 0
+        self.width: int = 0
+
+
+@js
+class ScrollOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(self, behavior: str = "auto"):
+        self.behavior = behavior
+
+
 @js
 class ShadowRootInit:
     """WebIDL source: @webref/idl/dom.idl"""
@@ -889,6 +1053,16 @@ class ShadowRootInit:
         self.delegatesFocus = delegatesFocus
         self.serializable = serializable
         self.slotAssignment = slotAssignment
+
+
+@js
+class StructuredSerializeOptions:
+    """WebIDL source: @webref/idl/html.idl"""
+
+    def __init__(self, transfer: list[object] | None = None):
+        if transfer is None:
+            transfer = []
+        self.transfer = transfer
 
 
 @js(builtin=True)
@@ -920,7 +1094,6 @@ class StyleSheetList:
     def __init__(self):
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
     def item(self, index: int) -> CSSStyleSheet | None: ...
 
 
@@ -951,6 +1124,32 @@ class TreeWalker:
     def previousNode(self) -> Node | None: ...
 
     def previousSibling(self) -> Node | None: ...
+
+
+@js(builtin=True)
+class XPathEvaluator:
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/XPathEvaluator
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self): ...
+
+    def createExpression(
+        self, expression: str, resolver: XPathNSResolver | None = None
+    ) -> XPathExpression: ...
+
+    def createNSResolver(self, nodeResolver: Node) -> Node: ...
+
+    def evaluate(
+        self,
+        expression: str,
+        contextNode: Node,
+        resolver: XPathNSResolver | None = None,
+        type: int = 0,
+        result: XPathResult | None = None,
+    ) -> XPathResult: ...
 
 
 @js(builtin=True)
@@ -1007,6 +1206,942 @@ class XPathResult:
 
 
 @js(builtin=True)
+class XSLTProcessor:
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/XSLTProcessor
+
+    Browser support: Chrome 1, Safari 3.1"""
+
+    def __init__(self): ...
+
+    def clearParameters(self) -> None: ...
+
+    def getParameter(self, namespaceURI: str, localName: str) -> object: ...
+
+    def importStylesheet(self, style: Node) -> None: ...
+
+    def removeParameter(self, namespaceURI: str, localName: str) -> None: ...
+
+    def reset(self) -> None: ...
+
+    def setParameter(self, namespaceURI: str, localName: str, value: object) -> None: ...
+
+    def transformToDocument(self, source: Node) -> Document: ...
+
+    def transformToFragment(self, source: Node, output: Document) -> DocumentFragment: ...
+
+
+@js
+class StaticRangeInit:
+    """WebIDL source: @webref/idl/dom.idl"""
+
+    def __init__(
+        self, endContainer: Node, endOffset: int, startContainer: Node, startOffset: int
+    ):
+        self.endContainer = endContainer
+        self.endOffset = endOffset
+        self.startContainer = startContainer
+        self.startOffset = startOffset
+
+
+@js(builtin=True)
+class Storage:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Storage
+
+    Browser support: Chrome 4, Safari 4"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def clear(self) -> None: ...
+
+    def getItem(self, key: str) -> str | None: ...
+
+    def setItem(self, key: str, value: str) -> None: ...
+
+    def key(self, index: int) -> str | None: ...
+
+    def removeItem(self, key: str) -> None: ...
+
+
+sessionStorage = Storage()
+js_object(sessionStorage, builtin=True)
+localStorage = Storage()
+js_object(localStorage, builtin=True)
+
+
+@js(builtin=True)
+class Clipboard:
+    async def readText(self) -> str: ...
+
+    async def writeText(self, value: str): ...
+
+
+@js(builtin=True)
+class Navigation(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Navigation
+
+    Browser support: Chrome 102, Safari 26.2"""
+
+    pass
+
+
+@js(builtin=True)
+class Navigator:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Navigator
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.clipboard = Clipboard()
+        self.appCodeName: str = ""
+        self.appName: str = ""
+        self.appVersion: str = ""
+        self.cookieEnabled: bool = False
+        self.hardwareConcurrency: int = 0
+        self.language: str = ""
+        self.languages: list[str] = []
+        self.mimeTypes: MimeTypeArray = None
+        self.onLine: bool = False
+        self.pdfViewerEnabled: bool = False
+        self.platform: str = ""
+        self.plugins: PluginArray = None
+        self.product: str = ""
+        self.productSub: str = ""
+        self.userActivation: UserActivation = None
+        self.userAgent: str = ""
+        self.vendor: str = ""
+        self.vendorSub: str = ""
+
+    def javaEnabled(self) -> bool: ...
+
+    def registerProtocolHandler(self, scheme: str, url: str) -> None: ...
+
+    def unregisterProtocolHandler(self, scheme: str, url: str) -> None: ...
+
+
+navigator = Navigator()
+js_object(navigator, builtin=True)
+
+
+@js(builtin=True)
+class MediaQueryList(EventTarget):
+    """WebIDL source: @webref/idl/cssom-view.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/MediaQueryList
+
+    Browser support: Chrome 9, Safari 5.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.matches: bool = False
+        self.media: str = ""
+        self.onchange: callable = None
+
+    def addListener(self, callback: EventListener | None) -> None: ...
+
+    def removeListener(self, callback: EventListener | None) -> None: ...
+
+
+@js(builtin=True)
+class TrustedScript:
+    """WebIDL source: @webref/idl/trusted-types.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/TrustedScript
+
+    Browser support: Chrome 83, Safari 26"""
+
+    pass
+
+
+@js(builtin=True)
+class UserActivation:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/UserActivation
+
+    Browser support: Chrome 72, Safari 16.4"""
+
+    pass
+
+
+@js(builtin=True)
+class VideoFrame:
+    """WebIDL source: @webref/idl/webcodecs.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/VideoFrame
+
+    Browser support: Chrome 94, Safari 16.4"""
+
+    pass
+
+
+@js(builtin=True)
+class VisualViewport(EventTarget):
+    """WebIDL source: @webref/idl/cssom-view.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/VisualViewport
+
+    Browser support: Chrome 61, Safari 13"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: float = 0.0
+        self.offsetLeft: float = 0.0
+        self.offsetTop: float = 0.0
+        self.onresize: callable = None
+        self.onscroll: callable = None
+        self.onscrollend: callable = None
+        self.pageLeft: float = 0.0
+        self.pageTop: float = 0.0
+        self.scale: float = 0.0
+        self.width: float = 0.0
+
+
+@js(builtin=True)
+class Window(EventTarget):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Window
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.console = Console()
+        self.clientInformation: Navigator = None
+        self.closed: bool = False
+        self.crossOriginIsolated: bool = False
+        self.customElements: CustomElementRegistry = None
+        self.devicePixelRatio: float = 0.0
+        self.document: Document = None
+        self.event: Event | None = None
+        self.ongotpointercapture: callable = None
+        self.onlostpointercapture: callable = None
+        self.onpointercancel: callable = None
+        self.onpointerdown: callable = None
+        self.onpointerenter: callable = None
+        self.onpointerleave: callable = None
+        self.onpointermove: callable = None
+        self.onpointerout: callable = None
+        self.onpointerover: callable = None
+        self.onpointerrawupdate: callable = None
+        self.onpointerup: callable = None
+        self.external: External = None
+        self.frameElement: Element | None = None
+        self.frames: Window = None
+        self.history: History = None
+        self.innerHeight: int = 0
+        self.innerWidth: int = 0
+        self.isSecureContext: bool = False
+        self.length: int = 0
+        self.localStorage: Storage = None
+        self.location: Location = None
+        self.locationbar: BarProp = None
+        self.menubar: BarProp = None
+        self.name: str = ""
+        self.navigation: Navigation = None
+        self.navigator: Navigator = None
+        self.onabort: callable = None
+        self.onafterprint: callable = None
+        self.onauxclick: callable = None
+        self.onbeforeinput: callable = None
+        self.onbeforematch: callable = None
+        self.onbeforeprint: callable = None
+        self.onbeforetoggle: callable = None
+        self.onbeforeunload: callable | None = None
+        self.onblur: callable = None
+        self.oncancel: callable = None
+        self.oncanplay: callable = None
+        self.oncanplaythrough: callable = None
+        self.onchange: callable = None
+        self.onclick: callable = None
+        self.onclose: callable = None
+        self.oncommand: callable = None
+        self.oncontextlost: callable = None
+        self.oncontextmenu: callable = None
+        self.oncontextrestored: callable = None
+        self.oncopy: callable = None
+        self.oncuechange: callable = None
+        self.oncut: callable = None
+        self.ondblclick: callable = None
+        self.ondrag: callable = None
+        self.ondragend: callable = None
+        self.ondragenter: callable = None
+        self.ondragleave: callable = None
+        self.ondragover: callable = None
+        self.ondragstart: callable = None
+        self.ondrop: callable = None
+        self.ondurationchange: callable = None
+        self.onemptied: callable = None
+        self.onended: callable = None
+        self.onerror: callable | None = None
+        self.onfocus: callable = None
+        self.onformdata: callable = None
+        self.onhashchange: callable = None
+        self.oninput: callable = None
+        self.oninvalid: callable = None
+        self.onkeydown: callable = None
+        self.onkeypress: callable = None
+        self.onkeyup: callable = None
+        self.onlanguagechange: callable = None
+        self.onload: callable = None
+        self.onloadeddata: callable = None
+        self.onloadedmetadata: callable = None
+        self.onloadstart: callable = None
+        self.onmessage: callable = None
+        self.onmessageerror: callable = None
+        self.onmousedown: callable = None
+        self.onmouseenter: callable = None
+        self.onmouseleave: callable = None
+        self.onmousemove: callable = None
+        self.onmouseout: callable = None
+        self.onmouseover: callable = None
+        self.onmouseup: callable = None
+        self.onoffline: callable = None
+        self.ononline: callable = None
+        self.onpagehide: callable = None
+        self.onpagereveal: callable = None
+        self.onpageshow: callable = None
+        self.onpageswap: callable = None
+        self.onpaste: callable = None
+        self.onpause: callable = None
+        self.onplay: callable = None
+        self.onplaying: callable = None
+        self.onpopstate: callable = None
+        self.onprogress: callable = None
+        self.onratechange: callable = None
+        self.onrejectionhandled: callable = None
+        self.onreset: callable = None
+        self.onresize: callable = None
+        self.onscroll: callable = None
+        self.onscrollend: callable = None
+        self.onsecuritypolicyviolation: callable = None
+        self.onseeked: callable = None
+        self.onseeking: callable = None
+        self.onselect: callable = None
+        self.onslotchange: callable = None
+        self.onstalled: callable = None
+        self.onstorage: callable = None
+        self.onsubmit: callable = None
+        self.onsuspend: callable = None
+        self.ontimeupdate: callable = None
+        self.ontoggle: callable = None
+        self.onunhandledrejection: callable = None
+        self.onunload: callable = None
+        self.onvolumechange: callable = None
+        self.onwaiting: callable = None
+        self.onwebkitanimationend: callable = None
+        self.onwebkitanimationiteration: callable = None
+        self.onwebkitanimationstart: callable = None
+        self.onwebkittransitionend: callable = None
+        self.onwheel: callable = None
+        self.opener: object = None
+        self.origin: str = ""
+        self.originAgentCluster: bool = False
+        self.outerHeight: int = 0
+        self.outerWidth: int = 0
+        self.pageXOffset: float = 0.0
+        self.pageYOffset: float = 0.0
+        self.parent: Window | None = None
+        self.personalbar: BarProp = None
+        self.screen: Screen = None
+        self.screenLeft: int = 0
+        self.screenTop: int = 0
+        self.screenX: int = 0
+        self.screenY: int = 0
+        self.scrollbars: BarProp = None
+        self.scrollX: float = 0.0
+        self.scrollY: float = 0.0
+        self.self: Window = None
+        self.sessionStorage: Storage = None
+        self.status: str = ""
+        self.statusbar: BarProp = None
+        self.toolbar: BarProp = None
+        self.top: Window | None = None
+        self.visualViewport: VisualViewport | None = None
+        self.window: Window = None
+
+    @js(inline="new {self}.Function({source})")
+    def Function(self, source: str) -> callable: ...
+
+    def matchMedia(self, query: str) -> MediaQueryList: ...
+
+    @js(inline="{self}[{name}]")
+    def __getitem__(self, name: str) -> object: ...
+
+    def alert(self) -> None: ...
+
+    def atob(self, data: str) -> str: ...
+
+    def blur(self) -> None: ...
+
+    def btoa(self, data: str) -> str: ...
+
+    def cancelAnimationFrame(self, handle: int) -> None: ...
+
+    def captureEvents(self) -> None: ...
+
+    def clearInterval(self, id: int = 0) -> None: ...
+
+    def clearTimeout(self, id: int = 0) -> None: ...
+
+    def close(self) -> None: ...
+
+    def confirm(self, message: str = "") -> bool: ...
+
+    async def createImageBitmap(
+        self,
+        image: HTMLImageElement
+        | SVGImageElement
+        | HTMLVideoElement
+        | HTMLCanvasElement
+        | ImageBitmap
+        | OffscreenCanvas
+        | VideoFrame
+        | Blob
+        | ImageData,
+        *,
+        imageOrientation: str = "from-image",
+        premultiplyAlpha: str = "default",
+        colorSpaceConversion: str = "default",
+        resizeWidth: int | None = None,
+        resizeHeight: int | None = None,
+        resizeQuality: str = "low",
+    ) -> ImageBitmap: ...
+
+    def focus(self) -> None: ...
+
+    def getComputedStyle(
+        self, elt: Element, pseudoElt: str | None = None
+    ) -> CSSStyleProperties: ...
+
+    def moveBy(self, x: int, y: int) -> None: ...
+
+    def moveTo(self, x: int, y: int) -> None: ...
+
+    def open(
+        self, url: str = "", target: str = "_blank", features: str = ""
+    ) -> Window | None: ...
+
+    def postMessage(
+        self, message: object, targetOrigin: str, transfer: list[object] | None = None
+    ) -> None: ...
+
+    def print(self) -> None: ...
+
+    def prompt(self, message: str = "", default: str = "") -> str | None: ...
+
+    def queueMicrotask(self, callback: callable) -> None: ...
+
+    def releaseEvents(self) -> None: ...
+
+    def reportError(self, e: object) -> None: ...
+
+    def requestAnimationFrame(self, callback: callable) -> int: ...
+
+    def resizeBy(self, x: int, y: int) -> None: ...
+
+    def resizeTo(self, width: int, height: int) -> None: ...
+
+    async def scroll(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    async def scrollBy(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    async def scrollTo(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    def setInterval(
+        self,
+        handler: str | callable | TrustedScript,
+        timeout: int = 0,
+        *arguments: object,
+    ) -> int: ...
+
+    def setTimeout(
+        self,
+        handler: str | callable | TrustedScript,
+        timeout: int = 0,
+        *arguments: object,
+    ) -> int: ...
+
+    def stop(self) -> None: ...
+
+    def structuredClone(
+        self, value: object, *, transfer: list[object] | None = None
+    ) -> object: ...
+
+
+window = Window()
+js_object(window, builtin=True)
+
+
+@js(builtin=True)
+class Location:
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Location
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        self.host: str = ""
+        self.ancestorOrigins: DOMStringList = None
+        self.hash: str = ""
+        self.hostname: str = ""
+        self.href: str = ""
+        self.origin: str = ""
+        self.pathname: str = ""
+        self.port: str = ""
+        self.protocol: str = ""
+        self.search: str = ""
+
+    def assign(self, url: str) -> None: ...
+
+    def reload(self) -> None: ...
+
+    def replace(self, url: str) -> None: ...
+
+
+location = Location()
+js_object(location, builtin=True)
+
+
+@js
+class ScrollIntoViewOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(
+        self,
+        behavior: str = "auto",
+        block: str = "start",
+        container: str = "all",
+        inline: str = "nearest",
+    ):
+        self.behavior = behavior
+        self.block = block
+        self.container = container
+        self.inline = inline
+
+
+@js
+class ScrollToOptions:
+    """WebIDL source: @webref/idl/cssom-view.idl"""
+
+    def __init__(
+        self, behavior: str = "auto", left: float | None = None, top: float | None = None
+    ):
+        self.behavior = behavior
+        if left is not None:
+            self.left = left
+        if top is not None:
+            self.top = top
+
+
+@js(builtin=True)
+class DOMPoint(DOMPointReadOnly):
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMPoint
+
+    Browser support: Chrome 61, Safari 10.1"""
+
+    pass
+
+
+@js(builtin=True)
+class DOMRect(DOMRectReadOnly):
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMRect
+
+    Browser support: Chrome 61, Safari 10.1"""
+
+    def __init__(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0):
+        super().__init__(x, y, width, height)
+        self.x: float = x
+        self.y: float = y
+        self.left = x
+        self.top = y
+        self.right = x + width
+        self.bottom = y + height
+        self.width: float = width
+        self.height: float = height
+
+    @staticmethod
+    def fromRect(
+        *, x: float = 0, y: float = 0, width: float = 0, height: float = 0
+    ) -> DOMRect: ...
+
+
+@js(builtin=True)
+class DocumentType(Node):
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DocumentType
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.publicId: str = ""
+        self.systemId: str = ""
+
+    def after(self, *nodes: Node | str) -> None: ...
+
+    def before(self, *nodes: Node | str) -> None: ...
+
+    def remove(self) -> None: ...
+
+    def replaceWith(self, *nodes: Node | str) -> None: ...
+
+
+@js(builtin=True)
+class DocumentFragment(Node):
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DocumentFragment
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.childElementCount: int = 0
+        self.children: HTMLCollection[Element] = None
+        self.firstElementChild: Element | None = None
+        self.lastElementChild: Element | None = None
+
+    def append(self, *nodes: Node | str) -> None: ...
+
+    def getElementById(self, elementId: str) -> Element | None: ...
+
+    def moveBefore(self, node: Node, child: Node | None) -> None: ...
+
+    def prepend(self, *nodes: Node | str) -> None: ...
+
+    def querySelector(self, selectors: str) -> Element | None: ...
+
+    def querySelectorAll(self, selectors: str) -> NodeList[Element]: ...
+
+    def replaceChildren(self, *nodes: Node | str) -> None: ...
+
+
+@js(builtin=True)
+class Element(Node):
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Element
+
+    Browser support: Chrome 1, Safari 1"""
+
+    tagName = "UNDEFINED"
+    observedAttributes = []
+
+    def __init__(self):
+        super().__init__()
+        self.children: HTMLCollection[Element] = HTMLCollection[Element]()
+        self.childElementCount: int = 0
+        self.assignedSlot: HTMLSlotElement | None = None
+        self.attributes: NamedNodeMap[Attr] = NamedNodeMap[Attr]()
+        self.classList: DOMTokenList = DOMTokenList()
+        self.style = CSSStyleDeclaration()
+        self.className: str = ""
+        self.clientHeight: int = 0
+        self.clientLeft: int = 0
+        self.clientTop: int = 0
+        self.clientWidth: int = 0
+        self.currentCSSZoom: float = 0.0
+        self.customElementRegistry: CustomElementRegistry | None = None
+        self.firstElementChild: Element | None = None
+        self.id: str = ""
+        self.lastElementChild: Element | None = None
+        self.localName: str = ""
+        self.namespaceURI: str | None = None
+        self.nextElementSibling: Element | None = None
+        self.prefix: str | None = None
+        self.previousElementSibling: Element | None = None
+        self.scrollHeight: int = 0
+        self.scrollLeft: float = 0.0
+        self.scrollTop: float = 0.0
+        self.scrollWidth: int = 0
+        self.shadowRoot: ShadowRoot | None = None
+        self.slot: str = ""
+        self.textContent: str = ""
+
+    def getBoundingClientRect(self) -> DOMRect:
+        return DOMRect()
+
+    def replaceWith(self, *nodes: Node | str) -> None: ...
+
+    async def scroll(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    async def scrollBy(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    async def scrollIntoView(
+        self,
+        *,
+        behavior: str = "auto",
+        block: str = "start",
+        inline: str = "nearest",
+        container: str = "all",
+    ) -> None: ...
+
+    async def scrollTo(
+        self,
+        *,
+        behavior: str = "auto",
+        left: float | None = None,
+        top: float | None = None,
+    ) -> None: ...
+
+    @js
+    def setAttribute(self, name: str, value: object | str) -> None:
+        attribute = self.attributes.getNamedItem(name)
+        old_value: str | None = None
+        if attribute is not None:
+            old_value = attribute.value
+        if attribute is None:
+            attribute = Attr()
+            attribute.localName = name
+            attribute.name = name
+        attribute.value = str(value)
+        attribute.ownerElement = self
+        self.attributes.setNamedItem(attribute)
+        if self._is_observed_attribute(name):
+            self.attributeChangedCallback(name, old_value, str(value))
+
+    @setAttribute.client
+    def setAttribute(self, name: str, value: object | str) -> None:
+        pass
+
+    def convertPointFromNode(
+        self,
+        point: DOMPointInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMPoint: ...
+
+    def convertQuadFromNode(
+        self,
+        quad: DOMQuadInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
+
+    def convertRectFromNode(
+        self,
+        rect: DOMRectReadOnly,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
+
+    def getAttribute(self, name: str) -> str | None:
+        attribute = self.attributes.getNamedItem(name)
+        if attribute is None:
+            return None
+        return attribute.value
+
+    @js
+    def removeAttribute(self, name: str) -> None:
+        attribute = self.attributes.getNamedItem(name)
+        if attribute is not None:
+            self.attributes.removeNamedItem(name)
+            if self._is_observed_attribute(name):
+                self.attributeChangedCallback(name, attribute.value, None)
+
+    @removeAttribute.client
+    def removeAttribute(self, name: str) -> None:
+        pass
+
+    def getAttributeNames(self) -> list[str]:
+        names: list[str] = []
+        for attribute in self.attributes:
+            names.append(attribute.name)
+        return names
+
+    def getAttributeNode(self, qualifiedName: str) -> Attr | None: ...
+
+    def getAttributeNodeNS(
+        self, namespace: str | None, localName: str
+    ) -> Attr | None: ...
+
+    def getAttributeNS(self, namespace: str | None, localName: str) -> str | None: ...
+
+    def getClientRects(self) -> DOMRectList: ...
+
+    def getElementsByClassName(self, classNames: str) -> HTMLCollection[Element]: ...
+
+    def getElementsByTagName(self, qualifiedName: str) -> HTMLCollection[Element]: ...
+
+    def getElementsByTagNameNS(
+        self, namespace: str | None, localName: str
+    ) -> HTMLCollection[Element]: ...
+
+    @js
+    def hasAttribute(self, name: str) -> bool:
+        return name in self.attributes
+
+    @hasAttribute.client
+    def hasAttribute(self, name: str) -> bool:
+        return False
+
+    @js
+    def _is_observed_attribute(self, name: str) -> bool:
+        return name in getattr(type(self), "observedAttributes", [])
+
+    @_is_observed_attribute.client
+    def _is_observed_attribute(self, name: str) -> bool:
+        return False
+
+    def attributeChangedCallback(
+        self, name: str, old_value: str | None, new_value: str | None
+    ):
+        pass
+
+    def after(self, *nodes: Node | str) -> None: ...
+
+    def append(self, *nodes: Node | str) -> None:
+        for node in nodes:
+            if isinstance(node, str):
+                text = Text(node)
+                self.childNodes._append(text)
+            elif isinstance(node, Node):
+                self.childNodes._append(node)
+                if isinstance(node, Element):
+                    self.children._append(node)
+        self.childElementCount = len(self.children)
+
+    def releasePointerCapture(self, pointerId: int) -> None: ...
+
+    def remove(self) -> None:
+        if self.parentElement is None:
+            return
+        self.parentElement.childNodes._remove(self)
+        self.parentElement.children._remove(self)
+        self.parentElement.childElementCount = len(self.parentElement.children)
+
+    def removeAttributeNode(self, attr: Attr) -> Attr: ...
+
+    def removeAttributeNS(self, namespace: str | None, localName: str) -> None: ...
+
+    def replaceChildren(self, *nodes: Node | str) -> None:
+        self.childNodes._clear()
+        self.children._clear()
+        for node in nodes:
+            self.append(node)
+
+    def contains(self, node: Node) -> bool:
+        return False
+
+    def attachShadow(
+        self,
+        *,
+        mode: str,
+        delegatesFocus: bool = False,
+        slotAssignment: str = "named",
+        clonable: bool = False,
+        serializable: bool = False,
+        customElementRegistry: CustomElementRegistry | None = None,
+    ) -> ShadowRoot: ...
+
+    def before(self, *nodes: Node | str) -> None: ...
+
+    def checkVisibility(
+        self,
+        *,
+        checkOpacity: bool = False,
+        checkVisibilityCSS: bool = False,
+        contentVisibilityAuto: bool = False,
+        opacityProperty: bool = False,
+        visibilityProperty: bool = False,
+    ) -> bool: ...
+
+    def closest(self, selectors: str) -> Element | None:
+        return self
+
+    def hasAttributeNS(self, namespace: str | None, localName: str) -> bool: ...
+
+    def hasAttributes(self) -> bool: ...
+
+    def hasPointerCapture(self, pointerId: int) -> bool: ...
+
+    def insertAdjacentElement(self, where: str, element: Element) -> Element | None: ...
+
+    def insertAdjacentText(self, where: str, data: str) -> None: ...
+
+    def matches(self, selectors: str) -> bool: ...
+
+    def moveBefore(self, node: Node, child: Node | None) -> None: ...
+
+    def prepend(self, *nodes: Node | str) -> None: ...
+
+    def querySelector(self, selector: str) -> Element | None:
+        return self
+
+    def querySelectorAll(self, selector: str) -> NodeList[Element]:
+        result: NodeList[Element] = NodeList[Element]()
+        result._append(self)
+        return result
+
+    def setAttributeNode(self, attr: Attr) -> Attr | None: ...
+
+    def setAttributeNodeNS(self, attr: Attr) -> Attr | None: ...
+
+    def setAttributeNS(
+        self, namespace: str | None, qualifiedName: str, value: object | str
+    ) -> None: ...
+
+    def setPointerCapture(self, pointerId: int) -> None: ...
+
+    def toggleAttribute(self, qualifiedName: str, force: bool | None = None) -> bool: ...
+
+    def webkitMatchesSelector(self, selectors: str) -> bool: ...
+
+
+@js(builtin=True)
 class Attr(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1057,6 +2192,86 @@ class CharacterData(Node):
     def replaceWith(self, *nodes: Node | str) -> None: ...
 
     def substringData(self, offset: int, count: int) -> str: ...
+
+
+@js(builtin=True)
+class CSSGroupingRule(CSSRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSGroupingRule
+
+    Browser support: Chrome 45, Safari 14.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.cssRules: CSSRuleList = None
+
+    def deleteRule(self, index: int) -> None: ...
+
+    def insertRule(self, rule: str, index: int = 0) -> int: ...
+
+
+@js(builtin=True)
+class CSSImportRule(CSSRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSImportRule
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.href: str = ""
+        self.layerName: str | None = None
+        self.media: MediaList = None
+        self.styleSheet: CSSStyleSheet | None = None
+        self.supportsText: str | None = None
+
+
+@js(builtin=True)
+class CSSMarginRule(CSSRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    Browser support: Chrome 131"""
+
+    def __init__(self):
+        super().__init__()
+        self.name: str = ""
+        self.style: CSSStyleDeclaration = None
+
+
+@js(builtin=True)
+class CSSNamespaceRule(CSSRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSNamespaceRule
+
+    Browser support: Chrome 47, Safari 10.1"""
+
+    def __init__(self):
+        super().__init__()
+        self.namespaceURI: str = ""
+        self.prefix: str = ""
+
+
+@js(builtin=True)
+class CSSPageDescriptors(CSSStyleDeclaration):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSPageDescriptors
+
+    Browser support: Safari 26"""
+
+    def __init__(self):
+        super().__init__()
+        self.bleed: str = ""
+        self.margin: str = ""
+        self.marginBottom: str = ""
+        self.marginLeft: str = ""
+        self.marginRight: str = ""
+        self.marginTop: str = ""
+        self.marks: str = ""
+        self.size: str = ""
 
 
 @js(builtin=True)
@@ -1137,6 +2352,7 @@ class Document(Node):
         self.activeElement: Element | None = None
         self.documentURI: str = ""
         self.firstElementChild: Element | None = None
+        self.hidden: bool = False
         self.implementation: DOMImplementation = None
         self.inputEncoding: str = ""
         self.lastElementChild: Element | None = None
@@ -1151,12 +2367,45 @@ class Document(Node):
         self.onpointerover: callable = None
         self.onpointerrawupdate: callable = None
         self.onpointerup: callable = None
+        self.scrollingElement: Element | None = None
         self.styleSheets: StyleSheetList = None
         self.URL: str = ""
+        self.visibilityState: str = ""
 
     def adoptNode(self, node: Node) -> Node: ...
 
     def append(self, *nodes: Node | str) -> None: ...
+
+    def caretPositionFromPoint(
+        self, x: float, y: float, *, shadowRoots: list[ShadowRoot] | None = None
+    ) -> CaretPosition | None: ...
+
+    def convertPointFromNode(
+        self,
+        point: DOMPointInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMPoint: ...
+
+    def convertQuadFromNode(
+        self,
+        quad: DOMQuadInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
+
+    def convertRectFromNode(
+        self,
+        rect: DOMRectReadOnly,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
 
     def createAttribute(self, localName: str) -> Attr: ...
 
@@ -1244,6 +2493,10 @@ class Document(Node):
         self, root: Node, whatToShow: int = 4294967295, filter: NodeFilter | None = None
     ) -> TreeWalker: ...
 
+    def elementFromPoint(self, x: float, y: float) -> Element | None: ...
+
+    def elementsFromPoint(self, x: float, y: float) -> list[Element]: ...
+
     def evaluate(
         self,
         expression: str,
@@ -1287,79 +2540,23 @@ js_object(document, builtin=True)
 
 
 @js(builtin=True)
-class Storage:
-    def getItem(self, key: str) -> str | None: ...
+class QuotaExceededError(DOMException):
+    """WebIDL source: @webref/idl/webidl.idl
 
-    def setItem(self, key: str, value: str): ...
+    MDN: https://developer.mozilla.org/docs/Web/API/QuotaExceededError
 
-    def removeItem(self, key: str): ...
+    Browser support: Chrome 138"""
 
-
-sessionStorage = Storage()
-js_object(sessionStorage, builtin=True)
-localStorage = Storage()
-js_object(localStorage, builtin=True)
-
-
-@js(builtin=True)
-class Clipboard:
-    async def readText(self) -> str: ...
-
-    async def writeText(self, value: str): ...
-
-
-@js(builtin=True)
-class Navigator:
-    def __init__(self):
-        self.clipboard = Clipboard()
-        self.userAgent: str = ""
-
-
-navigator = Navigator()
-js_object(navigator, builtin=True)
-
-
-@js(builtin=True)
-class MediaQueryList(EventTarget):
-    def __init__(self):
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        quota: float | None = None,
+        requested: float | None = None,
+    ):
         super().__init__()
-        self.matches = False
-
-
-@js(builtin=True)
-class Crypto:
-    def randomUUID(self) -> str: ...
-
-
-crypto = Crypto()
-js_object(crypto, builtin=True)
-
-
-@js(builtin=True)
-class Window(EventTarget):
-    def __init__(self):
-        super().__init__()
-        self.console = Console()
-
-    @js(inline="new {self}.Function({source})")
-    def Function(self, source: str) -> callable: ...
-
-    def matchMedia(self, query: str) -> MediaQueryList: ...
-
-
-window = Window()
-js_object(window, builtin=True)
-
-
-@js(builtin=True)
-class Location:
-    def __init__(self):
-        self.host = ""
-        self.hash = ""
-
-
-location = Location()
-js_object(location, builtin=True)
+        self.quota: float | None = quota
+        self.requested: float | None = requested
 
 
 @js(builtin=True)
@@ -1395,6 +2592,10 @@ class Range(AbstractRange):
 
     def extractContents(self) -> DocumentFragment: ...
 
+    def getBoundingClientRect(self) -> DOMRect: ...
+
+    def getClientRects(self) -> DOMRectList: ...
+
     def insertNode(self, node: Node) -> None: ...
 
     def intersectsNode(self, node: Node) -> bool: ...
@@ -1421,6 +2622,25 @@ class Range(AbstractRange):
 
 
 @js(builtin=True)
+class StaticRange(AbstractRange):
+    """WebIDL source: @webref/idl/dom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/StaticRange
+
+    Browser support: Chrome 60, Safari 10.1"""
+
+    def __init__(
+        self,
+        *,
+        startContainer: Node,
+        startOffset: int,
+        endContainer: Node,
+        endOffset: int,
+    ):
+        super().__init__()
+
+
+@js(builtin=True)
 class Comment(CharacterData):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1433,6 +2653,45 @@ class Comment(CharacterData):
         self.data = data
         self.length = len(data)
         self.textContent = data
+
+
+@js(builtin=True)
+class CSSPageRule(CSSGroupingRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSPageRule
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.selectorText: str = ""
+        self.style: CSSPageDescriptors = None
+
+
+@js(builtin=True)
+class CSSStyleRule(CSSGroupingRule):
+    """WebIDL source: @webref/idl/cssom.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSStyleRule
+
+    Browser support: Chrome 1, Safari 1"""
+
+    def __init__(self):
+        super().__init__()
+        self.selectorText: str = ""
+        self.style: CSSStyleProperties = None
+
+
+@js(builtin=True)
+class HTMLElement(Element):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    pass
 
 
 @js(builtin=True)
@@ -1489,6 +2748,17 @@ class ShadowRoot(DocumentFragment):
 
 
 @js(builtin=True)
+class SVGElement(Element):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
 class Text(CharacterData):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1503,6 +2773,33 @@ class Text(CharacterData):
         self.textContent = data
         self.assignedSlot: HTMLSlotElement | None = None
         self.wholeText: str = ""
+
+    def convertPointFromNode(
+        self,
+        point: DOMPointInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMPoint: ...
+
+    def convertQuadFromNode(
+        self,
+        quad: DOMQuadInit,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
+
+    def convertRectFromNode(
+        self,
+        rect: DOMRectReadOnly,
+        from_: Text | Element | CSSPseudoElement | Document,
+        *,
+        fromBox: str = "border",
+        toBox: str = "border",
+    ) -> DOMQuad: ...
 
     def splitText(self, offset: int) -> Text: ...
 
@@ -1519,10 +2816,87 @@ class XMLDocument(Document):
 
 
 @js(builtin=True)
+class HTMLSlotElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLSlotElement
+
+    Browser support: Chrome 53, Safari 10"""
+
+    pass
+
+
+@js(builtin=True)
+class HTMLMediaElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLMediaElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    pass
+
+
+@js(builtin=True)
+class HTMLImageElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLImageElement
+
+    Browser support: Chrome 1, Safari 1"""
+
+    pass
+
+
+@js(builtin=True)
+class HTMLCanvasElement(HTMLElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLCanvasElement
+
+    Browser support: Chrome 1, Safari 2"""
+
+    pass
+
+
+@js(builtin=True)
 class CDATASection(Text):
     """WebIDL source: @webref/idl/dom.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/CDATASection
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGGraphicsElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGGraphicsElement
+
+    Browser support: Chrome 30, Safari 7"""
+
+    pass
+
+
+@js(builtin=True)
+class HTMLVideoElement(HTMLMediaElement):
+    """WebIDL source: @webref/idl/html.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/HTMLVideoElement
+
+    Browser support: Chrome 3, Safari 3.1"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGImageElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGImageElement
 
     Browser support: Chrome 1, Safari 3"""
 

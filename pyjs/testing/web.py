@@ -30,14 +30,6 @@ def selector_count(root: Element, selector: str) -> int:
     return len(root.querySelectorAll(selector))
 
 
-@js
-def require_element(root: Element, selector: str) -> Element:
-    element = root.querySelector(selector)
-    if element is None:
-        raise Exception("Selector did not match an element: " + selector)
-    return element
-
-
 @js(builtin=True, inline="new Promise((resolve) => requestAnimationFrame(resolve))")
 async def next_frame() -> None: ...
 

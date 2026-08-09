@@ -7,7 +7,7 @@ browse in the repository while installing as an ordinary top-level package.
 From the repository root, install the core and examples from a source checkout:
 
 ```bash
-python -m pip install -e . -e ./examples
+uv sync
 ```
 
 An installed PyJS release provides the same package through the `examples` extra:
@@ -16,13 +16,14 @@ An installed PyJS release provides the same package through the `examples` extra
 python -m pip install "pyjs[examples]"
 ```
 
-Run any complete application as a module:
+Run each complete application with the command shown:
 
 | Example | Command |
 | --- | --- |
 | [Calculator](calculator/) | `python -m pyjs_examples.calculator` |
 | [Chatroom](chatroom/) | `python -m pyjs_examples.chatroom` |
 | [Kanban board](kanban/) | `python -m pyjs_examples.kanban` |
+| [Navigation workspace](navigation/) | `python -m pyjs_examples.navigation` |
 | [NativeScript Counter](nativescript_counter/) | `python -m pyjs_examples.nativescript_counter` |
 | [Space Invaders](space_invaders/) | `python -m pyjs_examples.space_invaders` |
 | [TodoMVC](todomvc/) | `python -m pyjs_examples.todomvc` |

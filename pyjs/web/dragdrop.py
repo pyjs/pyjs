@@ -1,6 +1,6 @@
 from pyjs import js
 from pyjs.web.dom import Element
-from pyjs.web.events import MouseEvent, MouseEventInit
+from pyjs.web.events import MouseEvent
 from pyjs.web.files import File, FileList
 
 
@@ -85,17 +85,13 @@ class DragEvent(MouseEvent):
         dataTransfer: DataTransfer | None = None,
     ):
         super().__init__(
-            type,
-            bubbles=bubbles,
-            cancelable=cancelable,
-            clientX=clientX,
-            clientY=clientY,
+            type, bubbles=bubbles, cancelable=cancelable, clientX=clientX, clientY=clientY
         )
         self.dataTransfer: DataTransfer | None = dataTransfer
 
 
 @js
-class DragEventInit(MouseEventInit):
+class DragEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
     def __init__(self, dataTransfer: DataTransfer | None = None):

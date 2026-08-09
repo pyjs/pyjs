@@ -1,16 +1,16 @@
+from typing import TypedDict
+
 from pyjs import effect, js, state
+from pyjs.javascript import JSON
 from pyjs.web.dom import localStorage, location, window
 from pyjs.web.domx import CustomElement, button, input, ref, tag
 from pyjs.web.events import CustomEvent, Event, KeyboardEvent
-from pyjs.web.javascript import JSON
 
 
-@js
-class TodoRecord:
-    def __init__(self, todo_id: str, title: str, completed: bool):
-        self.id = todo_id
-        self.title = title
-        self.completed = completed
+class TodoRecord(TypedDict):
+    id: str
+    title: str
+    completed: bool
 
 
 @js
@@ -147,7 +147,7 @@ class TodoItem(CustomElement):
         self.dispatchEvent(DeleteTodoEvent(self))
 
     def record(self) -> TodoRecord:
-        return TodoRecord(self.todo_id, self.title, self.completed)
+        return TodoRecord(id=self.todo_id, title=self.title, completed=self.completed)
 
 
 @js
@@ -400,8 +400,10 @@ class TodoApp(CustomElement):
         records: list[TodoRecord] = JSON.parse(stored)
         next_id = 1
         for record in records:
-            self.todo_list.append(TodoItem(record.id, record.title, completed=record.completed))
-            record_id = int(record.id)
+            self.todo_list.append(
+                TodoItem(record["id"], record["title"], completed=record["completed"])
+            )
+            record_id = int(record["id"])
             if record_id >= next_id:
                 next_id = record_id + 1
         self.next_id = next_id

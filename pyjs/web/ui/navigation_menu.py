@@ -87,7 +87,11 @@ def NavigationMenuContent(*children):
 
 @js
 def NavigationMenuLink(href: str, *children, current: bool = False):
-    attributes = {"data-slot": "navigation-menu-link", "href": href}
+    attributes = {
+        "data-pyjs-navigation-link": "",
+        "data-slot": "navigation-menu-link",
+        "href": href,
+    }
     if current:
         attributes["aria-current"] = "page"
     return a(

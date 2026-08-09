@@ -11,7 +11,7 @@ authors = [
 ]
 description = "Python to JavaScript transpiler."
 readme = "README.md"
-license = {text = "BSD-3-Clause"}
+license = "BSD-3-Clause"
 dependencies = [
     "markdown>=3.8",
     "pillow",
@@ -23,7 +23,6 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -42,7 +41,13 @@ pyjs = "pyjs.cli:main"
 pyjs = "pyjs.testing.pytest_plugin"
 
 [project.optional-dependencies]
-examples = ["pyjs-examples==0.0.1"]
+examples = ["pyjs-examples==0.0.2"]
+
+[dependency-groups]
+dev = [
+    "pyjs-examples==0.0.2",
+    "ruff==0.15.22",
+]
 
 [project.urls]
 Homepage = "https://pyjs.org"
@@ -63,8 +68,17 @@ ignore = ["F403", "F405"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.uv.sources]
+pyjs-examples = {workspace = true}
+
+[tool.uv.workspace]
+members = ["examples"]
+
 [tool.setuptools.dynamic]
 version = {attr = "pyjs.__version__"}
+
+[tool.setuptools]
+include-package-data = false
 
 [tool.setuptools.packages.find]
 include = ["pyjs*"]

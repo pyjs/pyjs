@@ -24,6 +24,9 @@ def browser_executable() -> str:
         "chromium",
         "chromium-browser",
         "/snap/bin/chromium",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ]
     for candidate in candidates:
         if not candidate:
@@ -52,7 +55,8 @@ async def wait_for_http(url: str, timeout: float = 15) -> None:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
         try:
-            with urlopen(url, timeout=0.5) as response:
+            remaining = deadline - asyncio.get_running_loop().time()
+            with urlopen(url, timeout=remaining) as response:
                 if response.status < 400:
                     return
         except OSError, URLError:
@@ -397,9 +401,9 @@ class BrowserPage:
             ".map((element) => element.textContent || '')"
         )
 
-    async def navigate(self, url: str) -> None:
+    async def navigate(self, url: str, *, timeout: float = 15) -> None:
         await self.session.send("Page.navigate", {"url": url})
-        await self.wait_for("document.readyState === 'complete'", url)
+        await self.wait_for("document.readyState === 'complete'", url, timeout=timeout)
 
     async def bring_to_front(self) -> None:
         await self.session.send("Page.bringToFront")
@@ -429,6 +433,19 @@ class BrowserPage:
                 "features": [
                     {"name": "prefers-color-scheme", "value": color_scheme},
                 ]
+            },
+        )
+
+    async def set_offline(self, offline: bool = True) -> None:
+        await self.session.send("Network.enable")
+        await self.session.send(
+            "Network.emulateNetworkConditions",
+            {
+                "offline": offline,
+                "latency": 0,
+                "downloadThroughput": -1,
+                "uploadThroughput": -1,
+                "connectionType": "none" if offline else "wifi",
             },
         )
 
@@ -627,7 +644,10 @@ class Browser:
             stderr=subprocess.DEVNULL,
         )
         try:
-            await wait_for_http(f"http://127.0.0.1:{self.debug_port}/json/version")
+            await wait_for_http(
+                f"http://127.0.0.1:{self.debug_port}/json/version",
+                timeout=30,
+            )
         except Exception:
             await self.close()
             raise

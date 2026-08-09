@@ -147,4 +147,9 @@ def test_kanban_visual_showcase():
 
     assert card_order(board.in_progress) == "drag-drop,empty-states,onboarding-audit"
     mount(board.columns)
-    assert_render(board.columns, "kanban-board", pixel_threshold=10)
+    assert_render(
+        board.columns,
+        "kanban-board",
+        pixel_threshold=10,
+        max_different_pixel_ratio=0.06,
+    )

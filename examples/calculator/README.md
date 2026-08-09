@@ -13,6 +13,7 @@ It demonstrates:
 - sign, percent, clear, and divide-by-zero behavior
 - asynchronous result persistence through an HTTP POST route
 - per-browser in-memory sessions that restore the last result after refresh
+- a Python-authored service worker with cache-first offline application loading
 - browser tests that interact with the real DOM through button events
 
 The example intentionally stays focused on calculator behavior. Reusable widget
@@ -30,7 +31,9 @@ From the repository root:
 Open `http://127.0.0.1:8000/`. Completing a calculation with `=` saves its
 result to the server. Refreshing the page restores that result through the
 browser's session cookie. Sessions are intentionally in memory, so restarting
-the server clears them.
+the server clears them. The app also registers `/calculator-serviceworker.js`.
+After its first controlled reload, the calculator can load and calculate while
+the browser is offline.
 
 ## Run the tests
 

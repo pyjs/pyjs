@@ -65,12 +65,24 @@ templates when the documentation does not cover an advanced case.
 - PyJS statically analyzes typed Python and emits JavaScript without a Python runtime.
 - `CustomElement` classes are browser-native custom elements that can also render on the server.
 - Use `@js` for code that must be available in the browser.
+- Mark module values needed by compiled code as `JS[T]`; use `Final[JS[T]]` for immutable values.
+  Unmarked module values remain server-only.
 - Treat the custom element and its DOM as application state when that state must survive server
   rendering and hydration.
 - Use `state()` and `@effect(...)` for reactive values when they make imperative DOM updates clearer.
-- Run a standalone application with `python app.py`; a conventional entry point calls
-  `serve(__file__)`.
+- Run an installed project or example through its normal Python entry point with
+  `python -m PACKAGE`. Use `pyjs serve` in a configured project or `pyjs serve app.py` as a
+  convenient alternative, particularly when PyJS was installed through npm.
 - Do not edit generated `.main.js`, `.main.css`, or `.main.html` files.
+
+## Web UI
+
+- Start with components from `pyjs.web.ui` for ordinary application controls
+  and layouts instead of hand-crafting equivalent HTML and CSS.
+- Inspect the installed components and their examples for the current APIs and
+  composition patterns before using them.
+- Hand-craft a control only when no suitable component exists or the design
+  intentionally requires custom behavior.
 
 ## Tests
 

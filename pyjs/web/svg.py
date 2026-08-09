@@ -1,11 +1,25 @@
 from pyjs import js
 from pyjs.web.dom import (
     DOMRect,
+    DOMTokenList,
     Element,
     Node,
     NodeList,
+    ShadowRoot,
 )
+from pyjs.web.events import EventTarget
 from pyjs.web.geometry import DOMMatrix, DOMMatrix2DInit, DOMPoint, DOMPointInit
+
+
+@js(builtin=True)
+class CSSPseudoElement:
+    """WebIDL source: @webref/idl/css-pseudo.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/CSSPseudoElement
+
+    Browser support: Chrome 149"""
+
+    pass
 
 
 @js(builtin=True)
@@ -36,12 +50,51 @@ class SVGAngle:
 
 
 @js(builtin=True)
+class SVGAnimatedAngle:
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGAnimatedAngle
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        self.animVal: SVGAngle = None
+        self.baseVal: SVGAngle = None
+
+
+@js(builtin=True)
+class SVGAnimatedBoolean:
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGAnimatedBoolean
+
+    Browser support: Chrome 6, Safari 5"""
+
+    def __init__(self):
+        self.animVal: bool = False
+        self.baseVal: bool = False
+
+
+@js(builtin=True)
 class SVGAnimatedEnumeration:
     """WebIDL source: @webref/idl/SVG.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/SVGAnimatedEnumeration
 
     Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        self.animVal: int = 0
+        self.baseVal: int = 0
+
+
+@js(builtin=True)
+class SVGAnimatedInteger:
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGAnimatedInteger
+
+    Browser support: Chrome 6, Safari 5"""
 
     def __init__(self):
         self.animVal: int = 0
@@ -236,7 +289,6 @@ class SVGLengthList:
 
     def clear(self) -> None: ...
 
-    @js(inline="{self}[{index}]")
     def getItem(self, index: int) -> SVGLength: ...
 
     def initialize(self, newItem: SVGLength) -> SVGLength: ...
@@ -279,7 +331,6 @@ class SVGNumberList:
 
     def clear(self) -> None: ...
 
-    @js(inline="{self}[{index}]")
     def getItem(self, index: int) -> SVGNumber: ...
 
     def initialize(self, newItem: SVGNumber) -> SVGNumber: ...
@@ -289,6 +340,53 @@ class SVGNumberList:
     def removeItem(self, index: int) -> SVGNumber: ...
 
     def replaceItem(self, newItem: SVGNumber, index: int) -> SVGNumber: ...
+
+
+@js
+class SVGPathDataSettings:
+    """WebIDL source: @webref/idl/svg-paths.idl"""
+
+    def __init__(self, normalize: bool = False):
+        self.normalize = normalize
+
+
+@js(builtin=True)
+class SVGPathSegment:
+    """WebIDL source: @webref/idl/svg-paths.idl"""
+
+    def __init__(self):
+        self.type: str = ""
+        self.values: list[float] = []
+
+
+@js(builtin=True)
+class SVGPointList:
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGPointList
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        self.length: int = 0
+        self.numberOfItems: int = 0
+
+    @js(inline="{self}[{index}] = {newItem}")
+    def __setitem__(self, index: int, newItem: DOMPoint) -> None: ...
+
+    def appendItem(self, newItem: DOMPoint) -> DOMPoint: ...
+
+    def clear(self) -> None: ...
+
+    def getItem(self, index: int) -> DOMPoint: ...
+
+    def initialize(self, newItem: DOMPoint) -> DOMPoint: ...
+
+    def insertItemBefore(self, newItem: DOMPoint, index: int) -> DOMPoint: ...
+
+    def removeItem(self, index: int) -> DOMPoint: ...
+
+    def replaceItem(self, newItem: DOMPoint, index: int) -> DOMPoint: ...
 
 
 @js(builtin=True)
@@ -338,7 +436,6 @@ class SVGStringList:
 
     def clear(self) -> None: ...
 
-    @js(inline="{self}[{index}]")
     def getItem(self, index: int) -> str: ...
 
     def initialize(self, newItem: str) -> str: ...
@@ -409,7 +506,6 @@ class SVGTransformList:
         self, matrix: DOMMatrix2DInit | None = None
     ) -> SVGTransform: ...
 
-    @js(inline="{self}[{index}]")
     def getItem(self, index: int) -> SVGTransform: ...
 
     def initialize(self, newItem: SVGTransform) -> SVGTransform: ...
@@ -422,6 +518,26 @@ class SVGTransformList:
 
 
 @js(builtin=True)
+class SVGUnitTypes:
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGUnitTypes
+
+    Browser support: Chrome 1, Safari 3.1"""
+
+    SVG_UNIT_TYPE_OBJECTBOUNDINGBOX = 2
+    SVG_UNIT_TYPE_UNKNOWN = 0
+    SVG_UNIT_TYPE_USERSPACEONUSE = 1
+
+
+@js(builtin=True)
+class SVGUseElementShadowRoot(ShadowRoot):
+    """WebIDL source: @webref/idl/SVG.idl"""
+
+    pass
+
+
+@js(builtin=True)
 class TrustedScriptURL:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -430,6 +546,49 @@ class TrustedScriptURL:
     Browser support: Chrome 83, Safari 26"""
 
     pass
+
+
+@js(builtin=True)
+class Animation(EventTarget):
+    """WebIDL source: @webref/idl/web-animations.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Animation
+
+    Browser support: Chrome 75, Safari 13.1"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGDescElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGDescElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGGradientElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGGradientElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    SVG_SPREADMETHOD_PAD = 1
+    SVG_SPREADMETHOD_REFLECT = 2
+    SVG_SPREADMETHOD_REPEAT = 3
+    SVG_SPREADMETHOD_UNKNOWN = 0
+
+    def __init__(self):
+        super().__init__()
+        self.gradientTransform: SVGAnimatedTransformList = None
+        self.gradientUnits: SVGAnimatedEnumeration = None
+        self.href: SVGAnimatedString = None
+        self.spreadMethod: SVGAnimatedEnumeration = None
 
 
 @js(builtin=True)
@@ -458,6 +617,208 @@ class SVGGraphicsElement(SVGElement):
     def getCTM(self) -> DOMMatrix | None: ...
 
     def getScreenCTM(self) -> DOMMatrix | None: ...
+
+
+@js(builtin=True)
+class SVGMarkerElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGMarkerElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    SVG_MARKER_ORIENT_ANGLE = 2
+    SVG_MARKER_ORIENT_AUTO = 1
+    SVG_MARKER_ORIENT_AUTO_START_REVERSE = 3
+    SVG_MARKER_ORIENT_UNKNOWN = 0
+    SVG_MARKERUNITS_STROKEWIDTH = 2
+    SVG_MARKERUNITS_UNKNOWN = 0
+    SVG_MARKERUNITS_USERSPACEONUSE = 1
+
+    def __init__(self):
+        super().__init__()
+        self.markerHeight: SVGAnimatedLength = None
+        self.markerUnits: SVGAnimatedEnumeration = None
+        self.markerWidth: SVGAnimatedLength = None
+        self.orient: str = ""
+        self.orientAngle: SVGAnimatedAngle = None
+        self.orientType: SVGAnimatedEnumeration = None
+        self.preserveAspectRatio: SVGAnimatedPreserveAspectRatio = None
+        self.refX: SVGAnimatedLength = None
+        self.refY: SVGAnimatedLength = None
+        self.viewBox: SVGAnimatedRect = None
+
+    def setOrientToAngle(self, angle: SVGAngle) -> None: ...
+
+    def setOrientToAuto(self) -> None: ...
+
+
+@js(builtin=True)
+class SVGMetadataElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGMetadataElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGPatternElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGPatternElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: SVGAnimatedLength = None
+        self.href: SVGAnimatedString = None
+        self.patternContentUnits: SVGAnimatedEnumeration = None
+        self.patternTransform: SVGAnimatedTransformList = None
+        self.patternUnits: SVGAnimatedEnumeration = None
+        self.preserveAspectRatio: SVGAnimatedPreserveAspectRatio = None
+        self.viewBox: SVGAnimatedRect = None
+        self.width: SVGAnimatedLength = None
+        self.x: SVGAnimatedLength = None
+        self.y: SVGAnimatedLength = None
+
+
+@js(builtin=True)
+class SVGScriptElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGScriptElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.href: SVGAnimatedString = None
+        self.type: str = ""
+
+
+@js(builtin=True)
+class SVGStopElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGStopElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.offset: SVGAnimatedNumber = None
+
+
+@js(builtin=True)
+class SVGStyleElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGStyleElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.disabled: bool = False
+        self.media: str = ""
+        self.title: str = ""
+        self.type: str = ""
+
+
+@js(builtin=True)
+class SVGTitleElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGTitleElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGViewElement(SVGElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGViewElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.preserveAspectRatio: SVGAnimatedPreserveAspectRatio = None
+        self.viewBox: SVGAnimatedRect = None
+
+
+@js(builtin=True)
+class ShadowAnimation(Animation):
+    """WebIDL source: @webref/idl/SVG.idl"""
+
+    def __init__(self, source: Animation, newTarget: Element | CSSPseudoElement):
+        super().__init__()
+        self.sourceAnimation: Animation = None
+
+
+@js(builtin=True)
+class SVGAElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGAElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.download: str = ""
+        self.hash: str = ""
+        self.host: str = ""
+        self.hostname: str = ""
+        self.href: SVGAnimatedString = None
+        self.hreflang: str = ""
+        self.origin: str = ""
+        self.password: str = ""
+        self.pathname: str = ""
+        self.ping: str = ""
+        self.port: str = ""
+        self.protocol: str = ""
+        self.referrerPolicy: str = ""
+        self.rel: str = ""
+        self.relList: DOMTokenList = None
+        self.search: str = ""
+        self.target: SVGAnimatedString = None
+        self.type: str = ""
+        self.username: str = ""
+
+
+@js(builtin=True)
+class SVGDefsElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGDefsElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGForeignObjectElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGForeignObjectElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: SVGAnimatedLength = None
+        self.width: SVGAnimatedLength = None
+        self.x: SVGAnimatedLength = None
+        self.y: SVGAnimatedLength = None
 
 
 @js(builtin=True)
@@ -490,6 +851,59 @@ class SVGGeometryElement(SVGGraphicsElement):
     def isPointInFill(self, point: DOMPointInit | None = None) -> bool: ...
 
     def isPointInStroke(self, point: DOMPointInit | None = None) -> bool: ...
+
+
+@js(builtin=True)
+class SVGImageElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGImageElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.crossOrigin: str | None = None
+        self.height: SVGAnimatedLength = None
+        self.href: SVGAnimatedString = None
+        self.preserveAspectRatio: SVGAnimatedPreserveAspectRatio = None
+        self.width: SVGAnimatedLength = None
+        self.x: SVGAnimatedLength = None
+        self.y: SVGAnimatedLength = None
+
+
+@js(builtin=True)
+class SVGLinearGradientElement(SVGGradientElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGLinearGradientElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.x1: SVGAnimatedLength = None
+        self.x2: SVGAnimatedLength = None
+        self.y1: SVGAnimatedLength = None
+        self.y2: SVGAnimatedLength = None
+
+
+@js(builtin=True)
+class SVGRadialGradientElement(SVGGradientElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGRadialGradientElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.cx: SVGAnimatedLength = None
+        self.cy: SVGAnimatedLength = None
+        self.fr: SVGAnimatedLength = None
+        self.fx: SVGAnimatedLength = None
+        self.fy: SVGAnimatedLength = None
+        self.r: SVGAnimatedLength = None
 
 
 @js(builtin=True)
@@ -555,6 +969,31 @@ class SVGSVGElement(SVGGraphicsElement):
 
 
 @js(builtin=True)
+class SVGSwitchElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGSwitchElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGSymbolElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGSymbolElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.preserveAspectRatio: SVGAnimatedPreserveAspectRatio = None
+        self.viewBox: SVGAnimatedRect = None
+
+
+@js(builtin=True)
 class SVGTextContentElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -591,6 +1030,23 @@ class SVGTextContentElement(SVGGraphicsElement):
 
 
 @js(builtin=True)
+class SVGUseElement(SVGGraphicsElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGUseElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.height: SVGAnimatedLength = None
+        self.href: SVGAnimatedString = None
+        self.width: SVGAnimatedLength = None
+        self.x: SVGAnimatedLength = None
+        self.y: SVGAnimatedLength = None
+
+
+@js(builtin=True)
 class SVGCircleElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -603,6 +1059,22 @@ class SVGCircleElement(SVGGeometryElement):
         self.cx: SVGAnimatedLength = None
         self.cy: SVGAnimatedLength = None
         self.r: SVGAnimatedLength = None
+
+
+@js(builtin=True)
+class SVGEllipseElement(SVGGeometryElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGEllipseElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.cx: SVGAnimatedLength = None
+        self.cy: SVGAnimatedLength = None
+        self.rx: SVGAnimatedLength = None
+        self.ry: SVGAnimatedLength = None
 
 
 @js(builtin=True)
@@ -639,6 +1111,34 @@ class SVGPathElement(SVGGeometryElement):
 
 
 @js(builtin=True)
+class SVGPolygonElement(SVGGeometryElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGPolygonElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.animatedPoints: SVGPointList = None
+        self.points: SVGPointList = None
+
+
+@js(builtin=True)
+class SVGPolylineElement(SVGGeometryElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGPolylineElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    def __init__(self):
+        super().__init__()
+        self.animatedPoints: SVGPointList = None
+        self.points: SVGPointList = None
+
+
+@js(builtin=True)
 class SVGRectElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -654,6 +1154,29 @@ class SVGRectElement(SVGGeometryElement):
         self.width: SVGAnimatedLength = None
         self.x: SVGAnimatedLength = None
         self.y: SVGAnimatedLength = None
+
+
+@js(builtin=True)
+class SVGTextPathElement(SVGTextContentElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGTextPathElement
+
+    Browser support: Chrome 1, Safari 3.1"""
+
+    TEXTPATH_METHODTYPE_ALIGN = 1
+    TEXTPATH_METHODTYPE_STRETCH = 2
+    TEXTPATH_METHODTYPE_UNKNOWN = 0
+    TEXTPATH_SPACINGTYPE_AUTO = 1
+    TEXTPATH_SPACINGTYPE_EXACT = 2
+    TEXTPATH_SPACINGTYPE_UNKNOWN = 0
+
+    def __init__(self):
+        super().__init__()
+        self.href: SVGAnimatedString = None
+        self.method: SVGAnimatedEnumeration = None
+        self.spacing: SVGAnimatedEnumeration = None
+        self.startOffset: SVGAnimatedLength = None
 
 
 @js(builtin=True)
@@ -678,6 +1201,17 @@ class SVGTextElement(SVGTextPositioningElement):
     """WebIDL source: @webref/idl/SVG.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/SVGTextElement
+
+    Browser support: Chrome 1, Safari 3"""
+
+    pass
+
+
+@js(builtin=True)
+class SVGTSpanElement(SVGTextPositioningElement):
+    """WebIDL source: @webref/idl/SVG.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/SVGTSpanElement
 
     Browser support: Chrome 1, Safari 3"""
 

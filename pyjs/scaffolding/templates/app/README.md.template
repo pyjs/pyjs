@@ -16,6 +16,13 @@ python -m pip install -e ".[test]"
 python -m __PYJS_PACKAGE__
 ```
 
+When PyJS is installed through npm, or for a convenient Python one-off, run it directly with
+PyJS instead:
+
+```bash
+pyjs serve
+```
+
 Open <http://127.0.0.1:8000/>.
 
 ## Test

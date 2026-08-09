@@ -1,11 +1,20 @@
+import annotationlib
 import ast
+import importlib.util
+import inspect
+import sys
+import types
+import typing
 from collections.abc import Iterable
 from functools import partial
 from typing import Generic
 
 from pyjs.decorators import *
 
+from .diagnostics import CompilationContext, SourceFragment
+
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+JS_MODULE_VALUE_TYPES = (bool, int, float, str, type(None))
 
 
 class CompilationExtension:
@@ -59,11 +68,38 @@ def py_to_ast(value):
         raise TypeError(f"Unsupported type: {type(value)}")
 
 
-def traverse_imported(obj_name: str, obj: object, current_module: Module):
-    if existing := current_module.scope.names.get(obj_name):
-        if existing.py_obj is not obj:
-            raise NameError(f"Imported object conflicts with existing `{obj_name}`.")
-        return
+def unwrap_js_annotation(annotation) -> tuple[object, bool] | None:
+    is_final = typing.get_origin(annotation) is typing.Final
+    if is_final:
+        annotation = typing.get_args(annotation)[0]
+
+    origin = typing.get_origin(annotation)
+    if origin is JS:
+        return typing.get_args(annotation)[0], is_final
+    if origin is typing.Annotated:
+        value_type, *metadata = typing.get_args(annotation)
+        if js in metadata:
+            return value_type, is_final
+    return None
+
+
+def module_js_annotations(module) -> dict[str, tuple[object, bool]]:
+    annotations = annotationlib.get_annotations(
+        module,
+        format=annotationlib.Format.FORWARDREF,
+    )
+    return {
+        name: js_annotation
+        for name, annotation in annotations.items()
+        if (js_annotation := unwrap_js_annotation(annotation)) is not None
+    }
+
+
+def resolve_imported(
+    obj: object,
+    current_module: Module,
+    fallback_name: str | None = None,
+):
     module_name = obj.__module__
     package = current_module.container
     if module_name not in package:
@@ -71,11 +107,32 @@ def traverse_imported(obj_name: str, obj: object, current_module: Module):
             inspect.getmodule(obj),
             package,
             extensions=current_module.extensions,
+            context=current_module.context,
         ).build()
     imported_module = package[module_name]
-    imported_object = imported_module.search(getattr(obj, "__name__", obj_name))
+    imported_name = getattr(obj, "__name__", None)
+    if imported_name is None:
+        imported_name = next(
+            (
+                name
+                for name, value in vars(imported_module.py_module).items()
+                if value is obj
+            ),
+            fallback_name,
+        )
+    if imported_name is None:
+        raise NameError(f"Cannot find imported object {obj!r} in {module_name}.")
+    return imported_module.search(imported_name)
+
+
+def traverse_imported(obj_name: str, obj: object, current_module: Module):
+    if existing := current_module.scope.names.get(obj_name):
+        if existing.py_obj is not obj:
+            raise NameError(f"Imported object conflicts with existing `{obj_name}`.")
+        return
+    imported_object = resolve_imported(obj, current_module, obj_name)
     current_module.scope.add(imported_object, obj_name)
-    current_module.imported.setdefault(module_name, []).append(
+    current_module.imported.setdefault(obj.__module__, []).append(
         (imported_object, obj_name)
     )
 
@@ -220,8 +277,19 @@ class Object:
             if inspect.isbuiltin(py_obj):
                 continue
 
+            js_module_binding = (
+                container.js_annotations.get(name)
+                if isinstance(container, Module)
+                else None
+            )
+            is_typed_dict = typing.is_typeddict(py_obj)
             js_attr = getattr(py_obj, "__js__", None)
-            if js_attr is False or (js_attr is None and not propagate_js):
+            if js_attr is False or (
+                js_attr is None
+                and not propagate_js
+                and not is_typed_dict
+                and js_module_binding is None
+            ):
                 continue
 
             if isinstance(container, Module) and getattr(
@@ -231,6 +299,8 @@ class Object:
                 None,
             ):
                 traverse_imported(name, py_obj, container)
+            elif is_typed_dict:
+                TypedDictClass.from_py_cls(py_obj, container)
             elif inspect.isclass(py_obj):
                 assert isinstance(container, Module), (
                     "Classes are only allowed in modules."
@@ -241,6 +311,26 @@ class Object:
                     Class.from_py_cls(py_obj, container).build()
             elif callable(py_obj) or isinstance(py_obj, (classmethod, staticmethod)):
                 Function.from_py_func(py_obj, container)
+            elif js_module_binding is not None:
+                if not isinstance(py_obj, JS_MODULE_VALUE_TYPES):
+                    raise TypeError(
+                        f"JS module binding `{name}` has unsupported value type "
+                        f"`{type(py_obj).__name__}`."
+                    )
+                annotation, is_final = js_module_binding
+                if annotation is None:
+                    annotation = type(None)
+                value_type = resolve_python_annotation(annotation, container.scope)
+                container.add(
+                    value_type(
+                        name,
+                        container.scope,
+                        container,
+                        py_to_ast(py_obj),
+                        py_obj,
+                        is_const=is_final,
+                    )
+                )
             elif (
                 propagate_js
                 and isinstance(container, Class)
@@ -262,11 +352,41 @@ class Module(Object):
         package,
         is_builtins: bool = False,
         extensions: tuple[CompilationExtension, ...] = (),
+        context: CompilationContext | None = None,
     ):
         super().__init__(module.__name__, ModuleScope(is_builtins), package)
         self.py_module = module
         self.imported: dict[str, list[tuple[Object, str]]] = {}
+        self.inline_dependencies: dict[Object, str] = {}
         self.extensions = extensions
+        self.context = context or CompilationContext()
+        filename = getattr(module, "__file__", None)
+        if filename is not None:
+            self.context.sources.register(
+                filename,
+                getattr(module, "__pyjs_source__", None),
+            )
+        self.js_annotations = module_js_annotations(module)
+
+    def register_inline_dependency(self, dependency_obj: Object) -> str:
+        if alias := self.inline_dependencies.get(dependency_obj):
+            return alias
+
+        base = f"${dependency_obj.name.lstrip('_')}"
+        aliases = set(self.inline_dependencies.values())
+        alias = base
+        suffix = 2
+        while alias in aliases:
+            alias = f"{base}{suffix}"
+            suffix += 1
+
+        self.inline_dependencies[dependency_obj] = alias
+        if dependency_obj.container is not self:
+            imported = self.imported.setdefault(dependency_obj.container.name, [])
+            binding = (dependency_obj, alias)
+            if binding not in imported:
+                imported.append(binding)
+        return alias
 
     @property
     def py_obj(self):
@@ -291,8 +411,44 @@ class Module(Object):
         return list(self.scope.names.values())
 
     def build(self, *args, **kwargs):
+        self.build_imported_js_bindings()
         super().build(self.py_module, self)
         return self
+
+    def build_imported_js_bindings(self):
+        source = inspect.getsource(self.py_module)
+        for node in ast.parse(source).body:
+            if not isinstance(node, ast.ImportFrom) or node.module is None:
+                continue
+            module_name = node.module
+            if node.level:
+                module_name = importlib.util.resolve_name(
+                    f"{'.' * node.level}{module_name}", self.py_module.__package__
+                )
+            imported_module = sys.modules.get(module_name)
+            if imported_module is None:
+                continue
+            js_annotations = module_js_annotations(imported_module)
+            for alias in node.names:
+                if alias.name not in js_annotations:
+                    continue
+                self.add_imported_js_binding(
+                    imported_module,
+                    alias.name,
+                    alias.asname or alias.name,
+                )
+
+    def add_imported_js_binding(self, module, source_name: str, local_name: str):
+        if module.__name__ not in self.container:
+            self.container[module.__name__] = Module(
+                module,
+                self.container,
+                extensions=self.extensions,
+                context=self.context,
+            ).build()
+        imported = self.container[module.__name__].search(source_name)
+        self.scope.add(imported, local_name)
+        self.imported.setdefault(module.__name__, []).append((imported, local_name))
 
 
 class UnionType:
@@ -300,8 +456,24 @@ class UnionType:
         self.name = name
         self._types: dict[str, Class] = {cls.name: cls for cls in types} if types else {}
 
-    def __call__(self, name, scope, container):
-        new = Instance(name, self, scope, container)
+    def __call__(
+        self,
+        name,
+        scope,
+        container,
+        ast_value=None,
+        value=None,
+        is_const=False,
+    ):
+        new = Instance(
+            name,
+            self,
+            scope,
+            container,
+            static_value=ast_value,
+            py_obj=value,
+            is_const=is_const,
+        )
         return new
 
     @property
@@ -364,7 +536,26 @@ class Class(Object):
         elif cls.__base__ is Generic:
             self.super = None
         else:
-            self.super: Class = self.search(cls.__base__.__name__)
+            self.super = self.search(cls.__base__.__name__)
+            if isinstance(self.super, GenericClass):
+                generic_base = next(
+                    (
+                        base
+                        for base in getattr(cls, "__orig_bases__", ())
+                        if getattr(base, "__origin__", None) is cls.__base__
+                    ),
+                    None,
+                )
+                assert generic_base is not None, (
+                    f"Subclass {cls.__name__} must provide type arguments for "
+                    f"{cls.__base__.__name__}."
+                )
+                generic_types = [self.search(arg.__name__) for arg in generic_base.__args__]
+                assert all(isinstance(arg, Class) for arg in generic_types)
+                try:
+                    self.super = self.super(*generic_types)
+                except DependencyError as dependency:
+                    self.super = dependency.class_or_func
             assert isinstance(self.super, Class)
             if not self.super.container.scope.is_builtins:
                 self.super.subclasses.append(self)
@@ -455,6 +646,69 @@ class Class(Object):
     def find_bases(self, name):
         if self.super is not None:
             return self.super.find_attrs(name)
+
+
+def resolve_python_annotation(annotation, scope: Scope):
+    origin = typing.get_origin(annotation)
+    if origin is not None and getattr(origin, "__name__", "") in {
+        "NotRequired",
+        "ReadOnly",
+        "Required",
+    }:
+        return resolve_python_annotation(typing.get_args(annotation)[0], scope)
+    if origin in (types.UnionType, typing.Union):
+        return UnionType(
+            types=[
+                resolve_python_annotation(value, scope)
+                for value in typing.get_args(annotation)
+            ]
+        ).type
+    if origin is not None:
+        generic = scope.search(origin.__name__)
+        assert isinstance(generic, GenericClass)
+        return generic(
+            *[
+                resolve_python_annotation(value, scope)
+                for value in typing.get_args(annotation)
+            ]
+        )
+    return scope.search(annotation.__name__)
+
+
+class TypedDictClass(Class):
+    def __init__(self, cls: type, container: Module):
+        Object.__init__(self, cls.__name__, ClassScope(container.scope), container)
+        self.generic_types = None
+        self.generic_name = cls.__name__
+        self.internal_scope = ClassScope(self.scope)
+        self.py_cls = cls
+        self._self = Instance("self", self, self.scope, self)
+        self.subclasses = []
+        self.super = self.search("typed_dict")
+        assert isinstance(self.super, Class)
+        self.annotations = typing.get_type_hints(cls, include_extras=True)
+        self.required_keys = cls.__required_keys__
+        self._field_types = {}
+
+    @property
+    def node(self):
+        return []
+
+    @property
+    def children(self):
+        return ()
+
+    def build(self, *args, **kwargs):
+        return self
+
+    def field_type(self, key: str):
+        try:
+            annotation = self.annotations[key]
+        except KeyError:
+            raise TypeError(f"{self.name} has no key {key!r}.") from None
+        if key not in self._field_types:
+            self._field_types[key] = resolve_python_annotation(annotation, self.scope)
+        return self._field_types[key]
 
 
 def same_analyzer_type(left, right) -> bool:
@@ -565,6 +819,7 @@ class Function(Object):
         self.body = []
         self.lineno: int = None
         self.original_node: FunctionNode | None = None
+        self.source_fragment: SourceFragment | None = None
         self.is_async = False
         self.is_partial_client = False
         self.virtual_visited = set()
@@ -637,6 +892,15 @@ class Function(Object):
         func.is_partial_client = client_partial is not None
         func.lineno = lineno
         func.original_node = func_def
+        simple_wrapper = (
+            source_func is getattr(module_obj.py_module, "main", None)
+            and getattr(module_obj.py_module, "__pyjs_simple_wrapper__", False)
+        )
+        func.source_fragment = SourceFragment(
+            module_obj.context.sources.fragment_for(source_func).source,
+            lineno - 2 if simple_wrapper else lineno - 1,
+            -4 if simple_wrapper else 0,
+        )
         func.is_async = isinstance(func_def, ast.AsyncFunctionDef)
 
         container.add(func)
@@ -710,6 +974,7 @@ class Function(Object):
         self_=None,
         *,
         keyword_strs: dict[str, str] | None = None,
+        inline_dependencies: dict[str, str] | None = None,
     ):
         rewrite = self.py_func.__js_rewrite_call_site__
         args_joined = ", ".join(arg_strs)
@@ -728,6 +993,7 @@ class Function(Object):
             for arg_str, param in zip(arg_strs, params, strict=False):
                 args[param.arg] = arg_str
         args.update(keyword_strs or {})
+        args.update(inline_dependencies or {})
         if self.is_method:
             args["self"] = self_
         return rewrite(**args)
@@ -815,9 +1081,13 @@ class Instance(Object):
     @property
     def node(self) -> ast.AnnAssign:
         assert self.static_value is not None
+        if isinstance(self.container, Module):
+            declaration = "__const__" if self.is_const else "__module__"
+        else:
+            declaration = "__static__"
         assign = ast.AnnAssign(
             target=Name(self),
-            annotation=ast.Name(id="__const__" if self.is_const else "__static__"),
+            annotation=ast.Name(id=declaration),
             value=self.static_value,
             simple=True,
         )
@@ -825,7 +1095,7 @@ class Instance(Object):
         return assign
 
     @classmethod
-    def from_static_value(cls, name, value, container):
+    def from_static_value(cls, name, value, container, is_const=None):
         value_type_name = type(value).__name__
         value_type = container.search(value_type_name)
         assert isinstance(value_type, Class), "Can't determine type."
@@ -846,7 +1116,7 @@ class Instance(Object):
             container,
             value_ast,
             value,
-            is_const=isinstance(container, Module),
+            is_const=isinstance(container, Module) if is_const is None else is_const,
         )
 
 
@@ -885,6 +1155,8 @@ class Call(ast.Call):
         value_obj: Object | UnionType = None,
         operator: ast.operator | ast.cmpop | None = None,
         reverse: bool = False,
+        inline_dependencies: dict[str, str] | None = None,
+        dependency_objects: dict[str, Function] | None = None,
         **kwargs,
     ):
         self.obj = obj
@@ -897,6 +1169,8 @@ class Call(ast.Call):
         )
         self.operator = operator
         self.reverse = reverse
+        self.inline_dependencies = inline_dependencies or {}
+        self.dependency_objects = dependency_objects or {}
         super().__init__(**kwargs)
 
 

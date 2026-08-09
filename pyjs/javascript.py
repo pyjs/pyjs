@@ -1,3 +1,6 @@
+import json
+import random
+
 from pyjs import js
 
 
@@ -12,6 +15,18 @@ class ArrayBuffer:
     def isView(value: object) -> bool: ...
 
     def slice(self, begin: int = 0, end: int | None = None) -> ArrayBuffer: ...
+
+
+@js(builtin=True)
+class SharedArrayBuffer:
+    def __init__(self, length: int):
+        self.byteLength: int = length
+        self.growable: bool = False
+        self.maxByteLength: int = length
+
+    def grow(self, newLength: int) -> None: ...
+
+    def slice(self, begin: int = 0, end: int | None = None) -> SharedArrayBuffer: ...
 
 
 @js(builtin=True)
@@ -100,12 +115,24 @@ class Uint32Array(TypedArray): ...
 
 
 @js(builtin=True)
-class JSON:
+class Math:
+    @js(analyze=False)
     @staticmethod
-    def parse(value: str) -> object: ...
+    def random() -> float:
+        return random.random()
 
+
+@js(builtin=True)
+class JSON:
+    @js(analyze=False)
     @staticmethod
-    def stringify(value: object) -> str: ...
+    def parse(value: str) -> object:
+        return json.loads(value)
+
+    @js(analyze=False)
+    @staticmethod
+    def stringify(value: object) -> str:
+        return json.dumps(value, default=vars, separators=(",", ":"))
 
 
 @js(builtin=True)

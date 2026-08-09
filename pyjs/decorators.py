@@ -1,4 +1,6 @@
 import inspect
+from collections.abc import Mapping
+from typing import Annotated
 
 DECORATIONS = {
     # safe to analyze and transpile
@@ -23,6 +25,9 @@ DECORATIONS = {
     # returns JavaScript source as string, replaces the code at
     # every call site where this function is called
     "__js_rewrite_call_site__",  # function
+
+    # functions referenced by an inline rewrite and retained in generated code
+    "__js_inline_dependencies__",  # dict[str, function]
 
     # returns JavaScript source as string, appending the code
     # after the definition of the wrapped code object
@@ -84,12 +89,21 @@ def should_include(obj):
     ) and not getattr(obj.py_obj, "__dict__", {}).get("__builtin__", False)
 
 
-def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, client=None):
+def js(
+    *cls_func_args,
+    inline=None,
+    dependencies=None,
+    builtin=None,
+    include=None,
+    analyze=None,
+    client=None,
+):
 
     class Wrapper:
 
-        def __init__(self, inline, builtin, include, analyze, client):
+        def __init__(self, inline, dependencies, builtin, include, analyze, client):
             self.inline = inline
+            self.dependencies = dependencies
             self.builtin = builtin
             self.include = include
             self.analyze = analyze
@@ -110,23 +124,79 @@ def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, cl
                 else:
                     cls_func.__js_rewrite_call_site__ = self.inline
 
+            if self.dependencies is not None:
+                target = cls_func.__qualname__
+                if self.inline is None:
+                    raise TypeError(
+                        f"@js dependencies for {target!r} require an inline= argument."
+                    )
+                if not isinstance(self.dependencies, Mapping):
+                    raise TypeError(
+                        f"@js dependencies for {target!r} must be a mapping."
+                    )
+                invalid_names = [
+                    name
+                    for name in self.dependencies
+                    if not isinstance(name, str) or not name.isidentifier()
+                ]
+                if invalid_names:
+                    names = ", ".join(repr(name) for name in invalid_names)
+                    raise TypeError(
+                        f"@js dependency names for {target!r} must be Python "
+                        f"identifiers; invalid: {names}."
+                    )
+                invalid_dependencies = [
+                    (name, type(dependency).__name__)
+                    for name, dependency in self.dependencies.items()
+                    if not inspect.isfunction(dependency)
+                ]
+                if invalid_dependencies:
+                    dependencies = ", ".join(
+                        f"{name!r} ({type_name})"
+                        for name, type_name in invalid_dependencies
+                    )
+                    raise TypeError(
+                        f"@js dependencies for {target!r} must be functions; "
+                        f"invalid: {dependencies}."
+                    )
+                reserved = {
+                    "_arg_strs",
+                    "_arg_types",
+                    "_keyword_strs",
+                    "_args_joined",
+                    "_args_suffix",
+                    "self",
+                }
+                parameter_names = set(inspect.signature(cls_func).parameters)
+                conflicts = set(self.dependencies) & (reserved | parameter_names)
+                if conflicts:
+                    raise TypeError(
+                        f"@js dependency names for {target!r} conflict with call "
+                        f"arguments: {', '.join(sorted(conflicts))}."
+                    )
+                cls_func.__js_inline_dependencies__ = dict(self.dependencies)
+
             if inspect.isclass(cls_func):
-                assert self.include is None, (
-                    "@js(include=True) is only supported for class methods."
-                )
-                assert self.client_implementation is None, (
-                    "@js(client=...) is not supported for classes."
-                )
+                if self.include is not None:
+                    raise TypeError(
+                        "@js(include=True) is only supported for class methods."
+                    )
+                if self.client_implementation is not None:
+                    raise TypeError("@js(client=...) is not supported for classes.")
                 return cls_func
 
             if self.client_implementation is not None:
-                assert self.inline is None, "@js(client=...) cannot be combined with inline=."
+                if self.inline is not None:
+                    raise TypeError(
+                        "@js(client=...) cannot be combined with inline=."
+                    )
                 cls_func.__js_replace__ = self.client_implementation
 
             if self.include is True:
-                assert "." in cls_func.__qualname__, (
-                    "@js(include=True) is only supported for class methods."
-                )
+                if "." not in cls_func.__qualname__:
+                    raise TypeError(
+                        "@js(include=True) is only supported for class methods."
+                    )
                 cls_func.__js_include__ = True
 
             if self.analyze is False:
@@ -150,9 +220,11 @@ def js(*cls_func_args, inline=None, builtin=None, include=None, analyze=None, cl
             return cls_func
 
     if cls_func_args and is_cls_or_func(cls_func_args[0]):
-        return Wrapper(inline, builtin, include, analyze, client)(cls_func_args[0])
+        return Wrapper(
+            inline, dependencies, builtin, include, analyze, client
+        )(cls_func_args[0])
 
-    return Wrapper(inline, builtin, include, analyze, client)
+    return Wrapper(inline, dependencies, builtin, include, analyze, client)
 
 
 def nojs(cls_func):
@@ -168,3 +240,6 @@ def js_object(obj, builtin=None, include=None):
     if include is True:
         obj.__js_include__ = True
     return obj
+
+
+type JS[T] = Annotated[T, js]

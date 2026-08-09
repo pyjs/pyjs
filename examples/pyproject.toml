@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyjs-examples"
-version = "0.0.1"
+version = "0.0.2"
 requires-python = ">=3.14"
 authors = [
     {name = "Lex Berezhny", email = "lex@damoti.com"},
@@ -13,7 +13,7 @@ description = "Official example applications for PyJS."
 readme = "README.md"
 license = "BSD-3-Clause"
 dependencies = [
-    "pyjs==0.0.1",
+    "pyjs==0.0.2",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -40,6 +40,7 @@ calculator = "pyjs_examples.calculator"
 chatroom = "pyjs_examples.chatroom"
 counter = "pyjs_examples.counter"
 kanban = "pyjs_examples.kanban"
+navigation = "pyjs_examples.navigation"
 nativescript_counter = "pyjs_examples.nativescript_counter"
 space_invaders = "pyjs_examples.space_invaders"
 todomvc = "pyjs_examples.todomvc"
@@ -48,11 +49,13 @@ state_counter = "pyjs_examples.samples.state_counter"
 ui_dialog = "pyjs_examples.samples.ui_dialog"
 
 [tool.setuptools]
+include-package-data = false
 packages = [
     "pyjs_examples",
     "pyjs_examples.calculator",
     "pyjs_examples.chatroom",
     "pyjs_examples.kanban",
+    "pyjs_examples.navigation",
     "pyjs_examples.nativescript_counter",
     "pyjs_examples.samples",
     "pyjs_examples.samples.state_counter",
@@ -69,6 +72,7 @@ packages = [
 "pyjs_examples.calculator" = ["README.md", "tests/*.py"]
 "pyjs_examples.chatroom" = ["README.md", "tests/*.py"]
 "pyjs_examples.kanban" = ["README.md", "visual_test.py", "tests/*.py", "tests/renders/*.png"]
+"pyjs_examples.navigation" = ["README.md", "tests/*.py"]
 "pyjs_examples.nativescript_counter" = ["README.md", "tests/*.py"]
 "pyjs_examples.samples.state_counter" = ["README.md", "tests/*.py"]
 "pyjs_examples.samples.ui_dialog" = ["README.md", "tests/*.py"]
@@ -85,6 +89,7 @@ testpaths = [
     "calculator/tests",
     "chatroom/tests",
     "kanban/tests",
+    "navigation/tests",
     "nativescript_counter/tests",
     "samples/state_counter/tests",
     "samples/ui_dialog/tests",
@@ -92,6 +97,9 @@ testpaths = [
     "todomvc/tests",
     "workspace/tests",
 ]
+
+[tool.uv.sources]
+pyjs = {workspace = true}
 
 [tool.ruff]
 target-version = "py314"

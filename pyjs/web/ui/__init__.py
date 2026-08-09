@@ -1,4 +1,4 @@
-from pyjs.web.dom import crypto
+from pyjs.web.crypto import crypto
 from pyjs.web.domx import CustomElement, tag
 
 

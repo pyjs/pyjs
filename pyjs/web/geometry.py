@@ -1,5 +1,6 @@
 from pyjs import js
-from pyjs.web.javascript import Float32Array, Float64Array
+from pyjs.javascript import Float32Array, Float64Array
+from pyjs.web.dom import DOMRect, DOMRectInit
 
 
 @js
@@ -242,6 +243,137 @@ class DOMPointReadOnly:
 
 
 @js(builtin=True)
+class DOMQuad:
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMQuad
+
+    Browser support: Chrome 61, Safari 11"""
+
+    def __init__(
+        self,
+        p1: DOMPointInit | None = None,
+        p2: DOMPointInit | None = None,
+        p3: DOMPointInit | None = None,
+        *,
+        x: float = 0,
+        y: float = 0,
+        z: float = 0,
+        w: float = 1,
+    ):
+        self.p1: DOMPoint = p1
+        self.p2: DOMPoint = p2
+        self.p3: DOMPoint = p3
+        self.p4: DOMPoint = None
+
+    @staticmethod
+    def fromQuad(
+        *,
+        p1: DOMPointInit | None = None,
+        p2: DOMPointInit | None = None,
+        p3: DOMPointInit | None = None,
+        p4: DOMPointInit | None = None,
+    ) -> DOMQuad: ...
+
+    @staticmethod
+    def fromRect(other: DOMRectInit | None = None) -> DOMQuad: ...
+
+    def getBounds(self) -> DOMRect: ...
+
+    def toJSON(self) -> object: ...
+
+
+@js
+class DOMQuadInit:
+    """WebIDL source: @webref/idl/geometry.idl"""
+
+    def __init__(
+        self,
+        p1: DOMPointInit | None = None,
+        p2: DOMPointInit | None = None,
+        p3: DOMPointInit | None = None,
+        p4: DOMPointInit | None = None,
+    ):
+        if p1 is not None:
+            self.p1 = p1
+        if p2 is not None:
+            self.p2 = p2
+        if p3 is not None:
+            self.p3 = p3
+        if p4 is not None:
+            self.p4 = p4
+
+
+@js(builtin=True)
+class DOMRectList:
+    """WebIDL source: @webref/idl/geometry.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/DOMRectList
+
+    Browser support: Chrome 61, Safari 10.1"""
+
+    def __init__(self):
+        self.length: int = 0
+
+    def item(self, index: int) -> DOMRect | None: ...
+
+
+@js
+class DOMMatrixInit:
+    """WebIDL source: @webref/idl/geometry.idl"""
+
+    def __init__(
+        self,
+        a: float | None = None,
+        b: float | None = None,
+        c: float | None = None,
+        d: float | None = None,
+        e: float | None = None,
+        f: float | None = None,
+        is2D: bool | None = None,
+        m11: float | None = None,
+        m12: float | None = None,
+        m13: float = 0,
+        m14: float = 0,
+        m21: float | None = None,
+        m22: float | None = None,
+        m23: float = 0,
+        m24: float = 0,
+        m31: float = 0,
+        m32: float = 0,
+        m33: float = 1,
+        m34: float = 0,
+        m41: float | None = None,
+        m42: float | None = None,
+        m43: float = 0,
+        m44: float = 1,
+    ):
+        self.a = a
+        self.b = b
+        self.c = c
+        self.d = d
+        self.e = e
+        self.f = f
+        self.is2D = is2D
+        self.m11 = m11
+        self.m12 = m12
+        self.m13 = m13
+        self.m14 = m14
+        self.m21 = m21
+        self.m22 = m22
+        self.m23 = m23
+        self.m24 = m24
+        self.m31 = m31
+        self.m32 = m32
+        self.m33 = m33
+        self.m34 = m34
+        self.m41 = m41
+        self.m42 = m42
+        self.m43 = m43
+        self.m44 = m44
+
+
+@js(builtin=True)
 class DOMMatrix(DOMMatrixReadOnly):
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -397,61 +529,6 @@ class DOMMatrix(DOMMatrixReadOnly):
     def skewYSelf(self, sy: float = 0) -> DOMMatrix: ...
 
     def translateSelf(self, tx: float = 0, ty: float = 0, tz: float = 0) -> DOMMatrix: ...
-
-
-@js
-class DOMMatrixInit(DOMMatrix2DInit):
-    """WebIDL source: @webref/idl/geometry.idl"""
-
-    def __init__(
-        self,
-        a: float | None = None,
-        b: float | None = None,
-        c: float | None = None,
-        d: float | None = None,
-        e: float | None = None,
-        f: float | None = None,
-        is2D: bool | None = None,
-        m11: float | None = None,
-        m12: float | None = None,
-        m13: float = 0,
-        m14: float = 0,
-        m21: float | None = None,
-        m22: float | None = None,
-        m23: float = 0,
-        m24: float = 0,
-        m31: float = 0,
-        m32: float = 0,
-        m33: float = 1,
-        m34: float = 0,
-        m41: float | None = None,
-        m42: float | None = None,
-        m43: float = 0,
-        m44: float = 1,
-    ):
-        self.a = a
-        self.b = b
-        self.c = c
-        self.d = d
-        self.e = e
-        self.f = f
-        self.is2D = is2D
-        self.m11 = m11
-        self.m12 = m12
-        self.m13 = m13
-        self.m14 = m14
-        self.m21 = m21
-        self.m22 = m22
-        self.m23 = m23
-        self.m24 = m24
-        self.m31 = m31
-        self.m32 = m32
-        self.m33 = m33
-        self.m34 = m34
-        self.m41 = m41
-        self.m42 = m42
-        self.m43 = m43
-        self.m44 = m44
 
 
 @js(builtin=True)

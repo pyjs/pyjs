@@ -1,18 +1,16 @@
 import difflib
 import textwrap
-from importlib import import_module
 from io import StringIO
 from pathlib import Path
 
 import pytest
 
-from pyjs.transpiler import analyze_source
-from pyjs.transpiler.analyzer import analyze_module
-from pyjs.transpiler.transpiler import Transpiler
-from pyjs.transpiler.utils import write_types
+from pyjs.transpiler import analyze_source, compile_source
+from pyjs.transpiler.diagnostics import CompilationError, format_compilation_error
+from pyjs.transpiler.transpiler import Transpiler, bundle_import
 
 WIDTH = 80
-TESTS_DIR = Path(__file__).parent
+TESTS_DIR = Path(__file__).parents[2] / "tests" / "transpiler"
 
 
 def diff_side_by_side(msg, first, second):
@@ -54,9 +52,13 @@ def transpile_line(line):
 
 def analyze_file(module_name, write=False, no_assert=False):
     __tracebackhide__ = True
-    entry_point, _ = analyze_module(import_module(f"tests.transpiler.cases.{module_name}"))
-    module = entry_point.container
-    actual = write_types(module.node).splitlines()
+    source_file = TESTS_DIR / "cases" / f"{module_name}.py"
+    analysis = analyze_source(
+        source_file.read_text(),
+        filename=str(source_file),
+        module_name=f"tests.cases.{module_name}",
+    )
+    actual = analysis.types.splitlines()
 
     if no_assert:
         print(f"Transpiled {module_name}.run:")
@@ -85,9 +87,13 @@ def analyze_file(module_name, write=False, no_assert=False):
 
 def transpile_file(module_name, write=False, no_assert=False):
     __tracebackhide__ = True
-    entry_point, _ = analyze_module(import_module(f"tests.transpiler.cases.{module_name}"))
-    module = entry_point.container
-    actual = Transpiler(module.scope.search("main")).visit(module.node).splitlines()
+    source_file = TESTS_DIR / "cases" / f"{module_name}.py"
+    analysis = analyze_source(
+        source_file.read_text(),
+        filename=str(source_file),
+        module_name=f"tests.cases.{module_name}",
+    )
+    actual = analysis.javascript.splitlines()
 
     if no_assert:
         print(f"Transpiled {module_name}.run:")
@@ -149,7 +155,74 @@ def assert_analysis2x_transpile(py, expected_py, expected_js):
     assert_transpile(py, expected_js)
 
 
+def analyze_module_source(py, **kwargs):
+    return analyze_source(textwrap.dedent(py), **kwargs)
+
+
+def assert_module_transpile(py, expected_js, **kwargs):
+    __tracebackhide__ = True
+    actual = analyze_module_source(py, **kwargs).javascript
+    assert textwrap.dedent(expected_js).strip() == actual
+
+
+def assert_module_analysis_transpile(py, expected_py, expected_js, **kwargs):
+    __tracebackhide__ = True
+    analysis = analyze_module_source(py, **kwargs)
+    assert textwrap.dedent(expected_py).strip() == analysis.types
+    assert textwrap.dedent(expected_js).strip() == analysis.javascript
+
+
+def assert_bundle_module_transpile(py, expected_js, **kwargs):
+    __tracebackhide__ = True
+    analysis = analyze_module_source(py, **kwargs)
+    actual = Transpiler(
+        analysis.entry_point,
+        bundle_import,
+        lambda name: f"__export_js__.{name} = {name};",
+    ).visit(analysis.entry_point.container.node)
+    assert textwrap.dedent(expected_js).strip() == actual
+
+
+def assert_compiled_sources(py, expected_sources, **kwargs):
+    __tracebackhide__ = True
+    actual = compile_source(textwrap.dedent(py), **kwargs).sources
+    expected = {
+        name: textwrap.dedent(source).strip()
+        for name, source in expected_sources.items()
+    }
+    assert expected == actual
+
+
+def assert_diagnostic(py, expected, **kwargs):
+    __tracebackhide__ = True
+    with pytest.raises(CompilationError) as caught:
+        analyze_module_source(py, **kwargs)
+    actual = format_compilation_error(caught.value)
+    expected = textwrap.dedent(expected).strip("\n") + "\n"
+    assert expected == actual
+    return caught.value.diagnostic
+
+
+def diagnostic_text(
+    filename: str,
+    line: int,
+    source: str,
+    underline: str,
+    error: str,
+    *details: str,
+) -> str:
+    lines = [
+        f'  File "{filename}", line {line}',
+        f"    {source}",
+        f"    {underline}",
+        error,
+        *details,
+    ]
+    return "\n".join(lines) + "\n"
+
+
 a = assert_analysis
 aa = assert_analysis_round_trip
 at = assert_analysis_transpile
 aat = assert_analysis2x_transpile
+ad = assert_diagnostic

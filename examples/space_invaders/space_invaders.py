@@ -911,13 +911,16 @@ class SpaceInvadersApp(Widget):
                 ),
             )
         )
-        self.game_canvas = ref(canvas())
+        self.game_canvas = ref(
+            canvas(
+                tw(
+                    "block aspect-[4/3] w-full rounded-xl border border-cyan-400/20 "
+                    "bg-slate-950"
+                )
+            )
+        )
         self.game_canvas.setAttribute("width", "768")
         self.game_canvas.setAttribute("height", "576")
-        self.game_canvas.setAttribute(
-            "class",
-            "block aspect-[4/3] w-full rounded-xl border border-cyan-400/20 bg-slate-950",
-        )
         self.game_canvas.setAttribute("aria-label", "Space Invaders game field")
         self.setAttribute("score", "0")
         self.setAttribute("lives", "3")

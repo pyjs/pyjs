@@ -17,7 +17,8 @@ from websockets.http11 import Request, Response
 
 from pyjs.transpiler import prepare_bundle
 from pyjs.web.domx import HTMLElement, tag
-from pyjs.web.ssr import render_document, write_html
+from pyjs.web.navigation import NAVIGATION_HEADER, navigation_page
+from pyjs.web.ssr import render_document, render_html, write_html
 
 SESSION_COOKIE_NAME = "pyjs-session"
 MAX_REQUEST_BODY_SIZE = 64 * 1024
@@ -67,6 +68,14 @@ class ServerResponse:
         self.headers = headers or {}
 
 
+class NavigationPage:
+    def __init__(self, body, title, status=200, headers=None):
+        self.body = body
+        self.title = title
+        self.status = status
+        self.headers = headers or {}
+
+
 def websocket_response(response, request=None):
     body = response.body
     if isinstance(body, str):
@@ -85,12 +94,13 @@ def websocket_response(response, request=None):
     return Response(status.value, status.phrase, headers, body)
 
 
-def html(body, js, css, script_type):
+def html(body, js, css, script_type, title=""):
     return tag(
         "html",
         tag(
             "head",
             tag("meta", {"charset": "utf-8"}),
+            tag("title", title),
             tag("link", {"rel": "stylesheet", "href": css}),
         ),
         tag("body", body),
@@ -98,8 +108,18 @@ def html(body, js, css, script_type):
     )
 
 
-def page(body, js, css, script_type="module"):
-    return render_document(html(body, js, css, script_type))
+def page(body, js, css, script_type="module", title=""):
+    return render_document(html(body, js, css, script_type, title))
+
+
+def navigation_fragment(body, title, layout_id):
+    return render_html(
+        tag(
+            "div",
+            tag("title", title),
+            navigation_page(body, layout_id),
+        )
+    )
 
 
 def write(parent: HTMLElement, src):
@@ -111,7 +131,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         server: PyjsServer = self.server
         server.refresh()
         path = urlsplit(self.path).path
-        if path == "/":
+        if path == "/" and ("GET", path) in server.routes:
+            request = server.create_request("GET", path, self.headers, b"")
+            self.send_server_response(server.dispatch(request), request)
+        elif path == "/":
             request = server.create_request("GET", path, self.headers, b"")
             response = ServerResponse(
                 page(
@@ -124,6 +147,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_server_response(response, request)
         elif path == "/index.css":
             self.send_server_response(ServerResponse(server.get_css(), content_type="text/css"))
+        elif ("GET", path) in server.routes:
+            request = server.create_request("GET", path, self.headers, b"")
+            self.send_server_response(server.dispatch(request), request)
         elif path.endswith(".js"):
             module_name = Path(path).stem
             if module_name not in server.package:
@@ -194,6 +220,9 @@ class PyjsApplication:
         *entry_point_args,
         render=None,
         routes=None,
+        layout=None,
+        layout_id="main",
+        page_entry_points=(),
     ):
         self.module_name = _module_name(module)
         self.module = importlib.import_module(self.module_name)
@@ -206,6 +235,11 @@ class PyjsApplication:
         self.entry_point_name = entry_point or "main"
         self.entry_point_args = entry_point_args
         self.render_name = self.callback_name(render) if render is not None else None
+        self.layout_name = self.callback_name(layout) if layout is not None else None
+        self.layout_id = layout_id
+        self.page_entry_point_names = tuple(
+            self.callback_name(callback) for callback in page_entry_points
+        )
         self.routes = {
             (method.upper(), path): self.callback_name(callback)
             for (method, path), callback in (routes or {}).items()
@@ -249,9 +283,45 @@ class PyjsApplication:
         response = self.resolve_callback(callback_name)(request)
         if response is None:
             return ServerResponse(status=204, content_type=None)
+        if isinstance(response, NavigationPage):
+            return self.render_navigation_response(request, response)
         if not isinstance(response, ServerResponse):
-            raise TypeError("server route callbacks must return ServerResponse or None")
+            raise TypeError(
+                "server route callbacks must return NavigationPage, ServerResponse, or None"
+            )
         return response
+
+    def render_navigation_response(self, request, response):
+        if self.layout_name is None:
+            raise TypeError("NavigationPage responses require a layout callback")
+
+        headers = dict(response.headers)
+        vary = headers.get("Vary")
+        if vary is None:
+            headers["Vary"] = NAVIGATION_HEADER
+        elif NAVIGATION_HEADER.lower() not in vary.lower():
+            headers["Vary"] = f"{vary}, {NAVIGATION_HEADER}"
+
+        if request.headers.get(NAVIGATION_HEADER) == "1":
+            body = navigation_fragment(response.body, response.title, self.layout_id)
+        else:
+            layout = self.resolve_callback(self.layout_name)(
+                request,
+                response.body,
+                self.layout_id,
+            )
+            body = page(
+                layout,
+                f"{self.entry_point.container.name}.js",
+                "index.css",
+                title=response.title,
+            )
+        return ServerResponse(
+            body,
+            status=response.status,
+            content_type="text/html",
+            headers=headers,
+        )
 
     def refresh(self):
         last_modified = self.module_path.stat().st_mtime
@@ -259,7 +329,13 @@ class PyjsApplication:
             self.module_last_modified = last_modified
             importlib.reload(self.module)
             entry_point_py_func = getattr(self.module, self.entry_point_name)
-            self.package, self.entry_point, css = prepare_bundle(entry_point_py_func)
+            additional_entry_points = tuple(
+                getattr(self.module, name) for name in self.page_entry_point_names
+            )
+            self.package, self.entry_point, css = prepare_bundle(
+                entry_point_py_func,
+                additional_entry_points=additional_entry_points,
+            )
             if not self.css_provided:
                 self.css = css
             for package_name, js in self.package.items():
@@ -283,6 +359,9 @@ class PyjsServer(HTTPServer, PyjsApplication):
         *entry_point_args,
         render=None,
         routes=None,
+        layout=None,
+        layout_id="main",
+        page_entry_points=(),
         host="",
         port=8000,
     ):
@@ -295,6 +374,9 @@ class PyjsServer(HTTPServer, PyjsApplication):
             *entry_point_args,
             render=render,
             routes=routes,
+            layout=layout,
+            layout_id=layout_id,
+            page_entry_points=page_entry_points,
         )
 
     def serve_forever(self, poll_interval=0.5):
@@ -311,6 +393,9 @@ class WebSocketPyjsServer(PyjsApplication):
         *entry_point_args,
         render=None,
         routes=None,
+        layout=None,
+        layout_id="main",
+        page_entry_points=(),
         websocket_routes=None,
         host="",
         port=8000,
@@ -322,6 +407,9 @@ class WebSocketPyjsServer(PyjsApplication):
             *entry_point_args,
             render=render,
             routes=routes,
+            layout=layout,
+            layout_id=layout_id,
+            page_entry_points=page_entry_points,
         )
         self.websocket_routes = {
             path: self.callback_name(callback)
@@ -343,6 +431,9 @@ class WebSocketPyjsServer(PyjsApplication):
         path = urlsplit(request.path).path
         if path in self.websocket_routes:
             return None
+        if path == "/" and ("GET", path) in self.routes:
+            server_request = self.create_request("GET", path, request.headers, b"")
+            return websocket_response(self.dispatch(server_request), server_request)
         if path == "/":
             server_request = self.create_request("GET", path, request.headers, b"")
             response = ServerResponse(
@@ -356,6 +447,9 @@ class WebSocketPyjsServer(PyjsApplication):
             return websocket_response(response, server_request)
         if path == "/index.css":
             return websocket_response(ServerResponse(self.get_css(), content_type="text/css"))
+        if ("GET", path) in self.routes:
+            server_request = self.create_request("GET", path, request.headers, b"")
+            return websocket_response(self.dispatch(server_request), server_request)
         if path.endswith(".js"):
             module_name = Path(path).stem
             if module_name not in self.package:
@@ -410,6 +504,9 @@ def create_server(
     *args,
     render=None,
     routes=None,
+    layout=None,
+    layout_id="main",
+    page_entry_points=(),
     websocket_routes=None,
     host="",
     port=8000,
@@ -422,6 +519,9 @@ def create_server(
             *args,
             render=render,
             routes=routes,
+            layout=layout,
+            layout_id=layout_id,
+            page_entry_points=page_entry_points,
             websocket_routes=websocket_routes,
             host=host,
             port=port,
@@ -433,6 +533,9 @@ def create_server(
         *args,
         render=render,
         routes=routes,
+        layout=layout,
+        layout_id=layout_id,
+        page_entry_points=page_entry_points,
         host=host,
         port=port,
     )
@@ -445,6 +548,9 @@ def serve(
     *args,
     render=None,
     routes=None,
+    layout=None,
+    layout_id="main",
+    page_entry_points=(),
     websocket_routes=None,
     host="",
     port=8000,
@@ -456,6 +562,9 @@ def serve(
         *args,
         render=render,
         routes=routes,
+        layout=layout,
+        layout_id=layout_id,
+        page_entry_points=page_entry_points,
         websocket_routes=websocket_routes,
         host=host,
         port=port,

@@ -1,6 +1,6 @@
 from pyjs import js, js_object
 from pyjs.web.dom import DOMException
-from pyjs.web.events import Event, EventInit, EventTarget
+from pyjs.web.events import Event, EventTarget
 from pyjs.web.html import DOMStringList
 
 
@@ -280,6 +280,20 @@ class IDBObjectStoreParameters:
 
 
 @js(builtin=True)
+class IDBRecord:
+    """WebIDL source: @webref/idl/IndexedDB.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/IDBRecord
+
+    Browser support: Chrome 141, Safari preview"""
+
+    def __init__(self):
+        self.key: object = None
+        self.primaryKey: object = None
+        self.value: object = None
+
+
+@js(builtin=True)
 class IDBRequest(EventTarget):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -347,7 +361,7 @@ class IDBVersionChangeEvent(Event):
 
 
 @js
-class IDBVersionChangeEventInit(EventInit):
+class IDBVersionChangeEventInit:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
     def __init__(self, newVersion: int | None = None, oldVersion: int = 0):

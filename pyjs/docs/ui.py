@@ -1,9 +1,27 @@
+from typing import TypedDict
+
 from pyjs import js
+from pyjs.javascript import JSON
 from pyjs.web.dom import document, localStorage, navigator, window
-from pyjs.web.domx import CustomElement, button, dialog, div, input, ref, tag
+from pyjs.web.domx import (
+    CustomElement,
+    button,
+    dialog,
+    div,
+    input,
+    ref,
+    require_element,
+    tag,
+)
 from pyjs.web.events import Event, EventTarget, KeyboardEvent
 from pyjs.web.html import HTMLElement
-from pyjs.web.javascript import JSON
+
+
+class SearchRecord(TypedDict):
+    title: str
+    section: str
+    text: str
+    url: str
 
 
 @js
@@ -214,7 +232,11 @@ class DocsApp(CustomElement):
         bind(self.search_button, "click", self.open_search)
         bind(self.theme_button, "click", self.toggle_theme)
         bind(self.search_input, "input", self.update_search)
-        bind(self.search_dialog.querySelector(".search-close"), "click", self.close_search)
+        bind(
+            require_element(self.search_dialog, ".search-close"),
+            "click",
+            self.close_search,
+        )
         bind(self.search_dialog, "click", self.handle_dialog_click)
         bind(window, "keydown", self.handle_keyboard)
         self.apply_theme(localStorage.getItem("pyjs-docs-theme"))
@@ -289,8 +311,8 @@ class DocsApp(CustomElement):
         search_data = self.search_data.textContent
         if search_data is None:
             return
-        records: list[dict[str, str]] = JSON.parse(search_data)
-        matches: list[dict[str, str]] = []
+        records: list[SearchRecord] = JSON.parse(search_data)
+        matches: list[SearchRecord] = []
         for record in records:
             searchable = (
                 record["title"].lower()

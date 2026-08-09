@@ -3,6 +3,7 @@ from pyjs.web.dom import Element
 from pyjs.web.domx import a, button, div, input, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
+from pyjs.web.ui.sheet import Sheet, SheetContent, SheetTrigger
 
 
 @js
@@ -127,6 +128,44 @@ def SidebarMenuBadge(*children):
 @js
 def SidebarSeparator():
     return div(tw("mx-2 h-px bg-slate-200"), {"data-slot": "sidebar-separator"})
+
+
+@js
+class MobileSidebar(Sheet):
+    def __init__(
+        self,
+        label: str,
+        *children,
+        side: str = "left",
+        trigger_text: str = "☰",
+        show_close: bool = True,
+        trigger_style: dict[str, str] | None = None,
+        content_style: dict[str, str] | None = None,
+        surface_style: dict[str, str] | None = None,
+    ):
+        if trigger_style is None:
+            trigger_style = tw(
+                "inline-flex size-9 items-center justify-center rounded-md "
+                "hover:bg-slate-100 md:hidden"
+            )
+        trigger = SheetTrigger(
+            trigger_style,
+            trigger_text,
+        )
+        trigger.setAttribute("aria-label", "Open navigation")
+        content = SheetContent(
+            label,
+            *children,
+            side=side,
+            show_close=show_close,
+        )
+        content.dialog_element.setAttribute("data-mobile", "true")
+        if content_style is not None:
+            tag(content.dialog_element, content_style)
+        if surface_style is not None:
+            tag(content.surface, surface_style)
+        super().__init__(trigger, content)
+        self.setAttribute("data-slot", "mobile-sidebar")
 
 
 @js

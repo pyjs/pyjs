@@ -26,6 +26,7 @@ from pyjs.transpiler import bundle
 
 BROWSER_CONNECT_TIMEOUT_SECONDS = 30
 BROWSER_DISPATCH_TIMEOUT_SECONDS = 10
+BROWSER_STALE_AFTER_SECONDS = 15
 TESTING_PACKAGE_ROOT = Path(__file__).resolve().parent
 SIGNATURE_DIRS = [TESTING_PACKAGE_ROOT, TESTING_PACKAGE_ROOT.parent / "tooling"]
 
@@ -112,6 +113,7 @@ class PrototypeDaemon:
         self.current_run_id: str | None = None
         self.runner_page_error: str | None = None
         self.active_browser: ServerConnection | None = None
+        self.last_browser_seen: float | None = None
         self.pending_results: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
         self.run_lock = asyncio.Lock()
         self.browser_ready = asyncio.Event()
@@ -126,7 +128,8 @@ class PrototypeDaemon:
         self.last_activity = time.monotonic()
 
     def status_payload(self) -> dict[str, Any]:
-        return {
+        self.discard_stale_browser()
+        status = {
             "status": "ok",
             "signature": self.signature,
             "pid": os.getpid(),
@@ -146,10 +149,31 @@ class PrototypeDaemon:
             "retained_iframes": self.retained_iframes,
             "last_activity_seconds_ago": round(time.monotonic() - self.last_activity, 3),
         }
+        if self.last_browser_seen is not None:
+            status["browser_last_seen_seconds_ago"] = round(
+                time.monotonic() - self.last_browser_seen, 3
+            )
+        if self.managed_page is not None:
+            status["browser_exceptions"] = self.managed_page.exceptions
+            status["browser_console"] = self.managed_page.console[-10:]
+        return status
 
     def activate_browser(self, connection: ServerConnection) -> None:
         self.active_browser = connection
+        self.last_browser_seen = time.monotonic()
         self.browser_ready.set()
+
+    def note_browser_activity(self, connection: ServerConnection) -> None:
+        if self.active_browser is connection:
+            self.last_browser_seen = time.monotonic()
+
+    def discard_stale_browser(self) -> None:
+        if (
+            self.active_browser is not None
+            and self.last_browser_seen is not None
+            and time.monotonic() - self.last_browser_seen > BROWSER_STALE_AFTER_SECONDS
+        ):
+            self.deactivate_browser(self.active_browser)
 
     def deactivate_browser(self, connection: ServerConnection) -> None:
         if self.active_browser is connection:
@@ -219,10 +243,14 @@ class PrototypeDaemon:
     async def handler(self, connection: ServerConnection) -> None:
         try:
             async for raw_message in connection:
-                self.touch_activity()
                 message = json.loads(raw_message)
                 message_type = message.get("type")
+                self.note_browser_activity(connection)
 
+                if message_type == "browser_heartbeat":
+                    continue
+
+                self.touch_activity()
                 if message_type == "register_browser":
                     self.activate_browser(connection)
                     await connection.send(json.dumps({"type": "browser_registered"}))
@@ -471,6 +499,7 @@ class PrototypeDaemon:
             return
 
     async def ensure_browser_connection(self) -> ServerConnection | None:
+        self.discard_stale_browser()
         if self.active_browser is not None:
             return self.active_browser
 
@@ -595,7 +624,7 @@ async def async_main(
                 await page.set_viewport(browser_width, browser_height)
                 if color_scheme != "system":
                     await page.set_color_scheme(color_scheme)
-                await page.navigate(daemon.runner_url)
+                await page.navigate(daemon.runner_url, timeout=120)
                 await run_until_shutdown()
         else:
             await run_until_shutdown()

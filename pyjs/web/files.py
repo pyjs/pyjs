@@ -1,7 +1,5 @@
 from pyjs import js, nojs
-from pyjs.web.dom import DOMException
-from pyjs.web.events import EventTarget
-from pyjs.web.javascript import (
+from pyjs.javascript import (
     ArrayBuffer,
     BigInt64Array,
     BigUint64Array,
@@ -17,6 +15,8 @@ from pyjs.web.javascript import (
     Uint16Array,
     Uint32Array,
 )
+from pyjs.web.dom import DOMException
+from pyjs.web.events import EventTarget
 from pyjs.web.streams import ReadableStream
 
 
@@ -150,6 +150,40 @@ class FileReader(EventTarget):
 
 
 @js(builtin=True)
+class FileReaderSync:
+    """WebIDL source: @webref/idl/FileAPI.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/FileReaderSync
+
+    Browser support: Chrome 7, Safari 6"""
+
+    def __init__(self): ...
+
+    def readAsArrayBuffer(self, blob: Blob) -> ArrayBuffer: ...
+
+    def readAsBinaryString(self, blob: Blob) -> str: ...
+
+    def readAsDataURL(self, blob: Blob) -> str: ...
+
+    def readAsText(self, blob: Blob, encoding: str | None = None) -> str: ...
+
+
+@js
+class FilePropertyBag:
+    """WebIDL source: @webref/idl/FileAPI.idl"""
+
+    def __init__(
+        self,
+        endings: str = "transparent",
+        lastModified: int | None = None,
+        type: str = "",
+    ):
+        self.endings = endings
+        self.lastModified = lastModified
+        self.type = type
+
+
+@js(builtin=True)
 class File(Blob):
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -186,18 +220,3 @@ class File(Blob):
         super().__init__()
         self.lastModified: int = lastModified or 0
         self.name: str = fileName
-
-
-@js
-class FilePropertyBag(BlobPropertyBag):
-    """WebIDL source: @webref/idl/FileAPI.idl"""
-
-    def __init__(
-        self,
-        endings: str = "transparent",
-        lastModified: int | None = None,
-        type: str = "",
-    ):
-        self.endings = endings
-        self.lastModified = lastModified
-        self.type = type

@@ -162,13 +162,15 @@ class DialogContent(Widget):
             )
         surface = div(
             tw(
-                "relative grid gap-4 p-6 data-[placement=left]:h-full data-[placement=right]:h-full"
+                "relative grid gap-4 p-6 "
+                "data-[placement=left]:h-full data-[placement=right]:h-full"
             ),
             {"data-placement": placement},
             *children,
         )
         if show_close:
             surface.append(close_button)
+        self.surface = ref(surface)
         self.dialog_element = ref(
             dialog_element(
                 content_style,
@@ -180,7 +182,7 @@ class DialogContent(Widget):
                     "data-state": "closed",
                     "role": role,
                 },
-                surface,
+                self.surface,
             )
         )
         self.dialog_element.addEventListener("cancel", self.cancel)

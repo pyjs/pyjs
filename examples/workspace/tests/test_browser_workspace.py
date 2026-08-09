@@ -1,6 +1,7 @@
 import pytest
 from pyjs import js
-from pyjs.testing.web import bubbling_click, mount, require_element
+from pyjs.testing.web import bubbling_click, mount
+from pyjs.web.domx import require_element
 from pyjs_examples.workspace.workspace import WorkspaceApp
 
 pytestmark = pytest.mark.pyjs_web

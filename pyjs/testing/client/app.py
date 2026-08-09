@@ -1,7 +1,9 @@
 from pyjs import js
+from pyjs.javascript import JSON, encodeURIComponent
 from pyjs.testing.client.runtime import TestingWindow, call_selected_tests, exception_text
 from pyjs.testing.client.sidebar import RunnerSidebar
 from pyjs.testing.client.state import (
+    BrowserHeartbeatMessage,
     ConsoleLine,
     FetchOptions,
     PreservedEntry,
@@ -19,8 +21,8 @@ from pyjs.web.dom import document, location
 from pyjs.web.domx import CustomElement, div, iframe, ref, span, tag, tw
 from pyjs.web.events import ErrorEvent, Event, MessageEvent, PromiseRejectionEvent
 from pyjs.web.html import HTMLIFrameElement
-from pyjs.web.javascript import JSON, encodeURIComponent
 from pyjs.web.network import WebSocket, fetch
+from pyjs.web.timers import clearInterval, setInterval
 
 
 @js
@@ -124,6 +126,7 @@ class BrowserRunnerApp(CustomElement):
         self._testStates: list[TestState] = []
         self._preservedEntries: list[PreservedEntry] = []
         self._ws: WebSocket | None = None
+        self._heartbeatTimer: int | None = None
         self.connectionDot = ref(
             span(
                 tw("size-2 rounded-full bg-amber-400"),
@@ -246,14 +249,15 @@ class BrowserRunnerApp(CustomElement):
         lowered = message.lower()
         if "disconnected" in lowered:
             self.connectionLabel.textContent = "Disconnected"
-            self.connectionDot.setAttribute("class", "size-2 rounded-full bg-rose-500")
+            tag(self.connectionDot, tw("size-2 rounded-full bg-rose-500"))
         elif "connected" in lowered or "run #" in lowered:
             self.connectionLabel.textContent = "Connected"
-            self.connectionDot.setAttribute("class", "size-2 rounded-full bg-emerald-500")
+            tag(self.connectionDot, tw("size-2 rounded-full bg-emerald-500"))
         else:
             self.connectionLabel.textContent = "Working"
-            self.connectionDot.setAttribute(
-                "class", "size-2 animate-pulse rounded-full bg-amber-400"
+            tag(
+                self.connectionDot,
+                tw("size-2 animate-pulse rounded-full bg-amber-400"),
             )
         self.updateRunSummary()
 
@@ -620,7 +624,12 @@ class TransportOpenListener:
     @js(include=True)
     def handleEvent(self, event: Event):
         self.socket.send(JSON.stringify(RegisterBrowserMessage()))
+        self.app._heartbeatTimer = setInterval(self.sendHeartbeat, 5_000)
         self.app.setStatus("Browser runner connected")
+
+    def sendHeartbeat(self):
+        if self.socket.readyState == WebSocket.OPEN:
+            self.socket.send(JSON.stringify(BrowserHeartbeatMessage()))
 
 
 @js
@@ -632,32 +641,32 @@ class TransportMessageListener:
     @js(include=True)
     async def handleEvent(self, event: MessageEvent):
         message: RunBundleMessage = JSON.parse(event.data)
-        if message.type != "run_bundle":
+        if message["type"] != "run_bundle":
             return
 
-        selected_nodeids = message.selected_nodeids
+        selected_nodeids = message["selected_nodeids"]
         if selected_nodeids is None:
-            selected_nodeids = message.nodeids
-        current_nodeid = message.current_nodeid
-        if current_nodeid is None and len(message.nodeids) > 0:
-            current_nodeid = message.nodeids[0]
+            selected_nodeids = message["nodeids"]
+        current_nodeid = message["current_nodeid"]
+        if current_nodeid is None and len(message["nodeids"]) > 0:
+            current_nodeid = message["nodeids"][0]
 
         app = self.app
         app.resetRunnerState(selected_nodeids, current_nodeid)
         app.setStatus(app.summarizeResults())
         response = await fetch(
-            "/bundle.js?run_id=" + encodeURIComponent(message.run_id),
+            "/bundle.js?run_id=" + encodeURIComponent(message["run_id"]),
             FetchOptions("no-store"),
         )
         source = await response.text()
         css_response = await fetch(
-            "/bundle.css?run_id=" + encodeURIComponent(message.run_id),
+            "/bundle.css?run_id=" + encodeURIComponent(message["run_id"]),
             FetchOptions("no-store"),
         )
         css = await css_response.text()
         results: list[TestResult] = []
         try:
-            for nodeid in message.nodeids:
+            for nodeid in message["nodeids"]:
                 app.markTestRunning(nodeid)
                 app.renderTestListSelf()
 
@@ -674,16 +683,18 @@ class TransportMessageListener:
                     nodeid,
                     frame,
                     result.outcome,
-                    message.max_preserved_iframes,
+                    message["max_preserved_iframes"],
                 )
                 app.selectTest(nodeid)
             app.selectBestResult()
             app.setStatus(app.summarizeResults())
-            self.socket.send(JSON.stringify(TestResultsMessage(message.run_id, results)))
+            self.socket.send(JSON.stringify(TestResultsMessage(message["run_id"], results)))
         except Exception as error:
             error_text = exception_text(error)
             failed_result = TestResult("<bundle>", "failed", [], error=error_text)
-            self.socket.send(JSON.stringify(TestResultsMessage(message.run_id, [failed_result])))
+            self.socket.send(
+                JSON.stringify(TestResultsMessage(message["run_id"], [failed_result]))
+            )
             app.setStatus(error_text)
 
 
@@ -694,6 +705,8 @@ class TransportCloseListener:
 
     @js(include=True)
     def handleEvent(self, event: Event):
+        clearInterval(self.app._heartbeatTimer)
+        self.app._heartbeatTimer = None
         self.app.setStatus("Browser runner disconnected")
 
 

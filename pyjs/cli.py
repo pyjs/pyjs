@@ -4,9 +4,11 @@ import importlib
 import importlib.util
 import json
 import os
+import runpy
 import shutil
 import sys
 import textwrap
+import tomllib
 import traceback
 from dataclasses import dataclass
 from importlib import resources
@@ -23,6 +25,7 @@ from pyjs.scaffolding import (
     version_string,
 )
 from pyjs.server import page
+from pyjs.server import serve as serve_application
 from pyjs.testing.capture import capture_url
 from pyjs.tooling.node import Node
 from pyjs.tooling.perf import (
@@ -34,9 +37,16 @@ from pyjs.tooling.perf import (
     javascript_benchmark,
     run_python,
 )
-from pyjs.transpiler import SourceCompilation, bundle, compile_source, prepare_bundle
+from pyjs.transpiler import (
+    CompilationError,
+    SourceCompilation,
+    bundle,
+    compile_source,
+    format_compilation_error,
+    prepare_bundle,
+)
 
-SUBCOMMANDS = {"build", "create", "template", "inspect", "skill", "docs"}
+SUBCOMMANDS = {"build", "create", "serve", "template", "inspect", "skill", "docs"}
 
 
 @dataclass(frozen=True)
@@ -72,6 +82,13 @@ def parser() -> argparse.ArgumentParser:
         help="include and call the entry-point function in the browser bundle",
     )
     build.add_argument("--args", help="JSON list of arguments passed to the entry point")
+
+    serve = subcommands.add_parser("serve", help="serve a PyJS web application")
+    serve.add_argument(
+        "target",
+        nargs="?",
+        help="application module or Python file; defaults to the project configuration",
+    )
 
     create_command = subcommands.add_parser("create", help="create a PyJS project or file")
     create_command.add_argument(
@@ -278,6 +295,28 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
     try:
         program = _direct_input(args, command_parser)
         compilation = _compile_direct(program)
+    except CompilationError as error:
+        if args.json:
+            print(json.dumps({"error": error.diagnostic.to_dict()}, indent=2))
+        else:
+            print(format_compilation_error(error), file=sys.stderr, end="")
+        return 2
+    except SyntaxError as error:
+        if args.json:
+            details = {
+                "type": "SyntaxError",
+                "message": error.msg,
+                "file": error.filename,
+                "line": error.lineno,
+                "column": error.offset,
+                "end_line": error.end_lineno,
+                "end_column": error.end_offset,
+            }
+            print(json.dumps({"error": details}, indent=2))
+        else:
+            formatted = "".join(traceback.format_exception_only(error))
+            print(formatted, file=sys.stderr, end="")
+        return 2
     except Exception as error:
         if args.json:
             details = {
@@ -619,6 +658,53 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
     return 0
 
 
+def _configured_application(command_parser: argparse.ArgumentParser) -> str:
+    for directory in (Path.cwd(), *Path.cwd().parents):
+        configuration = directory / "pyproject.toml"
+        if not configuration.is_file():
+            continue
+        try:
+            project = tomllib.loads(configuration.read_text(encoding="utf-8"))
+        except tomllib.TOMLDecodeError as error:
+            command_parser.error(f"could not read {configuration}: {error}")
+        application = project.get("tool", {}).get("pyjs", {}).get("application")
+        if not isinstance(application, str) or not application:
+            command_parser.error(
+                "no application is configured; provide a module or Python file"
+            )
+        sys.path.insert(0, str(directory))
+        return application
+    command_parser.error("no application is configured; provide a module or Python file")
+
+
+def _serve(args, command_parser: argparse.ArgumentParser) -> int:
+    target = args.target or _configured_application(command_parser)
+    path = Path(target)
+    if path.is_file():
+        path = path.resolve()
+        sys.path.insert(0, str(path.parent))
+        serve_application(str(path))
+        return 0
+    if path.suffix == ".py" or os.sep in target:
+        command_parser.error(f"cannot open {target!r}: no such file")
+    try:
+        spec = importlib.util.find_spec(target)
+    except (ImportError, ModuleNotFoundError, ValueError) as error:
+        command_parser.error(str(error))
+    if spec is None:
+        command_parser.error(f"cannot find module {target!r}")
+    if spec.submodule_search_locations is not None:
+        try:
+            main_spec = importlib.util.find_spec(f"{target}.__main__")
+        except (ImportError, ModuleNotFoundError, ValueError):
+            main_spec = None
+        if main_spec is not None:
+            runpy.run_module(target, run_name="__main__", alter_sys=True)
+            return 0
+    serve_application(target)
+    return 0
+
+
 def _create(args, command_parser: argparse.ArgumentParser) -> int:
     try:
         destination = create(
@@ -644,6 +730,10 @@ def _create(args, command_parser: argparse.ArgumentParser) -> int:
     print('  python -m pip install -e ".[test]"')
     if args.template is None:
         print(f"  python -m {args.name}")
+        print()
+        print("Or run directly with PyJS (including the npm distribution):")
+        print()
+        print("  pyjs serve")
     else:
         print("  See README.md for the run command")
     return 0
@@ -799,6 +889,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "build":
         return _build(args, command_parser)
+    if args.command == "serve":
+        return _serve(args, command_parser)
     if args.command == "create":
         return _create(args, command_parser)
     if args.command == "template":

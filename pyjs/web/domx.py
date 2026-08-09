@@ -1,5 +1,4 @@
 import re
-from functools import partial
 
 from pyjs import js, nojs
 from pyjs.state import StateField
@@ -248,6 +247,22 @@ def ref(value: object) -> object:
     return value
 
 
+@js
+def require_element(root: Element, selector: str) -> Element:
+    element = root.querySelector(selector)
+    if element is None:
+        raise ValueError("Required element not found: " + selector)
+    return element
+
+
+@js
+def require_closest(element: Element, selector: str) -> Element:
+    ancestor = element.closest(selector)
+    if ancestor is None:
+        raise ValueError("Required ancestor not found: " + selector)
+    return ancestor
+
+
 # @js
 class ContextProxy[V]:
     def __init__(self):
@@ -338,49 +353,56 @@ def tag(
     return e
 
 
-@js(client=partial(tag, "div"))
+def html_tag(name: str):
+    return js(
+        inline=f"{{tag}}({name!r}{{*args}})",
+        dependencies={"tag": tag},
+    )
+
+
+@html_tag("div")
 def div(*args) -> HTMLDivElement:
     div_element = HTMLDivElement()
     tag(div_element, *args)
     return div_element
 
 
-@js(client=partial(tag, "span"))
+@html_tag("span")
 def span(*args) -> HTMLSpanElement:
     span_element = HTMLSpanElement()
     tag(span_element, *args)
     return span_element
 
 
-@js(client=partial(tag, "form"))
+@html_tag("form")
 def form(*args) -> HTMLFormElement:
     form_element = HTMLFormElement()
     tag(form_element, *args)
     return form_element
 
 
-@js(client=partial(tag, "dialog"))
+@html_tag("dialog")
 def dialog(*args) -> HTMLDialogElement:
     dialog_element = HTMLDialogElement()
     tag(dialog_element, *args)
     return dialog_element
 
 
-@js(client=partial(tag, "input"))
+@html_tag("input")
 def input(*args) -> HTMLInputElement:
     input_element = HTMLInputElement()
     tag(input_element, *args)
     return input_element
 
 
-@js(client=partial(tag, "textarea"))
+@html_tag("textarea")
 def textarea(*args) -> HTMLTextAreaElement:
     textarea_element = HTMLTextAreaElement()
     tag(textarea_element, *args)
     return textarea_element
 
 
-@js(client=partial(tag, "img"))
+@html_tag("img")
 def img(*args) -> HTMLImageElement:
     image_element = HTMLImageElement()
     tag(image_element, *args)
@@ -392,35 +414,35 @@ def canvas() -> HTMLCanvasElement:
     return HTMLCanvasElement()
 
 
-@js(client=partial(tag, "iframe"))
+@html_tag("iframe")
 def iframe(*args) -> HTMLIFrameElement:
     iframe_element = HTMLIFrameElement()
     tag(iframe_element, *args)
     return iframe_element
 
 
-@js(client=partial(tag, "button"))
+@html_tag("button")
 def button(*args) -> HTMLButtonElement:
     button_element = HTMLButtonElement()
     tag(button_element, *args)
     return button_element
 
 
-@js(client=partial(tag, "a"))
+@html_tag("a")
 def a(*args) -> HTMLAnchorElement:
     anchor = HTMLAnchorElement()
     tag(anchor, *args)
     return anchor
 
 
-@js(client=partial(tag, "p"))
+@html_tag("p")
 def p(*args) -> HTMLParagraphElement:
     paragraph = HTMLParagraphElement()
     tag(paragraph, *args)
     return paragraph
 
 
-@js(client=partial(tag, "h1"))
+@html_tag("h1")
 def h1(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H1"
@@ -429,7 +451,7 @@ def h1(*args) -> HTMLHeadingElement:
     return h
 
 
-@js(client=partial(tag, "h2"))
+@html_tag("h2")
 def h2(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H2"
@@ -438,7 +460,7 @@ def h2(*args) -> HTMLHeadingElement:
     return h
 
 
-@js(client=partial(tag, "h3"))
+@html_tag("h3")
 def h3(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H3"
@@ -447,7 +469,7 @@ def h3(*args) -> HTMLHeadingElement:
     return h
 
 
-@js(client=partial(tag, "h4"))
+@html_tag("h4")
 def h4(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H4"
@@ -456,7 +478,7 @@ def h4(*args) -> HTMLHeadingElement:
     return h
 
 
-@js(client=partial(tag, "h5"))
+@html_tag("h5")
 def h5(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H5"
@@ -465,7 +487,7 @@ def h5(*args) -> HTMLHeadingElement:
     return h
 
 
-@js(client=partial(tag, "h6"))
+@html_tag("h6")
 def h6(*args) -> HTMLHeadingElement:
     h = HTMLHeadingElement()
     h.tagName = "H6"

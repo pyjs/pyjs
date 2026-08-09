@@ -231,6 +231,9 @@ def _project_toml(
             f"{source}"
             f'include = ["{package}", "{package}.*"]'
         )
+    application = (
+        f'\n[tool.pyjs]\napplication = "{package}.{package}"\n' if package else ""
+    )
     return f"""\
 [build-system]
 requires = ["setuptools>=82.0.1"]
@@ -248,6 +251,7 @@ dependencies = ["pyjs~={version}"]
 test = ["pytest>=9.0"]
 
 {setuptools}
+{application}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

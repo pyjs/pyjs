@@ -1,31 +1,29 @@
+from typing import TypedDict
+
 from pyjs import effect, js, nojs, state
+from pyjs.javascript import JSON
 from pyjs.web.dom import location, sessionStorage
 from pyjs.web.domx import button, form, input, ref, tag, tw
 from pyjs.web.events import Event, MessageEvent
-from pyjs.web.javascript import JSON
 from pyjs.web.network import WebSocket
 from pyjs.web.ui import Widget
 
 
-@js
-class ChatMessage:
-    def __init__(self):
-        self.id = 0
-        self.room = ""
-        self.sender = ""
-        self.text = ""
-        self.time = ""
+class ChatMessage(TypedDict):
+    id: int
+    room: str
+    sender: str
+    text: str
+    time: str
 
 
-@js
-class ChatSnapshot:
-    def __init__(self):
-        self.type = ""
-        self.room = ""
-        self.rooms: list[str] = []
-        self.messages: list[ChatMessage] = []
-        self.users: list[str] = []
-        self.message = ""
+class ChatSnapshot(TypedDict):
+    type: str
+    room: str
+    rooms: list[str]
+    messages: list[ChatMessage]
+    users: list[str]
+    message: str
 
 
 @js
@@ -441,10 +439,7 @@ class ChatRoomApp(Widget):
     def initialize(self):
         self.socket: WebSocket | None = None
         name = sessionStorage.getItem("pyjs-chatroom-display-name")
-        if name is None:
-            self.show_sign_in()
-            return
-        if name == "":
+        if name is None or name == "":
             self.show_sign_in()
             return
         self.name = name
@@ -535,14 +530,14 @@ class ChatRoomApp(Widget):
                 socket.send(JSON.stringify(message))
 
     def receive(self, message: ChatSnapshot):
-        if message.type == "error":
-            self.show_error(message.message)
+        if message["type"] == "error":
+            self.show_error(message["message"])
             return
         self.hide_error()
-        self.room = message.room
-        self.render_rooms(message.rooms)
-        self.render_messages(message.messages)
-        self.render_members(message.users)
+        self.room = message["room"]
+        self.render_rooms(message["rooms"])
+        self.render_messages(message["messages"])
+        self.render_members(message["users"])
 
     def render_rooms(self, rooms: list[str]):
         self.room_list.replaceChildren()
@@ -604,7 +599,7 @@ class ChatRoomApp(Widget):
                 tag(
                     "article",
                     tw("group flex gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"),
-                    {"data-message-id": str(message.id)},
+                    {"data-message-id": str(message["id"])},
                     tag(
                         "div",
                         tw(
@@ -619,8 +614,16 @@ class ChatRoomApp(Widget):
                         tag(
                             "div",
                             tw("flex items-baseline gap-2"),
-                            tag("strong", tw("text-sm font-bold text-slate-900"), message.sender),
-                            tag("time", tw("text-[0.7rem] text-slate-400"), message.time),
+                            tag(
+                                "strong",
+                                tw("text-sm font-bold text-slate-900"),
+                                message["sender"],
+                            ),
+                            tag(
+                                "time",
+                                tw("text-[0.7rem] text-slate-400"),
+                                message["time"],
+                            ),
                         ),
                         tag(
                             "p",
@@ -628,7 +631,7 @@ class ChatRoomApp(Widget):
                                 "mt-0.5 whitespace-pre-wrap break-words text-sm leading-6 "
                                 "text-slate-700"
                             ),
-                            message.text,
+                            message["text"],
                         ),
                     ),
                 )

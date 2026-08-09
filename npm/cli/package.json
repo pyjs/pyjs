@@ -1,0 +1,27 @@
+{
+  "name": "@pyjsdev/cli",
+  "version": "0.0.2",
+  "description": "Python to JavaScript transpiler",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyjs/pyjs.git",
+    "directory": "npm/cli"
+  },
+  "homepage": "https://pyjs.org",
+  "bin": {
+    "pyjs": "bin/pyjs.cjs"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "optionalDependencies": {
+    "@pyjsdev/cli-darwin-arm64": "0.0.2",
+    "@pyjsdev/cli-darwin-x64": "0.0.2",
+    "@pyjsdev/cli-win32-x64": "0.0.2",
+    "@pyjsdev/cli-linux-x64": "0.0.2"
+  }
+}

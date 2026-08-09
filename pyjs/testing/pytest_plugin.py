@@ -320,6 +320,14 @@ def selected_test_from_item(item: pytest.Function) -> SelectedTest:
     )
 
 
+def is_web_test(item: pytest.Item) -> bool:
+    return (
+        item.get_closest_marker("pyjs_web") is not None
+        and item.get_closest_marker("pyjs_python") is None
+        and item.get_closest_marker("pyjs_android") is None
+    )
+
+
 def pytest_runtest_setup(item: pytest.Item) -> None:
     target = item.config.getoption("--pyjs-target")
     android_test = item.get_closest_marker("pyjs_android") is not None
@@ -329,8 +337,8 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
         pytest.skip("Android-only test")
     if target != "web" and item.get_closest_marker("pyjs_web") is not None:
         pytest.skip("web-only test")
-    if target == "web" and item.get_closest_marker("pyjs_python"):
-        pytest.skip("excluded from pyjs web target")
+    if target == "web" and not is_web_test(item):
+        pytest.skip("not a web test")
 
 
 @pytest.fixture
@@ -351,8 +359,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
             state.eligible_tests = [
                 selected_test_from_item(item)
                 for item in pyfuncitem.session.items
-                if isinstance(item, pytest.Function)
-                and item.get_closest_marker("pyjs_python") is None
+                if isinstance(item, pytest.Function) and is_web_test(item)
             ]
         response = run_browser_target(
             pyfuncitem.config,
@@ -575,6 +582,8 @@ def add_daemon_diagnostics(
             "current_run_id",
             "pending_runs",
             "last_activity_seconds_ago",
+            "browser_exceptions",
+            "browser_console",
         )
         response["daemon_state"] = {key: health[key] for key in state_keys if key in health}
     log_tail = read_log_tail(cache_dir / "daemon.log")
@@ -695,7 +704,7 @@ def get_daemon_health(port: int) -> dict[str, Any] | None:
             if response.status != 200:
                 return None
             payload = response.read().decode("utf-8")
-    except URLError:
+    except OSError, URLError:
         return None
     try:
         return json.loads(payload)

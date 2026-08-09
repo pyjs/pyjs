@@ -1,5 +1,7 @@
 """Typed state and protocol models for the browser runner client."""
 
+from typing import TypedDict
+
 from pyjs import js
 from pyjs.web.html import HTMLIFrameElement
 
@@ -64,14 +66,18 @@ class RegisterBrowserMessage:
 
 
 @js
-class RunBundleMessage:
+class BrowserHeartbeatMessage:
     def __init__(self):
-        self.type = ""
-        self.run_id = ""
-        self.nodeids: list[str] = []
-        self.selected_nodeids: list[str] | None = None
-        self.current_nodeid: str | None = None
-        self.max_preserved_iframes = 10
+        self.type = "browser_heartbeat"
+
+
+class RunBundleMessage(TypedDict):
+    type: str
+    run_id: str
+    nodeids: list[str]
+    selected_nodeids: list[str] | None
+    current_nodeid: str | None
+    max_preserved_iframes: int
 
 
 @js

@@ -1,7 +1,8 @@
 import pytest
 from pyjs import js
-from pyjs.testing.web import mount, require_element
+from pyjs.testing.web import mount
 from pyjs.web.dom import sessionStorage
+from pyjs.web.domx import require_element
 from pyjs.web.events import Event
 from pyjs_examples.chatroom.chatroom import ChatMessage, ChatRoomApp, ChatSnapshot
 
@@ -36,18 +37,21 @@ def test_chatroom_prompts_for_a_per_tab_display_name():
 def test_chatroom_renders_rooms_messages_and_presence_from_a_snapshot():
     sessionStorage.setItem("pyjs-chatroom-display-name", "Alice")
     app = mounted_chatroom()
-    message = ChatMessage()
-    message.id = 1
-    message.room = "design"
-    message.sender = "Bob"
-    message.text = "The new navigation is ready."
-    message.time = "09:42"
-    snapshot = ChatSnapshot()
-    snapshot.type = "snapshot"
-    snapshot.room = "design"
-    snapshot.rooms = ["general", "design"]
-    snapshot.messages = [message]
-    snapshot.users = ["Alice", "Bob"]
+    message = ChatMessage(
+        id=1,
+        room="design",
+        sender="Bob",
+        text="The new navigation is ready.",
+        time="09:42",
+    )
+    snapshot = ChatSnapshot(
+        type="snapshot",
+        room="design",
+        rooms=["general", "design"],
+        messages=[message],
+        users=["Alice", "Bob"],
+        message="",
+    )
 
     app.receive(snapshot)
 

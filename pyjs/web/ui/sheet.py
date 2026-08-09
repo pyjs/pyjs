@@ -62,12 +62,21 @@ def SheetDescription(*children):
 
 @js
 class SheetContent(DialogContent):
-    def __init__(self, label: str, *children, side: str = "right"):
+    def __init__(
+        self,
+        label: str,
+        *children,
+        side: str = "right",
+        show_close: bool = True,
+        close_on_backdrop: bool = True,
+    ):
         super().__init__(
             label,
             *children,
             component="sheet",
             placement=side,
+            show_close=show_close,
+            close_on_backdrop=close_on_backdrop,
         )
 
 
