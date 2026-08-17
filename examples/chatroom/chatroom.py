@@ -1,7 +1,7 @@
-from typing import TypedDict
+from typing import cast
 
 from pyjs import effect, js, nojs, state
-from pyjs.javascript import JSON
+from pyjs.javascript import JSON, JSONObject
 from pyjs.web.dom import location, sessionStorage
 from pyjs.web.domx import button, form, input, ref, tag, tw
 from pyjs.web.events import Event, MessageEvent
@@ -9,7 +9,7 @@ from pyjs.web.network import WebSocket
 from pyjs.web.ui import Widget
 
 
-class ChatMessage(TypedDict):
+class ChatMessage(JSONObject):
     id: int
     room: str
     sender: str
@@ -17,7 +17,7 @@ class ChatMessage(TypedDict):
     time: str
 
 
-class ChatSnapshot(TypedDict):
+class ChatSnapshot(JSONObject):
     type: str
     room: str
     rooms: list[str]
@@ -26,13 +26,11 @@ class ChatSnapshot(TypedDict):
     message: str
 
 
-@js
-class OutgoingChatMessage:
-    def __init__(self, message_type: str, name: str, room: str, text: str):
-        self.type = message_type
-        self.name = name
-        self.room = room
-        self.text = text
+class OutgoingChatMessage(JSONObject):
+    type: str
+    name: str
+    room: str
+    text: str
 
 
 @js
@@ -40,7 +38,7 @@ class NameSubmitListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         event.preventDefault()
         self.app.submit_name()
@@ -51,7 +49,7 @@ class RoomCreateListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         event.preventDefault()
         self.app.create_room()
@@ -62,7 +60,7 @@ class MessageSubmitListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         event.preventDefault()
         self.app.submit_message()
@@ -74,7 +72,7 @@ class RoomClickListener:
         self.app = app
         self.room = room
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.switch_room(self.room)
 
@@ -84,7 +82,7 @@ class ReconnectClickListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.connect()
 
@@ -94,7 +92,7 @@ class SignOutClickListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.sign_out()
 
@@ -104,7 +102,7 @@ class SocketOpenListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.socket_opened()
 
@@ -114,9 +112,9 @@ class SocketMessageListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: MessageEvent):
-        message: ChatSnapshot = JSON.parse(event.data)
+        message: ChatSnapshot = JSON.parse(cast(str, event.data))
         self.app.receive(message)
 
 
@@ -125,7 +123,7 @@ class SocketCloseListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.socket_closed()
 
@@ -135,7 +133,7 @@ class SocketErrorListener:
     def __init__(self, app: ChatRoomApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.show_error("The chat server could not be reached.")
 
@@ -494,10 +492,9 @@ class ChatRoomApp(Widget):
 
     def sign_out(self):
         sessionStorage.removeItem("pyjs-chatroom-display-name")
-        socket = self.socket
         if self.connection == "connected":
-            if socket is not None:
-                socket.close()
+            if self.socket is not None:
+                self.socket.close()
         self.name = ""
         self.name_input.value = ""
         self.show_sign_in()
@@ -516,7 +513,9 @@ class ChatRoomApp(Widget):
 
     def socket_opened(self):
         self.connection = "connected"
-        self.send(OutgoingChatMessage("join", self.name, self.room, ""))
+        self.send(
+            OutgoingChatMessage(type="join", name=self.name, room=self.room, text="")
+        )
 
     def socket_closed(self):
         if self.connection == "signed-out":
@@ -524,10 +523,9 @@ class ChatRoomApp(Widget):
         self.connection = "disconnected"
 
     def send(self, message: OutgoingChatMessage):
-        socket = self.socket
         if self.connection == "connected":
-            if socket is not None:
-                socket.send(JSON.stringify(message))
+            if self.socket is not None:
+                self.socket.send(JSON.stringify(message))
 
     def receive(self, message: ChatSnapshot):
         if message["type"] == "error":
@@ -654,21 +652,42 @@ class ChatRoomApp(Widget):
             )
 
     def switch_room(self, room: str):
-        self.send(OutgoingChatMessage("switch_room", self.name, room, ""))
+        self.send(
+            OutgoingChatMessage(
+                type="switch_room",
+                name=self.name,
+                room=room,
+                text="",
+            )
+        )
 
     def create_room(self):
         room = self.room_input.value.strip()
         if room == "":
             return
         self.room_input.value = ""
-        self.send(OutgoingChatMessage("create_room", self.name, room, ""))
+        self.send(
+            OutgoingChatMessage(
+                type="create_room",
+                name=self.name,
+                room=room,
+                text="",
+            )
+        )
 
     def submit_message(self):
         text = self.message_input.value.strip()
         if text == "":
             return
         self.message_input.value = ""
-        self.send(OutgoingChatMessage("message", self.name, self.room, text))
+        self.send(
+            OutgoingChatMessage(
+                type="message",
+                name=self.name,
+                room=self.room,
+                text=text,
+            )
+        )
 
     def show_error(self, message: str):
         self.error_banner.textContent = message

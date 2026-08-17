@@ -93,6 +93,23 @@ For analyzer or transpiler changes:
 Add reachability and inheritance regression coverage when a change affects
 tree shaking or virtual dispatch.
 
+Define a typed inline interface before its source generator when that generator
+belongs to only one operation:
+
+```python
+@js
+def operation(value: str) -> str: ...
+
+
+@operation.inline(dependencies={"helper": helper})
+def operation(value, helper, **kwargs):
+    return f"{helper}({value})"
+```
+
+Keep a separately named generator only when multiple operations reuse it. This
+ordering keeps the public compiler contract prominent and the implementation
+local without leaving a one-use helper in the module namespace.
+
 ## Browser API changes
 
 `pyjs.web` is reserved for web-platform APIs and web-specific libraries.
@@ -112,6 +129,11 @@ Document behavior where its consumers will find it:
 - `docs/` for concepts and API guidance;
 - example READMEs for running and testing a particular application; and
 - `pyjs/skills/pyjs/SKILL.md` for coding agents building with PyJS.
+
+Add notable user-facing behavior and compatibility changes to the `Unreleased`
+section of [CHANGELOG.md](CHANGELOG.md). Describe what changed for an
+application developer rather than repeating the commit message. Small examples
+are welcome when they make a compiler improvement or removed workaround clear.
 
 Do not put framework usage instructions in the private repository
 `AGENTS.md`.

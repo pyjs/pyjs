@@ -1,10 +1,10 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.web.dragdrop import DataTransfer
 from pyjs.web.events import Event, EventTarget
 from pyjs.web.files import Blob
 
 
-@js(builtin=True)
+@js.native
 class Clipboard(EventTarget):
     """WebIDL source: @webref/idl/clipboard-apis.idl
 
@@ -23,7 +23,7 @@ class Clipboard(EventTarget):
     async def writeText(self, data: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ClipboardChangeEvent(Event):
     """WebIDL source: @webref/idl/clipboard-apis.idl
 
@@ -48,7 +48,7 @@ class ClipboardChangeEventInit:
         self.types = types
 
 
-@js(builtin=True)
+@js.native
 class ClipboardEvent(Event):
     """WebIDL source: @webref/idl/clipboard-apis.idl
 
@@ -69,7 +69,7 @@ class ClipboardEventInit:
         self.clipboardData = clipboardData
 
 
-@js(builtin=True)
+@js.native
 class ClipboardItem:
     """WebIDL source: @webref/idl/clipboard-apis.idl
 
@@ -106,7 +106,7 @@ class ClipboardUnsanitizedFormats:
             self.unsanitized = unsanitized
 
 
-@js(builtin=True)
+@js.native
 class Navigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -119,7 +119,7 @@ class Navigator:
 
 
 navigator = Navigator()
-js_object(navigator, builtin=True)
+js.native(navigator)
 
 
 @js

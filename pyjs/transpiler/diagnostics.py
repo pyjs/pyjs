@@ -17,10 +17,12 @@ class DiagnosticCode(StrEnum):
     UNDEFINED_ATTRIBUTE = "PYJS1003"
     MISSING_JS_BINDING = "PYJS1004"
     TYPE_ANNOTATION_REQUIRED = "PYJS1101"
-    JSON_RESULT_TYPE_REQUIRED = "PYJS1102"
     INCOMPATIBLE_ASSIGNMENT = "PYJS1103"
+    INCOMPATIBLE_ARGUMENT = "PYJS1104"
+    INCOMPATIBLE_RETURN = "PYJS1105"
     UNSUPPORTED_SYNTAX = "PYJS2001"
     INVALID_INLINE_DEPENDENCY = "PYJS2002"
+    INLINE_FUNCTION_VALUE = "PYJS2003"
 
 
 @dataclass(frozen=True)
@@ -290,6 +292,26 @@ class CompilationContext:
             help=(help,) if help else (),
         )
         raise CompilationError(diagnostic)
+
+    def definition_error(
+        self,
+        obj: object,
+        code: DiagnosticCode,
+        message: str,
+        *,
+        help: str | None = None,
+    ) -> Never:
+        span = self.sources.definition_span(obj)
+        if span is None:
+            raise TypeError(message)
+        raise CompilationError(
+            Diagnostic(
+                code,
+                message,
+                Label(span, primary=True),
+                help=(help,) if help else (),
+            )
+        )
 
     def name_lookup_error(
         self,

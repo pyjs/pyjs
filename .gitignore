@@ -1,7 +1,6 @@
 # Local dependencies and environments
 /.venv/
 /external/
-/.envrc
 
 # Python and test caches
 __pycache__/
@@ -16,6 +15,7 @@ dist/
 
 # Local editor settings
 /.idea/
+/.agent/
 
 # Generated sites and browser artifacts
 /site/

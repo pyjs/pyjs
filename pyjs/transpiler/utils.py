@@ -7,7 +7,7 @@ from _ast_unparse import _Precedence
 from io import StringIO
 from pathlib import Path
 
-from .objects import Function
+from .objects import Function, RuntimeFunctionReference
 
 
 class SourceWriter(StringIO):
@@ -45,11 +45,30 @@ class TypeWriter(_Unparser):
         self.set_precedence(_Precedence.ATOM, node.value)
         self.traverse(node.value)
         self.write(".")
-        if isinstance(node.obj, Function):
-            self.write(f"[{node.obj.cls.name}]")
+        obj = getattr(node, "obj", None)
+        if isinstance(obj, Function) and obj.cls is not None:
+            self.write(f"[{obj.cls.name}]")
         self.write(node.attr)
-        if isinstance(node.obj, Function) and node.obj.inline_decorator:
+        if isinstance(obj, Function) and obj.inline_decorator:
             self.write("!")
+
+    def visit_RuntimeFunctionReference(self, node: RuntimeFunctionReference):
+        self.write(node.alias)
+        if node.receiver is not None:
+            self.write(".bind(None, ")
+            self.traverse(node.receiver)
+            self.write(")")
+
+    def visit_StaticCast(self, node):
+        self.traverse(node.value)
+
+    def visit_UnpackAssignment(self, node):
+        self.fill("$unpack = ")
+        self.traverse(node.value)
+        self.traverse(node.assignments)
+
+    def visit_UnpackItem(self, node):
+        self.write(f"$unpack[{node.index}]")
 
 
 def write_types(ast_obj):

@@ -256,6 +256,11 @@ The analyzer preserves concrete element and key/value types for built-in collect
 `list[T]`, `dict[K, V]`, and `tuple[...]`. User-defined generic specialization exists in the
 analyzer but remains experimental and is not yet a stable application-facing feature.
 
+Typed tuples and lists can be unpacked into local names. Tuple and literal-list
+arity is checked during compilation; dynamic lists retain Python's runtime
+arity errors. Nested, starred, and chained unpacking targets are not yet
+supported.
+
 ### Async code and exceptions
 
 Async functions and `await` lower to JavaScript promises. Typed browser APIs such as `fetch()`,
@@ -354,6 +359,25 @@ preview, and render assertions can compare screenshots against checked-in PNG ba
 
 The built-in application server is run from Python source with `serve(__file__)`; the generated
 starter and examples already provide this entry point.
+
+NativeScript projects can declare external npm modules without editing the
+generated build directory:
+
+```python
+from pyjs.nativescript import NativeScriptModule
+from pyjs.tooling.nativescript import NativeScriptProject
+
+widgets = NativeScriptModule("@example/widgets", "1.2.3", ("Widget",))
+project = NativeScriptProject(
+    main,
+    name="Example",
+    app_id="org.example.app",
+    modules=(widgets,),
+)
+```
+
+PyJS installs the pinned package and emits its CommonJS imports before the
+transpiled application bundle.
 
 ## Current limitations and missing features
 

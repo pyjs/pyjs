@@ -39,7 +39,7 @@ class HoverCardKeyListener:
     def __init__(self, card: HoverCard):
         self.card = card
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         if event.key == "Escape":
             self.card.close()
@@ -123,6 +123,6 @@ class HoverCard(Widget):
                 return
         self.close()
 
-    @js(include=True)
+    @js.keep
     def disconnectedCallback(self):
         self.close()

@@ -1,7 +1,5 @@
-from typing import TypedDict
-
 from pyjs import js
-from pyjs.javascript import JSON
+from pyjs.javascript import JSON, JSONObject
 from pyjs.web.dom import document, localStorage, navigator, window
 from pyjs.web.domx import (
     CustomElement,
@@ -17,7 +15,7 @@ from pyjs.web.events import Event, EventTarget, KeyboardEvent
 from pyjs.web.html import HTMLElement
 
 
-class SearchRecord(TypedDict):
+class SearchRecord(JSONObject):
     title: str
     section: str
     text: str
@@ -29,7 +27,7 @@ class DocsEventListener:
     def __init__(self, callback: callable):
         self.callback = callback
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.callback(event)
 
@@ -40,7 +38,7 @@ class CodeCopyListener:
         self.button = button_element
         self.code = code_element
 
-    @js(include=True)
+    @js.keep
     async def handleEvent(self, event: Event):
         text = self.code.textContent
         if text is None:

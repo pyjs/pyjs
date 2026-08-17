@@ -20,7 +20,7 @@ from pyjs.web.events import EventTarget
 from pyjs.web.streams import ReadableStream
 
 
-@js(builtin=True)
+@js.native
 class Blob:
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -83,7 +83,7 @@ class BlobPropertyBag:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class FileList:
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -95,7 +95,7 @@ class FileList:
         self._items: list[File] = []
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> File:
         return self._items[index]
 
@@ -103,18 +103,18 @@ class FileList:
     def __iter__(self):
         return iter(self._items)
 
-    @js(inline="{self}.length")
+    @js.inline("{self}.length")
     def __len__(self) -> int:
         return len(self._items)
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def item(self, index: int) -> File | None:
         if 0 <= index < len(self._items):
             return self._items[index]
         return None
 
 
-@js(builtin=True)
+@js.native
 class FileReader(EventTarget):
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -149,7 +149,7 @@ class FileReader(EventTarget):
     def readAsText(self, blob: Blob, encoding: str | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class FileReaderSync:
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -183,7 +183,7 @@ class FilePropertyBag:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class File(Blob):
     """WebIDL source: @webref/idl/FileAPI.idl
 

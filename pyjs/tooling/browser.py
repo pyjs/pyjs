@@ -637,18 +637,18 @@ class Browser:
 
     async def __aenter__(self) -> Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="pyjs-browser-"))
-        self.process = subprocess.Popen(
-            self._launch_arguments(self.profile),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
         try:
+            self.process = subprocess.Popen(
+                self._launch_arguments(self.profile),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             await wait_for_http(
                 f"http://127.0.0.1:{self.debug_port}/json/version",
                 timeout=30,
             )
-        except Exception:
+        except BaseException:
             await self.close()
             raise
         return self
@@ -677,20 +677,29 @@ class Browser:
         self.pages.remove(page)
 
     async def close(self) -> None:
-        for page in self.pages:
-            await page.session.close()
+        pages = self.pages
         self.pages.clear()
-        if self.process is not None and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                await asyncio.to_thread(self.process.wait, 5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                await asyncio.to_thread(self.process.wait)
+        self._close_process()
+        try:
+            await asyncio.gather(
+                *(page.session.close() for page in pages),
+                return_exceptions=True,
+            )
+        finally:
+            if self.profile is not None:
+                shutil.rmtree(self.profile, ignore_errors=True)
+            self.profile = None
+
+    def _close_process(self) -> None:
+        process = self.process
         self.process = None
-        if self.profile is not None:
-            shutil.rmtree(self.profile, ignore_errors=True)
-        self.profile = None
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         await self.close()

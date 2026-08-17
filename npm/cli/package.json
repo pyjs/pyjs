@@ -1,6 +1,6 @@
 {
   "name": "@pyjsdev/cli",
-  "version": "0.0.2",
+  "version": "0.3.0",
   "description": "Python to JavaScript transpiler",
   "license": "BSD-3-Clause",
   "repository": {
@@ -19,9 +19,9 @@
     "node": ">=20"
   },
   "optionalDependencies": {
-    "@pyjsdev/cli-darwin-arm64": "0.0.2",
-    "@pyjsdev/cli-darwin-x64": "0.0.2",
-    "@pyjsdev/cli-win32-x64": "0.0.2",
-    "@pyjsdev/cli-linux-x64": "0.0.2"
+    "@pyjsdev/cli-darwin-arm64": "0.3.0",
+    "@pyjsdev/cli-darwin-x64": "0.3.0",
+    "@pyjsdev/cli-win32-x64": "0.3.0",
+    "@pyjsdev/cli-linux-x64": "0.3.0"
   }
 }

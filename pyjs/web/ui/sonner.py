@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import button, div, p, tw
@@ -61,7 +63,7 @@ class Toaster(Widget):
             toast.remove()
 
     def clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         close_button = target.closest("[data-toast-close]")
         if close_button is None:
             return

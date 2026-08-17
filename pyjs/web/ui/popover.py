@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, ref, tag, tw
@@ -96,7 +98,7 @@ class PopoverClickListener:
     def __init__(self, popover: Popover):
         self.popover = popover
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.popover.handle_document_click(event)
 
@@ -106,7 +108,7 @@ class PopoverKeyListener:
     def __init__(self, popover: Popover):
         self.popover = popover
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         self.popover.handle_keydown(event)
 
@@ -195,14 +197,14 @@ class Popover(Widget):
             self.open()
 
     def handle_content_click(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         if target.closest("[data-slot=popover-close]") is not None:
             self.close(restore_focus=True)
 
     def handle_document_click(self, event: Event):
         if not self.is_open:
             return
-        target: Element = event.target
+        target = cast(Element, event.target)
         if self.contains(target) or self.content.contains(target):
             return
         self.close()
@@ -212,6 +214,6 @@ class Popover(Widget):
             event.preventDefault()
             self.close(restore_focus=True)
 
-    @js(include=True)
+    @js.keep
     def disconnectedCallback(self):
         self.close()

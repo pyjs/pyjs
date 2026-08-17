@@ -3,7 +3,7 @@ from pyjs.web.events import EventTarget
 from pyjs.web.files import Blob
 
 
-@js(builtin=True)
+@js.native
 class MediaSource(EventTarget):
     """WebIDL source: @webref/idl/media-source.idl
 
@@ -14,7 +14,7 @@ class MediaSource(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class URL:
     """WebIDL source: @webref/idl/url.idl
 
@@ -51,7 +51,7 @@ class URL:
     def toJSON(self) -> str: ...
 
 
-@js(builtin=True)
+@js.native
 class URLSearchParams:
     """WebIDL source: @webref/idl/url.idl
 

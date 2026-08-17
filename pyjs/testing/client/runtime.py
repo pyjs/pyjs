@@ -1,9 +1,9 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.testing.client.state import RenderArtifact, TestResult
 from pyjs.web.dom import Window
 
 
-@js(builtin=True)
+@js.native
 class TestingWindow(Window):
     def __init__(self):
         super().__init__()
@@ -18,7 +18,7 @@ class TestingWindow(Window):
 
 
 window = TestingWindow()
-js_object(window, builtin=True)
+js.native(window)
 
 
 @js
@@ -54,7 +54,7 @@ def exception_text(error: Exception) -> str:
     return str(error)
 
 
-@js(builtin=True, inline="{call}()")
+@js.inline("{call}()")
 async def call_browser_test(call: callable) -> None:
     import inspect
 
@@ -63,14 +63,14 @@ async def call_browser_test(call: callable) -> None:
         await result
 
 
-@js(builtin=True, inline="{call}({selected_tests})")
+@js.inline("{call}({selected_tests})")
 async def call_selected_tests(
     call: callable, selected_tests: list[BrowserTest]
 ) -> list[TestResult]:
     return await call(selected_tests)
 
 
-@js(builtin=True, inline="{call}({run_id}, {selected_tests})")
+@js.inline("{call}({run_id}, {selected_tests})")
 def launch_automatic_results(
     call: callable, run_id: str, selected_tests: list[BrowserTest]
 ) -> None:

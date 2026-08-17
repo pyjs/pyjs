@@ -47,7 +47,10 @@ def transpile_line(line):
     analysis = _analyze(line)
     if not analysis.wrapped:
         return analysis.javascript
-    return "\n".join(line.strip() for line in analysis.javascript.splitlines()[1:-1])
+    lines = analysis.javascript.splitlines()
+    wrapper = lines.index("export function main() {")
+    lines = [*lines[:wrapper], *lines[wrapper + 1 : -1]]
+    return "\n".join(line.strip() for line in lines)
 
 
 def analyze_file(module_name, write=False, no_assert=False):

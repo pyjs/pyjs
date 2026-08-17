@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
+
 from pyjs.tooling.android import AndroidDevice, AndroidSDK
 
 from .artifacts import Artifact, ArtifactManifest
@@ -43,6 +45,10 @@ class AndroidElement:
     class_name: str
     clickable: bool
     enabled: bool
+    checkable: bool
+    checked: bool
+    selected: bool
+    focused: bool
     bounds: AndroidBounds
 
 
@@ -64,10 +70,73 @@ def parse_ui_tree(source: str) -> list[AndroidElement]:
                 class_name=attributes.get("class", ""),
                 clickable=attributes.get("clickable") == "true",
                 enabled=attributes.get("enabled") == "true",
+                checkable=attributes.get("checkable") == "true",
+                checked=attributes.get("checked") == "true",
+                selected=attributes.get("selected") == "true",
+                focused=attributes.get("focused") == "true",
                 bounds=AndroidBounds.parse(bounds),
             )
         )
     return elements
+
+
+def assert_android_image(
+    actual_path: Path,
+    expected_path: Path,
+    *,
+    pixel_threshold: int = 8,
+    max_different_pixel_ratio: float = 0.01,
+    diff_path: Path | None = None,
+) -> None:
+    with Image.open(actual_path) as image:
+        actual = image.convert("RGBA")
+    with Image.open(expected_path) as image:
+        expected = image.convert("RGBA")
+    if actual.size != expected.size:
+        raise AssertionError(
+            f"Android image size {actual.size} does not match expected {expected.size}."
+        )
+
+    different = 0
+    for actual_pixel, expected_pixel in zip(
+        actual.get_flattened_data(), expected.get_flattened_data(), strict=True
+    ):
+        channel_difference = max(
+            abs(actual_channel - expected_channel)
+            for actual_channel, expected_channel in zip(
+                actual_pixel, expected_pixel, strict=True
+            )
+        )
+        if channel_difference > pixel_threshold:
+            different += 1
+
+    total = actual.width * actual.height
+    ratio = different / total
+    if ratio <= max_different_pixel_ratio:
+        return
+    if diff_path is not None:
+        diff_path.parent.mkdir(parents=True, exist_ok=True)
+        diff = Image.new("RGBA", actual.size, (0, 0, 0, 255))
+        diff_pixels = []
+        for actual_pixel, expected_pixel in zip(
+            actual.get_flattened_data(), expected.get_flattened_data(), strict=True
+        ):
+            channel_difference = max(
+                abs(actual_channel - expected_channel)
+                for actual_channel, expected_channel in zip(
+                    actual_pixel, expected_pixel, strict=True
+                )
+            )
+            if channel_difference > pixel_threshold:
+                diff_pixels.append((255, 0, 255, 255))
+            else:
+                diff_pixels.append((0, 0, 0, 255))
+        diff.putdata(diff_pixels)
+        diff.save(diff_path)
+    raise AssertionError(
+        f"{different}/{total} Android pixels differ ({ratio:.2%}); "
+        f"allowed {max_different_pixel_ratio:.2%}."
+    )
 
 
 class AndroidTestSession:

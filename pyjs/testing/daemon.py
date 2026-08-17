@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import re
+import signal
 import time
 import traceback
 import uuid
@@ -19,7 +20,11 @@ from websockets.asyncio.server import ServerConnection, serve
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
-from pyjs.testing.builder import BrowserBundleBuilder, SelectedTest
+from pyjs.testing.builder import (
+    BrowserBundleBuilder,
+    SelectedTest,
+    compute_testing_signature,
+)
 from pyjs.testing.protocol import failed_run
 from pyjs.tooling.browser import Browser, BrowserPage
 from pyjs.transpiler import bundle
@@ -27,8 +32,6 @@ from pyjs.transpiler import bundle
 BROWSER_CONNECT_TIMEOUT_SECONDS = 30
 BROWSER_DISPATCH_TIMEOUT_SECONDS = 10
 BROWSER_STALE_AFTER_SECONDS = 15
-TESTING_PACKAGE_ROOT = Path(__file__).resolve().parent
-SIGNATURE_DIRS = [TESTING_PACKAGE_ROOT, TESTING_PACKAGE_ROOT.parent / "tooling"]
 
 
 def make_response(status: int, reason: str, body: str, content_type: str) -> Response:
@@ -38,15 +41,6 @@ def make_response(status: int, reason: str, body: str, content_type: str) -> Res
     headers["Content-Length"] = str(len(body_bytes))
     headers["Cache-Control"] = "no-store"
     return Response(status, reason, headers, body_bytes)
-
-
-def compute_testing_signature() -> str:
-    digest = hashlib.sha256()
-    for directory in SIGNATURE_DIRS:
-        for path in sorted(directory.rglob("*.py")):
-            digest.update(str(path.relative_to(directory)).encode("utf-8"))
-            digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 def build_runner_components() -> tuple[str, str]:
@@ -111,6 +105,7 @@ class PrototypeDaemon:
         self.current_bundle = ""
         self.current_css = ""
         self.current_run_id: str | None = None
+        self.reusable = True
         self.runner_page_error: str | None = None
         self.active_browser: ServerConnection | None = None
         self.last_browser_seen: float | None = None
@@ -137,6 +132,7 @@ class PrototypeDaemon:
             "cache_dir": str(self.cache_dir),
             "active_browser": self.active_browser is not None,
             "current_run_id": self.current_run_id,
+            "reusable": self.reusable,
             "pending_runs": len(self.pending_results),
             "runner_page_error": self.runner_page_error,
             "browser_mode": self.browser_mode,
@@ -192,6 +188,7 @@ class PrototypeDaemon:
                 page = self.runner_html()
             except Exception:
                 self.runner_page_error = traceback.format_exc()
+                self.reusable = False
                 self.browser_ready.set()
                 return make_response(
                     500,
@@ -281,11 +278,16 @@ class PrototypeDaemon:
         selected_nodeids = message.get("selected_nodeids", nodeids)
         current_nodeid = message.get("current_nodeid")
         run_id = uuid.uuid4().hex
+        self.current_bundle = ""
+        self.current_css = ""
+        self.current_run_id = None
         try:
             bundle_result = self.bundle_builder.build(selected_tests, run_id)
         except Exception as exc:
+            self.reusable = False
             return failed_run("bundle_build", str(exc))
 
+        self.reusable = True
         self.current_bundle = bundle_result.javascript
         self.current_css = bundle_result.css
         self.current_run_id = run_id
@@ -601,33 +603,45 @@ async def async_main(
         test_timeout,
         retained_iframes,
     )
-    async with serve(
-        daemon.handler,
-        host,
-        port,
-        process_request=daemon.process_request,
-    ):
+    loop = asyncio.get_running_loop()
+    handled_signals: list[signal.Signals] = []
+    for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(shutdown_signal, daemon.shutdown_event.set)
+        except NotImplementedError:
+            break
+        handled_signals.append(shutdown_signal)
+    try:
+        async with serve(
+            daemon.handler,
+            host,
+            port,
+            process_request=daemon.process_request,
+        ):
 
-        async def run_until_shutdown() -> None:
-            monitor_task = asyncio.create_task(daemon.monitor_idle())
-            try:
-                await daemon.shutdown_event.wait()
-            finally:
-                monitor_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await monitor_task
+            async def run_until_shutdown() -> None:
+                monitor_task = asyncio.create_task(daemon.monitor_idle())
+                try:
+                    await daemon.shutdown_event.wait()
+                finally:
+                    monitor_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await monitor_task
 
-        if browser_mode == "managed":
-            async with Browser(headless=not headed, webgpu=True) as browser:
-                page = await browser.new_page()
-                daemon.managed_page = page
-                await page.set_viewport(browser_width, browser_height)
-                if color_scheme != "system":
-                    await page.set_color_scheme(color_scheme)
-                await page.navigate(daemon.runner_url, timeout=120)
+            if browser_mode == "managed":
+                async with Browser(headless=not headed, webgpu=True) as browser:
+                    page = await browser.new_page()
+                    daemon.managed_page = page
+                    await page.set_viewport(browser_width, browser_height)
+                    if color_scheme != "system":
+                        await page.set_color_scheme(color_scheme)
+                    await page.navigate(daemon.runner_url, timeout=120)
+                    await run_until_shutdown()
+            else:
                 await run_until_shutdown()
-        else:
-            await run_until_shutdown()
+    finally:
+        for shutdown_signal in handled_signals:
+            loop.remove_signal_handler(shutdown_signal)
 
 
 def main() -> int:

@@ -1,4 +1,4 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.javascript import Float16Array, Uint8ClampedArray
 from pyjs.web.dom import (
     CSSStyleProperties,
@@ -29,7 +29,7 @@ class AssignedNodesOptions:
         self.flatten = flatten
 
 
-@js(builtin=True)
+@js.native
 class AudioTrack:
     """WebIDL source: @webref/idl/html.idl
 
@@ -45,7 +45,7 @@ class AudioTrack:
         self.language: str = ""
 
 
-@js(builtin=True)
+@js.native
 class AudioTrackList(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -60,13 +60,13 @@ class AudioTrackList(EventTarget):
         self.onchange: callable = None
         self.onremovetrack: callable = None
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> AudioTrack: ...
 
     def getTrackById(self, id: str) -> AudioTrack | None: ...
 
 
-@js(builtin=True)
+@js.native
 class BarProp:
     """WebIDL source: @webref/idl/html.idl
 
@@ -78,7 +78,7 @@ class BarProp:
         self.visible: bool = False
 
 
-@js(builtin=True)
+@js.native
 class BeforeUnloadEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -91,7 +91,7 @@ class BeforeUnloadEvent(Event):
         self.returnValue: str = ""
 
 
-@js(builtin=True)
+@js.native
 class BroadcastChannel(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -110,7 +110,7 @@ class BroadcastChannel(EventTarget):
     def postMessage(self, message: object) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class CanvasGradient:
     """WebIDL source: @webref/idl/html.idl
 
@@ -121,7 +121,7 @@ class CanvasGradient:
     def addColorStop(self, offset: float, color: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class CanvasPattern:
     """WebIDL source: @webref/idl/html.idl
 
@@ -132,7 +132,7 @@ class CanvasPattern:
     def setTransform(self, transform: DOMMatrix2DInit | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class CanvasRenderingContext2D:
     """WebIDL source: @webref/idl/html.idl
 
@@ -362,7 +362,7 @@ class CanvasRenderingContext2DSettings:
         self.willReadFrequently = willReadFrequently
 
 
-@js(builtin=True)
+@js.native
 class CloseWatcher(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -391,7 +391,7 @@ class CloseWatcherOptions:
             self.signal = signal
 
 
-@js(builtin=True)
+@js.native
 class CommandEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -414,7 +414,7 @@ class CommandEventInit:
         self.source = source
 
 
-@js(builtin=True)
+@js.native
 class CustomElementRegistry:
     """WebIDL source: @webref/idl/html.idl
 
@@ -440,10 +440,10 @@ class CustomElementRegistry:
 
 
 customElements = CustomElementRegistry()
-js_object(customElements, builtin=True)
+js.native(customElements)
 
 
-@js(builtin=True)
+@js.native
 class CustomStateSet:
     """WebIDL source: @webref/idl/html.idl
 
@@ -454,7 +454,7 @@ class CustomStateSet:
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMParser:
     """WebIDL source: @webref/idl/html.idl
 
@@ -467,7 +467,7 @@ class DOMParser:
     def parseFromString(self, string: TrustedHTML | str, type: str) -> Document: ...
 
 
-@js(builtin=True)
+@js.native
 class DOMStringList:
     """WebIDL source: @webref/idl/html.idl
 
@@ -483,7 +483,7 @@ class DOMStringList:
     def item(self, index: int) -> str | None: ...
 
 
-@js(builtin=True)
+@js.native
 class DOMStringMap:
     """WebIDL source: @webref/idl/html.idl
 
@@ -494,19 +494,19 @@ class DOMStringMap:
     def __init__(self):
         self.map: dict[str, str] = {}
 
-    @js(inline="delete {self}[{name}]")
+    @js.inline("delete {self}[{name}]")
     def __delitem__(self, name: str) -> None: ...
 
-    @js(inline="{self}[{name}]")
+    @js.inline("{self}[{name}]")
     def __getitem__(self, name: str) -> str:
         return self.map[name]
 
-    @js(inline="{self}[{name}] = {value}")
+    @js.inline("{self}[{name}] = {value}")
     def __setitem__(self, name: str, value: str) -> None:
         self.map[name] = value
 
 
-@js(builtin=True)
+@js.native
 class EditContext(EventTarget):
     """WebIDL source: @webref/idl/edit-context.idl
 
@@ -525,7 +525,7 @@ class ElementDefinitionOptions:
         self.extends = extends
 
 
-@js(builtin=True)
+@js.native
 class ElementInternals:
     """WebIDL source: @webref/idl/html.idl
 
@@ -562,7 +562,7 @@ class ElementInternals:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class EventSource(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -594,7 +594,7 @@ class EventSourceInit:
         self.withCredentials = withCredentials
 
 
-@js(builtin=True)
+@js.native
 class External:
     """WebIDL source: @webref/idl/html.idl
 
@@ -605,7 +605,7 @@ class External:
     def IsSearchProviderInstalled(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class FileSystemEntry:
     """WebIDL source: @webref/idl/entries-api.idl
 
@@ -625,7 +625,7 @@ class FocusOptions:
         self.preventScroll = preventScroll
 
 
-@js(builtin=True)
+@js.native
 class FormData:
     """WebIDL source: @webref/idl/xhr.idl
 
@@ -636,7 +636,7 @@ class FormData:
     pass
 
 
-@js(builtin=True)
+@js.native
 class FormDataEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -672,7 +672,7 @@ class GetHTMLOptions:
         self.shadowRoots = shadowRoots
 
 
-@js(builtin=True)
+@js.native
 class GPUCanvasContext:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -683,7 +683,7 @@ class GPUCanvasContext:
     pass
 
 
-@js(builtin=True)
+@js.native
 class HashChangeEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -706,7 +706,7 @@ class HashChangeEventInit:
         self.oldURL = oldURL
 
 
-@js(builtin=True)
+@js.native
 class HTMLAllCollection:
     """WebIDL source: @webref/idl/html.idl
 
@@ -717,7 +717,7 @@ class HTMLAllCollection:
     def __init__(self):
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> Element: ...
 
     def item(
@@ -727,7 +727,7 @@ class HTMLAllCollection:
     def namedItem(self, name: str) -> HTMLCollection[Element] | Element | None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLElement(Element):
     """WebIDL source: @webref/idl/html.idl
 
@@ -901,7 +901,7 @@ class HTMLElement(Element):
     ) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLFormControlsCollection(HTMLCollection[Element]):
     """WebIDL source: @webref/idl/html.idl
 
@@ -914,7 +914,7 @@ class HTMLFormControlsCollection(HTMLCollection[Element]):
     def namedItem(self, name: str) -> RadioNodeList | Element | None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLOptionsCollection(HTMLCollection[Element]):
     """WebIDL source: @webref/idl/html.idl
 
@@ -927,7 +927,7 @@ class HTMLOptionsCollection(HTMLCollection[Element]):
         self.length: int = 0
         self.selectedIndex: int = 0
 
-    @js(inline="{self}[{index}] = {option}")
+    @js.inline("{self}[{index}] = {option}")
     def __setitem__(self, index: int, option: HTMLOptionElement | None) -> None: ...
 
     def add(
@@ -939,7 +939,7 @@ class HTMLOptionsCollection(HTMLCollection[Element]):
     def remove(self, index: int) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ImageBitmap:
     """WebIDL source: @webref/idl/html.idl
 
@@ -977,7 +977,7 @@ class ImageBitmapOptions:
             self.resizeWidth = resizeWidth
 
 
-@js(builtin=True)
+@js.native
 class ImageBitmapRenderingContext:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1001,7 +1001,7 @@ class ImageBitmapRenderingContextSettings:
         self.alpha = alpha
 
 
-@js(builtin=True)
+@js.native
 class ImageData:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1044,7 +1044,7 @@ class ImageEncodeOptions:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class MediaError:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1062,7 +1062,7 @@ class MediaError:
         self.message: str = ""
 
 
-@js(builtin=True)
+@js.native
 class MediaSource(EventTarget):
     """WebIDL source: @webref/idl/media-source.idl
 
@@ -1073,7 +1073,7 @@ class MediaSource(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class MediaStream(EventTarget):
     """WebIDL source: @webref/idl/mediacapture-streams.idl
 
@@ -1084,7 +1084,7 @@ class MediaStream(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class MessageChannel:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1097,7 +1097,7 @@ class MessageChannel:
         self.port2: MessagePort = None
 
 
-@js(builtin=True)
+@js.native
 class MimeType:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1112,7 +1112,7 @@ class MimeType:
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class MimeTypeArray:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1128,7 +1128,7 @@ class MimeTypeArray:
     def namedItem(self, name: str) -> MimeType | None: ...
 
 
-@js(builtin=True)
+@js.native
 class NavigateEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1209,7 +1209,7 @@ class NavigateEventInit:
         self.userInitiated = userInitiated
 
 
-@js(builtin=True)
+@js.native
 class Navigation(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1253,7 +1253,7 @@ class Navigation(EventTarget):
     def updateCurrentEntry(self, *, state: object) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class NavigationActivation:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1266,7 +1266,7 @@ class NavigationActivation:
         self.navigationType: str = ""
 
 
-@js(builtin=True)
+@js.native
 class NavigationCurrentEntryChangeEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1294,7 +1294,7 @@ class NavigationCurrentEntryChangeEventInit:
         self.navigationType = navigationType
 
 
-@js(builtin=True)
+@js.native
 class NavigationDestination:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1312,7 +1312,7 @@ class NavigationDestination:
     def getState(self) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class NavigationHistoryEntry(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1362,7 +1362,7 @@ class NavigationOptions:
             self.info = info
 
 
-@js(builtin=True)
+@js.native
 class NavigationPrecommitController:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1397,7 +1397,7 @@ class NavigationResult:
             self.finished = finished
 
 
-@js(builtin=True)
+@js.native
 class NavigationTransition:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1420,7 +1420,7 @@ class NavigationUpdateCurrentEntryOptions:
         self.state = state
 
 
-@js(builtin=True)
+@js.native
 class NotRestoredReasonDetails:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1434,7 +1434,7 @@ class NotRestoredReasonDetails:
     def toJSON(self) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class NotRestoredReasons:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1453,7 +1453,7 @@ class NotRestoredReasons:
     def toJSON(self) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class OffscreenCanvas(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1488,7 +1488,7 @@ class OffscreenCanvas(EventTarget):
     def transferToImageBitmap(self) -> ImageBitmap: ...
 
 
-@js(builtin=True)
+@js.native
 class OffscreenCanvasRenderingContext2D:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1695,7 +1695,7 @@ class OffscreenCanvasRenderingContext2D:
     def translate(self, x: float, y: float) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class Origin:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1705,7 +1705,7 @@ class Origin:
         self.opaque: bool = False
 
     @staticmethod
-    @js(inline="{self}.from({_args_joined})")
+    @js.inline("{self}.from({_args_joined})")
     def from_(value: object) -> Origin: ...
 
     def isSameOrigin(self, other: Origin) -> bool: ...
@@ -1713,7 +1713,7 @@ class Origin:
     def isSameSite(self, other: Origin) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class PageRevealEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1734,7 +1734,7 @@ class PageRevealEventInit:
         self.viewTransition = viewTransition
 
 
-@js(builtin=True)
+@js.native
 class PageSwapEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1767,7 +1767,7 @@ class PageSwapEventInit:
         self.viewTransition = viewTransition
 
 
-@js(builtin=True)
+@js.native
 class PageTransitionEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1798,7 +1798,7 @@ class ParseHTMLUnsafeOptions:
         self.sanitizer = sanitizer
 
 
-@js(builtin=True)
+@js.native
 class Path2D:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1860,7 +1860,7 @@ class Path2D:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class PerformanceEntry:
     """WebIDL source: @webref/idl/performance-timeline.idl
 
@@ -1871,7 +1871,7 @@ class PerformanceEntry:
     pass
 
 
-@js(builtin=True)
+@js.native
 class PermissionsPolicy:
     """WebIDL source: @webref/idl/permissions-policy.idl
 
@@ -1880,7 +1880,7 @@ class PermissionsPolicy:
     pass
 
 
-@js(builtin=True)
+@js.native
 class Plugin:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1899,7 +1899,7 @@ class Plugin:
     def namedItem(self, name: str) -> MimeType | None: ...
 
 
-@js(builtin=True)
+@js.native
 class PluginArray:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1917,7 +1917,7 @@ class PluginArray:
     def refresh(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class PopStateEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1946,7 +1946,7 @@ class PopStateEventInit:
         self.state = state
 
 
-@js(builtin=True)
+@js.native
 class RadioNodeList(NodeList[Node]):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1959,7 +1959,7 @@ class RadioNodeList(NodeList[Node]):
         self.value: str = ""
 
 
-@js(builtin=True)
+@js.native
 class Sanitizer:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2102,7 +2102,7 @@ class SetHTMLUnsafeOptions:
         self.sanitizer = sanitizer
 
 
-@js(builtin=True)
+@js.native
 class SharedWorker(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2132,7 +2132,7 @@ class ShowPopoverOptions:
         self.source = source
 
 
-@js(builtin=True)
+@js.native
 class StorageEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2199,7 +2199,7 @@ class StructuredSerializeOptions:
         self.transfer = transfer
 
 
-@js(builtin=True)
+@js.native
 class StylePropertyMapReadOnly:
     """WebIDL source: @webref/idl/css-typed-om.idl
 
@@ -2210,7 +2210,7 @@ class StylePropertyMapReadOnly:
     pass
 
 
-@js(builtin=True)
+@js.native
 class SubmitEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2231,7 +2231,7 @@ class SubmitEventInit:
         self.submitter = submitter
 
 
-@js(builtin=True)
+@js.native
 class TextMetrics:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2254,7 +2254,7 @@ class TextMetrics:
         self.width: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class TextTrack(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2279,7 +2279,7 @@ class TextTrack(EventTarget):
     def removeCue(self, cue: TextTrackCue) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class TextTrackCue(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2298,7 +2298,7 @@ class TextTrackCue(EventTarget):
         self.track: TextTrack | None = None
 
 
-@js(builtin=True)
+@js.native
 class TextTrackCueList:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2309,13 +2309,13 @@ class TextTrackCueList:
     def __init__(self):
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> TextTrackCue: ...
 
     def getCueById(self, id: str) -> TextTrackCue | None: ...
 
 
-@js(builtin=True)
+@js.native
 class TextTrackList(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2330,13 +2330,13 @@ class TextTrackList(EventTarget):
         self.onchange: callable = None
         self.onremovetrack: callable = None
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> TextTrack: ...
 
     def getTrackById(self, id: str) -> TextTrack | None: ...
 
 
-@js(builtin=True)
+@js.native
 class TimeRanges:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2352,7 +2352,7 @@ class TimeRanges:
     def start(self, index: int) -> float: ...
 
 
-@js(builtin=True)
+@js.native
 class ToggleEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2386,7 +2386,7 @@ class ToggleEventInit:
         self.source = source
 
 
-@js(builtin=True)
+@js.native
 class TrackEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2409,7 +2409,7 @@ class TrackEventInit:
         self.track = track
 
 
-@js(builtin=True)
+@js.native
 class TrustedHTML:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -2420,7 +2420,7 @@ class TrustedHTML:
     pass
 
 
-@js(builtin=True)
+@js.native
 class TrustedScript:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -2431,7 +2431,7 @@ class TrustedScript:
     pass
 
 
-@js(builtin=True)
+@js.native
 class TrustedScriptURL:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -2442,7 +2442,7 @@ class TrustedScriptURL:
     pass
 
 
-@js(builtin=True)
+@js.native
 class UserActivation:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2455,7 +2455,7 @@ class UserActivation:
         self.isActive: bool = False
 
 
-@js(builtin=True)
+@js.native
 class ValidityState:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2508,7 +2508,7 @@ class ValidityStateFlags:
         self.valueMissing = valueMissing
 
 
-@js(builtin=True)
+@js.native
 class VideoFrame:
     """WebIDL source: @webref/idl/webcodecs.idl
 
@@ -2519,7 +2519,7 @@ class VideoFrame:
     pass
 
 
-@js(builtin=True)
+@js.native
 class VideoTrack:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2535,7 +2535,7 @@ class VideoTrack:
         self.selected: bool = False
 
 
-@js(builtin=True)
+@js.native
 class VideoTrackList(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2551,13 +2551,13 @@ class VideoTrackList(EventTarget):
         self.onremovetrack: callable = None
         self.selectedIndex: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> VideoTrack: ...
 
     def getTrackById(self, id: str) -> VideoTrack | None: ...
 
 
-@js(builtin=True)
+@js.native
 class ViewTransition:
     """WebIDL source: @webref/idl/css-view-transitions.idl
 
@@ -2568,7 +2568,7 @@ class ViewTransition:
     pass
 
 
-@js(builtin=True)
+@js.native
 class WebGL2RenderingContext:
     """WebIDL source: @webref/idl/webgl2.idl
 
@@ -2579,7 +2579,7 @@ class WebGL2RenderingContext:
     pass
 
 
-@js(builtin=True)
+@js.native
 class WebGLRenderingContext:
     """WebIDL source: @webref/idl/webgl1.idl
 
@@ -2590,7 +2590,7 @@ class WebGLRenderingContext:
     pass
 
 
-@js(builtin=True)
+@js.native
 class Worker(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2616,7 +2616,7 @@ class Worker(EventTarget):
     def terminate(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class WorkerGlobalScope(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2692,7 +2692,7 @@ class WorkerGlobalScope(EventTarget):
     ) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class WorkerLocation:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2712,7 +2712,7 @@ class WorkerLocation:
         self.search: str = ""
 
 
-@js(builtin=True)
+@js.native
 class WorkerNavigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2751,7 +2751,7 @@ class WorkerOptions:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class Worklet:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2764,7 +2764,7 @@ class Worklet:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class WorkletGlobalScope:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2783,7 +2783,7 @@ class WorkletOptions:
         self.credentials = credentials
 
 
-@js(builtin=True)
+@js.native
 class XMLSerializer:
     """WebIDL source: @webref/idl/html.idl
 
@@ -2880,7 +2880,7 @@ class WindowPostMessageOptions:
         self.transfer = transfer
 
 
-@js(builtin=True)
+@js.native
 class HTMLDataListElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2895,7 +2895,7 @@ class HTMLDataListElement(HTMLElement):
         self.options: HTMLCollection[Element] = None
 
 
-@js(builtin=True)
+@js.native
 class HTMLDataElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2908,7 +2908,7 @@ class HTMLDataElement(HTMLElement):
         self.value: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTimeElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2921,7 +2921,7 @@ class HTMLTimeElement(HTMLElement):
         self.dateTime: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTitleElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2934,7 +2934,7 @@ class HTMLTitleElement(HTMLElement):
         self.text: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTrackElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2958,7 +2958,7 @@ class HTMLTrackElement(HTMLElement):
         self.track: TextTrack = None
 
 
-@js(builtin=True)
+@js.native
 class HTMLUListElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2972,7 +2972,7 @@ class HTMLUListElement(HTMLElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLUnknownElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2983,7 +2983,7 @@ class HTMLUnknownElement(HTMLElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class StylePropertyMap(StylePropertyMapReadOnly):
     """WebIDL source: @webref/idl/css-typed-om.idl
 
@@ -2994,7 +2994,7 @@ class StylePropertyMap(StylePropertyMapReadOnly):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SharedWorkerGlobalScope(WorkerGlobalScope):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3010,7 +3010,7 @@ class SharedWorkerGlobalScope(WorkerGlobalScope):
     def close(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class DedicatedWorkerGlobalScope(WorkerGlobalScope):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3033,7 +3033,7 @@ class DedicatedWorkerGlobalScope(WorkerGlobalScope):
     def requestAnimationFrame(self, callback: callable) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLAnchorElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3073,7 +3073,7 @@ class HTMLAnchorElement(HTMLElement):
         self.username: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLAreaElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3106,7 +3106,7 @@ class HTMLAreaElement(HTMLElement):
         self.username: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLBaseElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3120,7 +3120,7 @@ class HTMLBaseElement(HTMLElement):
         self.target: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLBodyElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3156,7 +3156,7 @@ class HTMLBodyElement(HTMLElement):
         self.vLink: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLBRElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3169,7 +3169,7 @@ class HTMLBRElement(HTMLElement):
         self.clear: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLButtonElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3207,7 +3207,7 @@ class HTMLButtonElement(HTMLElement):
     def setCustomValidity(self, error: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLCanvasElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3246,7 +3246,7 @@ class HTMLCanvasElement(HTMLElement):
     def transferControlToOffscreen(self) -> OffscreenCanvas: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLDetailsElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3260,7 +3260,7 @@ class HTMLDetailsElement(HTMLElement):
         self.open: bool = False
 
 
-@js(builtin=True)
+@js.native
 class HTMLDialogElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3285,7 +3285,7 @@ class HTMLDialogElement(HTMLElement):
     def showModal(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLDirectoryElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3296,7 +3296,7 @@ class HTMLDirectoryElement(HTMLElement):
         self.compact: bool = False
 
 
-@js(builtin=True)
+@js.native
 class HTMLDivElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3311,7 +3311,7 @@ class HTMLDivElement(HTMLElement):
         self.align: str = "left"
 
 
-@js(builtin=True)
+@js.native
 class HTMLDListElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3324,7 +3324,7 @@ class HTMLDListElement(HTMLElement):
         self.compact: bool = False
 
 
-@js(builtin=True)
+@js.native
 class HTMLEmbedElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3344,7 +3344,7 @@ class HTMLEmbedElement(HTMLElement):
     def getSVGDocument(self) -> Document | None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLFieldSetElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3370,7 +3370,7 @@ class HTMLFieldSetElement(HTMLElement):
     def setCustomValidity(self, error: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLFontElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3385,7 +3385,7 @@ class HTMLFontElement(HTMLElement):
         self.size: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLFormElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3411,7 +3411,7 @@ class HTMLFormElement(HTMLElement):
         self.relList: DOMTokenList = None
         self.target: str = ""
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> Element: ...
 
     def checkValidity(self) -> bool: ...
@@ -3425,7 +3425,7 @@ class HTMLFormElement(HTMLElement):
     def submit(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLFrameElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3445,7 +3445,7 @@ class HTMLFrameElement(HTMLElement):
         self.src: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLFrameSetElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3477,7 +3477,7 @@ class HTMLFrameSetElement(HTMLElement):
         self.rows: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLHeadElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3489,7 +3489,7 @@ class HTMLHeadElement(HTMLElement):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class HTMLHeadingElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3502,7 +3502,7 @@ class HTMLHeadingElement(HTMLElement):
         self.align: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLHRElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3519,7 +3519,7 @@ class HTMLHRElement(HTMLElement):
         self.width: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLHtmlElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3532,7 +3532,7 @@ class HTMLHtmlElement(HTMLElement):
         self.version: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLIFrameElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3570,7 +3570,7 @@ class HTMLIFrameElement(HTMLElement):
     def getSVGDocument(self) -> Document | None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLImageElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3613,7 +3613,7 @@ class HTMLImageElement(HTMLElement):
     async def decode(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLInputElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3698,7 +3698,7 @@ class HTMLInputElement(HTMLElement):
     def stepUp(self, n: int = 1) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLLabelElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3713,7 +3713,7 @@ class HTMLLabelElement(HTMLElement):
         self.htmlFor: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLLegendElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3727,7 +3727,7 @@ class HTMLLegendElement(HTMLElement):
         self.form: HTMLFormElement | None = None
 
 
-@js(builtin=True)
+@js.native
 class HTMLLIElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3741,7 +3741,7 @@ class HTMLLIElement(HTMLElement):
         self.value: int = 0
 
 
-@js(builtin=True)
+@js.native
 class HTMLLinkElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3771,7 +3771,7 @@ class HTMLLinkElement(HTMLElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLMapElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3785,7 +3785,7 @@ class HTMLMapElement(HTMLElement):
         self.name: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLMarqueeElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3812,7 +3812,7 @@ class HTMLMarqueeElement(HTMLElement):
     def stop(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLMediaElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3879,7 +3879,7 @@ class HTMLMediaElement(HTMLElement):
     async def play(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLMenuElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3892,7 +3892,7 @@ class HTMLMenuElement(HTMLElement):
         self.compact: bool = False
 
 
-@js(builtin=True)
+@js.native
 class HTMLMetaElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3909,7 +3909,7 @@ class HTMLMetaElement(HTMLElement):
         self.scheme: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLMeterElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3928,7 +3928,7 @@ class HTMLMeterElement(HTMLElement):
         self.value: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class HTMLModElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3942,7 +3942,7 @@ class HTMLModElement(HTMLElement):
         self.dateTime: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLObjectElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -3984,7 +3984,7 @@ class HTMLObjectElement(HTMLElement):
     def setCustomValidity(self, error: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLOListElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4000,7 +4000,7 @@ class HTMLOListElement(HTMLElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLOptGroupElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4014,7 +4014,7 @@ class HTMLOptGroupElement(HTMLElement):
         self.label: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLOptionElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4034,7 +4034,7 @@ class HTMLOptionElement(HTMLElement):
         self.value: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLOutputElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4062,7 +4062,7 @@ class HTMLOutputElement(HTMLElement):
     def setCustomValidity(self, error: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLParagraphElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4077,7 +4077,7 @@ class HTMLParagraphElement(HTMLElement):
         self.align: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLParamElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4093,7 +4093,7 @@ class HTMLParamElement(HTMLElement):
         self.valueType: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLPictureElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4105,7 +4105,7 @@ class HTMLPictureElement(HTMLElement):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class HTMLPreElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4118,7 +4118,7 @@ class HTMLPreElement(HTMLElement):
         self.width: int = 0
 
 
-@js(builtin=True)
+@js.native
 class HTMLProgressElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4134,7 +4134,7 @@ class HTMLProgressElement(HTMLElement):
         self.value: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class HTMLQuoteElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4147,7 +4147,7 @@ class HTMLQuoteElement(HTMLElement):
         self.cite: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLScriptElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4175,7 +4175,7 @@ class HTMLScriptElement(HTMLElement):
     def supports(type: str) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLSelectedContentElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4187,7 +4187,7 @@ class HTMLSelectedContentElement(HTMLElement):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class HTMLSelectElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4215,7 +4215,7 @@ class HTMLSelectElement(HTMLElement):
         self.value: str = ""
         self.willValidate: bool = False
 
-    @js(inline="{self}[{index}] = {option}")
+    @js.inline("{self}[{index}] = {option}")
     def __setitem__(self, index: int, option: HTMLOptionElement | None) -> None: ...
 
     def add(
@@ -4239,7 +4239,7 @@ class HTMLSelectElement(HTMLElement):
     def showPicker(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLSlotElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4258,7 +4258,7 @@ class HTMLSlotElement(HTMLElement):
     def assignedNodes(self, *, flatten: bool = False) -> list[Node]: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLSourceElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4277,7 +4277,7 @@ class HTMLSourceElement(HTMLElement):
         self.width: int = 0
 
 
-@js(builtin=True)
+@js.native
 class HTMLSpanElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4291,7 +4291,7 @@ class HTMLSpanElement(HTMLElement):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class HTMLStyleElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4307,7 +4307,7 @@ class HTMLStyleElement(HTMLElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableCaptionElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4320,7 +4320,7 @@ class HTMLTableCaptionElement(HTMLElement):
         self.align: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableCellElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4347,7 +4347,7 @@ class HTMLTableCellElement(HTMLElement):
         self.width: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableColElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4365,7 +4365,7 @@ class HTMLTableColElement(HTMLElement):
         self.width: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4409,7 +4409,7 @@ class HTMLTableElement(HTMLElement):
     def insertRow(self, index: int = -1) -> HTMLTableRowElement: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableRowElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4433,7 +4433,7 @@ class HTMLTableRowElement(HTMLElement):
     def insertCell(self, index: int = -1) -> HTMLTableCellElement: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLTableSectionElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4454,7 +4454,7 @@ class HTMLTableSectionElement(HTMLElement):
     def insertRow(self, index: int = -1) -> HTMLTableRowElement: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLTemplateElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4473,7 +4473,7 @@ class HTMLTemplateElement(HTMLElement):
         self.shadowRootSlotAssignment: str = ""
 
 
-@js(builtin=True)
+@js.native
 class HTMLTextAreaElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4525,7 +4525,7 @@ class HTMLTextAreaElement(HTMLElement):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class VisibilityStateEntry(PerformanceEntry):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4541,7 +4541,7 @@ class VisibilityStateEntry(PerformanceEntry):
         self.startTime: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class HTMLAudioElement(HTMLMediaElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -4553,7 +4553,7 @@ class HTMLAudioElement(HTMLMediaElement):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class HTMLVideoElement(HTMLMediaElement):
     """WebIDL source: @webref/idl/html.idl
 

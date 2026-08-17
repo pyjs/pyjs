@@ -23,7 +23,7 @@ from pyjs.web.streams import ReadableStream
 from pyjs.web.url import URLSearchParams
 
 
-@js(builtin=True)
+@js.native
 class CloseEvent(Event):
     """WebIDL source: @webref/idl/websockets.idl
 
@@ -50,7 +50,7 @@ class CloseEventInit:
         self.wasClean = wasClean
 
 
-@js(builtin=True)
+@js.native
 class FetchLaterResult:
     """WebIDL source: @webref/idl/fetch.idl
 
@@ -62,7 +62,7 @@ class FetchLaterResult:
         self.activated: bool = False
 
 
-@js(builtin=True)
+@js.native
 class FormData:
     """WebIDL source: @webref/idl/xhr.idl
 
@@ -89,7 +89,7 @@ class FormData:
     def set(self, name: str, value: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class Headers:
     """WebIDL source: @webref/idl/fetch.idl
 
@@ -131,7 +131,7 @@ class PrivateToken:
         self.refreshPolicy = refreshPolicy
 
 
-@js(builtin=True)
+@js.native
 class Request:
     """WebIDL source: @webref/idl/fetch.idl
 
@@ -279,7 +279,7 @@ class RequestInit:
         self.window = window
 
 
-@js(builtin=True)
+@js.native
 class Response:
     """WebIDL source: @webref/idl/fetch.idl
 
@@ -369,7 +369,7 @@ class ResponseInit:
         self.statusText = statusText
 
 
-@js(builtin=True)
+@js.native
 class WebSocket(EventTarget):
     """WebIDL source: @webref/idl/websockets.idl
 
@@ -418,18 +418,19 @@ class WebSocket(EventTarget):
     ) -> None: ...
 
 
-def rewrite_fetch(_arg_strs, **kwargs):
+@js
+async def fetch(url: str, options: object | None = None) -> Response: ...
+
+
+@fetch.inline
+def fetch(_arg_strs, **kwargs):
     if len(_arg_strs) == 1:
         return f"fetch({_arg_strs[0]})"
     options = _arg_strs[1]
     return f"fetch({_arg_strs[0]}, (options => options instanceof Map ? Object.fromEntries(options) : options)({options}))"
 
 
-@js(builtin=True, inline=rewrite_fetch)
-async def fetch(url: str, options: object | None = None) -> Response: ...
-
-
-@js(builtin=True)
+@js.native
 class XMLHttpRequestEventTarget(EventTarget):
     """WebIDL source: @webref/idl/xhr.idl
 
@@ -524,7 +525,7 @@ class DeferredRequestInit:
             self.window = window
 
 
-@js(builtin=True)
+@js.native
 class XMLHttpRequest(XMLHttpRequestEventTarget):
     """WebIDL source: @webref/idl/xhr.idl
 
@@ -590,7 +591,7 @@ class XMLHttpRequest(XMLHttpRequestEventTarget):
     def setRequestHeader(self, name: str, value: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class XMLHttpRequestUpload(XMLHttpRequestEventTarget):
     """WebIDL source: @webref/idl/xhr.idl
 

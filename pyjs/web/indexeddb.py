@@ -1,10 +1,34 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.web.dom import DOMException
 from pyjs.web.events import Event, EventTarget
 from pyjs.web.html import DOMStringList
 
 
-@js(builtin=True)
+def _request_promise(expression: str, validator: str = "null") -> str:
+    if validator == "null":
+        resolve = "resolve(request.result)"
+        setup = ""
+    else:
+        resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
+        setup = f"const validate = {validator};"
+    return (
+        "new Promise((resolve, reject) => {"
+        f"const request = {expression};{setup}"
+        f"request.addEventListener('success', () => {resolve}, {{once: true}});"
+        "request.addEventListener('error', () => reject(request.error), "
+        "{once: true});})"
+    )
+
+
+def _rewrite_request_result(_arg_strs, self=None, **kwargs):
+    if self is not None:
+        validator = _arg_strs[0] if _arg_strs else "null"
+        return _request_promise(self, validator)
+    validator = _arg_strs[1] if len(_arg_strs) > 1 else "null"
+    return _request_promise(_arg_strs[0], validator)
+
+
+@js.native
 class IDBCursor:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -16,22 +40,22 @@ class IDBCursor:
         self.direction: str = ""
         self.key: object = None
         self.primaryKey: object = None
-        self.request: IDBRequest = None
+        self.request: IDBRequest[object] = None
         self.source: IDBObjectStore | IDBIndex = None
 
     def advance(self, count: int) -> None: ...
 
-    @js(inline="{self}.continue({_args_joined})")
+    @js.inline("{self}.continue({_args_joined})")
     def continue_(self, key: object | None = None) -> None: ...
 
     def continuePrimaryKey(self, key: object, primaryKey: object) -> None: ...
 
-    def delete(self) -> IDBRequest: ...
+    def delete(self) -> IDBRequest[None]: ...
 
-    def update(self, value: object) -> IDBRequest: ...
+    def update(self, value: object) -> IDBRequest[object]: ...
 
 
-@js(builtin=True)
+@js.native
 class IDBDatabase(EventTarget):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -79,7 +103,7 @@ class IDBDatabaseInfo:
         self.version = version
 
 
-@js(builtin=True)
+@js.native
 class IDBFactory:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -91,13 +115,17 @@ class IDBFactory:
 
     async def databases(self) -> list[IDBDatabaseInfo]: ...
 
-    def deleteDatabase(self, name: str) -> IDBOpenDBRequest: ...
+    def deleteDatabase(self, name: str) -> IDBOpenDBRequest[None]: ...
 
-    def open(self, name: str, version: int | None = None) -> IDBOpenDBRequest: ...
+    def open(
+        self,
+        name: str,
+        version: int | None = None,
+    ) -> IDBOpenDBRequest[IDBDatabase]: ...
 
 
 indexedDB = IDBFactory()
-js_object(indexedDB, builtin=True)
+js.native(indexedDB)
 
 
 @js
@@ -115,7 +143,7 @@ class IDBGetAllOptions:
         self.query = query
 
 
-@js(builtin=True)
+@js.native
 class IDBIndex:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -130,17 +158,17 @@ class IDBIndex:
         self.objectStore: IDBObjectStore = None
         self.unique: bool = False
 
-    def count(self, query: object | None = None) -> IDBRequest: ...
+    def count(self, query: object | None = None) -> IDBRequest[int]: ...
 
-    def get(self, query: object) -> IDBRequest: ...
+    def get(self, query: object) -> IDBRequest[object]: ...
 
     def getAll(
         self, queryOrOptions: object | None = None, count: int | None = None
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[object]]: ...
 
     def getAllKeys(
         self, queryOrOptions: object | None = None, count: int | None = None
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[object]]: ...
 
     def getAllRecords(
         self,
@@ -148,17 +176,17 @@ class IDBIndex:
         query: object | None = None,
         count: int | None = None,
         direction: str = "next",
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[IDBRecord]]: ...
 
-    def getKey(self, query: object) -> IDBRequest: ...
+    def getKey(self, query: object) -> IDBRequest[object]: ...
 
     def openCursor(
         self, query: object | None = None, direction: str = "next"
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[IDBCursorWithValue | None]: ...
 
     def openKeyCursor(
         self, query: object | None = None, direction: str = "next"
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[IDBCursor | None]: ...
 
 
 @js
@@ -170,7 +198,7 @@ class IDBIndexParameters:
         self.unique = unique
 
 
-@js(builtin=True)
+@js.native
 class IDBKeyRange:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -201,7 +229,7 @@ class IDBKeyRange:
     def upperBound(upper: object, open: bool = False) -> IDBKeyRange: ...
 
 
-@js(builtin=True)
+@js.native
 class IDBObjectStore:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -216,11 +244,11 @@ class IDBObjectStore:
         self.name: str = ""
         self.transaction: IDBTransaction = None
 
-    def add(self, value: object, key: object | None = None) -> IDBRequest: ...
+    def add(self, value: object, key: object | None = None) -> IDBRequest[object]: ...
 
-    def clear(self) -> IDBRequest: ...
+    def clear(self) -> IDBRequest[None]: ...
 
-    def count(self, query: object | None = None) -> IDBRequest: ...
+    def count(self, query: object | None = None) -> IDBRequest[int]: ...
 
     def createIndex(
         self,
@@ -231,19 +259,19 @@ class IDBObjectStore:
         multiEntry: bool = False,
     ) -> IDBIndex: ...
 
-    def delete(self, query: object) -> IDBRequest: ...
+    def delete(self, query: object) -> IDBRequest[None]: ...
 
     def deleteIndex(self, name: str) -> None: ...
 
-    def get(self, query: object) -> IDBRequest: ...
+    def get(self, query: object) -> IDBRequest[object]: ...
 
     def getAll(
         self, queryOrOptions: object | None = None, count: int | None = None
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[object]]: ...
 
     def getAllKeys(
         self, queryOrOptions: object | None = None, count: int | None = None
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[object]]: ...
 
     def getAllRecords(
         self,
@@ -251,21 +279,21 @@ class IDBObjectStore:
         query: object | None = None,
         count: int | None = None,
         direction: str = "next",
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[list[IDBRecord]]: ...
 
-    def getKey(self, query: object) -> IDBRequest: ...
+    def getKey(self, query: object) -> IDBRequest[object]: ...
 
     def index(self, name: str) -> IDBIndex: ...
 
     def openCursor(
         self, query: object | None = None, direction: str = "next"
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[IDBCursorWithValue | None]: ...
 
     def openKeyCursor(
         self, query: object | None = None, direction: str = "next"
-    ) -> IDBRequest: ...
+    ) -> IDBRequest[IDBCursor | None]: ...
 
-    def put(self, value: object, key: object | None = None) -> IDBRequest: ...
+    def put(self, value: object, key: object | None = None) -> IDBRequest[object]: ...
 
 
 @js
@@ -279,7 +307,7 @@ class IDBObjectStoreParameters:
         self.keyPath = keyPath
 
 
-@js(builtin=True)
+@js.native
 class IDBRecord:
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -293,8 +321,8 @@ class IDBRecord:
         self.value: object = None
 
 
-@js(builtin=True)
-class IDBRequest(EventTarget):
+@js.native
+class IDBRequest[T](EventTarget):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/IDBRequest
@@ -307,12 +335,57 @@ class IDBRequest(EventTarget):
         self.onerror: callable = None
         self.onsuccess: callable = None
         self.readyState: str = ""
-        self.result: object = None
+        self.result: T = None
         self.source: IDBObjectStore | IDBIndex | IDBCursor | None = None
         self.transaction: IDBTransaction | None = None
 
+    @js.inline(_rewrite_request_result)
+    async def value(self, validator: callable | None = None) -> T:
+        if validator is None:
+            return self.result
+        return validator(self.result)
 
-@js(builtin=True)
+
+@js.native
+class TypedIDBStore[T]:
+    @js.inline("{store}")
+    def __init__(self, store: IDBObjectStore):
+        self.store = store
+
+    @js.inline("{self}.add({_args_joined})")
+    def add(self, value: T, key: object | None = None) -> IDBRequest[object]:
+        return self.store.add(value, key)
+
+    @js.inline("{self}.clear()")
+    def clear(self) -> IDBRequest[None]:
+        return self.store.clear()
+
+    @js.inline("{self}.count({_args_joined})")
+    def count(self, query: object | None = None) -> IDBRequest[int]:
+        return self.store.count(query)
+
+    @js.inline("{self}.delete({query})")
+    def delete(self, query: object) -> IDBRequest[None]:
+        return self.store.delete(query)
+
+    @js.inline("{self}.get({query})")
+    def get(self, query: object) -> IDBRequest[T | None]:
+        return self.store.get(query)
+
+    @js.inline("{self}.getAll({_args_joined})")
+    def getAll(
+        self,
+        queryOrOptions: object | None = None,
+        count: int | None = None,
+    ) -> IDBRequest[list[T]]:
+        return self.store.getAll(queryOrOptions, count)
+
+    @js.inline("{self}.put({_args_joined})")
+    def put(self, value: T, key: object | None = None) -> IDBRequest[object]:
+        return self.store.put(value, key)
+
+
+@js.native
 class IDBTransaction(EventTarget):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -346,7 +419,7 @@ class IDBTransactionOptions:
         self.durability = durability
 
 
-@js(builtin=True)
+@js.native
 class IDBVersionChangeEvent(Event):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -369,7 +442,7 @@ class IDBVersionChangeEventInit:
         self.oldVersion = oldVersion
 
 
-@js(builtin=True)
+@js.native
 class IDBCursorWithValue(IDBCursor):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
@@ -382,8 +455,8 @@ class IDBCursorWithValue(IDBCursor):
         self.value: object = None
 
 
-@js(builtin=True)
-class IDBOpenDBRequest(IDBRequest):
+@js.native
+class IDBOpenDBRequest[T](IDBRequest[T]):
     """WebIDL source: @webref/idl/IndexedDB.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/IDBOpenDBRequest
@@ -396,29 +469,22 @@ class IDBOpenDBRequest(IDBRequest):
         self.onupgradeneeded: callable = None
 
 
-def _request_promise(expression: str) -> str:
-    return f"new Promise((resolve, reject) => {{const request = {expression};request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
-
-
-def _rewrite_open_database(_arg_strs, **kwargs):
-    name, version = _arg_strs[:2]
-    upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
-    return f"new Promise((resolve, reject) => {{const request = indexedDB.open({name}, {version});const upgrade = {upgrade};if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
-
-
-def _rewrite_request_result(_arg_strs, **kwargs):
-    return _request_promise(_arg_strs[0])
-
-
-@js(builtin=True, inline=_rewrite_open_database)
+@js
 async def open_database(
     name: str, version: int, upgrade: callable | None = None
 ) -> IDBDatabase: ...
 
 
-@js(builtin=True, inline=_rewrite_request_result)
-async def request_result(request: IDBRequest) -> object: ...
+@open_database.inline
+def open_database(_arg_strs, **kwargs):
+    name, version = _arg_strs[:2]
+    upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
+    return f"new Promise((resolve, reject) => {{const request = indexedDB.open({name}, {version});const upgrade = {upgrade};if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
 
 
-@js(builtin=True, inline=_rewrite_request_result)
-async def request_values(request: IDBRequest) -> list[object]: ...
+@js.inline(_rewrite_request_result)
+async def request_result(request: IDBRequest[object]) -> object: ...
+
+
+@js.inline(_rewrite_request_result)
+async def request_values(request: IDBRequest[list[object]]) -> list[object]: ...

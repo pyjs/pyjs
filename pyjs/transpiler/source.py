@@ -18,6 +18,41 @@ from .transpiler import (
 )
 from .utils import write_types
 
+TYPE_ALIAS_CONTAINERS = {
+    "Annotated",
+    "Awaitable",
+    "Callable",
+    "ClassVar",
+    "Collection",
+    "Container",
+    "Coroutine",
+    "Dict",
+    "Final",
+    "FrozenSet",
+    "Generator",
+    "Generic",
+    "Iterable",
+    "Iterator",
+    "List",
+    "Literal",
+    "Mapping",
+    "MutableMapping",
+    "MutableSequence",
+    "MutableSet",
+    "Optional",
+    "Sequence",
+    "Set",
+    "Tuple",
+    "Type",
+    "Union",
+    "dict",
+    "frozenset",
+    "list",
+    "set",
+    "tuple",
+    "type",
+}
+
 
 @dataclass(frozen=True)
 class SourceAnalysis:
@@ -63,6 +98,30 @@ def is_js_module_annotation(annotation: ast.expr) -> bool:
         values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else []
         return any(isinstance(value, ast.Name) and value.id == "js" for value in values[1:])
     return False
+
+
+def is_type_alias_declaration(node: ast.stmt) -> bool:
+    if isinstance(node, ast.TypeAlias):
+        return True
+    if isinstance(node, ast.AnnAssign):
+        annotation = node.annotation
+        return (
+            isinstance(annotation, ast.Name) and annotation.id == "TypeAlias"
+        ) or (
+            isinstance(annotation, ast.Attribute)
+            and annotation.attr == "TypeAlias"
+        )
+    if not (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and isinstance(node.value, ast.Subscript)
+    ):
+        return False
+    value = node.value.value
+    if isinstance(value, ast.Name):
+        return value.id in TYPE_ALIAS_CONTAINERS
+    return isinstance(value, ast.Attribute) and value.attr in TYPE_ALIAS_CONTAINERS
 
 
 def create_module(
@@ -118,6 +177,7 @@ def wrap_source(source: str) -> tuple[str, bool]:
         node
         for node in module.body
         if isinstance(node, declaration_types)
+        or is_type_alias_declaration(node)
         or (
             isinstance(node, ast.AnnAssign)
             and is_js_module_annotation(node.annotation)
@@ -192,7 +252,7 @@ def analyze_source(
     )
     entry = module.main
     entry.__js__ = True
-    entry.__js_include__ = True
+    entry.__js_keep__ = True
     entry_point, _ = analyze_module(module, extensions=extensions)
     return SourceAnalysis(module, entry_point, wrapped)
 
@@ -220,7 +280,7 @@ def compile_source(
         simple_wrapper=simple_wrapper,
     )
     module.main.__js__ = True
-    module.main.__js_include__ = True
+    module.main.__js_keep__ = True
     package, entry_point, css = prepare_bundle(
         module.main,
         bundle_import,

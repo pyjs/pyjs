@@ -65,7 +65,9 @@ templates when the documentation does not cover an advanced case.
 - PyJS statically analyzes typed Python and emits JavaScript without a Python runtime.
 - `CustomElement` classes are browser-native custom elements that can also render on the server.
 - Use `@js` for code that must be available in the browser.
-- Mark module values needed by compiled code as `JS[T]`; use `Final[JS[T]]` for immutable values.
+- Mark module values needed by compiled code as `JS`; non-empty static values
+  infer their types. Use `JS[T]` when an empty collection needs an explicit
+  type and `Final[JS]` for immutable bindings.
   Unmarked module values remain server-only.
 - Treat the custom element and its DOM as application state when that state must survive server
   rendering and hydration.
@@ -79,6 +81,10 @@ templates when the documentation does not cover an advanced case.
 
 - Start with components from `pyjs.web.ui` for ordinary application controls
   and layouts instead of hand-crafting equivalent HTML and CSS.
+- Compose large DOM trees from small, ordinary `@js` rendering functions.
+  Constructors should read as an outline with roughly one call per major
+  widget or panel, rather than containing deeply nested inline `tag(...)`
+  definitions. Keep each retained `self` reference next to its event binding.
 - Inspect the installed components and their examples for the current APIs and
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design

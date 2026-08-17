@@ -1,4 +1,4 @@
-from pyjs import js, js_object, nojs
+from pyjs import js, nojs
 from pyjs.web.console import Console
 from pyjs.web.events import AbortSignal, Event, EventListener, EventTarget
 
@@ -18,7 +18,7 @@ class CSSStyleSheetInit:
         self.media = media
 
 
-@js(builtin=True)
+@js.native
 class CustomElementRegistry:
     """WebIDL source: @webref/idl/html.idl
 
@@ -29,7 +29,7 @@ class CustomElementRegistry:
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMException:
     """WebIDL source: @webref/idl/webidl.idl
 
@@ -70,7 +70,7 @@ class DOMException:
         self.name: str = name
 
 
-@js(builtin=True)
+@js.native
 class DOMImplementation:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -105,7 +105,7 @@ class DOMPointInit:
         self.z = z
 
 
-@js(builtin=True)
+@js.native
 class DOMPointReadOnly:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -116,7 +116,7 @@ class DOMPointReadOnly:
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMQuad:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -159,7 +159,7 @@ class DOMRectInit:
         self.y = y
 
 
-@js(builtin=True)
+@js.native
 class DOMRectList:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -170,7 +170,7 @@ class DOMRectList:
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMRectReadOnly:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -196,7 +196,7 @@ class DOMRectReadOnly:
     def toJSON(self) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class DOMStringList:
     """WebIDL source: @webref/idl/html.idl
 
@@ -207,7 +207,7 @@ class DOMStringList:
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMTokenList:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -240,7 +240,7 @@ class DOMTokenList:
         return False
 
 
-@js(builtin=True)
+@js.native
 class AbortController:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -254,7 +254,7 @@ class AbortController:
     def abort(self, reason: object | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class AbstractRange:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -270,7 +270,7 @@ class AbstractRange:
         self.startOffset: int = 0
 
 
-@js(builtin=True)
+@js.native
 class BarProp:
     """WebIDL source: @webref/idl/html.idl
 
@@ -281,7 +281,7 @@ class BarProp:
     pass
 
 
-@js(builtin=True)
+@js.native
 class Blob:
     """WebIDL source: @webref/idl/FileAPI.idl
 
@@ -306,7 +306,7 @@ class BoxQuadOptions:
             self.relativeTo = relativeTo
 
 
-@js(builtin=True)
+@js.native
 class CaretPosition:
     """WebIDL source: @webref/idl/cssom-view.idl
 
@@ -359,7 +359,7 @@ class ConvertCoordinateOptions:
         self.toBox = toBox
 
 
-@js(builtin=True)
+@js.native
 class CSSPseudoElement:
     """WebIDL source: @webref/idl/css-pseudo.idl
 
@@ -370,7 +370,7 @@ class CSSPseudoElement:
     pass
 
 
-@js(builtin=True)
+@js.native
 class CSSRule:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -394,7 +394,7 @@ class CSSRule:
         self.type: int = 0
 
 
-@js(builtin=True)
+@js.native
 class CSSRuleList:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -408,7 +408,7 @@ class CSSRuleList:
     def item(self, index: int) -> CSSRule | None: ...
 
 
-@js(builtin=True)
+@js.native
 class CSSStyleDeclaration:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -458,7 +458,7 @@ class ElementCreationOptions:
         self.is_ = is_
 
 
-@js(builtin=True)
+@js.native
 class External:
     """WebIDL source: @webref/idl/html.idl
 
@@ -475,7 +475,7 @@ class GetRootNodeOptions:
         self.composed = composed
 
 
-@js(builtin=True)
+@js.native
 class History:
     """WebIDL source: @webref/idl/html.idl
 
@@ -499,7 +499,7 @@ class History:
     def replaceState(self, data: object, unused: str, url: str | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class HTMLCollection[T]:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -511,7 +511,7 @@ class HTMLCollection[T]:
         self._items: list[T] = []
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> T:
         return self._items[index]
 
@@ -519,17 +519,17 @@ class HTMLCollection[T]:
     def __iter__(self):
         return iter(self._items)
 
-    @js(inline="{self}.length")
+    @js.inline("{self}.length")
     def __len__(self) -> int:
         return len(self._items)
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def item(self, index: int) -> Element | None:
         if 0 <= index < len(self._items):
             return self._items[index]
         return None
 
-    @js(inline="{self}[{name}]")
+    @js.inline("{self}[{name}]")
     def namedItem(self, name: str) -> Element | None:
         for item in self._items:
             if item.id == name or item.getAttribute("name") == name:
@@ -550,7 +550,7 @@ class HTMLCollection[T]:
         self.length = len(self._items)
 
 
-@js(builtin=True)
+@js.native
 class ImageBitmap:
     """WebIDL source: @webref/idl/html.idl
 
@@ -584,7 +584,7 @@ class ImageBitmapOptions:
             self.resizeWidth = resizeWidth
 
 
-@js(builtin=True)
+@js.native
 class ImageData:
     """WebIDL source: @webref/idl/html.idl
 
@@ -608,7 +608,7 @@ class ImportNodeOptions:
         self.selfOnly = selfOnly
 
 
-@js(builtin=True)
+@js.native
 class MediaList:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -627,7 +627,7 @@ class MediaList:
     def item(self, index: int) -> str | None: ...
 
 
-@js(builtin=True)
+@js.native
 class MediaQueryListEvent(Event):
     """WebIDL source: @webref/idl/cssom-view.idl
 
@@ -650,7 +650,7 @@ class MediaQueryListEventInit:
         self.media = media
 
 
-@js(builtin=True)
+@js.native
 class MimeTypeArray:
     """WebIDL source: @webref/idl/html.idl
 
@@ -661,7 +661,7 @@ class MimeTypeArray:
     pass
 
 
-@js(builtin=True)
+@js.native
 class MutationObserver:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -717,7 +717,7 @@ class MutationObserverInit:
         self.subtree = subtree
 
 
-@js(builtin=True)
+@js.native
 class MutationRecord:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -737,7 +737,7 @@ class MutationRecord:
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class NamedNodeMap[T]:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -749,7 +749,7 @@ class NamedNodeMap[T]:
         self._attributes: dict[str, T] = {}
         self.length: int = 0
 
-    @js(inline="{self}[{key}]")
+    @js.inline("{self}[{key}]")
     def __getitem__(self, key: int | str) -> T:
         if isinstance(key, int):
             return list(self._attributes.values())[key]
@@ -759,15 +759,15 @@ class NamedNodeMap[T]:
     def __iter__(self):
         return iter(self._attributes.values())
 
-    @js(inline="{name} in {self}")
+    @js.inline("{name} in {self}")
     def __contains__(self, name: str) -> bool:
         return name in self._attributes
 
-    @js(inline="{self}.length")
+    @js.inline("{self}.length")
     def __len__(self) -> int:
         return len(self._attributes)
 
-    @js(inline="{self}[{qualifiedName}]")
+    @js.inline("{self}[{qualifiedName}]")
     def getNamedItem(self, qualifiedName: str) -> Attr | None:
         return self._attributes.get(qualifiedName)
 
@@ -777,7 +777,7 @@ class NamedNodeMap[T]:
                 return attribute
         return None
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def item(self, index: int) -> Attr | None:
         if 0 <= index < len(self._attributes):
             return list(self._attributes.values())[index]
@@ -810,7 +810,7 @@ class NamedNodeMap[T]:
         return previous
 
 
-@js(builtin=True)
+@js.native
 class Node(EventTarget):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -886,7 +886,7 @@ class Node(EventTarget):
     def replaceChild(self, node: Node, child: Node) -> Node: ...
 
 
-@js(builtin=True)
+@js.native
 class NodeFilter:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -910,7 +910,7 @@ class NodeFilter:
     def acceptNode(self, node: Node) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 class NodeIterator:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -932,7 +932,7 @@ class NodeIterator:
     def previousNode(self) -> Node | None: ...
 
 
-@js(builtin=True)
+@js.native
 class NodeList[T]:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -944,7 +944,7 @@ class NodeList[T]:
         self._items: list[T] = []
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> T:
         return self._items[index]
 
@@ -952,11 +952,11 @@ class NodeList[T]:
     def __iter__(self):
         return iter(self._items)
 
-    @js(inline="{self}.length")
+    @js.inline("{self}.length")
     def __len__(self) -> int:
         return len(self._items)
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def item(self, index: int) -> Node | None:
         if 0 <= index < len(self._items):
             return self._items[index]
@@ -976,7 +976,7 @@ class NodeList[T]:
         self.length = len(self._items)
 
 
-@js(builtin=True)
+@js.native
 class OffscreenCanvas(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -987,7 +987,7 @@ class OffscreenCanvas(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class PluginArray:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1009,7 +1009,7 @@ class QuotaExceededErrorOptions:
             self.requested = requested
 
 
-@js(builtin=True)
+@js.native
 class Screen:
     """WebIDL source: @webref/idl/cssom-view.idl
 
@@ -1065,7 +1065,7 @@ class StructuredSerializeOptions:
         self.transfer = transfer
 
 
-@js(builtin=True)
+@js.native
 class StyleSheet:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -1083,7 +1083,7 @@ class StyleSheet:
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class StyleSheetList:
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -1097,7 +1097,7 @@ class StyleSheetList:
     def item(self, index: int) -> CSSStyleSheet | None: ...
 
 
-@js(builtin=True)
+@js.native
 class TreeWalker:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1126,7 +1126,7 @@ class TreeWalker:
     def previousSibling(self) -> Node | None: ...
 
 
-@js(builtin=True)
+@js.native
 class XPathEvaluator:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1152,7 +1152,7 @@ class XPathEvaluator:
     ) -> XPathResult: ...
 
 
-@js(builtin=True)
+@js.native
 class XPathExpression:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1165,14 +1165,14 @@ class XPathExpression:
     ) -> XPathResult: ...
 
 
-@js(builtin=True)
+@js.native
 class XPathNSResolver:
     """WebIDL source: @webref/idl/dom.idl"""
 
     def lookupNamespaceURI(self, prefix: str | None) -> str | None: ...
 
 
-@js(builtin=True)
+@js.native
 class XPathResult:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1205,7 +1205,7 @@ class XPathResult:
     def snapshotItem(self, index: int) -> Node | None: ...
 
 
-@js(builtin=True)
+@js.native
 class XSLTProcessor:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1245,7 +1245,7 @@ class StaticRangeInit:
         self.startOffset = startOffset
 
 
-@js(builtin=True)
+@js.native
 class Storage:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1268,19 +1268,19 @@ class Storage:
 
 
 sessionStorage = Storage()
-js_object(sessionStorage, builtin=True)
+js.native(sessionStorage)
 localStorage = Storage()
-js_object(localStorage, builtin=True)
+js.native(localStorage)
 
 
-@js(builtin=True)
+@js.native
 class Clipboard:
     async def readText(self) -> str: ...
 
     async def writeText(self, value: str): ...
 
 
-@js(builtin=True)
+@js.native
 class Navigation(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1291,7 +1291,7 @@ class Navigation(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class Navigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1328,10 +1328,10 @@ class Navigator:
 
 
 navigator = Navigator()
-js_object(navigator, builtin=True)
+js.native(navigator)
 
 
-@js(builtin=True)
+@js.native
 class MediaQueryList(EventTarget):
     """WebIDL source: @webref/idl/cssom-view.idl
 
@@ -1350,7 +1350,7 @@ class MediaQueryList(EventTarget):
     def removeListener(self, callback: EventListener | None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class TrustedScript:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -1361,7 +1361,7 @@ class TrustedScript:
     pass
 
 
-@js(builtin=True)
+@js.native
 class UserActivation:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1372,7 +1372,7 @@ class UserActivation:
     pass
 
 
-@js(builtin=True)
+@js.native
 class VideoFrame:
     """WebIDL source: @webref/idl/webcodecs.idl
 
@@ -1383,7 +1383,7 @@ class VideoFrame:
     pass
 
 
-@js(builtin=True)
+@js.native
 class VisualViewport(EventTarget):
     """WebIDL source: @webref/idl/cssom-view.idl
 
@@ -1405,7 +1405,7 @@ class VisualViewport(EventTarget):
         self.width: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class Window(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1569,12 +1569,12 @@ class Window(EventTarget):
         self.visualViewport: VisualViewport | None = None
         self.window: Window = None
 
-    @js(inline="new {self}.Function({source})")
+    @js.inline("new {self}.Function({source})")
     def Function(self, source: str) -> callable: ...
 
     def matchMedia(self, query: str) -> MediaQueryList: ...
 
-    @js(inline="{self}[{name}]")
+    @js.inline("{self}[{name}]")
     def __getitem__(self, name: str) -> object: ...
 
     def alert(self) -> None: ...
@@ -1697,10 +1697,10 @@ class Window(EventTarget):
 
 
 window = Window()
-js_object(window, builtin=True)
+js.native(window)
 
 
-@js(builtin=True)
+@js.native
 class Location:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1728,7 +1728,7 @@ class Location:
 
 
 location = Location()
-js_object(location, builtin=True)
+js.native(location)
 
 
 @js
@@ -1762,7 +1762,7 @@ class ScrollToOptions:
             self.top = top
 
 
-@js(builtin=True)
+@js.native
 class DOMPoint(DOMPointReadOnly):
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -1773,7 +1773,7 @@ class DOMPoint(DOMPointReadOnly):
     pass
 
 
-@js(builtin=True)
+@js.native
 class DOMRect(DOMRectReadOnly):
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -1798,7 +1798,7 @@ class DOMRect(DOMRectReadOnly):
     ) -> DOMRect: ...
 
 
-@js(builtin=True)
+@js.native
 class DocumentType(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1821,7 +1821,7 @@ class DocumentType(Node):
     def replaceWith(self, *nodes: Node | str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class DocumentFragment(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1851,7 +1851,7 @@ class DocumentFragment(Node):
     def replaceChildren(self, *nodes: Node | str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class Element(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1947,10 +1947,6 @@ class Element(Node):
         if self._is_observed_attribute(name):
             self.attributeChangedCallback(name, old_value, str(value))
 
-    @setAttribute.client
-    def setAttribute(self, name: str, value: object | str) -> None:
-        pass
-
     def convertPointFromNode(
         self,
         point: DOMPointInit,
@@ -1992,10 +1988,6 @@ class Element(Node):
             if self._is_observed_attribute(name):
                 self.attributeChangedCallback(name, attribute.value, None)
 
-    @removeAttribute.client
-    def removeAttribute(self, name: str) -> None:
-        pass
-
     def getAttributeNames(self) -> list[str]:
         names: list[str] = []
         for attribute in self.attributes:
@@ -2024,17 +2016,9 @@ class Element(Node):
     def hasAttribute(self, name: str) -> bool:
         return name in self.attributes
 
-    @hasAttribute.client
-    def hasAttribute(self, name: str) -> bool:
-        return False
-
     @js
     def _is_observed_attribute(self, name: str) -> bool:
         return name in getattr(type(self), "observedAttributes", [])
-
-    @_is_observed_attribute.client
-    def _is_observed_attribute(self, name: str) -> bool:
-        return False
 
     def attributeChangedCallback(
         self, name: str, old_value: str | None, new_value: str | None
@@ -2043,25 +2027,33 @@ class Element(Node):
 
     def after(self, *nodes: Node | str) -> None: ...
 
+    @js
     def append(self, *nodes: Node | str) -> None:
         for node in nodes:
             if isinstance(node, str):
                 text = Text(node)
+                text.parentNode = self
                 self.childNodes._append(text)
             elif isinstance(node, Node):
+                node.parentNode = self
                 self.childNodes._append(node)
                 if isinstance(node, Element):
+                    node.parentElement = self
                     self.children._append(node)
         self.childElementCount = len(self.children)
 
     def releasePointerCapture(self, pointerId: int) -> None: ...
 
+    @js
     def remove(self) -> None:
         if self.parentElement is None:
             return
-        self.parentElement.childNodes._remove(self)
-        self.parentElement.children._remove(self)
-        self.parentElement.childElementCount = len(self.parentElement.children)
+        parent = self.parentElement
+        parent.childNodes._remove(self)
+        parent.children._remove(self)
+        parent.childElementCount = len(parent.children)
+        self.parentElement = None
+        self.parentNode = None
 
     def removeAttributeNode(self, attr: Attr) -> Attr: ...
 
@@ -2141,7 +2133,7 @@ class Element(Node):
     def webkitMatchesSelector(self, selectors: str) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class Attr(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2160,7 +2152,7 @@ class Attr(Node):
         self.value: str = ""
 
 
-@js(builtin=True)
+@js.native
 class CharacterData(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2194,7 +2186,7 @@ class CharacterData(Node):
     def substringData(self, offset: int, count: int) -> str: ...
 
 
-@js(builtin=True)
+@js.native
 class CSSGroupingRule(CSSRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2211,7 +2203,7 @@ class CSSGroupingRule(CSSRule):
     def insertRule(self, rule: str, index: int = 0) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 class CSSImportRule(CSSRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2228,7 +2220,7 @@ class CSSImportRule(CSSRule):
         self.supportsText: str | None = None
 
 
-@js(builtin=True)
+@js.native
 class CSSMarginRule(CSSRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2240,7 +2232,7 @@ class CSSMarginRule(CSSRule):
         self.style: CSSStyleDeclaration = None
 
 
-@js(builtin=True)
+@js.native
 class CSSNamespaceRule(CSSRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2254,7 +2246,7 @@ class CSSNamespaceRule(CSSRule):
         self.prefix: str = ""
 
 
-@js(builtin=True)
+@js.native
 class CSSPageDescriptors(CSSStyleDeclaration):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2274,7 +2266,7 @@ class CSSPageDescriptors(CSSStyleDeclaration):
         self.size: str = ""
 
 
-@js(builtin=True)
+@js.native
 class CSSStyleProperties(CSSStyleDeclaration):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2287,7 +2279,7 @@ class CSSStyleProperties(CSSStyleDeclaration):
         self.cssFloat: str = ""
 
 
-@js(builtin=True)
+@js.native
 class CSSStyleSheet(StyleSheet):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2325,7 +2317,7 @@ class CSSStyleSheet(StyleSheet):
     def replaceSync(self, text: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class Document(Node):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2417,7 +2409,6 @@ class Document(Node):
 
     def createDocumentFragment(self) -> DocumentFragment: ...
 
-    @js(analyze=False)
     def createElement(
         self,
         name: str,
@@ -2431,7 +2422,6 @@ class Document(Node):
         e.nodeName = e.tagName = name.upper()
         return e
 
-    @js(analyze=False)
     def createElementNS(
         self,
         namespace: str | None,
@@ -2536,10 +2526,10 @@ class Document(Node):
 
 
 document = Document()
-js_object(document, builtin=True)
+js.native(document)
 
 
-@js(builtin=True)
+@js.native
 class QuotaExceededError(DOMException):
     """WebIDL source: @webref/idl/webidl.idl
 
@@ -2559,7 +2549,7 @@ class QuotaExceededError(DOMException):
         self.requested: float | None = requested
 
 
-@js(builtin=True)
+@js.native
 class Range(AbstractRange):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2621,7 +2611,7 @@ class Range(AbstractRange):
     def surroundContents(self, newParent: Node) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class StaticRange(AbstractRange):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2640,7 +2630,7 @@ class StaticRange(AbstractRange):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class Comment(CharacterData):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2655,7 +2645,7 @@ class Comment(CharacterData):
         self.textContent = data
 
 
-@js(builtin=True)
+@js.native
 class CSSPageRule(CSSGroupingRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2669,7 +2659,7 @@ class CSSPageRule(CSSGroupingRule):
         self.style: CSSPageDescriptors = None
 
 
-@js(builtin=True)
+@js.native
 class CSSStyleRule(CSSGroupingRule):
     """WebIDL source: @webref/idl/cssom.idl
 
@@ -2683,7 +2673,7 @@ class CSSStyleRule(CSSGroupingRule):
         self.style: CSSStyleProperties = None
 
 
-@js(builtin=True)
+@js.native
 class HTMLElement(Element):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2694,7 +2684,7 @@ class HTMLElement(Element):
     pass
 
 
-@js(builtin=True)
+@js.native
 class ProcessingInstruction(CharacterData):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2725,7 +2715,7 @@ class ProcessingInstruction(CharacterData):
     def toggleAttribute(self, name: str, force: bool | None = None) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class ShadowRoot(DocumentFragment):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2747,7 +2737,7 @@ class ShadowRoot(DocumentFragment):
         self.styleSheets: StyleSheetList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGElement(Element):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -2758,7 +2748,7 @@ class SVGElement(Element):
     pass
 
 
-@js(builtin=True)
+@js.native
 class Text(CharacterData):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2804,7 +2794,7 @@ class Text(CharacterData):
     def splitText(self, offset: int) -> Text: ...
 
 
-@js(builtin=True)
+@js.native
 class XMLDocument(Document):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2815,7 +2805,7 @@ class XMLDocument(Document):
     pass
 
 
-@js(builtin=True)
+@js.native
 class HTMLSlotElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2826,7 +2816,7 @@ class HTMLSlotElement(HTMLElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class HTMLMediaElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2837,7 +2827,7 @@ class HTMLMediaElement(HTMLElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class HTMLImageElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2848,7 +2838,7 @@ class HTMLImageElement(HTMLElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class HTMLCanvasElement(HTMLElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2859,7 +2849,7 @@ class HTMLCanvasElement(HTMLElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class CDATASection(Text):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -2870,7 +2860,7 @@ class CDATASection(Text):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGGraphicsElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -2881,7 +2871,7 @@ class SVGGraphicsElement(SVGElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class HTMLVideoElement(HTMLMediaElement):
     """WebIDL source: @webref/idl/html.idl
 
@@ -2892,7 +2882,7 @@ class HTMLVideoElement(HTMLMediaElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGImageElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 

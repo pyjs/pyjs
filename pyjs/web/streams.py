@@ -17,7 +17,7 @@ from pyjs.javascript import (
 from pyjs.web.events import AbortSignal
 
 
-@js(builtin=True)
+@js.native
 class ByteLengthQueuingStrategy:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -30,7 +30,7 @@ class ByteLengthQueuingStrategy:
         self.size: callable = None
 
 
-@js(builtin=True)
+@js.native
 class CountQueuingStrategy:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -62,7 +62,7 @@ class QueuingStrategyInit:
         self.highWaterMark = highWaterMark
 
 
-@js(builtin=True)
+@js.native
 class ReadableByteStreamController:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -96,7 +96,7 @@ class ReadableByteStreamController:
     def error(self, e: object | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ReadableStream:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -110,7 +110,7 @@ class ReadableStream:
     async def cancel(self, reason: object | None = None) -> None: ...
 
     @staticmethod
-    @js(inline="{self}.from({_args_joined})")
+    @js.inline("{self}.from({_args_joined})")
     def from_(asyncIterable: object) -> ReadableStream: ...
 
     def getReader(
@@ -140,7 +140,7 @@ class ReadableStream:
     def tee(self) -> list[ReadableStream]: ...
 
 
-@js(builtin=True)
+@js.native
 class ReadableStreamBYOBReader:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -183,7 +183,7 @@ class ReadableStreamBYOBReaderReadOptions:
         self.min = min
 
 
-@js(builtin=True)
+@js.native
 class ReadableStreamBYOBRequest:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -214,7 +214,7 @@ class ReadableStreamBYOBRequest:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ReadableStreamDefaultController:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -232,7 +232,7 @@ class ReadableStreamDefaultController:
     def error(self, e: object | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ReadableStreamDefaultReader:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -332,7 +332,7 @@ class Transformer:
             self.writableType = writableType
 
 
-@js(builtin=True)
+@js.native
 class TransformStream:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -352,7 +352,7 @@ class TransformStream:
         self.writable: WritableStream = None
 
 
-@js(builtin=True)
+@js.native
 class TransformStreamDefaultController:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -418,7 +418,7 @@ class UnderlyingSource:
             self.type = type
 
 
-@js(builtin=True)
+@js.native
 class WritableStream:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -442,7 +442,7 @@ class WritableStream:
     def getWriter(self) -> WritableStreamDefaultWriter: ...
 
 
-@js(builtin=True)
+@js.native
 class WritableStreamDefaultController:
     """WebIDL source: @webref/idl/streams.idl
 
@@ -456,7 +456,7 @@ class WritableStreamDefaultController:
     def error(self, e: object | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class WritableStreamDefaultWriter:
     """WebIDL source: @webref/idl/streams.idl
 

@@ -1,7 +1,7 @@
-from pyjs import js, js_object
+from pyjs import js
 
 
-@js(builtin=True)
+@js.native
 class Navigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -14,7 +14,7 @@ class Navigator:
 
 
 navigator = Navigator()
-js_object(navigator, builtin=True)
+js.native(navigator)
 
 
 @js
@@ -28,7 +28,7 @@ class StorageEstimate:
             self.usage = usage
 
 
-@js(builtin=True)
+@js.native
 class StorageManager:
     """WebIDL source: @webref/idl/storage.idl
 

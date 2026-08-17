@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import button, div, tag, tw
@@ -115,7 +117,7 @@ class Calendar(Widget):
         self.addEventListener("click", callback)
 
     def day_clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         day_button = target.closest("[data-slot=calendar-day]")
         if day_button is None:
             return

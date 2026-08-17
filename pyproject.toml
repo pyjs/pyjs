@@ -15,6 +15,7 @@ license = "BSD-3-Clause"
 dependencies = [
     "markdown>=3.8",
     "pillow",
+    "pydantic>=2,<3",
     "pyyaml>=6.0",
     "pytest",
     "websockets",
@@ -41,12 +42,15 @@ pyjs = "pyjs.cli:main"
 pyjs = "pyjs.testing.pytest_plugin"
 
 [project.optional-dependencies]
-examples = ["pyjs-examples==0.0.2"]
+examples = ["pyjs-examples==0.3.0"]
+django = ["django>=6.0,<6.2"]
 
 [dependency-groups]
 dev = [
-    "pyjs-examples==0.0.2",
+    "django>=6.0,<6.2",
+    "pyjs-examples==0.3.0",
     "ruff==0.15.22",
+    "uvicorn>=0.52,<1",
 ]
 
 [project.urls]
@@ -67,6 +71,7 @@ ignore = ["F403", "F405"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["external"]
 
 [tool.uv.sources]
 pyjs-examples = {workspace = true}

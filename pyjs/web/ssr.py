@@ -1,7 +1,7 @@
 import html
 from io import StringIO
 
-from pyjs.web.domx import HTMLElement
+from pyjs.web.dom import Element
 
 VOID_ELEMENTS = {
     "area",
@@ -29,7 +29,7 @@ def raw_html(value: str) -> RawHTML:
     return RawHTML(value)
 
 
-def write_html(parent: HTMLElement, output):
+def write_html(parent: Element, output):
     tag_name = parent.tagName.lower()
     start = [f"<{tag_name}"]
     for attribute in parent.attributes:
@@ -37,15 +37,17 @@ def write_html(parent: HTMLElement, output):
         value = attribute.value
         if value is not None:
             start.append(f' {name}="{html.escape(str(value), quote=True)}"')
-    for name, value in parent.dataset.map.items():
-        if value is not None:
-            start.append(f' data-{name}="{html.escape(str(value), quote=True)}"')
+    dataset = getattr(parent, "dataset", None)
+    if dataset is not None:
+        for name, value in dataset.map.items():
+            if value is not None:
+                start.append(f' data-{name}="{html.escape(str(value), quote=True)}"')
 
     if parent.childNodes:
         start.append(">")
         output.write("".join(start))
         for child in parent.childNodes:
-            if isinstance(child, HTMLElement):
+            if isinstance(child, Element):
                 write_html(child, output)
             else:
                 value = child.data
@@ -60,11 +62,11 @@ def write_html(parent: HTMLElement, output):
         output.write("".join(start) + "/>")
 
 
-def render_html(element: HTMLElement) -> str:
+def render_html(element: Element) -> str:
     output = StringIO()
     write_html(element, output)
     return output.getvalue()
 
 
-def render_document(element: HTMLElement) -> str:
+def render_document(element: Element) -> str:
     return "<!doctype html>\n" + render_html(element)

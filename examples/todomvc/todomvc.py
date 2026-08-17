@@ -1,13 +1,11 @@
-from typing import TypedDict
-
 from pyjs import effect, js, state
-from pyjs.javascript import JSON
+from pyjs.javascript import JSON, JSONObject
 from pyjs.web.dom import localStorage, location, window
 from pyjs.web.domx import CustomElement, button, input, ref, tag
 from pyjs.web.events import CustomEvent, Event, KeyboardEvent
 
 
-class TodoRecord(TypedDict):
+class TodoRecord(JSONObject):
     id: str
     title: str
     completed: bool
@@ -155,7 +153,7 @@ class HashChangeListener:
     def __init__(self, app: TodoApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.app.sync_filter_from_location()
 
@@ -281,7 +279,7 @@ class TodoApp(CustomElement):
         self.update()
         self.new_todo.focus()
 
-    @js(include=True)
+    @js.keep
     def disconnectedCallback(self):
         window.removeEventListener("hashchange", self.hash_listener)
 

@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element, window
 from pyjs.web.domx import ProxyElement, div, tw
@@ -56,7 +58,7 @@ class ResizableMoveListener:
     def __init__(self, group: ResizablePanelGroup):
         self.group = group
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: PointerEvent):
         self.group.pointer_moved(event)
 
@@ -66,7 +68,7 @@ class ResizableUpListener:
     def __init__(self, group: ResizablePanelGroup):
         self.group = group
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: PointerEvent):
         self.group.pointer_released(event)
 
@@ -136,7 +138,7 @@ class ResizablePanelGroup(Widget):
         return -1
 
     def keydown(self, event: KeyboardEvent):
-        target: Element = event.target
+        target = cast(Element, event.target)
         handle = target.closest("[data-slot=resizable-handle]")
         if handle is None:
             return
@@ -158,7 +160,7 @@ class ResizablePanelGroup(Widget):
         )
 
     def pointer_pressed(self, event: PointerEvent):
-        target: Element = event.target
+        target = cast(Element, event.target)
         handle = target.closest("[data-slot=resizable-handle]")
         if handle is None:
             return

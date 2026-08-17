@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import ProxyElement, button, tw
@@ -92,7 +94,7 @@ class ToggleGroup(Widget):
         return value
 
     def clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         selected = target.closest("[data-slot=toggle]")
         if selected is None or self.allows_multiple():
             return

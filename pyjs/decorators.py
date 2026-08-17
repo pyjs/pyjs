@@ -1,55 +1,59 @@
+import annotationlib
 import inspect
 from collections.abc import Mapping
-from typing import Annotated
+from functools import partial
+from typing import Annotated, ClassVar, get_origin
 
 DECORATIONS = {
     # safe to analyze and transpile
     "__js__",  # bool
 
-    # do not analyze or transpile
-    # eg. class is marked safe but you want to exclude a specific method
-    "__nojs__",  # bool
-
     # include in output even if not visited
-    "__js_include__",  # bool
+    "__js_keep__",  # bool
 
     # use different implementation of a Python method on client by
     # replacing it with the function in the decoration, which is then
     # transpiled
-    "__js_replace__",  # function
+    "__js_client__",  # function
 
-    # similar to __js_replace__ but no transpiling occurs; instead,
-    # the function is expected to return the JavaScript source as string
-    "__js_rewrite_func__",  # function
+    # raw JavaScript function body, or a callable returning it
+    "__js_source__",  # str | callable
+    "__js_source_imports__",  # dict[str, class or function]
 
     # returns JavaScript source as string, replaces the code at
     # every call site where this function is called
-    "__js_rewrite_call_site__",  # function
+    "__js_inline__",  # function
+
+    # runtime function called in place of the decorated interface
+    "__js_inline_call__",  # function
+
+    # runtime function used when an inline function is referenced as a value
+    "__js_value__",  # function
+    "__js_value_source__",  # str
 
     # functions referenced by an inline rewrite and retained in generated code
     "__js_inline_dependencies__",  # dict[str, function]
 
     # returns JavaScript source as string, appending the code
     # after the definition of the wrapped code object
-    "__js_append__",  # function
+    "__js_append__",  # function receiving reached generated member names
+    "__js_member_dependencies__",  # generated member name to required class
 
     # dispatch a builtin function through a special method on its first argument
-    "__js_dunder_dispatch__",  # str
+    "__js_dispatch__",  # str
+
+    # compiler call analysis attached to the function it describes
+    "__js_analysis__",  # callable
+
+    # dunder methods needed by a runtime implementation
+    "__js_runtime_dunders__",  # tuple[str | int, tuple[str, ...]]
 
     # safe to analyze but don't include in output
     "__builtin__",  # bool
 
-    # do not analyze function
-    "__no_analyze__",  # bool
+    # supplied by the JavaScript target rather than emitted
+    "__js_native__",  # bool
 }
-
-
-def dunder_dispatch(method_name: str):
-    def decorate(func):
-        func.__js_dunder_dispatch__ = method_name
-        return func
-
-    return decorate
 
 
 def is_cls_or_func(obj):
@@ -57,174 +61,324 @@ def is_cls_or_func(obj):
 
 
 def has_inline_decorator(obj):
-    return getattr(obj, "__dict__", {}).get("__js_rewrite_call_site__", False)
-
-
-def has_source_decorator(obj):
-    return getattr(obj, "__dict__", {}).get("__js_rewrite_func__", False)
-
-
-def has_no_analyze(obj):
-    return getattr(obj, "__dict__", {}).get("__no_analyze__", False)
-
-
-def should_analyze_func_body(obj):
-    return not (
-        has_inline_decorator(obj) or
-        has_source_decorator(obj) or
-        has_no_analyze(obj)
+    obj = getattr(obj, "__func__", obj)
+    decorations = getattr(obj, "__dict__", {})
+    return bool(
+        decorations.get("__js_inline__", False)
+        or decorations.get("__js_inline_call__", False)
     )
 
 
-def has_include_decorator(obj):
-    return getattr(obj, "__dict__", {}).get("__js_include__", False)
+def has_source_decorator(obj):
+    return getattr(obj, "__dict__", {}).get("__js_source__", False)
+
+
+def should_analyze_func_body(obj):
+    function = obj
+    obj = getattr(function, "py_obj", function)
+    cls = getattr(function, "cls", None)
+    if getattr(obj, "__dict__", {}).get("__js_native__", False) or (
+        cls is not None
+        and getattr(cls.py_obj, "__dict__", {}).get("__js_native__", False)
+    ):
+        return False
+    return not (has_inline_decorator(obj) or has_source_decorator(obj))
+
+
+def has_keep_decorator(obj):
+    return getattr(obj, "__dict__", {}).get("__js_keep__", False)
 
 
 def should_include(obj):
-    if has_inline_decorator(obj.py_obj) and not has_include_decorator(obj.py_obj):
+    runtime_implementation = getattr(obj, "is_runtime_implementation", False)
+    kept = has_keep_decorator(obj.py_obj)
+    if has_inline_decorator(obj.py_obj) and not kept and not runtime_implementation:
         return False
-    return (
-        has_include_decorator(obj.py_obj) or
-        bool(obj.visited)
-    ) and not getattr(obj.py_obj, "__dict__", {}).get("__builtin__", False)
+    is_builtin = getattr(obj.py_obj, "__dict__", {}).get("__builtin__", False)
+    if is_builtin and not runtime_implementation:
+        return False
+    return kept or bool(obj.visited)
 
 
-def js(
-    *cls_func_args,
-    inline=None,
-    dependencies=None,
-    builtin=None,
-    include=None,
-    analyze=None,
-    client=None,
-):
+class _Implementation:
+    def __init__(self, function, attribute: str, name: str):
+        self.function = function
+        self.attribute = attribute
+        self.name = name
 
-    class Wrapper:
+    def __call__(self, implementation):
+        if not callable(implementation):
+            raise TypeError(
+                f"@{self.function.__name__}.{self.name} requires a callable."
+            )
+        setattr(self.function, self.attribute, implementation)
+        return self.function
 
-        def __init__(self, inline, dependencies, builtin, include, analyze, client):
-            self.inline = inline
-            self.dependencies = dependencies
-            self.builtin = builtin
-            self.include = include
-            self.analyze = analyze
-            self.client_implementation = client
 
-        def __call__(self, cls_func):
-            cls_func.__js__ = True
+def _compiled_callable(function) -> bool:
+    while isinstance(function, partial):
+        function = function.func
+    return bool(getattr(function, "__js__", False))
 
-            if self.builtin is True:
-                cls_func.__builtin__ = True
 
-            if self.inline is not None:
-                if isinstance(self.inline, str):
-                    inline_template = self.inline.replace("{*args}", "{_args_suffix}")
-                    cls_func.__js_rewrite_call_site__ = (
-                        lambda **kwargs: inline_template.format(**kwargs)
-                    )
-                else:
-                    cls_func.__js_rewrite_call_site__ = self.inline
+class _InlineImplementation(_Implementation):
+    def __init__(self, function):
+        super().__init__(function, "__js_inline__", "inline")
 
-            if self.dependencies is not None:
-                target = cls_func.__qualname__
-                if self.inline is None:
-                    raise TypeError(
-                        f"@js dependencies for {target!r} require an inline= argument."
-                    )
-                if not isinstance(self.dependencies, Mapping):
-                    raise TypeError(
-                        f"@js dependencies for {target!r} must be a mapping."
-                    )
-                invalid_names = [
-                    name
-                    for name in self.dependencies
-                    if not isinstance(name, str) or not name.isidentifier()
-                ]
-                if invalid_names:
-                    names = ", ".join(repr(name) for name in invalid_names)
-                    raise TypeError(
-                        f"@js dependency names for {target!r} must be Python "
-                        f"identifiers; invalid: {names}."
-                    )
-                invalid_dependencies = [
-                    (name, type(dependency).__name__)
-                    for name, dependency in self.dependencies.items()
-                    if not inspect.isfunction(dependency)
-                ]
-                if invalid_dependencies:
-                    dependencies = ", ".join(
-                        f"{name!r} ({type_name})"
-                        for name, type_name in invalid_dependencies
-                    )
-                    raise TypeError(
-                        f"@js dependencies for {target!r} must be functions; "
-                        f"invalid: {dependencies}."
-                    )
-                reserved = {
-                    "_arg_strs",
-                    "_arg_types",
-                    "_keyword_strs",
-                    "_args_joined",
-                    "_args_suffix",
-                    "self",
-                }
-                parameter_names = set(inspect.signature(cls_func).parameters)
-                conflicts = set(self.dependencies) & (reserved | parameter_names)
-                if conflicts:
-                    raise TypeError(
-                        f"@js dependency names for {target!r} conflict with call "
-                        f"arguments: {', '.join(sorted(conflicts))}."
-                    )
-                cls_func.__js_inline_dependencies__ = dict(self.dependencies)
+    def __call__(self, implementation=None, *, dependencies=None):
+        if implementation is None:
+            if dependencies is None:
+                raise TypeError(
+                    f"@{self.function.__name__}.inline requires a callable."
+                )
 
-            if inspect.isclass(cls_func):
-                if self.include is not None:
-                    raise TypeError(
-                        "@js(include=True) is only supported for class methods."
-                    )
-                if self.client_implementation is not None:
-                    raise TypeError("@js(client=...) is not supported for classes.")
-                return cls_func
+            def decorate(implementation):
+                return self(implementation, dependencies=dependencies)
 
-            if self.client_implementation is not None:
-                if self.inline is not None:
-                    raise TypeError(
-                        "@js(client=...) cannot be combined with inline=."
-                    )
-                cls_func.__js_replace__ = self.client_implementation
+            return decorate
+        if _compiled_callable(implementation):
+            raise TypeError(
+                "An inline source generator cannot be marked @js. "
+                "Use @js.inline(call=helper) to call a runtime helper."
+            )
+        if not callable(implementation):
+            raise TypeError(
+                f"@{self.function.__name__}.inline requires a callable."
+            )
+        _set_inline(self.function, implementation, dependencies)
+        return self.function
 
-            if self.include is True:
-                if "." not in cls_func.__qualname__:
-                    raise TypeError(
-                        "@js(include=True) is only supported for class methods."
-                    )
-                cls_func.__js_include__ = True
 
-            if self.analyze is False:
-                cls_func.__no_analyze__ = True
+class _ValueImplementation(_Implementation):
+    def __init__(self, function):
+        super().__init__(function, "__js_value__", "value")
 
-            def client(new_func: type):
-                cls_func.__js_replace__ = new_func
-                return cls_func
-            cls_func.client = client
+    def __call__(self, implementation):
+        if not inspect.isfunction(implementation):
+            raise TypeError(
+                f"@{self.function.__name__}.value requires a function."
+            )
+        implementation.__js__ = True
+        return super().__call__(implementation)
 
-            def source(new_func: type):
-                cls_func.__js_rewrite_func__ = new_func
-                return cls_func
-            cls_func.source = source
+    def source(self, source: str):
+        if not isinstance(source, str):
+            raise TypeError("A value source implementation must be a string.")
+        self.function.__js_value_source__ = source
+        return self.function
 
-            def inline(new_func: type):
-                cls_func.__js_rewrite_call_site__ = new_func
-                return cls_func
-            cls_func.inline = inline
 
-            return cls_func
+class _AnalysisImplementation(_Implementation):
+    def __init__(self, function):
+        super().__init__(function, "__js_analysis__", "analyze")
 
-    if cls_func_args and is_cls_or_func(cls_func_args[0]):
-        return Wrapper(
-            inline, dependencies, builtin, include, analyze, client
-        )(cls_func_args[0])
+    def __call__(self, implementation):
+        if _compiled_callable(implementation):
+            raise TypeError(
+                "A call-analysis hook cannot be marked @js because it runs "
+                "only in the compiler."
+            )
+        return super().__call__(implementation)
 
-    return Wrapper(inline, dependencies, builtin, include, analyze, client)
+
+def _attach_implementation_api(function):
+    if "client" not in function.__dict__:
+        function.client = _Implementation(function, "__js_client__", "client")
+    if "inline" not in function.__dict__:
+        function.inline = _InlineImplementation(function)
+    if "value" not in function.__dict__:
+        function.value = _ValueImplementation(function)
+    if "analyze" not in function.__dict__:
+        function.analyze = _AnalysisImplementation(function)
+
+    def source(source):
+        if not isinstance(source, str) and not callable(source):
+            raise TypeError(
+                "A JavaScript source implementation must be a string or callable."
+            )
+        function.__js_source__ = source
+        return function
+
+    function.source = source
+
+
+def _class_instance_annotations(cls: type) -> dict[str, object]:
+    annotations = annotationlib.get_annotations(
+        cls,
+        format=annotationlib.Format.FORWARDREF,
+    )
+    annotate = cls.__annotate__
+    globals_ = annotate.__globals__ if annotate is not None else {}
+    for name, annotation in annotations.items():
+        if isinstance(annotation, annotationlib.ForwardRef):
+            annotations[name] = annotation.evaluate(
+                globals=globals_,
+                locals={cls.__name__: cls},
+                owner=None,
+            )
+    return {
+        name: annotation
+        for name, annotation in annotations.items()
+        if name not in vars(cls) and get_origin(annotation) is not ClassVar
+    }
+
+
+def js(obj):
+    obj.__js__ = True
+    if inspect.isclass(obj):
+        if "__pyjs_instance_annotations__" not in vars(obj):
+            obj.__pyjs_instance_annotations__ = _class_instance_annotations(obj)
+    else:
+        _attach_implementation_api(obj)
+    return obj
+
+
+def _set_inline(function, source, dependencies=None):
+    if isinstance(source, str):
+        template = source.replace("{*args}", "{_args_suffix}")
+        function.__js_inline__ = lambda **kwargs: template.format(**kwargs)
+    elif callable(source):
+        if _compiled_callable(source):
+            raise TypeError(
+                "An @js.inline source generator cannot be marked @js. "
+                "Use @js.inline(call=helper) to call a runtime helper."
+            )
+        function.__js_inline__ = source
+    else:
+        raise TypeError("@js.inline requires a source string or callable.")
+
+    if dependencies is None:
+        return
+    target = function.__qualname__
+    if not isinstance(dependencies, Mapping):
+        raise TypeError(f"@js.inline dependencies for {target!r} must be a mapping.")
+    invalid_names = [
+        name
+        for name in dependencies
+        if not isinstance(name, str) or not name.isidentifier()
+    ]
+    if invalid_names:
+        names = ", ".join(repr(name) for name in invalid_names)
+        raise TypeError(
+            f"@js.inline dependency names for {target!r} must be Python "
+            f"identifiers; invalid: {names}."
+        )
+    invalid_dependencies = [
+        (name, type(dependency).__name__)
+        for name, dependency in dependencies.items()
+        if not inspect.isfunction(dependency)
+    ]
+    if invalid_dependencies:
+        values = ", ".join(
+            f"{name!r} ({type_name})"
+            for name, type_name in invalid_dependencies
+        )
+        raise TypeError(
+            f"@js.inline dependencies for {target!r} must be functions; "
+            f"invalid: {values}."
+        )
+    reserved = {
+        "_arg_strs",
+        "_arg_types",
+        "_keyword_strs",
+        "_args_joined",
+        "_args_suffix",
+        "self",
+    }
+    parameter_names = set(inspect.signature(function).parameters)
+    conflicts = set(dependencies) & (reserved | parameter_names)
+    if conflicts:
+        raise TypeError(
+            f"@js.inline dependency names for {target!r} conflict with call "
+            f"arguments: {', '.join(sorted(conflicts))}."
+        )
+    function.__js_inline_dependencies__ = dict(dependencies)
+
+
+def _js_inline(source=None, *, call=None, dependencies=None):
+    if (source is None) == (call is None):
+        raise TypeError("@js.inline requires exactly one of source or call.")
+    if call is not None:
+        if dependencies is not None:
+            raise TypeError(
+                "@js.inline(call=...) does not accept separate dependencies."
+            )
+        if not inspect.isfunction(call):
+            raise TypeError("@js.inline call target must be a function marked @js.")
+        if not getattr(call, "__js__", False):
+            raise TypeError("@js.inline call target must be marked @js.")
+        if has_inline_decorator(call):
+            raise TypeError("@js.inline call target must emit a runtime function.")
+
+    def decorate(obj):
+        obj = js(obj)
+        if call is not None:
+            obj.__js_inline_call__ = call
+        else:
+            _set_inline(obj, source, dependencies)
+        return obj
+
+    return decorate
+
+
+def _js_native(obj):
+    if is_cls_or_func(obj):
+        obj = js(obj)
+    else:
+        obj.__js__ = True
+        obj.__static__ = True
+    obj.__builtin__ = True
+    obj.__js_native__ = True
+    return obj
+
+
+def _js_keep(obj):
+    if inspect.isclass(obj) or "." not in obj.__qualname__:
+        raise TypeError("@js.keep is only supported for class methods.")
+    obj = js(obj)
+    obj.__js_keep__ = True
+    return obj
+
+
+def _js_dispatch(method_name: str):
+    if not (
+        isinstance(method_name, str)
+        and method_name.startswith("__")
+        and method_name.endswith("__")
+    ):
+        raise TypeError("@js.dispatch requires a dunder method name.")
+
+    def decorate(obj):
+        obj = js(obj)
+        obj.__js_dispatch__ = method_name
+        return obj
+
+    return decorate
+
+
+def _js_runtime_dunders(*method_names: str, item_of: int | str):
+    if item_of != "self" and not (
+        isinstance(item_of, int) and not isinstance(item_of, bool) and item_of >= 0
+    ):
+        raise TypeError(
+            "@js.runtime_dunders item_of must be 'self' or an argument index."
+        )
+    if not method_names or any(
+        not isinstance(name, str)
+        or not name.startswith("__")
+        or not name.endswith("__")
+        for name in method_names
+    ):
+        raise TypeError(
+            "@js.runtime_dunders requires one or more dunder method names."
+        )
+
+    def decorate(obj):
+        obj = js(obj)
+        obj.__js_runtime_dunders__ = (item_of, method_names)
+        return obj
+
+    return decorate
 
 
 def nojs(cls_func):
@@ -232,14 +386,11 @@ def nojs(cls_func):
     return cls_func
 
 
-def js_object(obj, builtin=None, include=None):
-    obj.__js__ = True
-    obj.__static__ = True
-    if builtin is True:
-        obj.__builtin__ = builtin
-    if include is True:
-        obj.__js_include__ = True
-    return obj
+js.inline = _js_inline
+js.native = _js_native
+js.keep = _js_keep
+js.dispatch = _js_dispatch
+js.runtime_dunders = _js_runtime_dunders
 
 
 type JS[T] = Annotated[T, js]

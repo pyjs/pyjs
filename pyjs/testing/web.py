@@ -3,8 +3,10 @@
 from pyjs import js
 from pyjs.testing.client.runtime import window
 from pyjs.testing.client.state import RenderArtifact
+from pyjs.ui.gesture import GestureScript, InteractionClock
+from pyjs.ui.interaction import InteractionSample
 from pyjs.web.dom import Element, Node, document
-from pyjs.web.events import Event, EventTarget, KeyboardEvent
+from pyjs.web.events import Event, EventTarget, KeyboardEvent, PointerEvent
 
 
 @js
@@ -26,11 +28,53 @@ def press_key(target: EventTarget, key: str):
 
 
 @js
+def dispatch_pointer_sample(target: EventTarget, sample: InteractionSample):
+    event_name = "pointermove"
+    if sample.phase == "down":
+        event_name = "pointerdown"
+    elif sample.phase == "up":
+        event_name = "pointerup"
+    elif sample.phase == "cancel":
+        event_name = "pointercancel"
+    buttons = 1
+    if sample.phase == "up" or sample.phase == "cancel":
+        buttons = 0
+    target.dispatchEvent(
+        PointerEvent(
+            event_name,
+            bubbles=True,
+            cancelable=True,
+            clientX=int(sample.x),
+            clientY=int(sample.y),
+            movementX=sample.delta_x,
+            movementY=sample.delta_y,
+            pointerId=sample.pointer_id,
+            buttons=buttons,
+        )
+    )
+
+
+@js
+def dispatch_pointer_script(
+    target: EventTarget,
+    script: GestureScript,
+    clock: InteractionClock | None = None,
+):
+    start = 0.0
+    if clock is not None:
+        start = clock.now()
+    for sample in script.samples:
+        if clock is not None:
+            clock.seek(start + sample.elapsed_ms)
+        dispatch_pointer_sample(target, sample)
+
+
+@js
 def selector_count(root: Element, selector: str) -> int:
     return len(root.querySelectorAll(selector))
 
 
-@js(builtin=True, inline="new Promise((resolve) => requestAnimationFrame(resolve))")
+@js.inline("new Promise((resolve) => requestAnimationFrame(resolve))")
 async def next_frame() -> None: ...
 
 
@@ -41,7 +85,29 @@ async def wait_for_frames(count: int = 2) -> None:
         await next_frame()
 
 
-def _rewrite_wait_for_event(_arg_strs, **kwargs):
+@js
+async def wait_for_settled_phase(
+    clock: InteractionClock,
+    name: str,
+    max_frames: int = 60,
+) -> None:
+    for _ in range(max_frames):
+        if clock.is_settled(name):
+            return
+        await next_frame()
+    raise ValueError("Interaction phase '" + name + "' did not settle.")
+
+
+@js
+async def wait_for_event(
+    target: EventTarget,
+    event_name: str,
+    trigger: callable | None = None,
+) -> Event: ...
+
+
+@wait_for_event.inline
+def wait_for_event(_arg_strs, **kwargs):
     target, event_name = _arg_strs[:2]
     trigger = f"{_arg_strs[2]}();" if len(_arg_strs) == 3 else ""
     return (
@@ -50,14 +116,6 @@ def _rewrite_wait_for_event(_arg_strs, **kwargs):
         f"{trigger}"
         "})"
     )
-
-
-@js(builtin=True, inline=_rewrite_wait_for_event)
-async def wait_for_event(
-    target: EventTarget,
-    event_name: str,
-    trigger: callable | None = None,
-) -> Event: ...
 
 
 @js

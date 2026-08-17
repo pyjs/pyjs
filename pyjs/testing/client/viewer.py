@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.testing.client.sidebar import short_test_name, test_file_name
 from pyjs.testing.client.state import TestState
@@ -228,7 +230,7 @@ class RunnerViewer(CustomElement):
         tag(self, tw("flex min-h-0 min-w-0 flex-1"), self.viewerRoot)
 
     def panel_clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         selected = target.closest("[data-panel-button]")
         if selected is None:
             return
@@ -327,10 +329,9 @@ class RunnerViewer(CustomElement):
             self.selectPanel("preview")
 
     def setActiveFrame(self, frame: HTMLIFrameElement, nodeid: str, state: TestState):
-        current_frame = self.currentFrame
-        if current_frame is not None:
-            if current_frame is not frame:
-                current_frame.classList.remove("active")
+        if self.currentFrame is not None:
+            if self.currentFrame is not frame:
+                self.currentFrame.classList.remove("active")
         frame.classList.add("active")
         self.currentFrame = frame
         self.currentFrameNodeid = nodeid
@@ -341,9 +342,8 @@ class RunnerViewer(CustomElement):
         self.setActiveFrame(frame, nodeid, state)
 
     def clearActiveFrame(self):
-        current_frame = self.currentFrame
-        if current_frame is not None:
-            current_frame.classList.remove("active")
+        if self.currentFrame is not None:
+            self.currentFrame.classList.remove("active")
         self.currentFrame = None
         self.currentFrameNodeid = None
         self.setHostEmptyState(True, "No preview available")

@@ -1,6 +1,13 @@
+from typing import cast
+
 from pyjs import js
-from pyjs.javascript import JSON, encodeURIComponent
-from pyjs.testing.client.runtime import TestingWindow, call_selected_tests, exception_text
+from pyjs.javascript import JSON, _stringify_unchecked, encodeURIComponent
+from pyjs.testing.client.runtime import (
+    BrowserTest,
+    TestingWindow,
+    call_selected_tests,
+    exception_text,
+)
 from pyjs.testing.client.sidebar import RunnerSidebar
 from pyjs.testing.client.state import (
     BrowserHeartbeatMessage,
@@ -10,7 +17,6 @@ from pyjs.testing.client.state import (
     RegisterBrowserMessage,
     RunBundleMessage,
     SingleTestRun,
-    TestManifestEntry,
     TestResult,
     TestResultsMessage,
     TestState,
@@ -32,7 +38,7 @@ def format_console_value(value: object) -> str:
     if isinstance(value, Exception):
         return exception_text(value)
     try:
-        return str(JSON.stringify(value))
+        return str(_stringify_unchecked(value))
     except Exception:
         return str(value)
 
@@ -49,32 +55,32 @@ class CapturingConsole:
             values.append(format_console_value(value))
         self.logs.append(ConsoleLine(level, " ".join(values)))
 
-    @js(include=True)
+    @js.keep
     def log(self, *args: object):
         self.capture("log", args)
         self.original.log(*args)
 
-    @js(include=True)
+    @js.keep
     def info(self, *args: object):
         self.capture("info", args)
         self.original.info(*args)
 
-    @js(include=True)
+    @js.keep
     def warn(self, *args: object):
         self.capture("warn", args)
         self.original.warn(*args)
 
-    @js(include=True)
+    @js.keep
     def error(self, *args: object):
         self.capture("error", args)
         self.original.error(*args)
 
-    @js(include=True)
+    @js.keep
     def debug(self, *args: object):
         self.capture("debug", args)
         self.original.debug(*args)
 
-    @js(include=True)
+    @js.keep
     def trace(self, *args: object):
         self.capture("trace", args)
         self.original.trace(*args)
@@ -85,12 +91,14 @@ class WindowErrorListener:
     def __init__(self, logs: list[ConsoleLine]):
         self.logs = logs
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: ErrorEvent):
         detail = event.message
         error = event.error
-        if error is not None:
+        if isinstance(error, Exception):
             detail = exception_text(error)
+        elif error is not None:
+            detail = format_console_value(error)
         elif not detail:
             detail = str(event)
         self.logs.append(ConsoleLine("error", detail))
@@ -101,7 +109,7 @@ class RejectionErrorListener:
     def __init__(self, logs: list[ConsoleLine]):
         self.logs = logs
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: PromiseRejectionEvent):
         reason = event.reason
         if isinstance(reason, Exception):
@@ -310,7 +318,7 @@ class BrowserRunnerApp(CustomElement):
         self.viewer.showConsole(nodeid, state)
 
     def prepareRunSession(self, selected_nodeids: list[str], current_nodeid: str | None) -> bool:
-        suite_key = JSON.stringify(selected_nodeids)
+        suite_key = _stringify_unchecked(selected_nodeids)
         first_selected_nodeid = ""
         if len(selected_nodeids) > 0:
             first_selected_nodeid = selected_nodeids[0]
@@ -585,8 +593,8 @@ async def execute_single_test(
     try:
         run_bundle = frame_window.Function(source)
         run_bundle()
-        manifest: list[TestManifestEntry] = frame_window.__pyjsSelectedTests
-        selected_test: TestManifestEntry | None = None
+        manifest: list[BrowserTest] = frame_window.__pyjsSelectedTests
+        selected_test: BrowserTest | None = None
         for test in manifest:
             if test.nodeid == nodeid:
                 selected_test = test
@@ -621,15 +629,15 @@ class TransportOpenListener:
         self.app = app
         self.socket = socket
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
-        self.socket.send(JSON.stringify(RegisterBrowserMessage()))
+        self.socket.send(_stringify_unchecked(RegisterBrowserMessage()))
         self.app._heartbeatTimer = setInterval(self.sendHeartbeat, 5_000)
         self.app.setStatus("Browser runner connected")
 
     def sendHeartbeat(self):
         if self.socket.readyState == WebSocket.OPEN:
-            self.socket.send(JSON.stringify(BrowserHeartbeatMessage()))
+            self.socket.send(_stringify_unchecked(BrowserHeartbeatMessage()))
 
 
 @js
@@ -638,9 +646,9 @@ class TransportMessageListener:
         self.app = app
         self.socket = socket
 
-    @js(include=True)
+    @js.keep
     async def handleEvent(self, event: MessageEvent):
-        message: RunBundleMessage = JSON.parse(event.data)
+        message: RunBundleMessage = JSON.parse(cast(str, event.data))
         if message["type"] != "run_bundle":
             return
 
@@ -688,12 +696,16 @@ class TransportMessageListener:
                 app.selectTest(nodeid)
             app.selectBestResult()
             app.setStatus(app.summarizeResults())
-            self.socket.send(JSON.stringify(TestResultsMessage(message["run_id"], results)))
+            self.socket.send(
+                _stringify_unchecked(TestResultsMessage(message["run_id"], results))
+            )
         except Exception as error:
             error_text = exception_text(error)
             failed_result = TestResult("<bundle>", "failed", [], error=error_text)
             self.socket.send(
-                JSON.stringify(TestResultsMessage(message["run_id"], [failed_result]))
+                _stringify_unchecked(
+                    TestResultsMessage(message["run_id"], [failed_result])
+                )
             )
             app.setStatus(error_text)
 
@@ -703,7 +715,7 @@ class TransportCloseListener:
     def __init__(self, app: BrowserRunnerApp):
         self.app = app
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         clearInterval(self.app._heartbeatTimer)
         self.app._heartbeatTimer = None

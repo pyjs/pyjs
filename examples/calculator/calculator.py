@@ -41,14 +41,14 @@ class InstallHandler:
         self.cache_name = cache_name
         self.assets = assets
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: ExtendableEvent):
         event.waitUntil(install_app_shell(self.cache_name, self.assets))
 
 
 @js
 class ActivateHandler:
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: ExtendableEvent):
         event.waitUntil(activate_app_shell())
 
@@ -58,7 +58,7 @@ class FetchHandler:
     def __init__(self, cache_name: str):
         self.cache_name = cache_name
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: FetchEvent):
         if event.request.method == "GET":
             event.respondWith(cache_first(event.request, self.cache_name))
@@ -96,7 +96,7 @@ class CalculatorKeyListener:
         self.kind = kind
         self.value = value
 
-    @js(include=True)
+    @js.keep
     async def handleEvent(self, event: Event):
         self.app.press(self.kind, self.value)
         if self.kind == "equals" and not self.app.error:

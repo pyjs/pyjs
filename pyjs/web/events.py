@@ -34,7 +34,7 @@ class SubscribeOptions:
             self.signal = signal
 
 
-@js(builtin=True)
+@js.native
 class Subscriber:
     """WebIDL source: @webref/idl/observable.idl
 
@@ -71,7 +71,7 @@ class SubscriptionObserver:
             self.next = next
 
 
-@js(builtin=True)
+@js.native
 class Touch:
     """WebIDL source: @webref/idl/touch-events.idl
 
@@ -151,7 +151,7 @@ class TouchInit:
         self.touchType = touchType
 
 
-@js(builtin=True)
+@js.native
 class TouchList:
     """WebIDL source: @webref/idl/touch-events.idl
 
@@ -165,7 +165,7 @@ class TouchList:
     def item(self, index: int) -> Touch | None: ...
 
 
-@js(builtin=True)
+@js.native
 class Event:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -225,11 +225,11 @@ class EventInit:
         self.composed = composed
 
 
-@js(builtin=True)
+@js.native
 class EventListener:
     """WebIDL source: @webref/idl/dom.idl"""
 
-    pass
+    __pyjs_structural__ = True
 
     def handleEvent(self, event: Event) -> None: ...
 
@@ -242,7 +242,7 @@ class EventListenerOptions:
         self.capture = capture
 
 
-@js(builtin=True)
+@js.native
 class EventTarget:
     """WebIDL source: @webref/idl/dom.idl
 
@@ -255,7 +255,7 @@ class EventTarget:
     def addEventListener(
         self,
         type: str,
-        callback: EventListener | None,
+        callback: callable | EventListener | None,
         *,
         capture: bool = False,
         passive: bool | None = None,
@@ -266,7 +266,11 @@ class EventTarget:
     def dispatchEvent(self, event: Event) -> bool: ...
 
     def removeEventListener(
-        self, type: str, callback: EventListener | None, *, capture: bool = False
+        self,
+        type: str,
+        callback: callable | EventListener | None,
+        *,
+        capture: bool = False,
     ) -> None: ...
 
     def when(
@@ -274,7 +278,7 @@ class EventTarget:
     ) -> Observable: ...
 
 
-@js(builtin=True)
+@js.native
 class InputDeviceCapabilities:
     """WebIDL source: @webref/idl/input-device-capabilities.idl
 
@@ -302,7 +306,7 @@ class InputDeviceCapabilitiesInit:
         self.pointerMovementScrolls = pointerMovementScrolls
 
 
-@js(builtin=True)
+@js.native
 class Observable:
     """WebIDL source: @webref/idl/observable.idl
 
@@ -322,7 +326,7 @@ class Observable:
 
     def filter(self, predicate: callable) -> Observable: ...
 
-    @js(inline="{self}.finally({_args_joined})")
+    @js.inline("{self}.finally({_args_joined})")
     def finally_(self, callback: callable) -> Observable: ...
 
     async def find(
@@ -338,7 +342,7 @@ class Observable:
     ) -> None: ...
 
     @staticmethod
-    @js(inline="{self}.from({_args_joined})")
+    @js.inline("{self}.from({_args_joined})")
     def from_(value: object) -> Observable: ...
 
     def inspect(
@@ -1044,7 +1048,7 @@ class WheelEventInit:
         self.which = which
 
 
-@js(builtin=True)
+@js.native
 class AbortSignal(EventTarget):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1072,7 +1076,7 @@ class AbortSignal(EventTarget):
     def timeout(milliseconds: int) -> AbortSignal: ...
 
 
-@js(builtin=True)
+@js.native
 class MessagePort(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1095,7 +1099,7 @@ class MessagePort(EventTarget):
     def start(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ServiceWorker(EventTarget):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -1106,7 +1110,7 @@ class ServiceWorker(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class Window(EventTarget):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1117,7 +1121,7 @@ class Window(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class CustomEvent(Event):
     """WebIDL source: @webref/idl/dom.idl
 
@@ -1146,7 +1150,7 @@ class CustomEvent(Event):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ErrorEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1175,7 +1179,7 @@ class ErrorEvent(Event):
         self.message: str = message
 
 
-@js(builtin=True)
+@js.native
 class MessageEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1218,7 +1222,7 @@ class MessageEvent(Event):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ProgressEvent(Event):
     """WebIDL source: @webref/idl/xhr.idl
 
@@ -1243,7 +1247,7 @@ class ProgressEvent(Event):
         self.total: float = total
 
 
-@js(builtin=True)
+@js.native
 class PromiseRejectionEvent(Event):
     """WebIDL source: @webref/idl/html.idl
 
@@ -1266,7 +1270,7 @@ class PromiseRejectionEvent(Event):
         self.reason: object = reason
 
 
-@js(builtin=True)
+@js.native
 class UIEvent(Event):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1302,7 +1306,7 @@ class UIEvent(Event):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class CompositionEvent(UIEvent):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1336,7 +1340,7 @@ class CompositionEvent(UIEvent):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class FocusEvent(UIEvent):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1370,7 +1374,7 @@ class FocusEvent(UIEvent):
         self.relatedTarget: EventTarget | None = relatedTarget
 
 
-@js(builtin=True)
+@js.native
 class InputEvent(UIEvent):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1399,7 +1403,7 @@ class InputEvent(UIEvent):
         self.isComposing: bool = isComposing
 
 
-@js(builtin=True)
+@js.native
 class KeyboardEvent(UIEvent):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1484,7 +1488,7 @@ class KeyboardEvent(UIEvent):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class MouseEvent(UIEvent):
     """WebIDL source: @webref/idl/pointerevents.idl
 
@@ -1581,7 +1585,7 @@ class MouseEvent(UIEvent):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class TextEvent(UIEvent):
     """WebIDL source: @webref/idl/uievents.idl
 
@@ -1603,7 +1607,7 @@ class TextEvent(UIEvent):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class TouchEvent(UIEvent):
     """WebIDL source: @webref/idl/touch-events.idl
 
@@ -1652,7 +1656,7 @@ class TouchEvent(UIEvent):
     def getModifierState(self, keyArg: str) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class PointerEvent(MouseEvent):
     """WebIDL source: @webref/idl/pointerevents.idl
 
@@ -1752,7 +1756,7 @@ class PointerEvent(MouseEvent):
     def getPredictedEvents(self) -> list[PointerEvent]: ...
 
 
-@js(builtin=True)
+@js.native
 class WheelEvent(MouseEvent):
     """WebIDL source: @webref/idl/pointerevents.idl
 

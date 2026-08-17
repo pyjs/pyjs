@@ -26,7 +26,7 @@ class TextDecodeOptions:
         self.stream = stream
 
 
-@js(builtin=True)
+@js.native
 class TextDecoder:
     """WebIDL source: @webref/idl/encoding.idl
 
@@ -73,7 +73,7 @@ class TextDecoderOptions:
         self.ignoreBOM = ignoreBOM
 
 
-@js(builtin=True)
+@js.native
 class TextDecoderStream:
     """WebIDL source: @webref/idl/encoding.idl
 
@@ -89,7 +89,7 @@ class TextDecoderStream:
         self.ignoreBOM: bool = ignoreBOM
 
 
-@js(builtin=True)
+@js.native
 class TextEncoder:
     """WebIDL source: @webref/idl/encoding.idl
 
@@ -116,7 +116,7 @@ class TextEncoderEncodeIntoResult:
         self.written = written
 
 
-@js(builtin=True)
+@js.native
 class TextEncoderStream:
     """WebIDL source: @webref/idl/encoding.idl
 

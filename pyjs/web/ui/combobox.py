@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.events import Event
@@ -27,7 +29,7 @@ class Combobox(Command):
             item.setAttribute("aria-selected", "true" if item.value == value else "false")
 
     def item_clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         item = target.closest("[data-slot=command-item]")
         if item is None or item.getAttribute("aria-disabled") == "true":
             return

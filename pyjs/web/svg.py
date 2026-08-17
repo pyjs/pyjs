@@ -11,7 +11,7 @@ from pyjs.web.events import EventTarget
 from pyjs.web.geometry import DOMMatrix, DOMMatrix2DInit, DOMPoint, DOMPointInit
 
 
-@js(builtin=True)
+@js.native
 class CSSPseudoElement:
     """WebIDL source: @webref/idl/css-pseudo.idl
 
@@ -22,7 +22,7 @@ class CSSPseudoElement:
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGAngle:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -49,7 +49,7 @@ class SVGAngle:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedAngle:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -62,7 +62,7 @@ class SVGAnimatedAngle:
         self.baseVal: SVGAngle = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedBoolean:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -75,7 +75,7 @@ class SVGAnimatedBoolean:
         self.baseVal: bool = False
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedEnumeration:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -88,7 +88,7 @@ class SVGAnimatedEnumeration:
         self.baseVal: int = 0
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedInteger:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -101,7 +101,7 @@ class SVGAnimatedInteger:
         self.baseVal: int = 0
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedLength:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -114,7 +114,7 @@ class SVGAnimatedLength:
         self.baseVal: SVGLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedLengthList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -127,7 +127,7 @@ class SVGAnimatedLengthList:
         self.baseVal: SVGLengthList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedNumber:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -140,7 +140,7 @@ class SVGAnimatedNumber:
         self.baseVal: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedNumberList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -153,7 +153,7 @@ class SVGAnimatedNumberList:
         self.baseVal: SVGNumberList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedPreserveAspectRatio:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -166,7 +166,7 @@ class SVGAnimatedPreserveAspectRatio:
         self.baseVal: SVGPreserveAspectRatio = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedRect:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -179,7 +179,7 @@ class SVGAnimatedRect:
         self.baseVal: DOMRect = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedString:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -192,7 +192,7 @@ class SVGAnimatedString:
         self.baseVal: str | TrustedScriptURL = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAnimatedTransformList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -222,7 +222,7 @@ class SVGBoundingBoxOptions:
         self.stroke = stroke
 
 
-@js(builtin=True)
+@js.native
 class SVGElement(Element):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -237,7 +237,7 @@ class SVGElement(Element):
         self.viewportElement: SVGElement | None = None
 
 
-@js(builtin=True)
+@js.native
 class SVGLength:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -270,7 +270,7 @@ class SVGLength:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGLengthList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -282,7 +282,7 @@ class SVGLengthList:
         self.length: int = 0
         self.numberOfItems: int = 0
 
-    @js(inline="{self}[{index}] = {newItem}")
+    @js.inline("{self}[{index}] = {newItem}")
     def __setitem__(self, index: int, newItem: SVGLength) -> None: ...
 
     def appendItem(self, newItem: SVGLength) -> SVGLength: ...
@@ -300,7 +300,7 @@ class SVGLengthList:
     def replaceItem(self, newItem: SVGLength, index: int) -> SVGLength: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGNumber:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -312,7 +312,7 @@ class SVGNumber:
         self.value: float = 0.0
 
 
-@js(builtin=True)
+@js.native
 class SVGNumberList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -324,7 +324,7 @@ class SVGNumberList:
         self.length: int = 0
         self.numberOfItems: int = 0
 
-    @js(inline="{self}[{index}] = {newItem}")
+    @js.inline("{self}[{index}] = {newItem}")
     def __setitem__(self, index: int, newItem: SVGNumber) -> None: ...
 
     def appendItem(self, newItem: SVGNumber) -> SVGNumber: ...
@@ -350,7 +350,7 @@ class SVGPathDataSettings:
         self.normalize = normalize
 
 
-@js(builtin=True)
+@js.native
 class SVGPathSegment:
     """WebIDL source: @webref/idl/svg-paths.idl"""
 
@@ -359,7 +359,7 @@ class SVGPathSegment:
         self.values: list[float] = []
 
 
-@js(builtin=True)
+@js.native
 class SVGPointList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -371,7 +371,7 @@ class SVGPointList:
         self.length: int = 0
         self.numberOfItems: int = 0
 
-    @js(inline="{self}[{index}] = {newItem}")
+    @js.inline("{self}[{index}] = {newItem}")
     def __setitem__(self, index: int, newItem: DOMPoint) -> None: ...
 
     def appendItem(self, newItem: DOMPoint) -> DOMPoint: ...
@@ -389,7 +389,7 @@ class SVGPointList:
     def replaceItem(self, newItem: DOMPoint, index: int) -> DOMPoint: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGPreserveAspectRatio:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -417,7 +417,7 @@ class SVGPreserveAspectRatio:
         self.meetOrSlice: int = 0
 
 
-@js(builtin=True)
+@js.native
 class SVGStringList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -429,7 +429,7 @@ class SVGStringList:
         self.length: int = 0
         self.numberOfItems: int = 0
 
-    @js(inline="{self}[{index}] = {newItem}")
+    @js.inline("{self}[{index}] = {newItem}")
     def __setitem__(self, index: int, newItem: str) -> None: ...
 
     def appendItem(self, newItem: str) -> str: ...
@@ -447,7 +447,7 @@ class SVGStringList:
     def replaceItem(self, newItem: str, index: int) -> str: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGTransform:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -481,7 +481,7 @@ class SVGTransform:
     def setTranslate(self, tx: float, ty: float) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGTransformList:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -493,7 +493,7 @@ class SVGTransformList:
         self.length: int = 0
         self.numberOfItems: int = 0
 
-    @js(inline="{self}[{index}] = {newItem}")
+    @js.inline("{self}[{index}] = {newItem}")
     def __setitem__(self, index: int, newItem: SVGTransform) -> None: ...
 
     def appendItem(self, newItem: SVGTransform) -> SVGTransform: ...
@@ -517,7 +517,7 @@ class SVGTransformList:
     def replaceItem(self, newItem: SVGTransform, index: int) -> SVGTransform: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGUnitTypes:
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -530,14 +530,14 @@ class SVGUnitTypes:
     SVG_UNIT_TYPE_USERSPACEONUSE = 1
 
 
-@js(builtin=True)
+@js.native
 class SVGUseElementShadowRoot(ShadowRoot):
     """WebIDL source: @webref/idl/SVG.idl"""
 
     pass
 
 
-@js(builtin=True)
+@js.native
 class TrustedScriptURL:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -548,7 +548,7 @@ class TrustedScriptURL:
     pass
 
 
-@js(builtin=True)
+@js.native
 class Animation(EventTarget):
     """WebIDL source: @webref/idl/web-animations.idl
 
@@ -559,7 +559,7 @@ class Animation(EventTarget):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGDescElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -570,7 +570,7 @@ class SVGDescElement(SVGElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGGradientElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -591,7 +591,7 @@ class SVGGradientElement(SVGElement):
         self.spreadMethod: SVGAnimatedEnumeration = None
 
 
-@js(builtin=True)
+@js.native
 class SVGGraphicsElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -619,7 +619,7 @@ class SVGGraphicsElement(SVGElement):
     def getScreenCTM(self) -> DOMMatrix | None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGMarkerElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -653,7 +653,7 @@ class SVGMarkerElement(SVGElement):
     def setOrientToAuto(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGMetadataElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -664,7 +664,7 @@ class SVGMetadataElement(SVGElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGPatternElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -686,7 +686,7 @@ class SVGPatternElement(SVGElement):
         self.y: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGScriptElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -700,7 +700,7 @@ class SVGScriptElement(SVGElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class SVGStopElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -713,7 +713,7 @@ class SVGStopElement(SVGElement):
         self.offset: SVGAnimatedNumber = None
 
 
-@js(builtin=True)
+@js.native
 class SVGStyleElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -729,7 +729,7 @@ class SVGStyleElement(SVGElement):
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class SVGTitleElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -740,7 +740,7 @@ class SVGTitleElement(SVGElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGViewElement(SVGElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -754,7 +754,7 @@ class SVGViewElement(SVGElement):
         self.viewBox: SVGAnimatedRect = None
 
 
-@js(builtin=True)
+@js.native
 class ShadowAnimation(Animation):
     """WebIDL source: @webref/idl/SVG.idl"""
 
@@ -763,7 +763,7 @@ class ShadowAnimation(Animation):
         self.sourceAnimation: Animation = None
 
 
-@js(builtin=True)
+@js.native
 class SVGAElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -794,7 +794,7 @@ class SVGAElement(SVGGraphicsElement):
         self.username: str = ""
 
 
-@js(builtin=True)
+@js.native
 class SVGDefsElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -805,7 +805,7 @@ class SVGDefsElement(SVGGraphicsElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGForeignObjectElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -821,7 +821,7 @@ class SVGForeignObjectElement(SVGGraphicsElement):
         self.y: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGGElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -832,7 +832,7 @@ class SVGGElement(SVGGraphicsElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGGeometryElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -853,7 +853,7 @@ class SVGGeometryElement(SVGGraphicsElement):
     def isPointInStroke(self, point: DOMPointInit | None = None) -> bool: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGImageElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -872,7 +872,7 @@ class SVGImageElement(SVGGraphicsElement):
         self.y: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGLinearGradientElement(SVGGradientElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -888,7 +888,7 @@ class SVGLinearGradientElement(SVGGradientElement):
         self.y2: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGRadialGradientElement(SVGGradientElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -906,7 +906,7 @@ class SVGRadialGradientElement(SVGGradientElement):
         self.r: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGSVGElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -968,7 +968,7 @@ class SVGSVGElement(SVGGraphicsElement):
     def unsuspendRedrawAll(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGSwitchElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -979,7 +979,7 @@ class SVGSwitchElement(SVGGraphicsElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGSymbolElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -993,7 +993,7 @@ class SVGSymbolElement(SVGGraphicsElement):
         self.viewBox: SVGAnimatedRect = None
 
 
-@js(builtin=True)
+@js.native
 class SVGTextContentElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1029,7 +1029,7 @@ class SVGTextContentElement(SVGGraphicsElement):
     def selectSubString(self, charnum: int, nchars: int) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGUseElement(SVGGraphicsElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1046,7 +1046,7 @@ class SVGUseElement(SVGGraphicsElement):
         self.y: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGCircleElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1061,7 +1061,7 @@ class SVGCircleElement(SVGGeometryElement):
         self.r: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGEllipseElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1077,7 +1077,7 @@ class SVGEllipseElement(SVGGeometryElement):
         self.ry: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGLineElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1093,7 +1093,7 @@ class SVGLineElement(SVGGeometryElement):
         self.y2: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGPathElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/svg-paths.idl
 
@@ -1110,7 +1110,7 @@ class SVGPathElement(SVGGeometryElement):
     def getTotalLength(self) -> float: ...
 
 
-@js(builtin=True)
+@js.native
 class SVGPolygonElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1124,7 +1124,7 @@ class SVGPolygonElement(SVGGeometryElement):
         self.points: SVGPointList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGPolylineElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1138,7 +1138,7 @@ class SVGPolylineElement(SVGGeometryElement):
         self.points: SVGPointList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGRectElement(SVGGeometryElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1156,7 +1156,7 @@ class SVGRectElement(SVGGeometryElement):
         self.y: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGTextPathElement(SVGTextContentElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1179,7 +1179,7 @@ class SVGTextPathElement(SVGTextContentElement):
         self.startOffset: SVGAnimatedLength = None
 
 
-@js(builtin=True)
+@js.native
 class SVGTextPositioningElement(SVGTextContentElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1196,7 +1196,7 @@ class SVGTextPositioningElement(SVGTextContentElement):
         self.y: SVGAnimatedLengthList = None
 
 
-@js(builtin=True)
+@js.native
 class SVGTextElement(SVGTextPositioningElement):
     """WebIDL source: @webref/idl/SVG.idl
 
@@ -1207,7 +1207,7 @@ class SVGTextElement(SVGTextPositioningElement):
     pass
 
 
-@js(builtin=True)
+@js.native
 class SVGTSpanElement(SVGTextPositioningElement):
     """WebIDL source: @webref/idl/SVG.idl
 

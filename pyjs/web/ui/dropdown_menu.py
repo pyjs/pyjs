@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, tag, tw
@@ -103,7 +105,7 @@ class DropdownMenuClickListener:
     def __init__(self, menu: DropdownMenu):
         self.menu = menu
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: Event):
         self.menu.handle_document_click(event)
 
@@ -113,7 +115,7 @@ class DropdownMenuKeyListener:
     def __init__(self, menu: DropdownMenu):
         self.menu = menu
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         self.menu.handle_keydown(event)
 
@@ -183,7 +185,7 @@ class DropdownMenu(Widget):
     def handle_document_click(self, event: Event):
         if not self.is_open:
             return
-        target: Element = event.target
+        target = cast(Element, event.target)
         if self.contains(target) or self.content.contains(target):
             return
         self.close()
@@ -203,7 +205,7 @@ class DropdownMenu(Widget):
             return
         if len(self.content.items) == 0:
             return
-        target: Element = event.target
+        target = cast(Element, event.target)
         if self.contains(target):
             return
         event.preventDefault()

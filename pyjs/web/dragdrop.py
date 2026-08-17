@@ -4,7 +4,7 @@ from pyjs.web.events import MouseEvent
 from pyjs.web.files import File, FileList
 
 
-@js(builtin=True)
+@js.native
 class DataTransfer:
     """WebIDL source: @webref/idl/html.idl
 
@@ -28,7 +28,7 @@ class DataTransfer:
     def setDragImage(self, image: Element, x: int, y: int) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class DataTransferItem:
     """WebIDL source: @webref/idl/html.idl
 
@@ -45,7 +45,7 @@ class DataTransferItem:
     def getAsString(self, callback: callable | None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class DataTransferItemList:
     """WebIDL source: @webref/idl/html.idl
 
@@ -56,7 +56,7 @@ class DataTransferItemList:
     def __init__(self):
         self.length: int = 0
 
-    @js(inline="{self}[{index}]")
+    @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> DataTransferItem: ...
 
     def add(self, data: str, type: str) -> DataTransferItem | None: ...
@@ -66,7 +66,7 @@ class DataTransferItemList:
     def remove(self, index: int) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class DragEvent(MouseEvent):
     """WebIDL source: @webref/idl/html.idl
 

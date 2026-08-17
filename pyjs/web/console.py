@@ -1,7 +1,7 @@
 from pyjs import js
 
 
-@js(builtin=True)
+@js.native
 class Console:
     def log(self, *args: object): ...
 

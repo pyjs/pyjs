@@ -869,7 +869,7 @@ class GameKeyboardListener:
         self.app = app
         self.pressed = pressed
 
-    @js(include=True)
+    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         if event.key == "ArrowLeft" or event.key == "a" or event.key == "A":
             event.preventDefault()
@@ -1002,8 +1002,7 @@ class SpaceInvadersApp(Widget):
             self.status_text.style.display = "none"
 
     def frame(self, timestamp: float):
-        renderer = self.renderer
-        if renderer is None:
+        if self.renderer is None:
             return
         if self.last_timestamp == 0.0:
             elapsed = 0.0
@@ -1014,7 +1013,7 @@ class SpaceInvadersApp(Widget):
             elapsed = 0.05
         self.game.step(elapsed)
         self.sync_hud()
-        renderer.render(self.game)
+        self.renderer.render(self.game)
         requestAnimationFrame(self.frame)
 
 

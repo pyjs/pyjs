@@ -135,7 +135,7 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def __setattr__(self, name: str, value: HTMLElement):
         if (
             isinstance(value, (HTMLElement, ProxyElement))
-            and name != "parentElement"
+            and name not in {"parentElement", "parentNode"}
             and getattr(value, "__pyjs_ref__", False)
         ):
             if value.getAttribute("id") is not None:
@@ -148,11 +148,11 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def set_data(self, name: str, value: str):
         self.setAttribute(f"data-{name}", value)
 
-    @js(include=True)
+    @js.keep
     def get_data(self, name: str) -> str | None:
         return self.getAttribute(f"data-{name}")
 
-    @js(include=True)
+    @js.keep
     def connectedCallback(self):
         if self._initialized:
             return
@@ -165,7 +165,7 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
             self._run_initial_effects()
         self.initialize()
 
-    @js(include=True)
+    @js.keep
     def attributeChangedCallback(
         self, name: str, old_value: str | None, new_value: str | None
     ):
@@ -195,38 +195,38 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def _run_initial_effects(self):
         self._run_initial_state_effects()
 
-    @js(include=True)
+    @js.keep
     def _initialize_state(self):
         pass
 
-    @js(include=True)
+    @js.keep
     def _run_state_effects(self, name: str):
         pass
 
-    @js(include=True)
+    @js.keep
     def _run_initial_state_effects(self):
         pass
 
-    @js(include=True)
+    @js.keep
     def _create(self, *args):
         return tag(self, *args)
 
-    @js(include=True)
+    @js.keep
     def _hydrate(self):
         pass
 
-    @js(include=True)
+    @js.keep
     def initialize(self):
         pass
 
 
 @js
 class ProxyElement:
-    @js(include=True)
+    @js.keep
     def _create(self, *args):
         return tag(self, *args)
 
-    @js(include=True)
+    @js.keep
     def _hydrate(self, e: Element):
         self.element = e
         return self
@@ -238,13 +238,16 @@ class ProxyElement:
         return self.element.getAttribute(name)
 
 
-@js(inline="{value}")
-# TODO:
-# def ref[T](value: T) -> T:
-def ref(value: object) -> object:
+@js.inline("{value}")
+def ref[T](value: T) -> T:
     if isinstance(value, (HTMLElement, ProxyElement)):
         value.__pyjs_ref__ = True
     return value
+
+
+@ref.analyze
+def ref(call):
+    return call.preserve_reference()
 
 
 @js
@@ -291,7 +294,7 @@ class ContextProvider:
 
 
 context = ContextProvider()
-# js_object(context)
+# js.native(context)
 
 
 @js
@@ -301,8 +304,8 @@ def tw(classes: str) -> dict[str, str]:
 
 @js
 def tag(
-    name_or_element: str | HTMLElement,
-    *args: str | dict[str, str] | HTMLElement | ProxyElement,
+    name_or_element: str | HTMLElement | ProxyElement,
+    *args: str | dict[str, str] | Element | ProxyElement,
 ) -> HTMLElement:
     if isinstance(name_or_element, str):
         e = document.createElement(name_or_element)
@@ -329,8 +332,8 @@ def tag(
 
 @tag.client
 def tag(
-    name_or_element: str | HTMLElement,
-    *args: str | dict[str, str] | HTMLElement | ProxyElement,
+    name_or_element: str | HTMLElement | ProxyElement,
+    *args: str | dict[str, str] | Element | ProxyElement,
 ) -> HTMLElement:
     if isinstance(name_or_element, str):
         e = document.createElement(name_or_element)
@@ -354,8 +357,8 @@ def tag(
 
 
 def html_tag(name: str):
-    return js(
-        inline=f"{{tag}}({name!r}{{*args}})",
+    return js.inline(
+        f"{{tag}}({name!r}{{*args}})",
         dependencies={"tag": tag},
     )
 
@@ -409,7 +412,7 @@ def img(*args) -> HTMLImageElement:
     return image_element
 
 
-@js(builtin=True, inline="document.createElement('canvas')")
+@js.inline("document.createElement('canvas')")
 def canvas() -> HTMLCanvasElement:
     return HTMLCanvasElement()
 

@@ -1,29 +1,29 @@
 from pyjs import js
 
 
-@js(builtin=True)
+@js.native
 def setTimeout(callback: callable, milliseconds: int = 0, *arguments: object) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 def clearTimeout(timer: int | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 def setInterval(callback: callable, milliseconds: int = 0, *arguments: object) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 def clearInterval(timer: int | None = None) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 def queueMicrotask(callback: callable) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 def requestAnimationFrame(callback: callable) -> int: ...
 
 
-@js(builtin=True)
+@js.native
 def cancelAnimationFrame(request_id: int) -> None: ...

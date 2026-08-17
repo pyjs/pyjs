@@ -116,7 +116,8 @@ def test_todos_and_active_route_survive_a_reload_equivalent():
     location.hash = "#/active"
 
     stored = localStorage.getItem(TodoApp.storage_key)
-    assert stored is not None
+    if stored is None:
+        raise AssertionError
     records: list[TodoRecord] = JSON.parse(stored)
     assert len(records) == 2
     assert records[0]["title"] == "persist me"

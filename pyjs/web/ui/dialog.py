@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, div, p, ref, tag, tw
@@ -208,7 +210,7 @@ class DialogContent(Widget):
         self.request_close(event)
 
     def dialog_clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         close_control = target.closest("[data-dialog-close]")
         close_on_backdrop = (
             self.dialog_element.getAttribute("data-close-on-backdrop") == "true"
@@ -285,7 +287,7 @@ class Dialog(Widget):
         self.trigger.set_expanded(False)
         self.trigger.element.focus()
 
-    @js(include=True)
+    @js.keep
     def disconnectedCallback(self):
         if self.is_open:
             self.close()

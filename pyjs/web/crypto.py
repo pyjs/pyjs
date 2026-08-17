@@ -1,4 +1,4 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.javascript import (
     ArrayBuffer,
     BigInt64Array,
@@ -25,7 +25,7 @@ class Algorithm:
         self.name = name
 
 
-@js(builtin=True)
+@js.native
 class Crypto:
     """WebIDL source: @webref/idl/webcrypto.idl
 
@@ -67,14 +67,17 @@ class Crypto:
         | DataView
     ): ...
 
-    def randomUUID(self) -> str: ...
+    @js
+    def randomUUID(self) -> str:
+        import uuid
 
+        return str(uuid.uuid4())
 
 crypto = Crypto()
-js_object(crypto, builtin=True)
+js.native(crypto)
 
 
-@js(builtin=True)
+@js.native
 class CryptoKey:
     """WebIDL source: @webref/idl/webcrypto.idl
 
@@ -196,7 +199,7 @@ class RsaOtherPrimesInfo:
         self.t = t
 
 
-@js(builtin=True)
+@js.native
 class SubtleCrypto:
     """WebIDL source: @webref/idl/webcrypto.idl
 

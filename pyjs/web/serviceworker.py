@@ -1,4 +1,6 @@
-from pyjs import js, js_object
+from collections.abc import Awaitable, Iterable
+
+from pyjs import js
 from pyjs.javascript import (
     ArrayBuffer,
     BigInt64Array,
@@ -21,7 +23,7 @@ from pyjs.web.html import WorkerGlobalScope
 from pyjs.web.network import Request, Response
 
 
-@js(builtin=True)
+@js.native
 class Cache:
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -31,7 +33,7 @@ class Cache:
 
     async def add(self, request: Request | str) -> None: ...
 
-    async def addAll(self, requests: list[Request | str]) -> None: ...
+    async def addAll(self, requests: Iterable[Request | str]) -> None: ...
 
     async def delete(
         self,
@@ -87,7 +89,7 @@ class CacheQueryOptions:
         self.ignoreVary = ignoreVary
 
 
-@js(builtin=True)
+@js.native
 class CacheStorage:
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -115,10 +117,10 @@ class CacheStorage:
 
 
 caches = CacheStorage()
-js_object(caches, builtin=True)
+js.native(caches)
 
 
-@js(builtin=True)
+@js.native
 class Client:
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -144,7 +146,7 @@ class ClientQueryOptions:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class Clients:
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -163,7 +165,7 @@ class Clients:
     async def openWindow(self, url: str) -> WindowClient | None: ...
 
 
-@js(builtin=True)
+@js.native
 class ExtendableEvent(Event):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -185,7 +187,7 @@ class GetNotificationOptions:
         self.tag = tag
 
 
-@js(builtin=True)
+@js.native
 class NavigationPreloadManager:
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -211,7 +213,7 @@ class NavigationPreloadState:
         self.headerValue = headerValue
 
 
-@js(builtin=True)
+@js.native
 class Navigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -224,10 +226,10 @@ class Navigator:
 
 
 navigator = Navigator()
-js_object(navigator, builtin=True)
+js.native(navigator)
 
 
-@js(builtin=True)
+@js.native
 class Notification(EventTarget):
     """WebIDL source: @webref/idl/notifications.idl
 
@@ -359,7 +361,7 @@ class PermissionDescriptor:
         self.name = name
 
 
-@js(builtin=True)
+@js.native
 class PushManager:
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -417,7 +419,7 @@ class PushManager:
     ) -> PushSubscription: ...
 
 
-@js(builtin=True)
+@js.native
 class PushMessageData:
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -436,7 +438,7 @@ class PushMessageData:
     def text(self) -> str: ...
 
 
-@js(builtin=True)
+@js.native
 class PushSubscription:
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -473,7 +475,7 @@ class PushSubscriptionJSON:
             self.keys = keys
 
 
-@js(builtin=True)
+@js.native
 class PushSubscriptionOptions:
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -569,7 +571,7 @@ class RouterSourceDict:
         self.cacheName = cacheName
 
 
-@js(builtin=True)
+@js.native
 class ServiceWorker(EventTarget):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -586,7 +588,7 @@ class ServiceWorker(EventTarget):
     def postMessage(self, message: object, transfer: list[object]) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ServiceWorkerContainer(EventTarget):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -620,7 +622,7 @@ class ServiceWorkerContainer(EventTarget):
     def startMessages(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class ServiceWorkerRegistration(EventTarget):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -667,7 +669,7 @@ class ServiceWorkerRegistration(EventTarget):
     async def update(self) -> ServiceWorkerRegistration: ...
 
 
-@js(builtin=True)
+@js.native
 class TrustedScriptURL:
     """WebIDL source: @webref/idl/trusted-types.idl
 
@@ -678,7 +680,7 @@ class TrustedScriptURL:
     pass
 
 
-@js(builtin=True)
+@js.native
 class URLPattern:
     """WebIDL source: @webref/idl/urlpattern.idl
 
@@ -734,7 +736,7 @@ class ExtendableEventInit:
     def __init__(self): ...
 
 
-@js(builtin=True)
+@js.native
 class ServiceWorkerGlobalScope(WorkerGlobalScope):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -878,7 +880,7 @@ class FetchEventInit:
         self.resultingClientId = resultingClientId
 
 
-@js(builtin=True)
+@js.native
 class ExtendableMessageEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -904,7 +906,7 @@ class ExtendableMessageEvent(ExtendableEvent):
         self.source: Client | ServiceWorker | MessagePort | None = source
 
 
-@js(builtin=True)
+@js.native
 class FetchEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -931,10 +933,10 @@ class FetchEvent(ExtendableEvent):
         self.request: Request = request
         self.resultingClientId: str = resultingClientId
 
-    def respondWith(self, r: Response) -> None: ...
+    def respondWith(self, r: Response | Awaitable[Response]) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class InstallEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/service-workers.idl
 
@@ -950,7 +952,7 @@ class InstallEvent(ExtendableEvent):
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class NotificationEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/notifications.idl
 
@@ -964,7 +966,7 @@ class NotificationEvent(ExtendableEvent):
         self.notification: Notification = notification
 
 
-@js(builtin=True)
+@js.native
 class PushEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -999,7 +1001,7 @@ class PushEvent(ExtendableEvent):
         self.notification: Notification | None = notification
 
 
-@js(builtin=True)
+@js.native
 class PushSubscriptionChangeEvent(ExtendableEvent):
     """WebIDL source: @webref/idl/push-api.idl
 
@@ -1017,11 +1019,11 @@ class PushSubscriptionChangeEvent(ExtendableEvent):
         self.oldSubscription: PushSubscription | None = oldSubscription
 
 
-@js(builtin=True, inline="self")
+@js.inline("self")
 def service_worker_scope() -> ServiceWorkerGlobalScope: ...
 
 
-@js(builtin=True)
+@js.native
 class WindowClient(Client):
     """WebIDL source: @webref/idl/service-workers.idl
 

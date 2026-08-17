@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.testing.client.state import TestState
 from pyjs.web.dom import Element
@@ -194,7 +196,7 @@ class RunnerSidebar(CustomElement):
         )
 
     def filter_clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         filter_button = target.closest("[data-filter]")
         if filter_button is None:
             return

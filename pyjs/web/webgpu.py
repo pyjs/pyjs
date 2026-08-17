@@ -1,4 +1,4 @@
-from pyjs import js, js_object
+from pyjs import js
 from pyjs.javascript import (
     ArrayBuffer,
     BigInt64Array,
@@ -28,7 +28,7 @@ from pyjs.web.html import (
 )
 
 
-@js(builtin=True)
+@js.native
 class _GPUBufferUsage:
     def __init__(self):
         self.MAP_READ = 1
@@ -44,10 +44,10 @@ class _GPUBufferUsage:
 
 
 GPUBufferUsage = _GPUBufferUsage()
-js_object(GPUBufferUsage, builtin=True)
+js.native(GPUBufferUsage)
 
 
-@js(builtin=True)
+@js.native
 class _GPUTextureUsage:
     def __init__(self):
         self.COPY_SRC = 1
@@ -58,10 +58,10 @@ class _GPUTextureUsage:
 
 
 GPUTextureUsage = _GPUTextureUsage()
-js_object(GPUTextureUsage, builtin=True)
+js.native(GPUTextureUsage)
 
 
-@js(builtin=True)
+@js.native
 class _GPUShaderStage:
     def __init__(self):
         self.VERTEX = 1
@@ -70,10 +70,10 @@ class _GPUShaderStage:
 
 
 GPUShaderStage = _GPUShaderStage()
-js_object(GPUShaderStage, builtin=True)
+js.native(GPUShaderStage)
 
 
-@js(builtin=True)
+@js.native
 class _GPUColorWrite:
     def __init__(self):
         self.RED = 1
@@ -84,10 +84,10 @@ class _GPUColorWrite:
 
 
 GPUColorWrite = _GPUColorWrite()
-js_object(GPUColorWrite, builtin=True)
+js.native(GPUColorWrite)
 
 
-@js(builtin=True)
+@js.native
 class _GPUMapMode:
     def __init__(self):
         self.READ = 1
@@ -95,7 +95,7 @@ class _GPUMapMode:
 
 
 GPUMapMode = _GPUMapMode()
-js_object(GPUMapMode, builtin=True)
+js.native(GPUMapMode)
 
 
 @js
@@ -167,7 +167,7 @@ class GPUExtent3D:
         self.depthOrArrayLayers = depth_or_array_layers
 
 
-@js(builtin=True)
+@js.native
 class GPUUncapturedErrorEvent(Event):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -245,7 +245,7 @@ class GPUColorTargetState:
             self.blend = blend
 
 
-@js(builtin=True)
+@js.native
 class GPUDeviceLostInfo:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -258,7 +258,7 @@ class GPUDeviceLostInfo:
         self.reason: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPUError:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -280,7 +280,7 @@ class GPUExtent3DDict:
         self.height = height
 
 
-@js(builtin=True)
+@js.native
 class GPUExternalTexture:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -338,7 +338,7 @@ class GPUOrigin3DDict:
         self.z = z
 
 
-@js(builtin=True)
+@js.native
 class GPUPipelineError(DOMException):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -359,7 +359,7 @@ class GPUPipelineErrorInit:
         self.reason = reason
 
 
-@js(builtin=True)
+@js.native
 class GPUPipelineLayout:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -392,7 +392,7 @@ class GPUPrimitiveState:
         self.unclippedDepth = unclippedDepth
 
 
-@js(builtin=True)
+@js.native
 class GPUCompilationInfo:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -404,7 +404,7 @@ class GPUCompilationInfo:
         self.messages: list[GPUCompilationMessage] = []
 
 
-@js(builtin=True)
+@js.native
 class GPUCompilationMessage:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -421,7 +421,7 @@ class GPUCompilationMessage:
         self.type: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPUComputePassEncoder:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -497,7 +497,7 @@ class GPUComputePassTimestampWrites:
             self.endOfPassWriteIndex = endOfPassWriteIndex
 
 
-@js(builtin=True)
+@js.native
 class GPUComputePipeline:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -597,7 +597,7 @@ class GPUBindGroupEntry:
         self.resource = resource
 
 
-@js(builtin=True)
+@js.native
 class VideoFrame:
     """WebIDL source: @webref/idl/webcodecs.idl
 
@@ -608,7 +608,7 @@ class VideoFrame:
     pass
 
 
-@js(builtin=True)
+@js.native
 class WGSLLanguageFeatures:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -628,7 +628,7 @@ class GPUColor:
         self.a = alpha
 
 
-@js(builtin=True)
+@js.native
 class GPURenderBundle:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -640,7 +640,7 @@ class GPURenderBundle:
         self.label: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPURenderBundleEncoder:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -833,7 +833,7 @@ class GPUBlendState:
         self.color = color
 
 
-@js(builtin=True)
+@js.native
 class GPUBuffer:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -873,7 +873,7 @@ class GPUTextureBindingLayout:
         self.viewDimension = viewDimension
 
 
-@js(builtin=True)
+@js.native
 class GPUTextureView:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -926,7 +926,7 @@ class GPUStorageTextureBindingLayout:
         self.viewDimension = viewDimension
 
 
-@js(builtin=True)
+@js.native
 class GPUSupportedFeatures:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -937,7 +937,7 @@ class GPUSupportedFeatures:
     pass
 
 
-@js(builtin=True)
+@js.native
 class GPUSupportedLimits:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1020,7 +1020,7 @@ class GPUTexelCopyTextureInfo:
         self.origin = origin
 
 
-@js(builtin=True)
+@js.native
 class GPUTexture:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1058,7 +1058,7 @@ class GPUTexture:
     def destroy(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUSampler:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1078,7 +1078,7 @@ class GPUSamplerBindingLayout:
         self.type = type
 
 
-@js(builtin=True)
+@js.native
 class GPUShaderModule:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1094,7 +1094,7 @@ class GPUShaderModule:
     async def getCompilationInfo(self) -> GPUCompilationInfo: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUBindGroupLayout:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1108,7 +1108,7 @@ class GPUBindGroupLayout:
         self.label: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPUAdapterInfo:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1126,7 +1126,7 @@ class GPUAdapterInfo:
         self.vendor: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPUBindGroup:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1157,7 +1157,7 @@ class GPURenderPassTimestampWrites:
             self.endOfPassWriteIndex = endOfPassWriteIndex
 
 
-@js(builtin=True)
+@js.native
 class GPURenderPipeline:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1171,7 +1171,7 @@ class GPURenderPipeline:
     def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUCommandBuffer:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1185,7 +1185,7 @@ class GPUCommandBuffer:
         self.label: str = ""
 
 
-@js(builtin=True)
+@js.native
 class GPURenderPassEncoder:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1297,7 +1297,7 @@ class GPURenderPassEncoder:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUCommandEncoder:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1400,7 +1400,7 @@ class GPUProgrammableStage:
             self.entryPoint = entryPoint
 
 
-@js(builtin=True)
+@js.native
 class GPUQuerySet:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1416,7 +1416,7 @@ class GPUQuerySet:
     def destroy(self) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUQueue:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1490,7 +1490,7 @@ class GPUQueue:
     ) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUDevice(EventTarget):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1642,7 +1642,7 @@ class GPUDevice(EventTarget):
     def pushErrorScope(self, filter: str) -> None: ...
 
 
-@js(builtin=True)
+@js.native
 class GPUAdapter:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1665,7 +1665,7 @@ class GPUAdapter:
     ) -> GPUDevice: ...
 
 
-@js(builtin=True)
+@js.native
 class GPU:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -1688,7 +1688,7 @@ class GPU:
     def getPreferredCanvasFormat(self) -> str: ...
 
 
-@js(builtin=True)
+@js.native
 class Navigator:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1701,10 +1701,10 @@ class Navigator:
 
 
 navigator = Navigator()
-js_object(navigator, builtin=True)
+js.native(navigator)
 
 
-@js(builtin=True)
+@js.native
 class GPUCanvasContext:
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -2191,7 +2191,7 @@ class GPUComputePipelineDescriptor:
         self.label = label
 
 
-@js(builtin=True)
+@js.native
 class GPUValidationError(GPUError):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -2203,7 +2203,7 @@ class GPUValidationError(GPUError):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class GPUInternalError(GPUError):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -2215,7 +2215,7 @@ class GPUInternalError(GPUError):
         super().__init__()
 
 
-@js(builtin=True)
+@js.native
 class GPUOutOfMemoryError(GPUError):
     """WebIDL source: @webref/idl/webgpu.idl
 
@@ -2227,5 +2227,5 @@ class GPUOutOfMemoryError(GPUError):
         super().__init__()
 
 
-@js(builtin=True, inline="{canvas}.getContext('webgpu')")
+@js.inline("{canvas}.getContext('webgpu')")
 def get_webgpu_context(canvas: HTMLCanvasElement) -> GPUCanvasContext: ...

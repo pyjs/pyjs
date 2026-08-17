@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import importlib
 import linecache
 import sys
@@ -14,6 +15,14 @@ from pyjs.transpiler import bundle
 
 ENTRYPOINT_MODULE = "__pyjs_test_entrypoint__"
 PYJS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def compute_testing_signature() -> str:
+    digest = hashlib.sha256()
+    for path in sorted(PYJS_PACKAGE_ROOT.rglob("*.py")):
+        digest.update(str(path.relative_to(PYJS_PACKAGE_ROOT)).encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)

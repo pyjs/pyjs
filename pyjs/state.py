@@ -95,7 +95,7 @@ def effect(*fields: StateField):
 
     def decorate(function):
         function.__pyjs_effect_fields__ = fields
-        function.__js_include__ = True
+        function.__js_keep__ = True
         return function
 
     return decorate

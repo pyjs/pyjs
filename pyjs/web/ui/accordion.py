@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import ref, tag, tw
@@ -117,7 +119,7 @@ class AccordionGroup(Widget):
                 item.set_open(False)
 
     def clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         for item in self.get_items():
             if item.trigger.contains(target):
                 self.set_open(item.get_value(), not item.is_open())
@@ -131,7 +133,7 @@ class AccordionGroup(Widget):
             and event.key != "End"
         ):
             return
-        target: Element = event.target
+        target = cast(Element, event.target)
         first_item: AccordionItem | None = None
         last_item: AccordionItem | None = None
         previous_item: AccordionItem | None = None

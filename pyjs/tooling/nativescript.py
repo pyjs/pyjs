@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 
+from pyjs.nativescript import NativeScriptModule
 from pyjs.transpiler import bundle
 
 from .android import AndroidDevice, AndroidSDK
@@ -15,7 +16,28 @@ TAILWIND_DEPENDENCIES = {
     "@nativescript/tailwind": "4.0.9",
     "tailwindcss": "4.3.3",
 }
-CORE_IMPORTS = ("Application", "Button", "EventData", "Label", "Page", "StackLayout", "View")
+CORE_IMPORTS = (
+    "Application",
+    "Button",
+    "EditableTextBase",
+    "EventData",
+    "File",
+    "Folder",
+    "GestureTypes",
+    "GridLayout",
+    "Http",
+    "Label",
+    "LayoutBase",
+    "Page",
+    "Screen",
+    "ScrollView",
+    "StackLayout",
+    "TextField",
+    "TextView",
+    "TouchGestureEventData",
+    "View",
+    "knownFolders",
+)
 
 
 class NativeScriptCLI:
@@ -26,7 +48,9 @@ class NativeScriptCLI:
         runner: CommandRunner | None = None,
     ):
         self.npm = npm or Npm()
-        self.root = root or cache_root() / "tooling" / "nativescript" / NATIVESCRIPT_VERSION
+        self.root = (
+            root or cache_root() / "tooling" / "nativescript" / NATIVESCRIPT_VERSION
+        )
         self.runner = runner or self.npm.runner
 
     @property
@@ -111,21 +135,46 @@ class NativeScriptProject:
         cli: NativeScriptCLI | None = None,
         android: AndroidSDK | None = None,
         build_root: Path | None = None,
+        modules: tuple[NativeScriptModule, ...] = (),
     ):
         self.entry_point = entry_point
         self.name = project_name(name)
         self.app_id = app_id
         self.cli = cli or NativeScriptCLI()
         self.android = android
+        self.modules = modules
         app_directory = re.sub(r"[^A-Za-z0-9._-]", "-", app_id)
         self.project = (
-            (build_root or cache_root() / "builds" / "nativescript") / app_directory / self.name
+            (build_root or cache_root() / "builds" / "nativescript")
+            / app_directory
+            / self.name
         )
 
     def javascript(self) -> str:
         source, _ = bundle(self.entry_point, include_main=True, include_css=False)
         imports = ", ".join(CORE_IMPORTS)
-        return f"const {{ {imports} }} = require('@nativescript/core');\n\n{source}"
+        module_imports = [
+            f"const {{ {', '.join(module.exports)} }} = require({module.name!r});"
+            for module in self.modules
+            if module.exports
+        ]
+        prelude = [
+            f"const {{ {imports} }} = require('@nativescript/core');",
+            *module_imports,
+        ]
+        return "\n".join(prelude) + "\n\n" + source
+
+    def dependencies(self) -> dict[str, str]:
+        dependencies = dict(TAILWIND_DEPENDENCIES)
+        for module in self.modules:
+            existing = dependencies.get(module.name)
+            if existing is not None and existing != module.version:
+                raise ValueError(
+                    f"NativeScript module {module.name!r} requires both "
+                    f"{existing!r} and {module.version!r}."
+                )
+            dependencies[module.name] = module.version
+        return dependencies
 
     def prepare(self) -> Path:
         if not (self.project / "package.json").exists():
@@ -134,7 +183,7 @@ class NativeScriptProject:
         dependencies = package.get("dependencies", {})
         missing = {
             name: version
-            for name, version in TAILWIND_DEPENDENCIES.items()
+            for name, version in self.dependencies().items()
             if dependencies.get(name) != version
         }
         if missing:

@@ -13,6 +13,69 @@ FORMAT_SPEC = re.compile(
     r"(?P<zero>0)?(?P<width>\d+)?(?:\.(?P<precision>\d+))?(?P<type>[df%])"
 )
 
+BUILTIN_EXCEPTION_NAMES = {
+    "Exception": "Error",
+    "TypeError": "TypeError",
+    "ValueError": "RangeError",
+}
+
+JAVASCRIPT_RESERVED_IDENTIFIERS = {
+    "arguments",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+}
+
+
+def javascript_identifier(name: str) -> str:
+    if name in JAVASCRIPT_RESERVED_IDENTIFIERS:
+        return f"$${name}"
+    return name
+
 
 def transpile_module(module, importer=None, exporter=None):
     return Transpiler(module, importer, exporter).visit(module.node)
@@ -36,16 +99,20 @@ def prepare_bundle(
         extensions,
         additional_entry_points,
     )
-    if include_main:
-        entry_point.py_func.__js_include__ = True
-    module = entry_point.container
-    package = {}
-    css = ""
-    if include_css and tailwind_classes:
-        css = generate_css(tailwind_classes)
-    for module_name, module_obj in module.container.items():
-        package[module_name] = transpile_module(module_obj, importer, exporter)
-    return package, entry_point, css
+    try:
+        if include_main:
+            entry_point.py_func.__js_keep__ = True
+        module = entry_point.container
+        package = {}
+        css = ""
+        if include_css and tailwind_classes:
+            css = generate_css(tailwind_classes)
+        for module_name, module_obj in module.container.items():
+            package[module_name] = transpile_module(module_obj, importer, exporter)
+        return package, entry_point, css
+    except BaseException:
+        release_compilation(entry_point)
+        raise
 
 
 def bundle_import(module, names):
@@ -78,10 +145,13 @@ def bundle(
         include_css=include_css,
         additional_entry_points=additional_entry_points,
     )
-    source = _write_bundle(
-        package, entry_point, call_main=call_main, expose_entry=expose_entry
-    )
-    return source, css
+    try:
+        source = _write_bundle(
+            package, entry_point, call_main=call_main, expose_entry=expose_entry
+        )
+        return source, css
+    finally:
+        release_compilation(entry_point)
 
 
 def _write_bundle(package, entry_point, *, call_main, expose_entry):
@@ -107,11 +177,11 @@ def _write_bundle(package, entry_point, *, call_main, expose_entry):
       moduleFactory(module.exports, importModule);
       return module.exports;
     };
-    const __pyjsAssert__ = (condition, message) => {
+    const __pyjsAssert__ = (condition, message, AssertionError) => {
       if (condition) {
         return;
       }
-      throw new Error(message === undefined ? "Assertion failed" : String(message));
+      throw new AssertionError(message === undefined ? "" : String(message()));
     };
     """)
     )
@@ -123,8 +193,8 @@ def _write_bundle(package, entry_point, *, call_main, expose_entry):
     if expose_entry:
         w("const __pyjsEntry__ = ")
     w(f"importModule({repr(entry_point.container.name)})")
-    if call_main and entry_point.has_include_decorator:
-        w(f".{entry_point.name}()")
+    if call_main and entry_point.has_keep_decorator:
+        w(f".{javascript_identifier(entry_point.name)}()")
     w(";\n")
     return "".join(source)
 
@@ -135,6 +205,18 @@ class Transpiler(_Unparser):
         self.entry_point = entry_point
         self.importer = importer
         self.exporter = exporter
+        self.temporary_index = 0
+
+    def temporary_name(self, prefix: str) -> str:
+        name = f"${prefix}{self.temporary_index}"
+        self.temporary_index += 1
+        return name
+
+    @staticmethod
+    def builtin_exception_name(value) -> str | None:
+        if not isinstance(value, Class) or not value.container.scope.is_builtins:
+            return None
+        return BUILTIN_EXCEPTION_NAMES.get(value.name)
 
     def isolated_visit(self, node, precedence=None):
         transpiler = Transpiler(self.entry_point)
@@ -172,11 +254,24 @@ class Transpiler(_Unparser):
     def visit_ModuleDef(self, node: ModuleDef):
         module = node.obj
         for imported_module, imported_values in module.imported.items():
-            imported_names = [
-                (obj.name, local_name)
-                for obj, local_name in imported_values
-                if should_include(obj)
-            ]
+            imported_names = []
+            for obj, local_name in imported_values:
+                if isinstance(obj, GenericClass):
+                    imported_names.extend(
+                        (
+                            javascript_identifier(concrete.name),
+                            javascript_identifier(concrete.name),
+                        )
+                        for concrete in obj.concrete_classes.values()
+                        if should_include(concrete)
+                    )
+                elif should_include(obj):
+                    imported_names.append(
+                        (
+                            javascript_identifier(obj.name),
+                            javascript_identifier(local_name),
+                        )
+                    )
             if imported_names:
                 if self.importer is not None:
                     self.fill(self.importer(imported_module, imported_names))
@@ -188,7 +283,9 @@ class Transpiler(_Unparser):
                     self.fill(f"import {{ {names} }} from './{imported_module}.js';")
         for dependency, alias in module.inline_dependencies.items():
             if dependency.container is module and should_include(dependency):
-                self.fill(f"const {alias} = {dependency.name};")
+                self.fill(
+                    f"const {alias} = {javascript_identifier(dependency.name)};"
+                )
         for n in node.body:
             if should_include(n.obj) and n.obj.container.name == module.name:
                 self.traverse(n)
@@ -196,20 +293,97 @@ class Transpiler(_Unparser):
     def visit_ClassDef(self, node):
         self.maybe_newline()
         export = "export " if self.exporter is None else ""
-        self.fill(f"{export}class {node.name}")
+        class_name = javascript_identifier(node.name)
+        self.fill(f"{export}class {class_name}")
         if node.bases:
             assert len(node.bases) == 1
             self.write(" extends ")
-            if node.obj.super.name == "Exception":
-                self.write("Error")
+            if node.obj.runtime_super_dependency is not None:
+                self.traverse(node.bases[0])
+            elif exception_name := self.builtin_exception_name(node.obj.super):
+                self.write(exception_name)
             else:
                 self.traverse(node.bases[0])
         with self.block():
             self.traverse(node.body)
+        if node.obj.client_defaults:
+            self.fill(f"{class_name}.__pyjs_defaults__ = ")
+            self.traverse(
+                ast.Dict(
+                    keys=[
+                        ast.Constant(value=name)
+                        for name in node.obj.client_defaults
+                    ],
+                    values=list(node.obj.client_defaults.values()),
+                )
+            )
+            self.write(";")
+        if node.obj.client_required:
+            self.fill(f"{class_name}.__pyjs_required__ = ")
+            self.traverse(
+                ast.List(
+                    elts=[
+                        ast.Constant(value=name)
+                        for name in node.obj.client_required
+                    ],
+                    ctx=ast.Load(),
+                )
+            )
+            self.write(";")
+        if node.obj.client_fields:
+            self.fill(f"{class_name}.__pyjs_fields__ = new Map(")
+            with self.delimit("[", "]"):
+                for index, (name, value_type) in enumerate(
+                    node.obj.client_fields.items()
+                ):
+                    if index:
+                        self.write(", ")
+                    with self.delimit("[", "]"):
+                        self.traverse(ast.Constant(value=name))
+                        self.write(", ")
+                        self.write_client_field_descriptor(node.obj, value_type)
+            self.write(");")
         if js_append := getattr(node.obj.py_cls, "__js_append__", None):
-            self.fill(js_append())
+            included_members = {
+                name
+                for name, member in node.obj._self.attrs.items()
+                if should_include(member)
+            }
+            self.fill(js_append(included_members))
         if self.exporter is not None:
-            self.fill(self.exporter(node.name))
+            self.fill(self.exporter(class_name))
+
+    def write_client_field_descriptor(self, owner, value_type):
+        if isinstance(value_type, UnionType):
+            with self.delimit("[", "]"):
+                self.traverse(ast.Constant(value="union"))
+                for member in value_type.types:
+                    self.write(", ")
+                    self.write_client_field_descriptor(owner, member)
+            return
+        if isinstance(value_type, LiteralClass):
+            with self.delimit("[", "]"):
+                self.traverse(ast.Constant(value="literal"))
+                for value in value_type.values:
+                    self.write(", ")
+                    self.traverse(ast.Constant(value=value))
+            return
+        if is_client_model_type(value_type):
+            self.write(
+                javascript_identifier(
+                    owner.client_model_aliases.get(value_type, value_type.name)
+                )
+            )
+            return
+        type_name = value_type.generic_name or value_type.name
+        if type_name in {"dict", "list", "set", "tuple"}:
+            with self.delimit("[", "]"):
+                self.traverse(ast.Constant(value=type_name))
+                for member in value_type.generic_types.values():
+                    self.write(", ")
+                    self.write_client_field_descriptor(owner, member)
+            return
+        self.traverse(ast.Constant(value=type_name))
 
     def visit_FunctionDef(self, node):
         self._function_helper(node, is_async=False)
@@ -217,9 +391,13 @@ class Transpiler(_Unparser):
     def visit_AsyncFunctionDef(self, node):
         self._function_helper(node, is_async=True)
 
+    def visit_StaticCast(self, node):
+        self.traverse(node.value)
+
     def _function_helper(self, node, is_async):
         self.maybe_newline()
         func = node.obj
+        assert not (func.is_generator and is_async)
         is_custom_element_init = (
             func.name == "__init__"
             and func.is_method
@@ -235,17 +413,29 @@ class Transpiler(_Unparser):
                 raise NotImplementedError("constructors cannot be async")
             def_str = "constructor"
         elif func.is_method:
-            def_str = ""
+            if func.is_property:
+                def_str = "get "
+            elif func.is_property_setter:
+                def_str = "set "
+            else:
+                def_str = ""
             if func.is_static:
                 def_str = "static "
             if is_async:
                 def_str += "async "
+            if func.is_generator:
+                def_str += "*"
             def_str += node.name
         else:
-            fill_suffix = "async function" if is_async else "function"
+            if is_async:
+                fill_suffix = "async function"
+            elif func.is_generator:
+                fill_suffix = "function*"
+            else:
+                fill_suffix = "function"
             if self.exporter is None and isinstance(func.container, Module):
                 fill_suffix = "export " + fill_suffix
-            def_str = fill_suffix + " " + node.name
+            def_str = fill_suffix + " " + javascript_identifier(node.name)
         self.fill(def_str)
         with self.delimit("(", ")"):
             self.traverse(node.args)
@@ -263,7 +453,7 @@ class Transpiler(_Unparser):
         if is_custom_element_init and issubclass(func.cls.py_obj, CustomElement):
             self.generate_bind_method(func)
         if self.exporter is not None and isinstance(func.container, Module):
-            self.fill(self.exporter(node.name))
+            self.fill(self.exporter(javascript_identifier(node.name)))
 
     def generate_bind_method(self, func):
         self.maybe_newline()
@@ -294,7 +484,10 @@ class Transpiler(_Unparser):
             ):
                 if index:
                     self.write(", ")
-                self.traverse(arg)
+                emitted_name = javascript_identifier(arg.arg)
+                if emitted_name != arg.arg:
+                    self.write(f"{arg.arg}: ")
+                self.write(emitted_name)
                 if default is not None:
                     self.write("=")
                     self.traverse(default)
@@ -305,13 +498,32 @@ class Transpiler(_Unparser):
             if not first:
                 self.write(", ")
             self.write("...")
-            self.write(node.vararg.arg)
+            self.write(javascript_identifier(node.vararg.arg))
 
     def visit_arg(self, node):
-        self.write(node.arg)
+        self.write(javascript_identifier(node.arg))
+
+    def visit_RuntimeFunctionReference(self, node: RuntimeFunctionReference):
+        self.write(node.alias)
+        if node.receiver is not None:
+            self.write(".bind(null, ")
+            self.traverse(node.receiver)
+            self.write(")")
+
+    def visit_BoundGetattr(self, node: BoundGetattr):
+        self.write(f"((obj,fallback)=>obj.{node.obj.name}.bind(obj))(")
+        self.traverse(node.receiver)
+        self.write(",")
+        self.traverse(node.default)
+        self.write(")")
 
     def visit_Call(self, node: Call):
         self.set_precedence(_Precedence.ATOM, node.func)
+        call_target = (
+            node.func.value_obj
+            if isinstance(node.func, (Call, Subscript))
+            else node.func.obj
+        )
 
         if decorator_func := getattr(node.func.obj, "inline_decorator", None):
             operator_rule = self.operator_precedence(node)
@@ -328,7 +540,9 @@ class Transpiler(_Unparser):
             src = decorator_func.rewrite_call(
                 [self.isolated_visit(arg, argument_precedence) for arg in node.args],
                 [
-                    arg.obj if isinstance(arg.obj, (GenericClass, Class)) else arg.obj.cls
+                    arg.obj
+                    if isinstance(arg.obj, (GenericClass, Class, UnionType))
+                    else arg.obj.cls
                     for arg in node.args
                 ],
                 self_,
@@ -361,17 +575,10 @@ class Transpiler(_Unparser):
             else:
                 self.write("super.")
                 self.write(node.func.attr)
-        elif isinstance(node.func.obj, Class):
-            called_class = node.func.obj
-            cls = called_class
-            while cls is not None and cls.name != "Exception":
-                cls = cls.super
+        elif isinstance(call_target, Class):
             self.write("new ")
-            if cls is not None and called_class.container.scope.is_builtins:
-                self.write("Error")
-            else:
-                self.traverse(node.func)
-            if issubclass(node.func.obj.py_obj, (CustomElement, ProxyElement)):
+            self.traverse(node.func)
+            if issubclass(call_target.py_obj, (CustomElement, ProxyElement)):
                 self.write("()._create")
         else:
             self.traverse(node.func)
@@ -379,7 +586,7 @@ class Transpiler(_Unparser):
         args = node.args
         trailing_args = []
         keywords = node.keywords
-        called_function = node.func.obj
+        called_function = call_target
         is_builtin = False
         if isinstance(called_function, Class):
             base = called_function
@@ -394,6 +601,8 @@ class Transpiler(_Unparser):
                 called_function.cls is not None
                 and called_function.cls.py_obj.__dict__.get("__builtin__", False)
             )
+        elif isinstance(called_function, Instance):
+            called_function = called_function.find("__call__")
         if isinstance(called_function, Class):
             called_function = called_function.find("__init__")
         needs_empty_options = False
@@ -465,11 +674,17 @@ class Transpiler(_Unparser):
                 first = False
 
     def visit_call_arg(self, node):
-        self.traverse(node)
         if isinstance(node, Attribute) and isinstance(node.obj, Function):
-            self.write(".bind")
-            with self.delimit("(", ")"):
-                self.traverse(node.value)
+            receiver = self.isolated_visit(node.value)
+            source = self.isolated_visit(node)
+            bind_source = getattr(node.obj.py_func, "__js_bind_source__", None)
+            if bind_source is not None:
+                source = bind_source(source, receiver)
+            else:
+                source += f".bind({receiver})"
+            self.write(source)
+            return
+        self.traverse(node)
 
     def visit_keyword(self, node):
         self.write(node.arg)
@@ -520,6 +735,11 @@ class Transpiler(_Unparser):
             )
 
     def visit_ListComp(self, node):
+        if len(node.generators) > 1 or not isinstance(
+            node.generators[0].target, ast.Name
+        ):
+            self.visit_expanded_comprehension(node, "[]", "push")
+            return
         iter_node = node.generators[0]
         self.write("Array.from(")
         self.traverse(iter_node.iter)
@@ -535,6 +755,51 @@ class Transpiler(_Unparser):
             self.traverse(iter_node.target)
             self.write(" => ")
             self.traverse(node.elt)
+
+    def visit_DictComp(self, node):
+        self.visit_expanded_comprehension(node, "new Map()", "set")
+
+    def visit_SetComp(self, node):
+        self.visit_expanded_comprehension(node, "new Set()", "add")
+
+    def visit_GeneratorExp(self, node):
+        self.write("(($iterator)=>(function*(){")
+        self.visit_comprehension_loops(node, outer_iter="$iterator")
+        self.write("})())((")
+        self.traverse(node.generators[0].iter)
+        self.write(")[Symbol.iterator]())")
+
+    def visit_expanded_comprehension(self, node, initializer, method):
+        self.write(f"(()=>{{const $result={initializer};")
+        self.visit_comprehension_loops(node, method)
+        self.write("return $result;})()")
+
+    def visit_comprehension_loops(self, node, method=None, outer_iter=None):
+        condition_counts = []
+        for index, generator in enumerate(node.generators):
+            self.write("for(const ")
+            self.traverse(generator.target)
+            self.write(" of ")
+            if index == 0 and outer_iter is not None:
+                self.write(outer_iter)
+            else:
+                self.traverse(generator.iter)
+            self.write("){")
+            for condition in generator.ifs:
+                self.write("if(")
+                self.traverse(condition)
+                self.write("){")
+            condition_counts.append(len(generator.ifs))
+        self.write("yield " if method is None else f"$result.{method}(")
+        if isinstance(node, ast.DictComp):
+            self.traverse(node.key)
+            self.write(",")
+            self.traverse(node.value)
+        else:
+            self.traverse(node.elt)
+        self.write(";" if method is None else ");")
+        for condition_count in reversed(condition_counts):
+            self.write("}" * (condition_count + 1))
 
     def visit_Subscript(self, node):
         receiver_obj = (
@@ -567,11 +832,29 @@ class Transpiler(_Unparser):
         self.fill()
         assert len(node.targets) == 1
         target = node.targets[0]
+        if isinstance(target, (ast.Tuple, ast.List)) and getattr(
+            node, "declares_name", False
+        ):
+            self.write("var ")
         self.set_precedence(_Precedence.TUPLE, target)
         self.traverse(target)
         self.write(" = ")
         self.traverse(node.value)
         self.write(";")
+
+    def visit_UnpackAssignment(self, node):
+        temporary = self.temporary_name("unpack")
+        self.fill(f"const {temporary} = ")
+        self.traverse(node.value)
+        self.write(";")
+        for assignment in node.assignments:
+            for child in ast.walk(assignment):
+                if isinstance(child, UnpackItem):
+                    child.temporary = temporary
+        self.traverse(node.assignments)
+
+    def visit_UnpackItem(self, node):
+        self.write(f"{node.temporary}[{node.index}]")
 
     def visit_Delete(self, node):
         for target in node.targets:
@@ -608,13 +891,26 @@ class Transpiler(_Unparser):
         self.traverse(node.value)
         self.write(";")
         if is_module_binding and self.exporter is not None:
-            self.fill(self.exporter(node.target.id))
+            self.fill(self.exporter(javascript_identifier(node.target.id)))
 
     def visit_Name(self, node):
-        if node.id == "self" and isinstance(node.obj, Instance):
+        value = getattr(node, "obj", None)
+        if node.id == "self" and isinstance(value, Instance):
             self.write("this")
-        else:
+        elif getattr(node, "runtime_dependency", None) is not None:
+            self.write(getattr(node, "runtime_alias", node.id))
+        elif exception_name := self.builtin_exception_name(value):
+            self.write(exception_name)
+        elif node.id in {"super", "this"} and isinstance(value, Class):
             self.write(node.id)
+        else:
+            self.write(javascript_identifier(node.id))
+
+    def visit_Attribute(self, node):
+        if getattr(node, "module_import_alias", None) is not None:
+            self.write(javascript_identifier(node.module_import_alias))
+            return
+        super().visit_Attribute(node)
 
     def visit_Constant(self, node):
         value = node.value
@@ -633,7 +929,7 @@ class Transpiler(_Unparser):
             self._write_constant(node.value)
 
     def visit_Dict(self, node: ast.Dict):
-        if isinstance(node.obj, TypedDictClass):
+        if isinstance(getattr(node, "obj", None), TypedDictClass):
             def write_object_item(item):
                 key, value = item
                 if key is None:
@@ -675,6 +971,10 @@ class Transpiler(_Unparser):
                 zip(node.keys, node.values, strict=True),
             )
 
+    def visit_Set(self, node: ast.Set):
+        with self.delimit("new Set([", "])"):
+            self.interleave(lambda: self.write(", "), self.traverse, node.elts)
+
     def visit_If(self, node):
         self.fill("if ")
         with self.delimit("(", ")"):
@@ -705,18 +1005,138 @@ class Transpiler(_Unparser):
             raise NotImplementedError
 
     def visit_Try(self, node: ast.Try):
+        if node.orelse and node.finalbody:
+            self.fill("try")
+            with self.block():
+                self._write_try_with_else(node)
+            self.write(" finally")
+            with self.block():
+                self.traverse(node.finalbody)
+            return
+        if node.orelse:
+            self._write_try_with_else(node)
+            return
         self.fill("try")
         with self.block():
             self.traverse(node.body)
         if node.handlers:
-            handler = node.handlers[0]
-            self.write(f" catch ({handler.name or '_error'})")
-            with self.block():
-                self.traverse(handler.body)
+            self._write_except_handlers(node.handlers)
         if node.finalbody:
             self.write(" finally")
             with self.block():
                 self.traverse(node.finalbody)
+
+    def _write_try_with_else(self, node: ast.Try) -> None:
+        succeeded = self.temporary_name("try")
+        self.fill(f"let {succeeded} = true;")
+        self.fill("try")
+        with self.block():
+            self.traverse(node.body)
+        self._write_except_handlers(node.handlers, failed_flag=succeeded)
+        self.fill(f"if ({succeeded})")
+        with self.block():
+            self.traverse(node.orelse)
+
+    def _write_except_handlers(
+        self,
+        handlers: list[ast.ExceptHandler],
+        *,
+        failed_flag: str | None = None,
+    ) -> None:
+        for index, handler in enumerate(handlers):
+            if self._is_catch_all(handler):
+                handlers = handlers[: index + 1]
+                break
+        if len(handlers) == 1 and self._is_catch_all(handlers[0]):
+            handler = handlers[0]
+            name = javascript_identifier(handler.name) if handler.name else "_error"
+            self.write(f" catch ({name})")
+            with self.block():
+                if failed_flag is not None:
+                    self.fill(f"{failed_flag} = false;")
+                self.traverse(handler.body)
+            return
+
+        error = self.temporary_name("error")
+        self.write(f" catch ({error})")
+        with self.block():
+            if failed_flag is not None:
+                self.fill(f"{failed_flag} = false;")
+            has_catch_all = False
+            for index, handler in enumerate(handlers):
+                catch_all = self._is_catch_all(handler)
+                if catch_all:
+                    self.write(" else")
+                elif index:
+                    self.write(" else if (")
+                    self._write_exception_test(handler.type, error)
+                    self.write(")")
+                else:
+                    self.fill("if (")
+                    self._write_exception_test(handler.type, error)
+                    self.write(")")
+                with self.block():
+                    if handler.name is not None:
+                        self.fill(
+                            f"let {javascript_identifier(handler.name)} = {error};"
+                        )
+                    self.traverse(handler.body)
+                if catch_all:
+                    has_catch_all = True
+                    break
+            if not has_catch_all:
+                self.write(" else")
+                with self.block():
+                    self.fill(f"throw {error};")
+
+    @staticmethod
+    def _is_catch_all(handler: ast.ExceptHandler) -> bool:
+        return handler.type is None or (
+            isinstance(handler.type, Name)
+            and isinstance(handler.type.obj, Class)
+            and handler.type.obj.name == "Exception"
+        )
+
+    def _write_exception_test(self, type_node: ast.expr, error: str) -> None:
+        types = type_node.elts if isinstance(type_node, ast.Tuple) else [type_node]
+        for index, exception_type in enumerate(types):
+            if index:
+                self.write(" || ")
+            self.write(f"{error} instanceof ")
+            self.traverse(exception_type)
+
+    def visit_With(self, node: ast.With) -> None:
+        item = node.items[0]
+        manager = self.temporary_name("manager")
+        entered = self.temporary_name("entered")
+        caught = self.temporary_name("caught")
+        failed = self.temporary_name("failed")
+        self.fill(f"const {manager} = ")
+        self.traverse(item.context_expr)
+        self.write(";")
+        self.fill(f"const {entered} = {manager}.__enter__();")
+        self.fill(f"let {failed} = false;")
+        self.fill("try")
+        with self.block():
+            if item.optional_vars is not None:
+                self.fill("var " if node.declares_target else "")
+                self.traverse(item.optional_vars)
+                self.write(f" = {entered};")
+            self.traverse(node.body)
+        self.write(f" catch ({caught})")
+        with self.block():
+            self.fill(f"{failed} = true;")
+            self.fill(
+                f"if (!{manager}.__exit__("
+                f"{caught}.constructor, {caught}, null))"
+            )
+            with self.block():
+                self.fill(f"throw {caught};")
+        self.write(" finally")
+        with self.block():
+            self.fill(f"if (!{failed})")
+            with self.block():
+                self.fill(f"{manager}.__exit__(null, null, null);")
 
     def _for_helper(self, fill, node):
         self.fill(fill)
@@ -840,8 +1260,12 @@ class Transpiler(_Unparser):
         self.fill("__pyjsAssert__(")
         self.traverse(node.test)
         if node.msg:
-            self.write(", ")
+            self.write(", () => ")
             self.traverse(node.msg)
+        else:
+            self.write(", undefined")
+        self.write(", ")
+        self.write(node.runtime_alias)
         self.write(");")
 
 
@@ -883,7 +1307,9 @@ class HydrateGenerator(ast.NodeVisitor):
                 self.write(f" = document.getElementById(self_id+'-{target.attr}');")
             elif issubclass(node.value.obj.py_cls, ProxyElement):
                 self.write(
-                    f" = new {node.value.obj.name}()._hydrate(document.getElementById(self_id+'-{target.attr}'));"
+                    " = new "
+                    f"{javascript_identifier(node.value.obj.name)}()"
+                    f"._hydrate(document.getElementById(self_id+'-{target.attr}'));"
                 )
             elif issubclass(node.value.obj.py_cls, ContextProxy):
                 self.write(f" = document.getElementById(self_id+'-{target.attr}');")

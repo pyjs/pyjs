@@ -2,7 +2,6 @@ import asyncio
 import base64
 import binascii
 import contextlib
-import hashlib
 import io
 import json
 import os
@@ -23,7 +22,7 @@ import pytest
 from PIL import Image
 from websockets.asyncio.client import ClientConnection, connect
 
-from pyjs.testing.builder import SelectedTest
+from pyjs.testing.builder import SelectedTest, compute_testing_signature
 from pyjs.testing.protocol import failed_run, format_failure_artifact, format_run_failure
 
 HOST = "127.0.0.1"
@@ -35,8 +34,6 @@ CONTROL_SEND_TIMEOUT_SECONDS = 10
 RUN_RESPONSE_TIMEOUT_SECONDS = 75
 RESPONSE_TIMEOUT_GRACE_SECONDS = 15
 DAEMON_LOG_TAIL_LINES = 20
-TESTING_PACKAGE_ROOT = Path(__file__).resolve().parent
-SIGNATURE_DIRS = [TESTING_PACKAGE_ROOT, TESTING_PACKAGE_ROOT.parent / "tooling"]
 RENDER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 DEFAULT_BROWSER_MODE = "system"
 DEFAULT_BROWSER_WIDTH = 1440
@@ -167,7 +164,6 @@ def browser_test_config(config: pytest.Config) -> BrowserTestConfig:
 class BrowserResults:
     def __init__(self) -> None:
         self.eligible_tests: list[SelectedTest] | None = None
-        self.error: str | None = None
 
 
 def add_failure_artifacts(error: str, response: dict[str, Any], nodeid: str) -> str:
@@ -298,15 +294,6 @@ def pytest_configure(config: pytest.Config) -> None:
         config._pyjs_browser_test_config = BrowserTestConfig.from_pytest(config)
 
 
-def compute_testing_signature() -> str:
-    digest = hashlib.sha256()
-    for directory in SIGNATURE_DIRS:
-        for path in sorted(directory.rglob("*.py")):
-            digest.update(str(path.relative_to(directory)).encode("utf-8"))
-            digest.update(path.read_bytes())
-    return digest.hexdigest()
-
-
 def selected_test_from_item(item: pytest.Function) -> SelectedTest:
     if item.cls is not None:
         raise ValueError(
@@ -352,8 +339,6 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
         return None
 
     state: BrowserResults = pyfuncitem.config._pyjs_web_results
-    if state.error is not None:
-        pytest.fail(state.error, pytrace=False)
     try:
         if state.eligible_tests is None:
             state.eligible_tests = [
@@ -369,15 +354,13 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
     except pytest.UsageError:
         raise
     except Exception as exc:
-        state.error = str(exc)
-        pytest.fail(state.error, pytrace=False)
+        pytest.fail(str(exc), pytrace=False)
     if response["status"] != "ok":
-        state.error = format_run_failure(response)
-        pytest.fail(state.error, pytrace=False)
+        pytest.fail(format_run_failure(response), pytrace=False)
     response_error = validate_browser_response(response["results"], [pyfuncitem.nodeid])
     if response_error is not None:
-        state.error = format_run_failure(failed_run("result_transport", response_error))
-        pytest.fail(state.error, pytrace=False)
+        error = format_run_failure(failed_run("result_transport", response_error))
+        pytest.fail(error, pytrace=False)
     result = response["results"][0]
     if result["outcome"] == "passed":
         render_error = verify_render_artifacts(pyfuncitem, result.get("artifacts", []))
@@ -580,6 +563,7 @@ def add_daemon_diagnostics(
             "test_timeout",
             "retained_iframes",
             "current_run_id",
+            "reusable",
             "pending_runs",
             "last_activity_seconds_ago",
             "browser_exceptions",
@@ -601,6 +585,7 @@ def daemon_matches_project(
 ) -> bool:
     return (
         health is not None
+        and health.get("reusable", True) is True
         and health.get("signature") == signature
         and health.get("project_root") == str(project_root)
         and health.get("cache_dir") == str(cache_dir)
@@ -743,7 +728,14 @@ def wait_for_daemon_stop(port: int, timeout_seconds: float) -> bool:
 def terminate_daemon_process(port: int, pid: Any) -> None:
     if isinstance(pid, int):
         with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGTERM)
+            if os.name == "posix":
+                process_group = os.getpgid(pid)
+                if process_group == pid:
+                    os.killpg(process_group, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
     lsof = shutil.which("lsof")
     if not lsof:
         return

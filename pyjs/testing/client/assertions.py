@@ -3,7 +3,7 @@ from pyjs.web.dom import window
 
 
 @js
-def finish_assertion(condition: bool, detail: str, message: callable | None):
+def finish_assertion(condition: object, detail: str, message: callable | None):
     status = "passed" if condition else "failed"
     line = "[assert:" + status + "] " + detail
     if condition:
@@ -18,7 +18,7 @@ def finish_assertion(condition: bool, detail: str, message: callable | None):
 
 
 @js
-def assert_condition(condition: bool, expression: str, message: callable | None):
+def assert_condition(condition: object, expression: str, message: callable | None):
     detail = expression + " => " + str(condition)
     finish_assertion(condition, detail, message)
 

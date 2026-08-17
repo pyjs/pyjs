@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import tag, tw
@@ -113,7 +115,7 @@ class TabGroup(Widget):
         self.setAttribute("value", value)
 
     def clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         trigger = target.closest("[data-slot=tabs-trigger]")
         if trigger is not None:
             value = trigger.getAttribute("data-value")
@@ -128,7 +130,7 @@ class TabGroup(Widget):
             and event.key != "End"
         ):
             return
-        target: Element = event.target
+        target = cast(Element, event.target)
         trigger = target.closest("[data-slot=tabs-trigger]")
         if trigger is None:
             return

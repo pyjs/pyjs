@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import input, ref, tag, tw
@@ -122,7 +124,7 @@ class RadioGroup(Widget):
         self.setAttribute("data-value", value)
 
     def changed(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         for item in self.get_items():
             if item.control.contains(target):
                 self.select(item.get_value())

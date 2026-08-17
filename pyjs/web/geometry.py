@@ -36,7 +36,7 @@ class DOMMatrix2DInit:
         self.m42 = m42
 
 
-@js(builtin=True)
+@js.native
 class DOMMatrixReadOnly:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -192,7 +192,7 @@ class DOMPointInit:
         self.z = z
 
 
-@js(builtin=True)
+@js.native
 class DOMPointReadOnly:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -242,7 +242,7 @@ class DOMPointReadOnly:
     def toJSON(self) -> object: ...
 
 
-@js(builtin=True)
+@js.native
 class DOMQuad:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -304,7 +304,7 @@ class DOMQuadInit:
             self.p4 = p4
 
 
-@js(builtin=True)
+@js.native
 class DOMRectList:
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -373,7 +373,7 @@ class DOMMatrixInit:
         self.m44 = m44
 
 
-@js(builtin=True)
+@js.native
 class DOMMatrix(DOMMatrixReadOnly):
     """WebIDL source: @webref/idl/geometry.idl
 
@@ -531,7 +531,7 @@ class DOMMatrix(DOMMatrixReadOnly):
     def translateSelf(self, tx: float = 0, ty: float = 0, tz: float = 0) -> DOMMatrix: ...
 
 
-@js(builtin=True)
+@js.native
 class DOMPoint(DOMPointReadOnly):
     """WebIDL source: @webref/idl/geometry.idl
 

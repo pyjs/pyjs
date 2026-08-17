@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import a, button, div, input, tag, tw
@@ -196,6 +198,6 @@ class SidebarLayout(Widget):
         self.set_open(not self.is_open())
 
     def clicked(self, event: Event):
-        target: Element = event.target
+        target = cast(Element, event.target)
         if target.closest("[data-sidebar-toggle]") is not None:
             self.toggle()

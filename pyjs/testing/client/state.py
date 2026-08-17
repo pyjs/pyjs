@@ -1,8 +1,7 @@
 """Typed state and protocol models for the browser runner client."""
 
-from typing import TypedDict
-
 from pyjs import js
+from pyjs.javascript import JSONObject
 from pyjs.web.html import HTMLIFrameElement
 
 
@@ -11,12 +10,6 @@ class ConsoleLine:
     def __init__(self, level: str, text: str):
         self.level = level
         self.text = text
-
-
-@js
-class TestManifestEntry:
-    def __init__(self, nodeid: str):
-        self.nodeid = nodeid
 
 
 @js
@@ -71,7 +64,7 @@ class BrowserHeartbeatMessage:
         self.type = "browser_heartbeat"
 
 
-class RunBundleMessage(TypedDict):
+class RunBundleMessage(JSONObject):
     type: str
     run_id: str
     nodeids: list[str]
