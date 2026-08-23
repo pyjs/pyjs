@@ -12,8 +12,11 @@ class DocsConfig:
     site_url: str
     repo_url: str
     repo_name: str
+    discord_url: str = ""
+    x_url: str = ""
     route_prefix: str = ""
     nojekyll: bool = True
+    version: str = ""
 
 
 def _project_name(name: str) -> str:
@@ -40,6 +43,9 @@ def load_config(project_root: str | Path = ".") -> DocsConfig:
         site_url=docs.get("site_url", urls.get("Documentation", "")),
         repo_url=repo_url,
         repo_name=docs.get("repo_name", repo_url.removesuffix("/").rsplit("/", 2)[-1]),
+        discord_url=urls.get("Discord", ""),
+        x_url=urls.get("X", ""),
         route_prefix=docs.get("route_prefix", ""),
         nojekyll=docs.get("nojekyll", True),
+        version=str(docs.get("version", project.get("version", ""))),
     )

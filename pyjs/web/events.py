@@ -1,7 +1,7 @@
 from pyjs import js
 
 
-@js
+@js.dictionary
 class ObservableInspector:
     """WebIDL source: @webref/idl/observable.idl"""
 
@@ -25,7 +25,7 @@ class ObservableInspector:
             self.subscribe = subscribe
 
 
-@js
+@js.dictionary
 class SubscribeOptions:
     """WebIDL source: @webref/idl/observable.idl"""
 
@@ -53,7 +53,7 @@ class Subscriber:
     def next(self, value: object) -> None: ...
 
 
-@js
+@js.dictionary
 class SubscriptionObserver:
     """WebIDL source: @webref/idl/observable.idl"""
 
@@ -79,40 +79,25 @@ class Touch:
 
     Browser support: Chrome 22"""
 
-    def __init__(
-        self,
-        *,
-        identifier: int,
-        target: EventTarget,
-        clientX: float = 0,
-        clientY: float = 0,
-        screenX: float = 0,
-        screenY: float = 0,
-        pageX: float = 0,
-        pageY: float = 0,
-        radiusX: float = 0,
-        radiusY: float = 0,
-        rotationAngle: float = 0,
-        force: float = 0,
-        altitudeAngle: float = 0,
-        azimuthAngle: float = 0,
-        touchType: str = "direct",
-    ):
-        self.clientX: float = clientX
-        self.clientY: float = clientY
-        self.force: float = force
-        self.identifier: int = identifier
-        self.pageX: float = pageX
-        self.pageY: float = pageY
-        self.radiusX: float = radiusX
-        self.radiusY: float = radiusY
-        self.rotationAngle: float = rotationAngle
-        self.screenX: float = screenX
-        self.screenY: float = screenY
-        self.target: EventTarget = target
+    def __init__(self, touchInitDict: TouchInit):
+        self.altitudeAngle = touchInitDict.altitudeAngle
+        self.azimuthAngle = touchInitDict.azimuthAngle
+        self.clientX = touchInitDict.clientX
+        self.clientY = touchInitDict.clientY
+        self.force = touchInitDict.force
+        self.identifier = touchInitDict.identifier
+        self.pageX = touchInitDict.pageX
+        self.pageY = touchInitDict.pageY
+        self.radiusX = touchInitDict.radiusX
+        self.radiusY = touchInitDict.radiusY
+        self.rotationAngle = touchInitDict.rotationAngle
+        self.screenX = touchInitDict.screenX
+        self.screenY = touchInitDict.screenY
+        self.target = touchInitDict.target
+        self.touchType = touchInitDict.touchType
 
 
-@js
+@js.dictionary
 class TouchInit:
     """WebIDL source: @webref/idl/touch-events.idl"""
 
@@ -213,7 +198,7 @@ class Event:
     def stopPropagation(self) -> None: ...
 
 
-@js
+@js.dictionary
 class EventInit:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -234,7 +219,7 @@ class EventListener:
     def handleEvent(self, event: Event) -> None: ...
 
 
-@js
+@js.dictionary
 class EventListenerOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -295,7 +280,7 @@ class InputDeviceCapabilities:
         self.pointerMovementScrolls: bool = pointerMovementScrolls
 
 
-@js
+@js.dictionary
 class InputDeviceCapabilitiesInit:
     """WebIDL source: @webref/idl/input-device-capabilities.idl"""
 
@@ -387,7 +372,7 @@ class Observable:
     async def toArray(self, *, signal: AbortSignal | None = None) -> list[object]: ...
 
 
-@js
+@js.dictionary
 class ObservableEventListenerOptions:
     """WebIDL source: @webref/idl/observable.idl"""
 
@@ -396,7 +381,7 @@ class ObservableEventListenerOptions:
         self.passive = passive
 
 
-@js
+@js.dictionary
 class AddEventListenerOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -413,7 +398,7 @@ class AddEventListenerOptions:
         self.signal = signal
 
 
-@js
+@js.dictionary
 class CustomEventInit:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -430,7 +415,7 @@ class CustomEventInit:
         self.detail = detail
 
 
-@js
+@js.dictionary
 class ErrorEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -455,7 +440,7 @@ class ErrorEventInit:
         self.message = message
 
 
-@js
+@js.dictionary
 class MessageEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -480,7 +465,7 @@ class MessageEventInit:
         self.source = source
 
 
-@js
+@js.dictionary
 class ProgressEventInit:
     """WebIDL source: @webref/idl/xhr.idl"""
 
@@ -501,7 +486,7 @@ class ProgressEventInit:
         self.total = total
 
 
-@js
+@js.dictionary
 class PromiseRejectionEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -520,7 +505,7 @@ class PromiseRejectionEventInit:
         self.reason = reason
 
 
-@js
+@js.dictionary
 class UIEventInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -543,7 +528,7 @@ class UIEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class CompositionEventInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -568,7 +553,7 @@ class CompositionEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class EventModifierInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -619,7 +604,7 @@ class EventModifierInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class FocusEventInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -644,7 +629,7 @@ class FocusEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class InputEventInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -673,7 +658,7 @@ class InputEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class KeyboardEventInit:
     """WebIDL source: @webref/idl/uievents.idl"""
 
@@ -738,7 +723,7 @@ class KeyboardEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class MouseEventInit:
     """WebIDL source: @webref/idl/pointerevents.idl"""
 
@@ -807,7 +792,7 @@ class MouseEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class TouchEventInit:
     """WebIDL source: @webref/idl/touch-events.idl"""
 
@@ -870,7 +855,7 @@ class TouchEventInit:
         self.which = which
 
 
-@js
+@js.dictionary
 class PointerEventInit:
     """WebIDL source: @webref/idl/pointerevents.idl"""
 
@@ -969,7 +954,7 @@ class PointerEventInit:
         self.width = width
 
 
-@js
+@js.dictionary
 class WheelEventInit:
     """WebIDL source: @webref/idl/pointerevents.idl"""
 
@@ -1255,19 +1240,15 @@ class PromiseRejectionEvent(Event):
 
     Browser support: Chrome 49, Safari 11"""
 
-    def __init__(
-        self,
-        type: str,
-        *,
-        bubbles: bool = False,
-        cancelable: bool = False,
-        composed: bool = False,
-        promise: object,
-        reason: object | None = None,
-    ):
-        super().__init__(type, bubbles=bubbles, cancelable=cancelable, composed=composed)
-        self.promise: object = promise
-        self.reason: object = reason
+    def __init__(self, type: str, eventInitDict: PromiseRejectionEventInit):
+        super().__init__(
+            type,
+            bubbles=eventInitDict.bubbles,
+            cancelable=eventInitDict.cancelable,
+            composed=eventInitDict.composed,
+        )
+        self.promise = eventInitDict.promise
+        self.reason = eventInitDict.reason
 
 
 @js.native

@@ -1,11 +1,16 @@
 import ast
 from collections.abc import Iterable
+from types import ModuleType
+
+import pytest
 
 from pyjs.testing.client.assertions import assert_compare, assert_condition
+from pyjs.testing.client.pytest import raises
 from pyjs.transpiler import CompilationExtension
 
 ASSERT_ALIAS = "__pyjs_test_assert__"
 COMPARE_ALIAS = "__pyjs_test_assert_compare__"
+RAISES_ALIAS = "__pyjs_test_raises__"
 OPERATORS = {
     ast.Eq: "==",
     ast.NotEq: "!=",
@@ -108,18 +113,60 @@ class AssertionRewriter(ast.NodeTransformer):
         return [ast.copy_location(statement, node) for statement in (left, right, call)]
 
 
-class TestingAssertions(CompilationExtension):
+class PytestRewriter(ast.NodeTransformer):
+    def __init__(self, function: callable):
+        source_function = getattr(function, "__func__", function)
+        namespace = getattr(source_function, "__globals__", {})
+        self.module_aliases = {
+            name
+            for name, value in namespace.items()
+            if isinstance(value, ModuleType) and value.__name__ == "pytest"
+        }
+        self.raises_aliases = {
+            name for name, value in namespace.items() if value is pytest.raises
+        }
+        self.rewritten = False
+
+    def visit_Call(self, node: ast.Call):
+        self.generic_visit(node)
+        function = node.func
+        is_raises = (
+            isinstance(function, ast.Name)
+            and function.id in self.raises_aliases
+        ) or (
+            isinstance(function, ast.Attribute)
+            and function.attr == "raises"
+            and isinstance(function.value, ast.Name)
+            and function.value.id in self.module_aliases
+        )
+        if is_raises:
+            node.func = ast.copy_location(
+                ast.Name(id=RAISES_ALIAS, ctx=ast.Load()),
+                function,
+            )
+            self.rewritten = True
+        return node
+
+
+class TestingExtension(CompilationExtension):
     def __init__(self, selected_tests: Iterable[object]):
         self.selected_functions = {
             (selected.module_name, selected.function_name) for selected in selected_tests
         }
 
     def transform_function(self, function, node, source):
-        if (function.__module__, function.__name__) not in self.selected_functions:
-            return node, {}
-        rewritten = AssertionRewriter(source).visit(node)
+        imports = {}
+        pytest_rewriter = PytestRewriter(function)
+        rewritten = pytest_rewriter.visit(node)
+        if pytest_rewriter.rewritten:
+            imports[RAISES_ALIAS] = raises
+        if (function.__module__, function.__name__) in self.selected_functions:
+            rewritten = AssertionRewriter(source).visit(rewritten)
+            imports.update(
+                {
+                    ASSERT_ALIAS: assert_condition,
+                    COMPARE_ALIAS: assert_compare,
+                }
+            )
         assert isinstance(rewritten, (ast.FunctionDef, ast.AsyncFunctionDef))
-        return rewritten, {
-            ASSERT_ALIAS: assert_condition,
-            COMPARE_ALIAS: assert_compare,
-        }
+        return rewritten, imports

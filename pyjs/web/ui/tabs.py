@@ -99,7 +99,7 @@ class TabGroup(Widget):
         return value
 
     def select(self, value: str, focus: bool = False):
-        triggers: list[HTMLElement] = self.querySelectorAll("[data-slot=tabs-trigger]")
+        triggers = self.querySelectorAll("[data-slot=tabs-trigger]")
         contents = self.querySelectorAll("[data-slot=tabs-content]")
         for trigger in triggers:
             active = trigger.getAttribute("data-value") == value
@@ -107,7 +107,7 @@ class TabGroup(Widget):
             trigger.setAttribute("data-state", "active" if active else "inactive")
             trigger.setAttribute("tabindex", "0" if active else "-1")
             if active and focus:
-                trigger.focus()
+                cast(HTMLElement, trigger).focus()
         for content in contents:
             active = content.getAttribute("data-value") == value
             content.setAttribute("data-state", "active" if active else "inactive")
@@ -134,13 +134,14 @@ class TabGroup(Widget):
         trigger = target.closest("[data-slot=tabs-trigger]")
         if trigger is None:
             return
-        triggers: list[HTMLElement] = self.querySelectorAll("[data-slot=tabs-trigger]")
+        triggers = self.querySelectorAll("[data-slot=tabs-trigger]")
         first_trigger: HTMLElement | None = None
         last_trigger: HTMLElement | None = None
         previous_trigger: HTMLElement | None = None
         following_trigger: HTMLElement | None = None
         found_current = False
-        for item in triggers:
+        for element in triggers:
+            item = cast(HTMLElement, element)
             if first_trigger is None:
                 first_trigger = item
             if item is trigger:

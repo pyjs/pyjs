@@ -53,6 +53,9 @@ DECORATIONS = {
 
     # supplied by the JavaScript target rather than emitted
     "__js_native__",  # bool
+
+    # WebIDL dictionary lowered to a plain JavaScript object
+    "__js_dictionary__",  # bool
 }
 
 
@@ -332,6 +335,14 @@ def _js_native(obj):
     return obj
 
 
+def _js_dictionary(cls):
+    if not inspect.isclass(cls):
+        raise TypeError("@js.dictionary is only supported for classes.")
+    cls = js(cls)
+    cls.__js_dictionary__ = True
+    return cls
+
+
 def _js_keep(obj):
     if inspect.isclass(obj) or "." not in obj.__qualname__:
         raise TypeError("@js.keep is only supported for class methods.")
@@ -388,6 +399,7 @@ def nojs(cls_func):
 
 js.inline = _js_inline
 js.native = _js_native
+js.dictionary = _js_dictionary
 js.keep = _js_keep
 js.dispatch = _js_dispatch
 js.runtime_dunders = _js_runtime_dunders

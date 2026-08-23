@@ -8,7 +8,7 @@
     "url": "git+https://github.com/pyjs/pyjs.git",
     "directory": "npm"
   },
-  "homepage": "https://pyjs.org",
+  "homepage": "https://github.com/pyjs/pyjs",
   "os": ["$os"],
   "cpu": ["$cpu"]$libc,
   "files": [

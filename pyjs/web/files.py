@@ -1,4 +1,6 @@
-from pyjs import js, nojs
+from collections.abc import Iterator
+
+from pyjs import js
 from pyjs.javascript import (
     ArrayBuffer,
     BigInt64Array,
@@ -74,7 +76,7 @@ class Blob:
     def textStream(self) -> ReadableStream: ...
 
 
-@js
+@js.dictionary
 class BlobPropertyBag:
     """WebIDL source: @webref/idl/FileAPI.idl"""
 
@@ -99,8 +101,8 @@ class FileList:
     def __getitem__(self, index: int) -> File:
         return self._items[index]
 
-    @nojs
-    def __iter__(self):
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[File]:
         return iter(self._items)
 
     @js.inline("{self}.length")
@@ -168,7 +170,7 @@ class FileReaderSync:
     def readAsText(self, blob: Blob, encoding: str | None = None) -> str: ...
 
 
-@js
+@js.dictionary
 class FilePropertyBag:
     """WebIDL source: @webref/idl/FileAPI.idl"""
 

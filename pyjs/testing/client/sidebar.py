@@ -204,7 +204,7 @@ class RunnerSidebar(CustomElement):
         if value is None:
             return
         self.selectedFilter = value
-        buttons: list[HTMLElement] = self.querySelectorAll("[data-filter]")
+        buttons = self.querySelectorAll("[data-filter]")
         for candidate in buttons:
             selected = candidate.getAttribute("data-filter") == value
             candidate.setAttribute("aria-pressed", "true" if selected else "false")
@@ -218,7 +218,7 @@ class RunnerSidebar(CustomElement):
         query = self.search.get_value().lower()
         visible_files: list[str] = []
         visible_count = 0
-        rows: list[HTMLElement] = self.test_list.querySelectorAll("[data-test-nodeid]")
+        rows = self.test_list.querySelectorAll("[data-test-nodeid]")
         for row in rows:
             status = row.getAttribute("data-status")
             search_text = row.getAttribute("data-search")
@@ -235,7 +235,7 @@ class RunnerSidebar(CustomElement):
                     visible_files.append(file_name)
             else:
                 row.setAttribute("hidden", "")
-        groups: list[HTMLElement] = self.test_list.querySelectorAll("[data-test-file]")
+        groups = self.test_list.querySelectorAll("[data-test-file]")
         for group in groups:
             file_name = group.getAttribute("data-test-file")
             if file_name is not None and file_name in visible_files:

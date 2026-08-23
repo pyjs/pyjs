@@ -1,5 +1,6 @@
 from pyjs import js
-from pyjs.web.domx import ProxyElement, button, div, tw
+from pyjs.web.dom import Element
+from pyjs.web.domx import ProxyElement, button, div, ref, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
 
@@ -30,12 +31,13 @@ class CarouselItem(ProxyElement):
 class Carousel(Widget):
     def __init__(self, *items: CarouselItem, label: str = "Carousel", loop: bool = False):
         super().__init__()
-        self.items: list[CarouselItem] = []
+        self.items: list[Element] = []
         for item in items:
-            self.items.append(item)
+            self.items.append(item.element)
         self.index = 0
         self.loop = loop
-        self.previous_button = button(
+        self.setAttribute("data-loop", "true" if loop else "false")
+        self.previous_button = ref(button(
             tw(
                 "absolute left-2 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full border bg-white"
             ),
@@ -45,14 +47,14 @@ class Carousel(Widget):
                 "type": "button",
             },
             "‹",
-        )
-        self.next_button = button(
+        ))
+        self.next_button = ref(button(
             tw(
                 "absolute right-2 top-1/2 z-10 size-9 -translate-y-1/2 rounded-full border bg-white"
             ),
             {"aria-label": "Next slide", "data-slot": "carousel-next", "type": "button"},
             "›",
-        )
+        ))
         self.add(
             tw("relative w-full overflow-hidden"),
             {
@@ -64,9 +66,17 @@ class Carousel(Widget):
             self.previous_button,
             self.next_button,
         )
+        self.show(0)
+
+    def initialize(self):
+        self.items = []
+        for item in self.querySelectorAll("[data-slot=carousel-item]"):
+            self.items.append(item)
+        index = self.getAttribute("data-index")
+        self.index = 0 if index is None else int(index)
+        self.loop = self.getAttribute("data-loop") == "true"
         self.previous_button.addEventListener("click", self.previous)
         self.next_button.addEventListener("click", self.next)
-        self.show(0)
 
     def show(self, index: int):
         if len(self.items) == 0:
@@ -80,7 +90,11 @@ class Carousel(Widget):
             index = len(self.items) - 1
         self.index = index
         for item_index in range(len(self.items)):
-            self.items[item_index].set_active(item_index == index)
+            item = self.items[item_index]
+            active = item_index == index
+            item.setAttribute("aria-hidden", "false" if active else "true")
+            item.setAttribute("data-active", "true" if active else "false")
+            item.setAttribute("style", "display: block" if active else "display: none")
         self.setAttribute("data-index", str(index))
         if not self.loop:
             if index == 0:

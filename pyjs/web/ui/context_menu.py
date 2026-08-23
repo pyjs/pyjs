@@ -57,7 +57,7 @@ def ContextMenuSeparator():
 @js
 class ContextMenu(DropdownMenu):
     def __init__(self, trigger: ContextMenuTrigger, content: ContextMenuContent):
-        super().__init__(trigger, content, open_event="contextmenu")
+        super().__init__(trigger, content)
         self.setAttribute("data-slot", "context-menu")
 
     def toggle(self, event: Event):

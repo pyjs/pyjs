@@ -4,6 +4,7 @@ from pyjs.testing.webgpu import assert_webgpu_render
 from pyjs.web.dom import document
 from pyjs.web.domx import canvas
 from pyjs.web.events import KeyboardEvent
+from pyjs.web.webgpu import navigator
 from pyjs_examples.space_invaders.space_invaders import (
     GameState,
     Projectile,
@@ -31,7 +32,28 @@ def test_hud_reflects_observable_game_state():
 
 
 @js
+def test_compatibility_panel_distinguishes_api_and_adapter_failures():
+    app = SpaceInvadersApp()
+
+    app.show_compatibility("unsupported")
+
+    assert app.getAttribute("status") == "unsupported"
+    assert app.status_title.textContent == "WebGPU unavailable"
+    assert "does not expose WebGPU" in app.status_detail.textContent
+    assert app.status_action.style.display == "inline-flex"
+    assert app.status_text.style.display == "flex"
+
+    app.show_compatibility("adapter-unavailable")
+
+    assert app.getAttribute("status") == "adapter-unavailable"
+    assert app.status_title.textContent == "No GPU adapter"
+    assert "compatible graphics adapter" in app.status_detail.textContent
+
+
+@js
 async def test_keyboard_controls_drive_the_initialized_app():
+    if navigator.gpu is None:
+        raise RuntimeError("WebGPU API is unavailable in this browser")
     app = SpaceInvadersApp()
     await app.initialize()
     starting_x = app.game.player_x
@@ -56,10 +78,13 @@ async def test_initial_wave_render():
     game_canvas.setAttribute("height", "576")
     document.body.setAttribute("style", "margin:0; background:#020617")
     document.body.append(game_canvas)
+    if navigator.gpu is None:
+        raise RuntimeError("WebGPU API is unavailable in this browser")
     renderer = await create_renderer(game_canvas)
     if renderer is None:
-        assert renderer is not None, "This browser does not provide WebGPU"
-        return
+        raise RuntimeError(
+            "WebGPU adapter acquisition failed: requestAdapter() returned None"
+        )
     game = GameState()
 
     renderer.render(game)

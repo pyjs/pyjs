@@ -25,7 +25,7 @@ from pyjs.scaffolding import (
     version_string,
 )
 from pyjs.server import page
-from pyjs.server import serve as serve_application
+from pyjs.server.dev import serve as serve_application
 from pyjs.testing.capture import capture_url
 from pyjs.tooling.node import Node
 from pyjs.tooling.perf import (
@@ -40,11 +40,12 @@ from pyjs.tooling.perf import (
 from pyjs.transpiler import (
     CompilationError,
     SourceCompilation,
-    bundle,
+    bundle_with_source_map,
     compile_source,
     format_compilation_error,
     prepare_bundle,
 )
+from pyjs.transpiler.analyzer import release_compilation
 
 SUBCOMMANDS = {"build", "create", "serve", "template", "inspect", "skill", "docs"}
 
@@ -55,6 +56,67 @@ class DirectInput:
     filename: str
     module_name: str
     javascript_name: str
+
+
+def _add_direct_options(command: argparse.ArgumentParser) -> None:
+    execution = command.add_argument_group("Python-like direct execution")
+    input_group = execution.add_mutually_exclusive_group()
+    input_group.add_argument(
+        "-c",
+        dest="code",
+        metavar="CODE",
+        help="run Python source text",
+    )
+    input_group.add_argument(
+        "-m",
+        dest="module",
+        metavar="MODULE",
+        help="run a Python module",
+    )
+    source_group = execution.add_mutually_exclusive_group()
+    source_group.add_argument(
+        "--src",
+        action="store_true",
+        help="print the entry module without running it",
+    )
+    source_group.add_argument(
+        "--src-all",
+        action="store_true",
+        help="print the entry module and all tree-shaken dependencies",
+    )
+    execution.add_argument(
+        "-v",
+        action="count",
+        default=0,
+        help="show generated source and diagnostics; repeat for more detail",
+    )
+    execution.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable direct-execution results",
+    )
+    execution.add_argument(
+        "--perf",
+        action="store_true",
+        help="compare Python and JavaScript speed",
+    )
+    execution.add_argument(
+        "--loops",
+        type=int,
+        help="iterations in each performance sample",
+    )
+    execution.add_argument(
+        "--samples",
+        type=int,
+        default=DEFAULT_SAMPLES,
+        help=f"performance samples (default: {DEFAULT_SAMPLES})",
+    )
+    execution.add_argument(
+        "--warmups",
+        type=int,
+        default=DEFAULT_WARMUPS,
+        help=f"warmup samples (default: {DEFAULT_WARMUPS})",
+    )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -68,6 +130,7 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     command.add_argument("--version", action="version", version=f"%(prog)s {version}")
+    _add_direct_options(command)
     subcommands = command.add_subparsers(dest="command")
 
     build = subcommands.add_parser("build", help="build a Python entry point for the browser")
@@ -163,40 +226,8 @@ def direct_parser() -> argparse.ArgumentParser:
         prog="pyjs",
         description="Transpile Python and run the result with PyJS-managed Node.",
     )
-    input_group = command.add_mutually_exclusive_group()
-    input_group.add_argument("-c", dest="code", help="Python program passed as a string")
-    input_group.add_argument("-m", dest="module", help="run a Python module as JavaScript")
+    _add_direct_options(command)
     command.add_argument("source", nargs="?", help="Python file, or - to read standard input")
-    source_group = command.add_mutually_exclusive_group()
-    source_group.add_argument(
-        "--src", action="store_true", help="print the entry module without running it"
-    )
-    source_group.add_argument(
-        "--src-all",
-        action="store_true",
-        help="print the entry module and all tree-shaken dependencies",
-    )
-    command.add_argument(
-        "-v",
-        action="count",
-        default=0,
-        help="show generated source and diagnostics; repeat for more detail",
-    )
-    command.add_argument("--json", action="store_true", help="emit machine-readable results")
-    command.add_argument("--perf", action="store_true", help="compare Python and JavaScript speed")
-    command.add_argument("--loops", type=int, help="iterations in each performance sample")
-    command.add_argument(
-        "--samples",
-        type=int,
-        default=DEFAULT_SAMPLES,
-        help=f"performance samples (default: {DEFAULT_SAMPLES})",
-    )
-    command.add_argument(
-        "--warmups",
-        type=int,
-        default=DEFAULT_WARMUPS,
-        help=f"warmup samples (default: {DEFAULT_WARMUPS})",
-    )
     return command
 
 
@@ -297,9 +328,17 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
         compilation = _compile_direct(program)
     except CompilationError as error:
         if args.json:
-            print(json.dumps({"error": error.diagnostic.to_dict()}, indent=2))
+            details = error.diagnostic.to_dict()
+            if args.v:
+                details["traceback"] = "".join(
+                    traceback.format_tb(error.__traceback__)
+                )
+            print(json.dumps({"error": details}, indent=2))
         else:
             print(format_compilation_error(error), file=sys.stderr, end="")
+            if args.v:
+                print("Traceback (most recent call last):", file=sys.stderr)
+                traceback.print_tb(error.__traceback__)
         return 2
     except SyntaxError as error:
         if args.json:
@@ -316,12 +355,16 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
         else:
             formatted = "".join(traceback.format_exception_only(error))
             print(formatted, file=sys.stderr, end="")
+            if args.v:
+                print("Traceback (most recent call last):", file=sys.stderr)
+                traceback.print_tb(error.__traceback__)
         return 2
     except Exception as error:
+        message = str(error) or type(error).__name__
         if args.json:
             details = {
                 "type": type(error).__name__,
-                "message": str(error),
+                "message": message,
             }
             if args.v:
                 details["traceback"] = traceback.format_exc()
@@ -329,9 +372,10 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
             return 2
         if args.v:
             traceback.print_exc()
-            print(f"pyjs: error: {error}", file=sys.stderr)
+            print(f"pyjs: error: {message}", file=sys.stderr)
             return 2
-        command_parser.error(str(error))
+        print(f"pyjs: error: {message}", file=sys.stderr)
+        return 2
 
     javascript = _executable_javascript(compilation)
     if source_only:
@@ -352,14 +396,21 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
         command_parser.error(str(error))
 
     if args.json:
+        hint = _node_runtime_hint(result.stderr) if result.returncode else None
         payload = {
             "input": program.filename,
             "javascript_name": program.javascript_name,
-            "node": {"version": node.version, "path": str(node.executable)},
+            "node": {
+                "version": node.version,
+                "path": str(node.executable),
+                "selection": node.selection,
+            },
             "exit_code": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
         }
+        if hint is not None:
+            payload["hint"] = hint
         if args.v:
             payload["sources"] = _source_files(program, compilation, include_dependencies=False)
         if args.v >= 2:
@@ -378,8 +429,35 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
         _print_sources(program, compilation, include_dependencies=False)
         _print_section(f"node v{node.version} output")
     print(result.stdout, end="")
-    print(result.stderr, end="", file=sys.stderr)
+    hint = _node_runtime_hint(result.stderr) if result.returncode else None
+    if hint is None:
+        print(result.stderr, end="", file=sys.stderr)
+    elif args.v:
+        print(result.stderr, end="", file=sys.stderr)
+        print(f"pyjs: hint: {hint}", file=sys.stderr)
+    else:
+        print(f"pyjs: error: {hint}", file=sys.stderr)
     return result.returncode
+
+
+def _node_runtime_hint(stderr: str) -> str | None:
+    browser_globals = (
+        "CustomElementRegistry",
+        "Element",
+        "HTMLElement",
+        "Node",
+        "customElements",
+        "document",
+        "location",
+        "navigator",
+        "window",
+    )
+    if not any(f"ReferenceError: {name} is not defined" in stderr for name in browser_globals):
+        return None
+    return (
+        "This module uses browser APIs. Serve it with `python -m your_package` "
+        "or run a managed browser test."
+    )
 
 
 def _print_section(name: str) -> None:
@@ -400,7 +478,11 @@ def _compilation_metadata(
         "runtime_wrapper": "hidden from source display",
     }
     if node is not None:
-        metadata.update(node_version=node.version, node_path=str(node.executable))
+        metadata.update(
+            node_version=node.version,
+            node_path=str(node.executable),
+            node_selection=node.selection,
+        )
     return metadata
 
 
@@ -641,8 +723,20 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
 
     js_file_name = f"{file_stem}.js"
     print(f"Writing {module_name}:{entry} JavaScript to ./{js_file_name}")
-    javascript, css = bundle(entry_point, args.include_main)
-    Path(js_file_name).write_text(javascript, encoding="utf-8")
+    generated, css = bundle_with_source_map(
+        entry_point,
+        args.include_main,
+        filename=js_file_name,
+    )
+    source_map_name = f"{js_file_name}.map"
+    Path(js_file_name).write_text(
+        generated.with_source_mapping_url(source_map_name),
+        encoding="utf-8",
+    )
+    Path(source_map_name).write_text(
+        generated.source_map.to_json(),
+        encoding="utf-8",
+    )
 
     if args.only_js:
         return 0
@@ -749,7 +843,10 @@ def _template_javascript(template: Template) -> str:
         include_main=True,
         include_css=False,
     )
-    return package[entry_point.container.name]
+    try:
+        return package[entry_point.container.name]
+    finally:
+        release_compilation(entry_point)
 
 
 def _template(args, command_parser: argparse.ArgumentParser) -> int:
@@ -813,9 +910,10 @@ def _template(args, command_parser: argparse.ArgumentParser) -> int:
         default=len("Template"),
     )
     description_indent = width + 10
+    terminal_width = shutil.get_terminal_size(fallback=(100, 24)).columns
     description_width = max(
         20,
-        shutil.get_terminal_size(fallback=(100, 24)).columns - description_indent,
+        terminal_width - description_indent,
     )
     print(f"  {'Template':<{width}}  {'Type':<4}  Description")
     for template in catalog:
@@ -824,6 +922,14 @@ def _template(args, command_parser: argparse.ArgumentParser) -> int:
         print(f"  {template.name:<{width}}  {kind:<4}  {description[0]}")
         for line in description[1:]:
             print(f"{'':<{description_indent}}{line}")
+    print()
+    note = (
+        "This catalog contains examples that are safe to inspect and copy as "
+        "standalone projects. Run pyjs skill for comprehensive installed "
+        "applications that retain their package layout."
+    )
+    for line in textwrap.wrap(note, width=terminal_width):
+        print(line)
     return 0
 
 

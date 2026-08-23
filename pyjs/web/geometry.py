@@ -3,7 +3,7 @@ from pyjs.javascript import Float32Array, Float64Array
 from pyjs.web.dom import DOMRect, DOMRectInit
 
 
-@js
+@js.dictionary
 class DOMMatrix2DInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -181,7 +181,7 @@ class DOMMatrixReadOnly:
     def translate(self, tx: float = 0, ty: float = 0, tz: float = 0) -> DOMMatrix: ...
 
 
-@js
+@js.dictionary
 class DOMPointInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -283,7 +283,7 @@ class DOMQuad:
     def toJSON(self) -> object: ...
 
 
-@js
+@js.dictionary
 class DOMQuadInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -318,7 +318,7 @@ class DOMRectList:
     def item(self, index: int) -> DOMRect | None: ...
 
 
-@js
+@js.dictionary
 class DOMMatrixInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 

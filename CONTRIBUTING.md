@@ -14,6 +14,12 @@ uv run pytest -q
 uv run ruff check .
 ```
 
+`ruff check` is the repository's linting contract. Do not run `ruff format`
+across the repository: much of the existing source uses deliberate manual
+layout, and formatter-only differences are not review failures. Maintainer
+generators may invoke Ruff internally to produce deterministic generated
+modules; that does not make formatting a general contribution requirement.
+
 uv creates and maintains `.venv`; activation is optional. Python versions,
 dependencies, pytest discovery, and Ruff rules are defined in
 `.python-version`, `pyproject.toml`, and `uv.lock`.
@@ -70,8 +76,8 @@ uv run pytest -q examples -m pyjs_web --pyjs-target=web --pyjs-browser=managed
 
 Use `uv run python scripts/capture_runner_screenshot.py` when changing the
 runner UI, and inspect the PNG and JSON outputs rather than relying only on the
-exit status. The user-facing testing model, markers, render assertions, and
-artifact behavior are documented in [the testing guide](docs/guide/testing.md).
+exit status. The README testing section and example tests demonstrate the
+public testing model, markers, render assertions, and artifact behavior.
 
 Android tests are opt-in and require a configured emulator. Run them when a
 change affects `pyjs.nativescript`, Android tooling, or shared test artifacts.
@@ -121,6 +127,14 @@ editable Python. WebIDL refreshes are maintainer-coordinated and must preserve
 CPython implementations and deliberate type improvements. After substantial
 core web API changes, run browser tests for every affected module.
 
+Before committing a WebIDL-backed declaration change, follow `WEBIDL.md`: run
+the synchronizer, inspect the complete
+`pyjs/web/` diff, and rerun it to confirm the patch is stable. Do this after
+manual type or implementation improvements too, not only when adding an API
+through the generator. If synchronization repeatedly overwrites an intentional
+customization, fix the general merge rule and add a synchronization regression;
+do not silently discard the unrelated diff or encode per-run approval state.
+
 ## User-facing changes
 
 Document behavior where its consumers will find it:
@@ -130,10 +144,11 @@ Document behavior where its consumers will find it:
 - example READMEs for running and testing a particular application; and
 - `pyjs/skills/pyjs/SKILL.md` for coding agents building with PyJS.
 
-Add notable user-facing behavior and compatibility changes to the `Unreleased`
-section of [CHANGELOG.md](CHANGELOG.md). Describe what changed for an
-application developer rather than repeating the commit message. Small examples
-are welcome when they make a compiler improvement or removed workaround clear.
+Describe notable user-facing behavior and compatibility changes from an
+application developer's perspective rather than repeating the commit message.
+Maintainers collect those notes in the private release changelog. Small
+examples are welcome when they make a compiler improvement or removed
+workaround clear.
 
 Do not put framework usage instructions in the private repository
 `AGENTS.md`.

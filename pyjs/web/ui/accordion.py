@@ -1,7 +1,7 @@
 from typing import cast
 
 from pyjs import js
-from pyjs.web.dom import Element
+from pyjs.web.dom import Element, HTMLCollection
 from pyjs.web.domx import ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.ui import Widget
@@ -102,9 +102,8 @@ class AccordionGroup(Widget):
         self.addEventListener("click", self.clicked)
         self.addEventListener("keydown", self.keydown)
 
-    def get_items(self) -> list[AccordionItem]:
-        items: list[AccordionItem] = self.children
-        return items
+    def get_items(self) -> HTMLCollection[AccordionItem]:
+        return cast(HTMLCollection[AccordionItem], self.children)
 
     def allows_multiple(self) -> bool:
         return self.getAttribute("multiple") == "true"

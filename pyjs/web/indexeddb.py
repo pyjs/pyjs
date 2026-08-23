@@ -11,12 +11,14 @@ def _request_promise(expression: str, validator: str = "null") -> str:
     else:
         resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
         setup = f"const validate = {validator};"
-    return (
-        "new Promise((resolve, reject) => {"
-        f"const request = {expression};{setup}"
-        f"request.addEventListener('success', () => {resolve}, {{once: true}});"
-        "request.addEventListener('error', () => reject(request.error), "
-        "{once: true});})"
+    return "".join(
+        [
+            "new Promise((resolve, reject) => {",
+            f"const request = {expression};{setup}",
+            f"request.addEventListener('success', () => {resolve}, {{once: true}});",
+            "request.addEventListener('error', () => reject(request.error), ",
+            "{once: true});})",
+        ]
     )
 
 
@@ -94,7 +96,7 @@ class IDBDatabase(EventTarget):
     ) -> IDBTransaction: ...
 
 
-@js
+@js.dictionary
 class IDBDatabaseInfo:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
@@ -118,9 +120,7 @@ class IDBFactory:
     def deleteDatabase(self, name: str) -> IDBOpenDBRequest[None]: ...
 
     def open(
-        self,
-        name: str,
-        version: int | None = None,
+        self, name: str, version: int | None = None
     ) -> IDBOpenDBRequest[IDBDatabase]: ...
 
 
@@ -128,7 +128,7 @@ indexedDB = IDBFactory()
 js.native(indexedDB)
 
 
-@js
+@js.dictionary
 class IDBGetAllOptions:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
@@ -189,7 +189,7 @@ class IDBIndex:
     ) -> IDBRequest[IDBCursor | None]: ...
 
 
-@js
+@js.dictionary
 class IDBIndexParameters:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
@@ -296,7 +296,7 @@ class IDBObjectStore:
     def put(self, value: object, key: object | None = None) -> IDBRequest[object]: ...
 
 
-@js
+@js.dictionary
 class IDBObjectStoreParameters:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
@@ -374,9 +374,7 @@ class TypedIDBStore[T]:
 
     @js.inline("{self}.getAll({_args_joined})")
     def getAll(
-        self,
-        queryOrOptions: object | None = None,
-        count: int | None = None,
+        self, queryOrOptions: object | None = None, count: int | None = None
     ) -> IDBRequest[list[T]]:
         return self.store.getAll(queryOrOptions, count)
 
@@ -411,7 +409,7 @@ class IDBTransaction(EventTarget):
     def objectStore(self, name: str) -> IDBObjectStore: ...
 
 
-@js
+@js.dictionary
 class IDBTransactionOptions:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
@@ -433,26 +431,13 @@ class IDBVersionChangeEvent(Event):
         self.oldVersion: int = oldVersion
 
 
-@js
+@js.dictionary
 class IDBVersionChangeEventInit:
     """WebIDL source: @webref/idl/IndexedDB.idl"""
 
     def __init__(self, newVersion: int | None = None, oldVersion: int = 0):
         self.newVersion = newVersion
         self.oldVersion = oldVersion
-
-
-@js.native
-class IDBCursorWithValue(IDBCursor):
-    """WebIDL source: @webref/idl/IndexedDB.idl
-
-    MDN: https://developer.mozilla.org/docs/Web/API/IDBCursorWithValue
-
-    Browser support: Chrome 24, Safari 8"""
-
-    def __init__(self):
-        super().__init__()
-        self.value: object = None
 
 
 @js.native
@@ -469,6 +454,19 @@ class IDBOpenDBRequest[T](IDBRequest[T]):
         self.onupgradeneeded: callable = None
 
 
+@js.native
+class IDBCursorWithValue(IDBCursor):
+    """WebIDL source: @webref/idl/IndexedDB.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/IDBCursorWithValue
+
+    Browser support: Chrome 24, Safari 8"""
+
+    def __init__(self):
+        super().__init__()
+        self.value: object = None
+
+
 @js
 async def open_database(
     name: str, version: int, upgrade: callable | None = None
@@ -483,7 +481,7 @@ def open_database(_arg_strs, **kwargs):
 
 
 @js.inline(_rewrite_request_result)
-async def request_result(request: IDBRequest[object]) -> object: ...
+async def request_result[T](request: IDBRequest[T]) -> T: ...
 
 
 @js.inline(_rewrite_request_result)

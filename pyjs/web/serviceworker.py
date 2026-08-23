@@ -74,7 +74,7 @@ class Cache:
     async def put(self, request: Request | str, response: Response) -> None: ...
 
 
-@js
+@js.dictionary
 class CacheQueryOptions:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -137,7 +137,7 @@ class Client:
     def postMessage(self, message: object, transfer: list[object]) -> None: ...
 
 
-@js
+@js.dictionary
 class ClientQueryOptions:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -179,7 +179,7 @@ class ExtendableEvent(Event):
     def waitUntil(self, f: object) -> None: ...
 
 
-@js
+@js.dictionary
 class GetNotificationOptions:
     """WebIDL source: @webref/idl/notifications.idl"""
 
@@ -204,7 +204,7 @@ class NavigationPreloadManager:
     async def setHeaderValue(self, value: str) -> None: ...
 
 
-@js
+@js.dictionary
 class NavigationPreloadState:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -287,7 +287,7 @@ class Notification(EventTarget):
     async def requestPermission(deprecatedCallback: callable | None = None) -> str: ...
 
 
-@js
+@js.dictionary
 class NotificationAction:
     """WebIDL source: @webref/idl/notifications.idl"""
 
@@ -306,7 +306,7 @@ class NotificationAction:
             self.navigate = navigate
 
 
-@js
+@js.dictionary
 class NotificationOptions:
     """WebIDL source: @webref/idl/notifications.idl"""
 
@@ -353,7 +353,7 @@ class NotificationOptions:
             self.vibrate = vibrate
 
 
-@js
+@js.dictionary
 class PermissionDescriptor:
     """WebIDL source: @webref/idl/permissions.idl"""
 
@@ -458,7 +458,7 @@ class PushSubscription:
     async def unsubscribe(self) -> bool: ...
 
 
-@js
+@js.dictionary
 class PushSubscriptionJSON:
     """WebIDL source: @webref/idl/push-api.idl"""
 
@@ -488,7 +488,7 @@ class PushSubscriptionOptions:
         self.userVisibleOnly: bool = False
 
 
-@js
+@js.dictionary
 class PushSubscriptionOptionsInit:
     """WebIDL source: @webref/idl/push-api.idl"""
 
@@ -516,7 +516,7 @@ class PushSubscriptionOptionsInit:
         self.userVisibleOnly = userVisibleOnly
 
 
-@js
+@js.dictionary
 class RegistrationOptions:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -531,7 +531,7 @@ class RegistrationOptions:
         self.updateViaCache = updateViaCache
 
 
-@js
+@js.dictionary
 class RouterCondition:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -554,7 +554,7 @@ class RouterCondition:
         self.urlPattern = urlPattern
 
 
-@js
+@js.dictionary
 class RouterRule:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -563,7 +563,7 @@ class RouterRule:
         self.source = source
 
 
-@js
+@js.dictionary
 class RouterSourceDict:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -691,7 +691,7 @@ class URLPattern:
     pass
 
 
-@js
+@js.dictionary
 class URLPatternInit:
     """WebIDL source: @webref/idl/urlpattern.idl"""
 
@@ -729,7 +729,7 @@ class URLPatternInit:
             self.username = username
 
 
-@js
+@js.dictionary
 class ExtendableEventInit:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -762,7 +762,7 @@ class ServiceWorkerGlobalScope(WorkerGlobalScope):
     async def skipWaiting(self) -> None: ...
 
 
-@js
+@js.dictionary
 class ExtendableMessageEventInit:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -783,7 +783,7 @@ class ExtendableMessageEventInit:
         self.source = source
 
 
-@js
+@js.dictionary
 class MultiCacheQueryOptions:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -800,7 +800,7 @@ class MultiCacheQueryOptions:
         self.ignoreVary = ignoreVary
 
 
-@js
+@js.dictionary
 class NotificationEventInit:
     """WebIDL source: @webref/idl/notifications.idl"""
 
@@ -809,7 +809,7 @@ class NotificationEventInit:
         self.action = action
 
 
-@js
+@js.dictionary
 class PushEventInit:
     """WebIDL source: @webref/idl/push-api.idl"""
 
@@ -837,7 +837,7 @@ class PushEventInit:
         self.notification = notification
 
 
-@js
+@js.dictionary
 class PushPermissionDescriptor:
     """WebIDL source: @webref/idl/push-api.idl"""
 
@@ -846,7 +846,7 @@ class PushPermissionDescriptor:
         self.userVisibleOnly = userVisibleOnly
 
 
-@js
+@js.dictionary
 class PushSubscriptionChangeEventInit:
     """WebIDL source: @webref/idl/push-api.idl"""
 
@@ -859,7 +859,7 @@ class PushSubscriptionChangeEventInit:
         self.oldSubscription = oldSubscription
 
 
-@js
+@js.dictionary
 class FetchEventInit:
     """WebIDL source: @webref/idl/service-workers.idl"""
 
@@ -914,24 +914,14 @@ class FetchEvent(ExtendableEvent):
 
     Browser support: Chrome 40, Safari 11.1"""
 
-    def __init__(
-        self,
-        type: str,
-        *,
-        request: Request,
-        preloadResponse: object | None = None,
-        clientId: str = "",
-        resultingClientId: str = "",
-        replacesClientId: str = "",
-        handled: None = None,
-    ):
+    def __init__(self, type: str, eventInitDict: FetchEventInit):
         super().__init__()
-        self.clientId: str = clientId
-        self.handled: None = handled
-        self.preloadResponse: object = preloadResponse
-        self.replacesClientId: str = replacesClientId
-        self.request: Request = request
-        self.resultingClientId: str = resultingClientId
+        self.clientId = eventInitDict.clientId
+        self.handled = eventInitDict.handled
+        self.preloadResponse = eventInitDict.preloadResponse
+        self.replacesClientId = eventInitDict.replacesClientId
+        self.request = eventInitDict.request
+        self.resultingClientId = eventInitDict.resultingClientId
 
     def respondWith(self, r: Response | Awaitable[Response]) -> None: ...
 
@@ -960,10 +950,10 @@ class NotificationEvent(ExtendableEvent):
 
     Browser support: Chrome 42, Safari 16"""
 
-    def __init__(self, type: str, *, notification: Notification, action: str = ""):
+    def __init__(self, type: str, eventInitDict: NotificationEventInit):
         super().__init__()
-        self.action: str = action
-        self.notification: Notification = notification
+        self.action = eventInitDict.action
+        self.notification = eventInitDict.notification
 
 
 @js.native

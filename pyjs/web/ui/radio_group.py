@@ -1,7 +1,7 @@
 from typing import cast
 
 from pyjs import js
-from pyjs.web.dom import Element
+from pyjs.web.dom import Element, HTMLCollection
 from pyjs.web.domx import input, ref, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
@@ -105,9 +105,8 @@ class RadioGroup(Widget):
         )
         self.addEventListener("change", self.changed)
 
-    def get_items(self) -> list[RadioGroupItem]:
-        items: list[RadioGroupItem] = self.children
-        return items
+    def get_items(self) -> HTMLCollection[RadioGroupItem]:
+        return cast(HTMLCollection[RadioGroupItem], self.children)
 
     def current_value(self) -> str:
         value = self.getAttribute("data-value")

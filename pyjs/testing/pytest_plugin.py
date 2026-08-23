@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -163,6 +164,7 @@ def browser_test_config(config: pytest.Config) -> BrowserTestConfig:
 
 class BrowserResults:
     def __init__(self) -> None:
+        self.suite_id = uuid.uuid4().hex
         self.eligible_tests: list[SelectedTest] | None = None
 
 
@@ -350,6 +352,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
             pyfuncitem.config,
             selected_test_from_item(pyfuncitem),
             state.eligible_tests,
+            state.suite_id,
         )
     except pytest.UsageError:
         raise
@@ -407,7 +410,12 @@ def verify_render_artifact(item: pytest.Function, artifact: dict[str, Any]) -> s
         expected = image.convert("RGBA")
     if actual.size != expected.size:
         return render_failure(
-            item, name, actual, None, f"size {actual.size}, expected {expected.size}"
+            item,
+            name,
+            actual,
+            None,
+            f"size {actual.size}, expected {expected.size}",
+            artifact.get("diagnostics"),
         )
 
     threshold = artifact.get("pixelThreshold", 8)
@@ -437,7 +445,14 @@ def verify_render_artifact(item: pytest.Function, artifact: dict[str, Any]) -> s
     if ratio <= allowed_ratio:
         return None
     detail = f"{different}/{total} pixels differ ({ratio:.2%}); allowed {allowed_ratio:.2%}"
-    return render_failure(item, name, actual, diff, detail)
+    return render_failure(
+        item,
+        name,
+        actual,
+        diff,
+        detail,
+        artifact.get("diagnostics"),
+    )
 
 
 def decode_render_image(data_url: object) -> Image.Image:
@@ -458,6 +473,7 @@ def render_failure(
     actual: Image.Image,
     diff: Image.Image | None,
     detail: str,
+    diagnostics: object = None,
 ) -> str:
     output_dir = browser_test_config(item.config).artifacts_dir / "renders"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -469,6 +485,11 @@ def render_failure(
         diff_path = output_dir / f"{stem}-{name}-diff.png"
         diff.save(diff_path)
         paths += f", diff: {diff_path}"
+    if isinstance(diagnostics, str) and diagnostics:
+        diagnostics_path = output_dir / f"{stem}-{name}-diagnostics.txt"
+        diagnostics_path.write_text(diagnostics + "\n")
+        paths += f", diagnostics: {diagnostics_path}"
+        detail += f"; WebGPU diagnostics: {diagnostics}"
     return f"Render artifact {name!r} does not match: {detail} ({paths})"
 
 
@@ -504,6 +525,7 @@ def run_browser_target(
     config: pytest.Config,
     current_test: SelectedTest,
     selected_tests: list[SelectedTest],
+    suite_id: str,
 ) -> dict[str, Any]:
     port = config.getoption("--pyjs-daemon-port")
     idle_seconds = config.getoption("--pyjs-daemon-idle-seconds")
@@ -519,7 +541,13 @@ def run_browser_target(
             settings,
         )
         response = asyncio.run(
-            send_run_request(port, current_test, selected_tests, settings.timeout)
+            send_run_request(
+                port,
+                current_test,
+                selected_tests,
+                suite_id,
+                settings.timeout,
+            )
         )
     except Exception as exc:
         response = failed_run("result_transport", str(exc))
@@ -527,7 +555,13 @@ def run_browser_target(
         time.sleep(NO_BROWSER_RETRY_SECONDS)
         try:
             response = asyncio.run(
-                send_run_request(port, current_test, selected_tests, settings.timeout)
+                send_run_request(
+                    port,
+                    current_test,
+                    selected_tests,
+                    suite_id,
+                    settings.timeout,
+                )
             )
         except Exception as exc:
             response = failed_run("result_transport", str(exc))
@@ -757,13 +791,16 @@ async def send_run_request(
     port: int,
     current_test: SelectedTest,
     selected_tests: list[SelectedTest],
+    suite_id: str,
     test_timeout: float = DEFAULT_TEST_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     url = f"ws://{HOST}:{port}/control"
     request = json.dumps(
         {
             "type": "run_tests",
-            "tests": [current_test.to_payload()],
+            "suite_id": suite_id,
+            "tests": [test.to_payload() for test in selected_tests],
+            "run_nodeids": [current_test.nodeid],
             "selected_nodeids": [test.nodeid for test in selected_tests],
             "current_nodeid": current_test.nodeid,
         }

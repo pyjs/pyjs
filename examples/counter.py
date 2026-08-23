@@ -68,6 +68,6 @@ def test_counter_updates_its_state():
 
 
 if __name__ == "__main__":
-    from pyjs.server import serve
+    from pyjs.server.dev import serve
 
     serve(__file__)

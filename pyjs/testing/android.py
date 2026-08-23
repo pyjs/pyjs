@@ -8,12 +8,15 @@ from pathlib import Path
 from PIL import Image
 
 from pyjs.tooling.android import AndroidDevice, AndroidSDK
+from pyjs.ui.interaction import InteractionSample
 
 from .artifacts import Artifact, ArtifactManifest
+from .interaction.gesture import GestureScript
 
 BOUNDS_PATTERN = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 ANDROID_ERROR_PATTERN = re.compile(
-    r"FATAL EXCEPTION|TypeError|Calling js method|Uncaught Exception", re.IGNORECASE
+    r"FATAL EXCEPTION|TypeError|Calling js method|Uncaught Exception|CONSOLE ERROR",
+    re.IGNORECASE,
 )
 
 
@@ -232,6 +235,74 @@ class AndroidTestSession:
         element = self.wait_for_element(**selector)
         self.tap(element)
         return element
+
+    def dispatch_pointer_sample(self, sample: InteractionSample) -> None:
+        action = "MOVE"
+        if sample.phase == "down":
+            action = "DOWN"
+        elif sample.phase == "up":
+            action = "UP"
+        elif sample.phase == "cancel":
+            action = "CANCEL"
+        elif sample.phase != "hold" and sample.phase != "move":
+            raise ValueError(f"Unsupported pointer phase: {sample.phase!r}")
+        self.adb(
+            "shell",
+            "input",
+            "motionevent",
+            action,
+            str(round(sample.x)),
+            str(round(sample.y)),
+        )
+
+    def dispatch_gesture(
+        self,
+        script: GestureScript,
+        *,
+        settle_ms: float = 0,
+        wait: callable = time.sleep,
+    ) -> None:
+        """Send one target-neutral gesture to the device with declared timing."""
+
+        previous_elapsed = 0.0
+        for sample in script.samples:
+            delay_ms = sample.elapsed_ms - previous_elapsed
+            if delay_ms < 0:
+                raise ValueError("Gesture sample times must not move backwards.")
+            if delay_ms > 0:
+                wait(delay_ms / 1_000)
+            self.dispatch_pointer_sample(sample)
+            previous_elapsed = sample.elapsed_ms
+        if not script.active and settle_ms > 0:
+            wait(settle_ms / 1_000)
+
+    @contextmanager
+    def held_gesture(
+        self,
+        script: GestureScript,
+        *,
+        settle_ms: float = 0,
+        wait: callable = time.sleep,
+    ):
+        """Hold an active gesture open while the caller inspects the device."""
+
+        if not script.active:
+            raise ValueError("A held Android gesture must remain pressed.")
+        self.dispatch_gesture(script, wait=wait)
+        try:
+            yield
+        except BaseException:
+            self.dispatch_pointer_sample(
+                InteractionSample("cancel", script.x, script.y, script.pointer_id)
+            )
+            raise
+        else:
+            self.dispatch_pointer_sample(
+                InteractionSample("up", script.x, script.y, script.pointer_id)
+            )
+        finally:
+            if settle_ms > 0:
+                wait(settle_ms / 1_000)
 
     def screenshot(self, path: Path) -> Path:
         result = self.adb("exec-out", "screencap", "-p", text=False)

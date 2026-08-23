@@ -98,7 +98,6 @@ class PopoverClickListener:
     def __init__(self, popover: Popover):
         self.popover = popover
 
-    @js.keep
     def handleEvent(self, event: Event):
         self.popover.handle_document_click(event)
 
@@ -108,7 +107,6 @@ class PopoverKeyListener:
     def __init__(self, popover: Popover):
         self.popover = popover
 
-    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         self.popover.handle_keydown(event)
 
@@ -214,6 +212,5 @@ class Popover(Widget):
             event.preventDefault()
             self.close(restore_focus=True)
 
-    @js.keep
-    def disconnectedCallback(self):
+    def disconnected(self):
         self.close()

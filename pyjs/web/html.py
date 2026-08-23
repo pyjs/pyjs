@@ -21,7 +21,7 @@ from pyjs.web.geometry import DOMMatrix, DOMMatrix2DInit, DOMPointInit
 from pyjs.web.svg import SVGImageElement
 
 
-@js
+@js.dictionary
 class AssignedNodesOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -343,7 +343,7 @@ class CanvasRenderingContext2D:
     def translate(self, x: float, y: float) -> None: ...
 
 
-@js
+@js.dictionary
 class CanvasRenderingContext2DSettings:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -382,7 +382,7 @@ class CloseWatcher(EventTarget):
     def requestClose(self) -> None: ...
 
 
-@js
+@js.dictionary
 class CloseWatcherOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -405,7 +405,7 @@ class CommandEvent(Event):
         self.source: Element | None = source
 
 
-@js
+@js.dictionary
 class CommandEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -517,7 +517,7 @@ class EditContext(EventTarget):
     pass
 
 
-@js
+@js.dictionary
 class ElementDefinitionOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -586,7 +586,7 @@ class EventSource(EventTarget):
     def close(self) -> None: ...
 
 
-@js
+@js.dictionary
 class EventSourceInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -616,7 +616,7 @@ class FileSystemEntry:
     pass
 
 
-@js
+@js.dictionary
 class FocusOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -644,12 +644,12 @@ class FormDataEvent(Event):
 
     Browser support: Chrome 77, Safari 15"""
 
-    def __init__(self, type: str, *, formData: FormData):
+    def __init__(self, type: str, eventInitDict: FormDataEventInit):
         super().__init__()
-        self.formData: FormData = formData
+        self.formData = eventInitDict.formData
 
 
-@js
+@js.dictionary
 class FormDataEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -657,7 +657,7 @@ class FormDataEventInit:
         self.formData = formData
 
 
-@js
+@js.dictionary
 class GetHTMLOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -697,7 +697,7 @@ class HashChangeEvent(Event):
         self.oldURL: str = oldURL
 
 
-@js
+@js.dictionary
 class HashChangeEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -954,7 +954,7 @@ class ImageBitmap:
     def close(self) -> None: ...
 
 
-@js
+@js.dictionary
 class ImageBitmapOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -993,7 +993,7 @@ class ImageBitmapRenderingContext:
     def transferFromImageBitmap(self, bitmap: ImageBitmap | None) -> None: ...
 
 
-@js
+@js.dictionary
 class ImageBitmapRenderingContextSettings:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1024,7 +1024,7 @@ class ImageData:
         self.width: int = 0
 
 
-@js
+@js.dictionary
 class ImageDataSettings:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1034,7 +1034,7 @@ class ImageDataSettings:
         self.pixelFormat = pixelFormat
 
 
-@js
+@js.dictionary
 class ImageEncodeOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1136,34 +1136,19 @@ class NavigateEvent(Event):
 
     Browser support: Chrome 102, Safari 26.2"""
 
-    def __init__(
-        self,
-        type: str,
-        *,
-        navigationType: str = "push",
-        destination: NavigationDestination,
-        canIntercept: bool = False,
-        userInitiated: bool = False,
-        hashChange: bool = False,
-        signal: AbortSignal,
-        formData: FormData | None = None,
-        downloadRequest: str | None = None,
-        info: object | None = None,
-        hasUAVisualTransition: bool = False,
-        sourceElement: Element | None = None,
-    ):
+    def __init__(self, type: str, eventInitDict: NavigateEventInit):
         super().__init__()
-        self.canIntercept: bool = canIntercept
-        self.destination: NavigationDestination = destination
-        self.downloadRequest: str | None = downloadRequest
-        self.formData: FormData | None = formData
-        self.hashChange: bool = hashChange
-        self.hasUAVisualTransition: bool = hasUAVisualTransition
-        self.info: object = info
-        self.navigationType: str = navigationType
-        self.signal: AbortSignal = signal
-        self.sourceElement: Element | None = sourceElement
-        self.userInitiated: bool = userInitiated
+        self.canIntercept = eventInitDict.canIntercept
+        self.destination = eventInitDict.destination
+        self.downloadRequest = eventInitDict.downloadRequest
+        self.formData = eventInitDict.formData
+        self.hashChange = eventInitDict.hashChange
+        self.hasUAVisualTransition = eventInitDict.hasUAVisualTransition
+        self.info = getattr(eventInitDict, "info", None)
+        self.navigationType = eventInitDict.navigationType
+        self.signal = eventInitDict.signal
+        self.sourceElement = eventInitDict.sourceElement
+        self.userInitiated = eventInitDict.userInitiated
 
     def intercept(
         self,
@@ -1177,7 +1162,7 @@ class NavigateEvent(Event):
     def scroll(self) -> None: ...
 
 
-@js
+@js.dictionary
 class NavigateEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1250,7 +1235,9 @@ class Navigation(EventTarget):
 
     def traverseTo(self, key: str, *, info: object | None = None) -> NavigationResult: ...
 
-    def updateCurrentEntry(self, *, state: object) -> None: ...
+    def updateCurrentEntry(
+        self, options: NavigationUpdateCurrentEntryOptions
+    ) -> None: ...
 
 
 @js.native
@@ -1274,18 +1261,12 @@ class NavigationCurrentEntryChangeEvent(Event):
 
     Browser support: Chrome 102, Safari 26.2"""
 
-    def __init__(
-        self,
-        type: str,
-        *,
-        navigationType: str | None = None,
-        from_: NavigationHistoryEntry,
-    ):
+    def __init__(self, type: str, eventInitDict: NavigationCurrentEntryChangeEventInit):
         super().__init__()
-        self.navigationType: str | None = navigationType
+        self.navigationType = eventInitDict.navigationType
 
 
-@js
+@js.dictionary
 class NavigationCurrentEntryChangeEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1332,7 +1313,7 @@ class NavigationHistoryEntry(EventTarget):
     def getState(self) -> object: ...
 
 
-@js
+@js.dictionary
 class NavigationInterceptOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1353,7 +1334,7 @@ class NavigationInterceptOptions:
             self.scroll = scroll
 
 
-@js
+@js.dictionary
 class NavigationOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1382,7 +1363,7 @@ class NavigationPrecommitController:
     ) -> None: ...
 
 
-@js
+@js.dictionary
 class NavigationResult:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1412,7 +1393,7 @@ class NavigationTransition:
         self.to: NavigationDestination = None
 
 
-@js
+@js.dictionary
 class NavigationUpdateCurrentEntryOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1726,7 +1707,7 @@ class PageRevealEvent(Event):
         self.viewTransition: ViewTransition | None = viewTransition
 
 
-@js
+@js.dictionary
 class PageRevealEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1754,7 +1735,7 @@ class PageSwapEvent(Event):
         self.viewTransition: ViewTransition | None = viewTransition
 
 
-@js
+@js.dictionary
 class PageSwapEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1780,7 +1761,7 @@ class PageTransitionEvent(Event):
         self.persisted: bool = persisted
 
 
-@js
+@js.dictionary
 class PageTransitionEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1788,7 +1769,7 @@ class PageTransitionEventInit:
         self.persisted = persisted
 
 
-@js
+@js.dictionary
 class ParseHTMLUnsafeOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1937,7 +1918,7 @@ class PopStateEvent(Event):
         self.state: object = state
 
 
-@js
+@js.dictionary
 class PopStateEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2016,7 +1997,7 @@ class Sanitizer:
     def setDataAttributes(self, allow: bool) -> bool: ...
 
 
-@js
+@js.dictionary
 class SanitizerAttributeNamespace:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2025,7 +2006,7 @@ class SanitizerAttributeNamespace:
         self.namespace = namespace
 
 
-@js
+@js.dictionary
 class SanitizerConfig:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2062,7 +2043,7 @@ class SanitizerConfig:
             self.replaceWithChildrenElements = replaceWithChildrenElements
 
 
-@js
+@js.dictionary
 class SanitizerElementNamespace:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2071,7 +2052,7 @@ class SanitizerElementNamespace:
         self.namespace = namespace
 
 
-@js
+@js.dictionary
 class SanitizerProcessingInstruction:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2079,7 +2060,7 @@ class SanitizerProcessingInstruction:
         self.target = target
 
 
-@js
+@js.dictionary
 class SetHTMLOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2087,7 +2068,7 @@ class SetHTMLOptions:
         self.sanitizer = sanitizer
 
 
-@js
+@js.dictionary
 class SetHTMLUnsafeOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2124,7 +2105,7 @@ class SharedWorker(EventTarget):
         self.port: MessagePort = None
 
 
-@js
+@js.dictionary
 class ShowPopoverOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2170,7 +2151,7 @@ class StorageEvent(Event):
     ) -> None: ...
 
 
-@js
+@js.dictionary
 class StorageEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2189,7 +2170,7 @@ class StorageEventInit:
         self.url = url
 
 
-@js
+@js.dictionary
 class StructuredSerializeOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2223,7 +2204,7 @@ class SubmitEvent(Event):
         self.submitter: HTMLElement | None = submitter
 
 
-@js
+@js.dictionary
 class SubmitEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2374,7 +2355,7 @@ class ToggleEvent(Event):
         self.source: Element | None = source
 
 
-@js
+@js.dictionary
 class ToggleEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2401,7 +2382,7 @@ class TrackEvent(Event):
         self.track: VideoTrack | AudioTrack | TextTrack | None = track
 
 
-@js
+@js.dictionary
 class TrackEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2479,7 +2460,7 @@ class ValidityState:
         self.valueMissing: bool = False
 
 
-@js
+@js.dictionary
 class ValidityStateFlags:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2739,7 +2720,7 @@ class WorkerNavigator:
     def taintEnabled(self) -> bool: ...
 
 
-@js
+@js.dictionary
 class WorkerOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2775,7 +2756,7 @@ class WorkletGlobalScope:
     pass
 
 
-@js
+@js.dictionary
 class WorkletOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2796,7 +2777,7 @@ class XMLSerializer:
     def serializeToString(self, root: Node) -> str: ...
 
 
-@js
+@js.dictionary
 class NavigationNavigateOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2813,7 +2794,7 @@ class NavigationNavigateOptions:
             self.state = state
 
 
-@js
+@js.dictionary
 class NavigationReloadOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2824,7 +2805,7 @@ class NavigationReloadOptions:
             self.state = state
 
 
-@js
+@js.dictionary
 class SanitizerElementNamespaceWithAttributes:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2843,7 +2824,7 @@ class SanitizerElementNamespaceWithAttributes:
             self.removeAttributes = removeAttributes
 
 
-@js
+@js.dictionary
 class SharedWorkerOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2860,7 +2841,7 @@ class SharedWorkerOptions:
         self.type = type
 
 
-@js
+@js.dictionary
 class TogglePopoverOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -2869,7 +2850,7 @@ class TogglePopoverOptions:
         self.source = source
 
 
-@js
+@js.dictionary
 class WindowPostMessageOptions:
     """WebIDL source: @webref/idl/html.idl"""
 

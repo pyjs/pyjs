@@ -76,6 +76,6 @@ def main():
 
 
 __PYJS_INLINE_TEST__if __name__ == "__main__":
-    from pyjs.server import serve
+    from pyjs.server.dev import serve
 
     serve(__file__)

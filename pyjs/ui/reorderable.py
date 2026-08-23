@@ -1,5 +1,49 @@
 from pyjs import js
-from pyjs.ui.gesture import GestureScript
+from pyjs.ui.interaction import (
+    InteractionMeasurement,
+    InteractionProjection,
+    InteractionSample,
+    InteractionViewport,
+)
+
+
+@js
+def edge_scroll_offset(
+    pointer: float,
+    viewport_start: float,
+    viewport_size: float,
+    current_offset: float,
+    maximum_offset: float,
+    edge_size: float = 64,
+    step: float = 24,
+    elapsed_ms: float = -1,
+    interval_ms: float = 50,
+) -> float:
+    """Return a bounded, distance-scaled scroll step near a viewport edge."""
+
+    if elapsed_ms < 0:
+        elapsed_ms = interval_ms
+    if edge_size <= 0 or viewport_size <= 0 or interval_ms <= 0:
+        return max(0.0, min(current_offset, maximum_offset))
+    active_edge_size = edge_size
+    if active_edge_size > viewport_size / 2:
+        active_edge_size = viewport_size / 2
+    penetration = 0.0
+    direction = 0.0
+    edge_end = viewport_start + viewport_size
+    if pointer < viewport_start + active_edge_size:
+        penetration = viewport_start + active_edge_size - pointer
+        direction = -1.0
+    elif pointer > edge_end - active_edge_size:
+        penetration = pointer - (edge_end - active_edge_size)
+        direction = 1.0
+    if penetration > active_edge_size:
+        penetration = active_edge_size
+    distance_scale = penetration / active_edge_size
+    time_scale = max(0.0, elapsed_ms) / interval_ms
+    target = current_offset
+    target += direction * step * distance_scale * time_scale
+    return max(0.0, min(target, maximum_offset))
 
 
 @js
@@ -86,6 +130,7 @@ class ReorderSession:
         for index in range(subtree_end, len(items)):
             self.remaining_items.append(items[index])
         self.hidden_item_ids = [item.id for item in self.subtree[1:]]
+        self.hidden_item_id_set = set(self.hidden_item_ids)
 
         relative_max_depth = 0
         for item in self.subtree:
@@ -101,7 +146,7 @@ class ReorderSession:
     ) -> int:
         insertion_index = 0
         for row in rows:
-            if row.id == self.source.id or row.id in self.hidden_item_ids:
+            if row.id == self.source.id or row.id in self.hidden_item_id_set:
                 continue
             if pointer <= row.start + row.size / 2:
                 return insertion_index
@@ -201,29 +246,42 @@ class HierarchicalReorder:
 
 
 @js
-def replay_reorder_gesture(
-    session: ReorderSession,
-    rows: list[ReorderRow],
-    script: GestureScript,
-) -> list[ReorderDecision]:
-    decisions: list[ReorderDecision] = []
-    start_x = 0.0
-    active = False
-    for sample in script.samples:
-        if sample.phase == "down":
-            start_x = sample.x
-            active = True
-        elif active and (sample.phase == "hold" or sample.phase == "move"):
-            decisions.append(
-                session.update(
-                    rows,
-                    sample.y,
-                    sample.x - start_x,
-                )
-            )
-        elif sample.phase == "up" or sample.phase == "cancel":
-            active = False
-    return decisions
+class ReorderObserver:
+    """Optional lifecycle observer for hierarchical reorder adapters."""
+
+    __pyjs_structural__ = True
+
+    def started(
+        self,
+        engine: HierarchicalReorder,
+        items: list[ReorderItem],
+        source_index: int,
+        session: ReorderSession | None,
+        samples: list[InteractionSample] | None = None,
+    ) -> None: ...
+
+    def updated(
+        self,
+        rows: list[ReorderRow],
+        pointer: float,
+        horizontal_delta: float,
+        decision: ReorderDecision,
+        *,
+        sample: InteractionSample | None = None,
+        measurements: list[InteractionMeasurement] | None = None,
+        viewport: InteractionViewport | None = None,
+        projections: list[InteractionProjection] | None = None,
+    ) -> None: ...
+
+    def committed(
+        self,
+        decision: ReorderDecision,
+        scroll_anchor_id: str = "",
+        scroll_anchor_offset: float = 0,
+        sample: InteractionSample | None = None,
+    ) -> None: ...
+
+    def cancelled(self, sample: InteractionSample | None = None) -> None: ...
 
 
 @js
@@ -249,7 +307,8 @@ __all__ = [
     "HierarchicalReorder",
     "ReorderDecision",
     "ReorderItem",
+    "ReorderObserver",
     "ReorderRow",
     "ReorderSession",
-    "replay_reorder_gesture",
+    "edge_scroll_offset",
 ]

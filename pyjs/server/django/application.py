@@ -1,30 +1,41 @@
-from collections.abc import Callable, Mapping
+import time
+from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
 
 from django.apps import apps
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.cache import patch_vary_headers
 
-from pyjs.server import navigation_fragment
-from pyjs.transpiler import bundle
+from pyjs.server.application import (
+    ApplicationContent,
+    ApplicationNode,
+    ApplicationPage,
+    ApplicationSection,
+    EntryPoint,
+)
+from pyjs.server.build import BuildStats
+from pyjs.server.rendering import navigation_fragment
+from pyjs.transpiler import (
+    BundleTarget,
+    bundle_targets_with_source_maps,
+    bundle_with_source_map,
+)
 from pyjs.web.dom import Element
 from pyjs.web.domx import tag
 from pyjs.web.navigation import NAVIGATION_HEADER
 from pyjs.web.ssr import render_document
 
-EntryPoint = Callable[..., object]
-Shell = Callable[[Element], Element]
-
 
 class PyJSApplication:
     def __init__(
         self,
-        entry_point: EntryPoint,
+        entry_point: EntryPoint | ApplicationSection,
         *,
         name: str,
-        pages: tuple[EntryPoint, ...] = (),
+        mounts: tuple[ApplicationNode, ...] = (),
         layout_id: str | None = None,
         javascript_name: str = "app.js",
         stylesheet_name: str = "app.css",
@@ -32,9 +43,16 @@ class PyJSApplication:
         html_attributes: Mapping[str, str] | None = None,
         body_attributes: Mapping[str, str] | None = None,
     ):
+        if isinstance(entry_point, ApplicationSection):
+            if mounts:
+                raise ValueError(
+                    "An application section root already defines its mounted children."
+                )
+            mounts = entry_point.children
+            entry_point = entry_point.entry_point
         self.entry_point = entry_point
         self.name = name
-        self.pages = pages
+        self.mounts = mounts
         self.layout_id = layout_id
         self.javascript_name = javascript_name
         self.stylesheet_name = stylesheet_name
@@ -43,24 +61,139 @@ class PyJSApplication:
             {"lang": "en"} if html_attributes is None else dict(html_attributes)
         )
         self.body_attributes = dict(body_attributes or {})
+        self.build_stats: BuildStats | None = None
+        self._page_sections: dict[ApplicationPage, tuple[ApplicationSection, ...]] = {}
+        self._target_names: dict[ApplicationNode, str] = {}
+        self._bundle_targets = self._index_mounts()
+
+    def _index_mounts(self) -> tuple[BundleTarget, ...]:
+        seen: set[ApplicationNode] = set()
+        entry_points = {self.entry_point}
+        targets = [BundleTarget(self.bundle_stem, self.entry_point)]
+
+        def visit(
+            nodes: tuple[ApplicationNode, ...],
+            parent: str,
+            sections: tuple[ApplicationSection, ...],
+        ) -> None:
+            names: set[str] = set()
+            for node in nodes:
+                if not node.name or "." in node.name or "/" in node.name:
+                    raise ValueError(
+                        "Application node names must be non-empty path segments."
+                    )
+                if node.name in names:
+                    raise ValueError(
+                        f"Application node name {node.name!r} is duplicated under "
+                        f"{parent!r}."
+                    )
+                names.add(node.name)
+                if node in seen:
+                    raise ValueError(
+                        f"Application node {node.name!r} may only be mounted once."
+                    )
+                seen.add(node)
+                if node.entry_point in entry_points:
+                    raise ValueError(
+                        "Each application node requires a distinct entry point."
+                    )
+                entry_points.add(node.entry_point)
+                target_name = f"{parent}.{node.name}"
+                self._target_names[node] = target_name
+                targets.append(BundleTarget(target_name, node.entry_point, parent))
+                if isinstance(node, ApplicationPage):
+                    self._page_sections[node] = sections
+                else:
+                    visit(node.children, target_name, (*sections, node))
+
+        visit(self.mounts, self.bundle_stem, ())
+        return tuple(targets)
 
     def static_path(self, filename: str) -> str:
         return f"{self.name}/{filename}"
 
+    @property
+    def bundle_stem(self) -> str:
+        return Path(self.javascript_name).stem
+
+    @property
+    def bundle_suffix(self) -> str:
+        return Path(self.javascript_name).suffix
+
+    def bundle_targets(self) -> tuple[BundleTarget, ...]:
+        return self._bundle_targets
+
+    def bundle_filename(self, page: ApplicationPage | None = None) -> str:
+        if page is None:
+            return self.javascript_name
+        try:
+            return f"{self._target_names[page]}{self.bundle_suffix}"
+        except KeyError:
+            raise ValueError(
+                f"Page {page.name!r} is not mounted in this application."
+            ) from None
+
+    def _resolve_content(
+        self,
+        content: Element | ApplicationContent,
+    ) -> tuple[Element, ApplicationPage | None]:
+        if not isinstance(content, ApplicationContent):
+            return content, None
+        if content.page not in self._page_sections:
+            raise ValueError(
+                f"Page {content.page.name!r} is not mounted in this application."
+            )
+        result = content.content
+        for section in reversed(self._page_sections[content.page]):
+            result = section.entry_point(result)
+        return result, content.page
+
     def build(self, output_directory: str | Path | None = None) -> tuple[Path, Path]:
+        started = time.perf_counter()
         if output_directory is None:
             output_directory = self.default_output_directory()
         output_directory = Path(output_directory)
         output_directory.mkdir(parents=True, exist_ok=True)
 
-        javascript, stylesheet = bundle(
-            self.entry_point,
-            additional_entry_points=self.pages,
-        )
+        targets = self.bundle_targets()
         javascript_output = output_directory / self.javascript_name
         stylesheet_output = output_directory / self.stylesheet_name
-        javascript_output.write_text(javascript, encoding="utf-8")
-        stylesheet_output.write_text(stylesheet, encoding="utf-8")
+        if len(targets) == 1:
+            generated, stylesheet = bundle_with_source_map(
+                self.entry_point,
+                additional_entry_points=(),
+                filename=self.javascript_name,
+            )
+            generated_targets = {self.bundle_stem: generated}
+        else:
+            generated_targets, stylesheet = bundle_targets_with_source_maps(
+                targets,
+                filename_suffix=self.bundle_suffix,
+            )
+        javascript_bytes = 0
+        for target_name, generated in generated_targets.items():
+            filename = f"{target_name}{self.bundle_suffix}"
+            source_map_name = f"{filename}.map"
+            source = generated.with_source_mapping_url(source_map_name)
+            target_output = output_directory / filename
+            target_output.write_text(
+                source,
+                encoding="utf-8",
+                newline="\n",
+            )
+            javascript_bytes += len(source.encode("utf-8"))
+            (output_directory / source_map_name).write_text(
+                generated.source_map.to_json(),
+                encoding="utf-8",
+                newline="\n",
+            )
+        stylesheet_output.write_text(stylesheet, encoding="utf-8", newline="\n")
+        self.build_stats = BuildStats(
+            time.perf_counter() - started,
+            len(generated_targets),
+            javascript_bytes,
+            len(stylesheet.encode("utf-8")),
+        )
         return javascript_output, stylesheet_output
 
     def default_output_directory(self) -> Path:
@@ -85,7 +218,9 @@ class PyJSApplication:
         *,
         title: str,
         head: tuple[Element, ...] = (),
+        page: ApplicationPage | None = None,
     ) -> Element:
+        bundle_url = static(self.static_path(self.bundle_filename(page)))
         return tag(
             "html",
             self.html_attributes,
@@ -100,6 +235,7 @@ class PyJSApplication:
                     },
                 ),
                 tag("title", title),
+                tag("link", {"href": bundle_url, "rel": "modulepreload"}),
                 tag(
                     "link",
                     {
@@ -117,7 +253,7 @@ class PyJSApplication:
                 tag(
                     "script",
                     {
-                        "src": static(self.static_path(self.javascript_name)),
+                        "src": bundle_url,
                         "type": "module",
                     },
                     " ",
@@ -128,17 +264,76 @@ class PyJSApplication:
     def response(
         self,
         request: HttpRequest,
-        content: Element,
+        content: Element | ApplicationContent,
         *,
         title: str,
-        shell: Shell | None = None,
+        shell_args: tuple[object, ...] = (),
         head: tuple[Element, ...] = (),
         status: int = 200,
         headers: Mapping[str, str] | None = None,
     ) -> HttpResponse:
-        if shell is not None:
-            content = shell(content)
-        source = render_document(self.create_document(content, title=title, head=head))
+        content, page = self._resolve_content(content)
+        if page is not None and self.layout_id is not None:
+            if request.headers.get(NAVIGATION_HEADER) == "1":
+                response = self._navigation_fragment_response(
+                    content,
+                    title=title,
+                    status=status,
+                    headers=headers,
+                    page=page,
+                )
+            else:
+                response = self._document_response(
+                    request,
+                    self.entry_point(content, *shell_args),
+                    title=title,
+                    head=head,
+                    status=status,
+                    headers=headers,
+                    page=page,
+                )
+            patch_vary_headers(response, (NAVIGATION_HEADER,))
+            return response
+
+        if page is not None:
+            content = self.entry_point(content, *shell_args)
+
+        return self._document_response(
+            request,
+            content,
+            title=title,
+            head=head,
+            status=status,
+            headers=headers,
+            page=page,
+        )
+
+    def _document_response(
+        self,
+        request: HttpRequest,
+        content: Element,
+        *,
+        title: str,
+        head: tuple[Element, ...],
+        status: int,
+        headers: Mapping[str, str] | None,
+        page: ApplicationPage | None,
+    ) -> HttpResponse:
+        csrf = tag(
+            "meta",
+            {
+                "content": get_token(request),
+                "name": "csrf-token",
+            },
+        )
+        source = render_document(
+            self.create_document(
+                content,
+                title=title,
+                head=(csrf, *head),
+                page=page,
+            )
+        )
         return HttpResponse(
             source,
             status=status,
@@ -146,37 +341,20 @@ class PyJSApplication:
             headers=headers,
         )
 
-    def navigation_response(
+    def _navigation_fragment_response(
         self,
-        request: HttpRequest,
         content: Element,
         *,
         title: str,
-        shell: Shell,
-        head: tuple[Element, ...] = (),
-        status: int = 200,
-        headers: Mapping[str, str] | None = None,
+        status: int,
+        headers: Mapping[str, str] | None,
+        page: ApplicationPage,
     ) -> HttpResponse:
-        if self.layout_id is None:
-            raise ValueError("navigation_response() requires layout_id")
-
-        if request.headers.get(NAVIGATION_HEADER) == "1":
-            source = navigation_fragment(content, title, self.layout_id)
-            response = HttpResponse(
-                source,
-                status=status,
-                content_type="text/html; charset=utf-8",
-                headers=headers,
-            )
-        else:
-            response = self.response(
-                request,
-                content,
-                title=title,
-                shell=shell,
-                head=head,
-                status=status,
-                headers=headers,
-            )
-        patch_vary_headers(response, (NAVIGATION_HEADER,))
-        return response
+        bundle = static(self.static_path(self.bundle_filename(page)))
+        source = navigation_fragment(content, title, self.layout_id, bundle)
+        return HttpResponse(
+            source,
+            status=status,
+            content_type="text/html; charset=utf-8",
+            headers=headers,
+        )

@@ -1,35 +1,65 @@
+<p align="center">
+  <img src="branding/pyjs-logo.svg" alt="PyJS" width="170">
+</p>
+
 # PyJS: Python to JavaScript
 
-> Pre-alpha: useful applications and tests work today, but APIs may change during the early
-> releases.
+[![CI][ci-badge]][ci] [![PyPI][pypi-badge]][pypi]
+[![Python][python-badge]][pypi] [![License][license-badge]][license]
 
-PyJS is a statically analyzed Python-to-JavaScript compiler. It turns reachable, typed Python code
-into readable, tree-shaken JavaScript without shipping a Python runtime. Its current libraries make
-it especially useful for server-rendered web applications and browser-native custom elements:
-application code can render on the server, hydrate as native custom elements, and continue running
-in the browser. Public APIs and values whose types cannot be inferred need type annotations.
+**Write typed Python for servers, browsers, and Android—without shipping a
+Python runtime to JavaScript targets.**
 
-Coding agents can run `pyjs skill` for version-matched instructions, then use `pyjs template` and
-`pyjs template NAME` to discover installed examples and inspect their complete source. The
-[installable PyJS skill](https://github.com/pyjs/pyjs/tree/main/pyjs/skills/pyjs) is also available
-directly from the public repository.
+PyJS statically analyzes reachable Python and emits readable, tree-shaken
+JavaScript. The same component can render real HTML on the server, hydrate as a
+native custom element in the browser, and share application logic with a
+NativeScript Android app.
 
-## Goals
+PyJS is early-release software: complete applications and tests work today,
+while APIs can still change between releases.
 
-- No Python runtime in generated JavaScript
-- Readable, performant JavaScript comparable to handwritten output
-- Server rendering and browser behavior expressed with the same typed Python objects
-- Browser-native custom elements as the application framework
-- Enough well-defined Python semantics to build productive applications
+## See it work in 30 seconds
 
-## Non-goals
+```bash
+python -m pip install "pyjs[examples]"
+python -m pyjs_examples.calculator
+```
 
-- Reimplement every Python feature or the complete standard library in JavaScript
-- Preserve highly dynamic behavior such as runtime monkey-patching, `eval()`, or arbitrary imports
-- Infer types when the source contains no usable type information
-- Replace a production web server or a general-purpose Python test runner
+Open the clickable local URL printed by the server. The Calculator is one
+Python application targeting the Web, an installable PWA, and Android. Try the
+[source](examples/calculator/calculator.py), then inspect its browser and
+Android tests beside it.
 
-## Getting started
+PyJS keeps the generated result recognizable. Given:
+
+```python
+from pyjs import js
+
+
+@js
+def total(prices: list[int]) -> int:
+    return sum(prices)
+
+
+print(total([12, 30]))
+```
+
+`pyjs --src -c '...'` emits:
+
+```javascript
+export function total(prices) {
+    return (prices).reduce((total,value)=>total+value,0);
+}
+
+export function main() {
+    console.log(total([12, 30]));
+}
+```
+
+There is no bundled Python interpreter, virtual DOM, or JavaScript project to
+maintain.
+
+## Create your first project
 
 Install PyJS and create a project:
 
@@ -41,22 +71,55 @@ python -m pip install -e ".[test]"
 python -m hello_pyjs
 ```
 
-Open <http://127.0.0.1:8000/>. The generated project has no Node.js configuration or JavaScript
-source: it contains a custom element, server entry point, Python tests, and a browser test.
+Open <http://127.0.0.1:8000/>. The generated project has no Node.js
+configuration or JavaScript source: it contains a custom element, server entry
+point, Python tests, and a browser test.
 
 Run its test suite on either target:
 
 ```bash
+ruff check .
 python -m pytest -q
-python -m pytest -q --pyjs-target=web
+python -m pytest -q --pyjs-target=web --pyjs-browser=managed
 ```
 
 To develop PyJS itself from a source checkout, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## What makes PyJS different
+
+- **Python stays visible.** Generated JavaScript is readable and maps back to
+  the original Python in browser DevTools.
+- **HTML is the handoff.** Components render on the server, retain small typed
+  state in the DOM, and hydrate the elements already on screen.
+- **The browser is the framework.** Custom elements, attributes, events, and
+  Web APIs remain direct platform primitives rather than a virtual DOM.
+- **Types remove runtime weight.** Static analysis specializes Python semantics
+  and tree-shakes code from each entry point.
+- **Escape hatches stay open.** Typed browser APIs and raw transports remain
+  available beneath the UI and full-stack conveniences.
+
+Coding agents can run `pyjs skill` for version-matched guidance and
+`pyjs template` to discover complete executable examples. The
+[installable PyJS skill](pyjs/skills/pyjs/SKILL.md) is included in the package
+and public repository.
+
 ## Start from an example
 
-PyJS distinguishes complete applications from small, focused samples:
+The separately installed examples progress from a one-file counter to composed
+full-stack applications:
+
+| Example | Purpose | Principal coverage |
+| --- | --- | --- |
+| [Counter](examples/counter.py) | Smallest app | DOM, events, tests |
+| [Calculator](examples/calculator/) | Universal app | Web, PWA, Android, SSR |
+| [Components](examples/components/) | UI reference | Widgets, forms, routing |
+| [Notes](examples/notes/) | Personal app | Android, drag/drop, restore |
+| [Chat](examples/chat/) | Real-time starter | WebSockets, multi-window |
+| [Store](examples/store/) | Business app | Django, JSON:API, SSE, theming |
+| [Space Invaders](examples/space_invaders/) | GPU game | WebGPU, render tests |
+
+Inspect or copy any of them:
 
 ```bash
 python -m pip install "pyjs[examples]"
@@ -67,25 +130,37 @@ pyjs template pyjs_examples.calculator --src
 pyjs create my_calculator --template pyjs_examples.calculator
 pyjs create counter_demo --template pyjs_examples.counter
 pyjs create my_counter --single-file --template pyjs_examples.counter
-pyjs create state_counter_demo --template pyjs_examples.samples.state_counter
-pyjs create dialog_demo --template pyjs_examples.samples.ui_dialog
+pyjs create components_demo --template pyjs_examples.components
+```
+
+The template catalog contains examples that can be copied safely out of their
+installed package. Store is a comprehensive runnable application instead of a
+scaffold because its Django package, fixture data, and optional server
+dependencies belong together. Run it directly with:
+
+```bash
+python -m pip install "pyjs-examples[store]"
+python -m pyjs_examples.store
 ```
 
 `pyjs create NAME` creates a project in `NAME/`, with application code in
-`NAME/NAME/NAME.py` and tests in `NAME/tests/`. Pass a destination as the second positional argument
-to populate another directory, such as `pyjs create routine .`. Add `--src-layout` to put the
-package under `src/`. After installation, `python -m NAME` starts either package layout through its
-ordinary Python entry point. `pyjs serve` is also available as a convenience and uses the
-application recorded in `pyproject.toml`.
-`--single-file` explicitly requests one standalone Python file and requires a file template when
-combined with `--template`. The `pyjs-examples` distribution registers both file and directory
-templates and contains the source copied by `pyjs create`; templates are not embedded in the
-scaffolding implementation.
+`NAME/NAME/NAME.py` and tests in `NAME/tests/`. Pass a destination as the
+second positional argument to populate another directory, such as
+`pyjs create routine .`. Add `--src-layout` to put the package under `src/`.
+After installation, `python -m NAME` starts either package layout through its
+ordinary Python entry point. `pyjs serve` is also available as a convenience
+and uses the application recorded in `pyproject.toml`.
+
+`--single-file` explicitly requests one standalone Python file and requires a
+file template when combined with `--template`. The `pyjs-examples`
+distribution registers both file and directory templates and contains the
+source copied by `pyjs create`; templates are not embedded in the scaffolding
+implementation.
 
 ## Run or inspect Python as JavaScript
 
-For Node-compatible code, PyJS can compile and run a file, module, or command string directly with
-its managed Node runtime:
+For Node-compatible code, PyJS can compile and run a file, module, or command
+string directly with its managed Node runtime:
 
 ```bash
 pyjs app.py
@@ -97,13 +172,14 @@ pyjs --src-all app.py      # entry source and tree-shaken dependencies
 pyjs --perf -c 'print(sum(range(10)))'
 ```
 
-Use `--json` for structured results or `--perf` to compare Python and generated-JavaScript timing.
-DOM, WebGPU, and other browser APIs still run through an application or browser test.
+Use `--json` for structured results or `--perf` to compare Python and generated
+JavaScript timing. DOM, WebGPU, and other browser APIs still run through an
+application or browser test.
 
 ## Build an entry point
 
-The application server builds and serves browser assets automatically. To write the generated
-JavaScript, CSS, and HTML explicitly:
+The application server builds and serves browser assets automatically. To
+write the generated JavaScript, CSS, and HTML explicitly:
 
 ```bash
 pyjs build hello_pyjs.hello_pyjs:main
@@ -113,25 +189,30 @@ Use `--only-js` when only the browser bundle is needed.
 
 ## Application model
 
-An application entry point returns a server-rendered DOM tree. Classes decorated with `@js` are
-available to the browser compiler, and reachable methods are included in the generated bundle.
-`CustomElement` subclasses render on the server and hydrate as browser-native custom elements.
-`ref()` reconnects Python attributes to existing server-rendered nodes rather than recreating them.
+An application entry point returns a server-rendered DOM tree. Classes
+decorated with `@js` are available to the browser compiler, and reachable
+methods are included in the generated bundle. `CustomElement` subclasses
+render on the server and hydrate as browser-native custom elements. `ref()`
+reconnects Python attributes to existing server-rendered nodes rather than
+recreating them.
 
-Module values cross the same explicit compilation boundary through a `JS[T]` annotation. Combine
-it with `Final` for constants, such as `heartbeat_interval: Final[JS[int]] = 5_000`; unmarked
-module values remain server-only and cannot be included by an accidental browser-side reference.
+Module values cross the same explicit compilation boundary through a `JS`
+annotation. Combine it with `Final` for constants, such as
+`heartbeat_interval: Final[JS] = 5_000`; unmarked module values remain
+server-only and cannot be included by an accidental browser-side reference.
 
-Values that must survive rendering and hydration can live on the custom element as DOM attributes.
-The `state()` descriptor and `@effect(...)` provide a small typed reactive layer for updating the
-DOM imperatively. Server-only handlers and browser methods can coexist in the same module.
+Values that must survive rendering and hydration can live on the custom
+element as DOM attributes. The `state()` descriptor and `@effect(...)` provide
+a small typed reactive layer for updating the DOM imperatively. Server-only
+handlers and browser methods can coexist in the same module.
 
 ## Feature overview
 
 ### Tree shaking
 
-PyJS starts at the selected entry point and includes reachable browser code. In this example,
-`sleep()` and `run()` are reachable; `eat()` and `bark()` are omitted:
+PyJS starts at the selected entry point and includes reachable browser code.
+In this example, `sleep()` and `run()` are reachable; `eat()` and `bark()` are
+omitted:
 
 ```python
 from pyjs import js
@@ -161,14 +242,15 @@ def main():
     dog.run()
 ```
 
-Ordinary event handlers and called methods do not need `include=True`. That option remains an
-escape hatch for unusual methods invoked dynamically by JavaScript.
+Ordinary event handlers and called methods do not need `include=True`. That
+option remains an escape hatch for unusual methods invoked dynamically by
+JavaScript.
 
 ### Type inference and checking
 
-The analyzer infers types from literals, constructors, calls, and control flow. Empty collections
-and public boundaries generally need annotations because their element or return type cannot be
-recovered from a value:
+The analyzer infers types from literals, constructors, calls, and control flow.
+Empty collections and public boundaries generally need annotations because
+their element or return type cannot be recovered from a value:
 
 ```python
 from pyjs import js
@@ -190,12 +272,14 @@ def main():
     print(animal.get_name())
 ```
 
-Type errors are reported during analysis instead of being deferred to generated JavaScript.
-Diagnostics are improving and do not yet cover every invalid program equally well.
+Type errors are reported during analysis instead of being deferred to generated
+JavaScript. Diagnostics are improving and do not yet cover every invalid
+program equally well.
 
 ### Type narrowing
 
-Union types narrow through `isinstance()`, branches, assertions, and null checks:
+Union types narrow through `isinstance()`, branches, assertions, and null
+checks:
 
 ```python
 from pyjs import js
@@ -217,14 +301,15 @@ def main():
     length("four")
 ```
 
-`is None` and `is not None` compile to nullish JavaScript comparisons, covering both JavaScript
-`null` and `undefined`, while identity comparisons between ordinary objects retain identity
-semantics.
+`is None` and `is not None` compile to nullish JavaScript comparisons, covering
+both JavaScript `null` and `undefined`, while identity comparisons between
+ordinary objects retain identity semantics.
 
 ### Operator overloading
 
-Built-in operators use their normal JavaScript equivalents for compatible primitive values and
-dispatch to Python special methods for user-defined classes:
+Built-in operators use their normal JavaScript equivalents for compatible
+primitive values and dispatch to Python special methods for user-defined
+classes:
 
 ```python
 from pyjs import js
@@ -252,9 +337,10 @@ def main():
 
 ### Generic types
 
-The analyzer preserves concrete element and key/value types for built-in collections such as
-`list[T]`, `dict[K, V]`, and `tuple[...]`. User-defined generic specialization exists in the
-analyzer but remains experimental and is not yet a stable application-facing feature.
+The analyzer preserves concrete element and key/value types for built-in
+collections such as `list[T]`, `dict[K, V]`, and `tuple[...]`. User-defined
+generic specialization exists in the analyzer but remains experimental and is
+not yet a stable application-facing feature.
 
 Typed tuples and lists can be unpacked into local names. Tuple and literal-list
 arity is checked during compilation; dynamic lists retain Python's runtime
@@ -263,30 +349,40 @@ supported.
 
 ### Async code and exceptions
 
-Async functions and `await` lower to JavaScript promises. Typed browser APIs such as `fetch()`,
-WebSockets, and WebGPU use the same syntax as asynchronous Python code. Basic raising and exception
-handling are supported, but exception semantics are not yet a complete match for CPython.
+Async functions and `await` lower to JavaScript promises. Typed browser APIs
+such as `fetch()`, WebSockets, and WebGPU use the same syntax as asynchronous
+Python code. Basic raising and exception handling are supported, but exception
+semantics are not yet a complete match for CPython.
 
 ### Metaprogramming and compiler extensions
 
-Module and class bodies execute in Python before analysis, so ordinary Python metaprogramming can
-construct the definitions that PyJS later analyzes. The `@js` decorator also supports client
-replacements and inline call generation for typed browser API bindings. Compilation extensions can
-rewrite function ASTs and inject imports before analysis; the browser-testing integration uses this
-mechanism for assertion diagnostics.
+Module and class bodies execute in Python before analysis, so ordinary Python
+metaprogramming can construct the definitions that PyJS later analyzes. The
+`@js` decorator also supports client replacements and inline call generation
+for typed browser API bindings. Compilation extensions can rewrite function
+ASTs and inject imports before analysis; the browser-testing integration uses
+this mechanism for assertion diagnostics.
 
-These are advanced integration tools. Application code should normally use typed Python and the
-APIs already provided by `pyjs.web.dom`, `pyjs.web.domx`, and `pyjs.web.ui`.
+These are advanced integration tools. Application code should normally use
+typed Python and the APIs already provided by `pyjs.web.dom`,
+`pyjs.web.domx`, and `pyjs.web.ui`.
 
 ## Web UI and state
 
-`pyjs.web.ui` contains reusable custom-element components inspired by shadcn/ui and adapted for
-normal Python imports, subclassing, and imperative DOM composition. The catalog includes forms,
-dialogs, menus, popovers, tabs, accordions, data display, navigation, charts, and layout primitives.
+`pyjs.web.ui` contains reusable custom-element components inspired by shadcn/ui
+and adapted for normal Python imports, subclassing, and imperative DOM
+composition. The catalog includes forms, dialogs, menus, popovers, tabs,
+accordions, data display, navigation, charts, and layout primitives.
 
 ```python
 from pyjs.web.ui.button import Button
-from pyjs.web.ui.card import Card, CardContent, CardFooter, CardHeader, CardTitle
+from pyjs.web.ui.card import (
+    Card,
+    CardContent,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+)
 
 profile = Card(
     CardHeader(CardTitle("Profile")),
@@ -316,33 +412,35 @@ class Counter(CustomElement):
         self.value.textContent = str(self.count)
 ```
 
-Effects run during server rendering. Hydration reuses that rendered result rather than repeating
-the initial effect in the browser.
+Effects run during server rendering. Hydration reuses that rendered result
+rather than repeating the initial effect in the browser.
 
 ## Testing
 
-PyJS registers a pytest plugin that can run portable tests in Python or compile them for isolated
-browser iframes:
+PyJS registers a pytest plugin that can run portable tests in Python or compile
+them for isolated browser iframes:
 
 ```bash
 python -m pytest -q
 python -m pytest -q --pyjs-target=web
 ```
 
-Use `pytest.mark.pyjs_web` for tests that should be compiled and run in the browser.
-Unmarked tests run only as ordinary Python tests; `pytest.mark.pyjs_python` can make that intent
-explicit. A filename such as
-`test_browser_dialog.py` is only an organizational convention and has no implicit behavior.
+Use `pytest.mark.pyjs_web` for tests that should be compiled and run in the
+browser. Unmarked tests run only as ordinary Python tests;
+`pytest.mark.pyjs_python` can make that intent explicit. A filename such as
+`test_browser_dialog.py` is only an organizational convention and has no
+implicit behavior.
 
-Browser tests retain console output and errors. Tests that render meaningful UI retain their iframe
-preview, and render assertions can compare screenshots against checked-in PNG baselines.
+Browser tests retain console output and errors. Tests that render meaningful
+UI retain their iframe preview, and render assertions can compare screenshots
+against checked-in PNG baselines.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `pyjs --version` | Show the installed version |
-| `pyjs FILE.py`, `pyjs -m MODULE`, `pyjs -c CODE` | Compile and run with managed Node |
+| `pyjs FILE.py`, `pyjs -m MODULE`, `pyjs -c CODE` | Run with managed Node |
 | `pyjs --src INPUT` | Print generated JavaScript without running it |
 | `pyjs --src-all INPUT` | Include all tree-shaken dependency sources |
 | `pyjs --perf INPUT` | Compare Python and generated-JavaScript performance |
@@ -357,8 +455,9 @@ preview, and render assertions can compare screenshots against checked-in PNG ba
 | `pyjs inspect URL` | Capture a screenshot and structured browser diagnostics |
 | `pyjs skill` | Print version-matched instructions for coding agents |
 
-The built-in application server is run from Python source with `serve(__file__)`; the generated
-starter and examples already provide this entry point.
+The built-in development server is run from Python source with
+`pyjs.server.dev.serve(__file__)`; generated starters and examples already
+provide this entry point.
 
 NativeScript projects can declare external npm modules without editing the
 generated build directory:
@@ -381,31 +480,39 @@ transpiled application bundle.
 
 ## Current limitations and missing features
 
-PyJS is intentionally a typed subset of Python, and the current releases remain pre-alpha:
+PyJS is intentionally a typed subset of Python, and the current releases remain
+pre-alpha. This section summarizes the current boundary while the versioned
+documentation site is being prepared.
 
 - Multiple inheritance is not supported.
-- Reflection, runtime monkey-patching, `eval()`, and arbitrary dynamic imports are outside the
-  compilation model.
-- Python standard-library and browser API coverage is incomplete; APIs are added as typed PyJS
-  definitions.
-- User-defined generic class specialization still has unsupported shapes and needs dedicated
-  regression coverage before it is considered stable.
-- Some invalid programs still produce low-level analyzer errors instead of concise diagnostics with
-  precise source locations.
-- Source maps from generated JavaScript back to Python are not implemented yet.
-- The development server rebuilds when it starts, but browser hot reload is not implemented.
-- Browser-target pytest fixtures and helpers are a subset of normal pytest; compatibility work such
-  as browser-side `pytest.raises` remains planned.
-- Tree shaking still has an `include=True` escape hatch for unusual methods reached only through
-  opaque JavaScript dispatch.
-- Reactive effects run immediately for each attribute mutation; updates are not currently batched.
-- The bundled HTTP server and documentation server are development tools, not production servers.
-- NativeScript output is experimental; the first proof of concept currently targets Android and
-  covers a small set of core views.
+- Reflection, runtime monkey-patching, `eval()`, and arbitrary dynamic imports
+  are outside the compilation model.
+- Python standard-library and browser API coverage is incomplete; APIs are
+  added as typed PyJS definitions.
+- User-defined generic class specialization still has unsupported shapes and
+  needs dedicated regression coverage before it is considered stable.
+- Some invalid programs still produce low-level analyzer errors instead of
+  concise diagnostics with precise source locations.
+- Generated bundles include source maps back to Python. Mapping coverage and
+  browser-runtime presentation will continue to improve.
+- The development server rebuilds when it starts, but browser hot reload is not
+  implemented.
+- Browser-target pytest fixtures and helpers are a subset of normal pytest.
+  Browser tests support `pytest.raises()` as a context manager, including its
+  `match` argument and captured exception value.
+- Tree shaking still has an `include=True` escape hatch for unusual methods
+  reached only through opaque JavaScript dispatch.
+- Reactive effects run immediately for each attribute mutation; updates are
+  not currently batched.
+- The bundled HTTP server and documentation server are development tools, not
+  production servers.
+- NativeScript output currently targets Android. Core application, layout,
+  input, storage, drag-and-drop, screenshot, and device-test workflows work;
+  platform API coverage continues to expand.
 
-See the [testing guide](docs/guide/testing.md) and
-[TREE_SHAKING.md](TREE_SHAKING.md) for focused behavior and implementation
-status. The broader guides and references live in [docs/](docs/).
+Run `pyjs skill` for the installed-version guidance and `pyjs template` for
+complete executable examples while the public documentation site is being
+prepared.
 
 ## Contributing
 
@@ -413,3 +520,11 @@ The development environment, repository structure, compiler contracts, and
 verification workflow are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 PyJS is distributed under the [BSD 3-Clause License](LICENSE).
+
+[ci]: https://github.com/pyjs/pyjs/actions/workflows/ci.yml
+[ci-badge]: https://github.com/pyjs/pyjs/actions/workflows/ci.yml/badge.svg
+[pypi]: https://pypi.org/project/pyjs/
+[pypi-badge]: https://img.shields.io/pypi/v/pyjs.svg
+[python-badge]: https://img.shields.io/pypi/pyversions/pyjs.svg
+[license]: LICENSE
+[license-badge]: https://img.shields.io/pypi/l/pyjs.svg

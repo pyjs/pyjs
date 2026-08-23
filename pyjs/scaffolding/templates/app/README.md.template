@@ -16,8 +16,8 @@ python -m pip install -e ".[test]"
 python -m __PYJS_PACKAGE__
 ```
 
-When PyJS is installed through npm, or for a convenient Python one-off, run it directly with
-PyJS instead:
+When PyJS is installed through npm, or for a convenient Python one-off, run
+it directly with PyJS instead:
 
 ```bash
 pyjs serve
@@ -26,6 +26,12 @@ pyjs serve
 Open <http://127.0.0.1:8000/>.
 
 ## Test
+
+Check the Python source:
+
+```bash
+ruff check .
+```
 
 Run the Python target:
 
@@ -36,5 +42,5 @@ python -m pytest -q
 Run the web target:
 
 ```bash
-python -m pytest -q --pyjs-target=web
+python -m pytest -q --pyjs-target=web --pyjs-browser=managed
 ```

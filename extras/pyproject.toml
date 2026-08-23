@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyjs-extras"
+version = "0.4.0"
+requires-python = ">=3.14"
+authors = [
+    {name = "Lex Berezhny", email = "lex@damoti.com"},
+]
+description = "Official third-party integrations for PyJS."
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+dependencies = [
+    "pyjs==0.4.0",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/pyjs/pyjs"
+Source = "https://github.com/pyjs/pyjs"
+
+[project.optional-dependencies]
+stripe = ["stripe>=14,<15"]
+test = ["pytest>=9.0", "stripe>=14,<15"]
+
+[project.scripts]
+pyjs-stripe-simulator = "pyjs_extras.stripe.simulator:main"
+
+[tool.setuptools]
+include-package-data = false
+packages = [
+    "pyjs_extras",
+    "pyjs_extras.stripe",
+]
+
+[tool.setuptools.package-dir]
+"pyjs_extras" = "."
+
+[tool.pytest.ini_options]
+testpaths = ["stripe/tests"]
+
+[tool.uv.sources]
+pyjs = {workspace = true}
+
+[tool.ruff]
+target-version = "py314"
+line-length = 90
+
+[tool.ruff.lint]
+extend-select = ["B", "I", "UP"]

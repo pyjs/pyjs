@@ -106,7 +106,7 @@ class Calendar(Widget):
         return value
 
     def select_day(self, day: str):
-        buttons: list[Element] = self.querySelectorAll("[data-slot=calendar-day]")
+        buttons = self.querySelectorAll("[data-slot=calendar-day]")
         for day_button in buttons:
             selected = day_button.getAttribute("data-day") == day
             day_button.setAttribute("aria-pressed", "true" if selected else "false")

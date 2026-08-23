@@ -66,6 +66,22 @@ def _model_value(
 
 
 @js
+def _attach_document(model: BaseModel, document: object) -> None:
+    object.__setattr__(model, "__pyjs_jsonapi_document__", document)
+
+
+_attach_document.source(
+    "Object.defineProperty(model, '$pyjsDocument', "
+    "{value: document, configurable: true});"
+)
+
+
+@js.inline("{model}.$pyjsDocument ?? null")
+def model_document(model: object) -> object | None:
+    return getattr(model, "__pyjs_jsonapi_document__", None)
+
+
+@js
 class ResourceLinkage:
     def __init__(
         self,
@@ -128,6 +144,17 @@ class DecodedJSONAPIDocument:
         if not values:
             return None
         return values[0]
+
+    def related_model(
+        self,
+        model: object,
+        relationship: str,
+    ) -> BaseModel | list[BaseModel] | None:
+        for resource_type, resources in self.resources.items():
+            for identifier, value in resources.items():
+                if value is model:
+                    return self.related(resource_type, identifier, relationship)
+        return None
 
 
 @js
@@ -211,6 +238,9 @@ class JSONAPIDecoder(DecodedJSONAPIDocument):
         elif primary_value is not None:
             data = primary_models[0]
         super().__init__(data, resources, relationships)
+        for values_by_id in resources.values():
+            for value in values_by_id.values():
+                _attach_document(value, self)
 
 
 @js

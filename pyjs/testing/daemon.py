@@ -14,33 +14,46 @@ import uuid
 import webbrowser
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
-from websockets.asyncio.server import ServerConnection, serve
-from websockets.datastructures import Headers
-from websockets.http11 import Request, Response
-
+from pyjs.server.dev import Application, Request, Response, Server, WebSocket
 from pyjs.testing.builder import (
+    BrowserBundle,
     BrowserBundleBuilder,
     SelectedTest,
     compute_testing_signature,
 )
 from pyjs.testing.protocol import failed_run
 from pyjs.tooling.browser import Browser, BrowserPage
-from pyjs.transpiler import bundle
+from pyjs.transpiler import (
+    SourceMap,
+    TranspiledJavaScript,
+    bundle,
+    map_stack_trace,
+)
 
 BROWSER_CONNECT_TIMEOUT_SECONDS = 30
 BROWSER_DISPATCH_TIMEOUT_SECONDS = 10
 BROWSER_STALE_AFTER_SECONDS = 15
 
 
-def make_response(status: int, reason: str, body: str, content_type: str) -> Response:
-    body_bytes = body.encode("utf-8")
-    headers = Headers()
-    headers["Content-Type"] = content_type
-    headers["Content-Length"] = str(len(body_bytes))
-    headers["Cache-Control"] = "no-store"
-    return Response(status, reason, headers, body_bytes)
+def map_result_exception(result: dict[str, Any], source_map: SourceMap) -> None:
+    exception = result.get("exception")
+    if isinstance(exception, dict):
+        stack = exception.get("stack")
+        mapped_stack = (
+            map_stack_trace(stack, source_map) if isinstance(stack, str) else ""
+        )
+        exception["mapped_stack"] = mapped_stack
+        message = exception.get("message")
+        result["error"] = mapped_stack
+        if not mapped_stack and isinstance(message, str):
+            result["error"] = message
+        return
+    if isinstance(error := result.get("error"), str) and error:
+        mapped_error = map_stack_trace(error, source_map)
+        if mapped_error != error:
+            result["raw_error"] = error
+        result["error"] = mapped_error
 
 
 def build_runner_components() -> tuple[str, str]:
@@ -104,10 +117,13 @@ class PrototypeDaemon:
         self.signature = compute_testing_signature()
         self.current_bundle = ""
         self.current_css = ""
+        self.current_source_map = SourceMap()
         self.current_run_id: str | None = None
+        self.cached_suite_id: str | None = None
+        self.cached_bundle: BrowserBundle | None = None
         self.reusable = True
         self.runner_page_error: str | None = None
-        self.active_browser: ServerConnection | None = None
+        self.active_browser: WebSocket | None = None
         self.last_browser_seen: float | None = None
         self.pending_results: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
         self.run_lock = asyncio.Lock()
@@ -154,12 +170,12 @@ class PrototypeDaemon:
             status["browser_console"] = self.managed_page.console[-10:]
         return status
 
-    def activate_browser(self, connection: ServerConnection) -> None:
+    def activate_browser(self, connection: WebSocket) -> None:
         self.active_browser = connection
         self.last_browser_seen = time.monotonic()
         self.browser_ready.set()
 
-    def note_browser_activity(self, connection: ServerConnection) -> None:
+    def note_browser_activity(self, connection: WebSocket) -> None:
         if self.active_browser is connection:
             self.last_browser_seen = time.monotonic()
 
@@ -171,73 +187,84 @@ class PrototypeDaemon:
         ):
             self.deactivate_browser(self.active_browser)
 
-    def deactivate_browser(self, connection: ServerConnection) -> None:
+    def deactivate_browser(self, connection: WebSocket) -> None:
         if self.active_browser is connection:
             self.active_browser = None
             self.browser_ready.clear()
 
-    async def process_request(
-        self,
-        connection: ServerConnection,
-        request: Request,
-    ) -> Response | None:
-        parsed = urlparse(request.path)
-        if parsed.path == "/":
-            self.touch_activity()
-            try:
-                page = self.runner_html()
-            except Exception:
-                self.runner_page_error = traceback.format_exc()
-                self.reusable = False
-                self.browser_ready.set()
-                return make_response(
-                    500,
-                    "Runner Build Failed",
-                    runner_build_failure_html(self.runner_page_error),
-                    "text/html; charset=utf-8",
-                )
-            self.runner_page_error = None
-            if self.active_browser is None:
-                self.browser_ready.clear()
-            return make_response(200, "OK", page, "text/html; charset=utf-8")
-        if parsed.path == "/bundle.js":
-            self.touch_activity()
-            query = parse_qs(parsed.query)
-            requested_run_id = query.get("run_id", [None])[0]
-            if not self.current_bundle or requested_run_id != self.current_run_id:
-                return make_response(
-                    404, "Not Found", "bundle not available", "text/plain; charset=utf-8"
-                )
-            return make_response(
-                200, "OK", self.current_bundle, "application/javascript; charset=utf-8"
-            )
-        if parsed.path == "/bundle.css":
-            self.touch_activity()
-            query = parse_qs(parsed.query)
-            requested_run_id = query.get("run_id", [None])[0]
-            if requested_run_id != self.current_run_id:
-                return make_response(
-                    404,
-                    "Not Found",
-                    "bundle not available",
-                    "text/plain; charset=utf-8",
-                )
-            return make_response(200, "OK", self.current_css, "text/css; charset=utf-8")
-        if parsed.path == "/healthz":
-            return make_response(
-                200,
-                "OK",
-                json.dumps(self.status_payload()),
-                "application/json; charset=utf-8",
-            )
-        if parsed.path == "/shutdown":
-            self.shutdown_event.set()
-            return make_response(200, "OK", "shutting down", "text/plain; charset=utf-8")
-        if parsed.path in {"/ws", "/control"}:
-            return None
-        return make_response(404, "Not Found", "not found", "text/plain; charset=utf-8")
+    def discard_bundle(self) -> None:
+        self.current_bundle = ""
+        self.current_css = ""
+        self.current_source_map = SourceMap()
+        self.current_run_id = None
+        self.cached_suite_id = None
+        self.cached_bundle = None
+        self.reusable = False
 
-    async def handler(self, connection: ServerConnection) -> None:
+    async def runner_page(self, request: Request) -> Response:
+        self.touch_activity()
+        try:
+            runner_page = await asyncio.to_thread(self.runner_html)
+        except Exception:
+            self.runner_page_error = traceback.format_exc()
+            self.reusable = False
+            self.browser_ready.set()
+            return Response.html(
+                runner_build_failure_html(self.runner_page_error),
+                status=500,
+                headers={"Cache-Control": "no-store"},
+            )
+        self.runner_page_error = None
+        if self.active_browser is None:
+            self.browser_ready.clear()
+        return Response.html(runner_page, headers={"Cache-Control": "no-store"})
+
+    def bundle_javascript(self, request: Request) -> Response:
+        self.touch_activity()
+        requested_run_id = request.query_value("run_id")
+        if not self.current_bundle or requested_run_id != self.current_run_id:
+            return Response.text("bundle not available", status=404)
+        return Response(
+            self.current_bundle,
+            content_type="application/javascript; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def bundle_css(self, request: Request) -> Response:
+        self.touch_activity()
+        requested_run_id = request.query_value("run_id")
+        if requested_run_id != self.current_run_id:
+            return Response.text("bundle not available", status=404)
+        return Response(
+            self.current_css,
+            content_type="text/css; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def bundle_source_map(self, request: Request) -> Response:
+        self.touch_activity()
+        requested_run_id = request.query_value("run_id")
+        if (
+            not self.current_source_map.mappings
+            or requested_run_id != self.current_run_id
+        ):
+            return Response.text("source map not available", status=404)
+        return Response(
+            self.current_source_map.to_json(),
+            content_type="application/json; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def health(self, request: Request) -> Response:
+        return Response.json(
+            self.status_payload(), headers={"Cache-Control": "no-store"}
+        )
+
+    def request_shutdown(self, request: Request) -> Response:
+        self.shutdown_event.set()
+        return Response.text("shutting down")
+
+    async def handler(self, connection: WebSocket) -> None:
         try:
             async for raw_message in connection:
                 message = json.loads(raw_message)
@@ -265,7 +292,14 @@ class PrototypeDaemon:
                         future.set_result(message["results"])
                     continue
         finally:
+            was_active = self.active_browser is connection
             self.deactivate_browser(connection)
+            if was_active:
+                for future in self.pending_results.values():
+                    if not future.done():
+                        future.set_exception(
+                            ConnectionError("Browser runner disconnected")
+                        )
 
     async def handle_run_tests(self, message: dict[str, Any]) -> dict[str, Any]:
         async with self.run_lock:
@@ -275,21 +309,37 @@ class PrototypeDaemon:
         self.touch_activity()
         selected_tests = [SelectedTest.from_payload(payload) for payload in message["tests"]]
         nodeids = [test.nodeid for test in selected_tests]
+        run_nodeids = message.get("run_nodeids", nodeids)
         selected_nodeids = message.get("selected_nodeids", nodeids)
         current_nodeid = message.get("current_nodeid")
+        suite_id = message.get("suite_id")
         run_id = uuid.uuid4().hex
         self.current_bundle = ""
         self.current_css = ""
+        self.current_source_map = SourceMap()
         self.current_run_id = None
-        try:
-            bundle_result = self.bundle_builder.build(selected_tests, run_id)
-        except Exception as exc:
-            self.reusable = False
-            return failed_run("bundle_build", str(exc))
+        bundle_result = self.cached_bundle if suite_id == self.cached_suite_id else None
+        if bundle_result is None:
+            try:
+                bundle_result = self.bundle_builder.build(selected_tests, suite_id or run_id)
+            except Exception as exc:
+                self.discard_bundle()
+                return failed_run("bundle_build", str(exc))
+            if suite_id is not None:
+                self.cached_suite_id = suite_id
+                self.cached_bundle = bundle_result
 
         self.reusable = True
-        self.current_bundle = bundle_result.javascript
+        generated = TranspiledJavaScript(
+            bundle_result.javascript,
+            bundle_result.source_map,
+        )
+        self.current_bundle = generated.with_source_mapping_url(
+            f"/bundle.js.map?run_id={run_id}",
+            source_url=f"/bundle.js?run_id={run_id}",
+        )
         self.current_css = bundle_result.css
+        self.current_source_map = bundle_result.source_map
         self.current_run_id = run_id
         result_future: asyncio.Future[list[dict[str, Any]]] = (
             asyncio.get_running_loop().create_future()
@@ -306,7 +356,8 @@ class PrototypeDaemon:
                 )
             return failed_run(
                 "browser_connection",
-                f"No browser runner connected. Open {self.runner_url}",
+                "No browser runner connected. "
+                f"Open {self.runner_url}, or rerun with --pyjs-browser=managed.",
             )
 
         try:
@@ -316,7 +367,7 @@ class PrototypeDaemon:
                         {
                             "type": "run_bundle",
                             "run_id": run_id,
-                            "nodeids": nodeids,
+                            "nodeids": run_nodeids,
                             "selected_nodeids": selected_nodeids,
                             "current_nodeid": current_nodeid,
                             "max_preserved_iframes": self.retained_iframes,
@@ -326,12 +377,14 @@ class PrototypeDaemon:
                 timeout=BROWSER_DISPATCH_TIMEOUT_SECONDS,
             )
         except TimeoutError:
-            self.deactivate_browser(browser)
             self.pending_results.pop(run_id, None)
+            self.deactivate_browser(browser)
+            self.discard_bundle()
             return failed_run("bundle_dispatch", "Timed out dispatching bundle to browser")
         except Exception as exc:
-            self.deactivate_browser(browser)
             self.pending_results.pop(run_id, None)
+            self.deactivate_browser(browser)
+            self.discard_bundle()
             return failed_run("bundle_dispatch", str(exc))
 
         try:
@@ -341,12 +394,19 @@ class PrototypeDaemon:
             )
         except TimeoutError:
             self.pending_results.pop(run_id, None)
+            self.discard_bundle()
             return failed_run(
                 "result_transport",
                 f"Timed out after {self.test_timeout:g} seconds waiting for browser test results",
             )
+        except Exception as exc:
+            self.pending_results.pop(run_id, None)
+            self.discard_bundle()
+            return failed_run("result_transport", str(exc))
 
         self.pending_results.pop(run_id, None)
+        for result in results:
+            map_result_exception(result, self.current_source_map)
         await self.capture_render_artifacts(results)
         failure_artifacts = await self.capture_failure_artifacts(results)
         bundle_result = next(
@@ -361,6 +421,10 @@ class PrototypeDaemon:
                     "Browser bundle failed before individual test results were reported",
                 ),
             )
+            if isinstance(bundle_result.get("exception"), dict):
+                response["exception"] = bundle_result["exception"]
+            if isinstance(bundle_result.get("raw_error"), str):
+                response["raw_error"] = bundle_result["raw_error"]
             if failure_artifacts:
                 response["failure_artifacts"] = failure_artifacts
             return response
@@ -500,7 +564,7 @@ class PrototypeDaemon:
             self.shutdown_event.set()
             return
 
-    async def ensure_browser_connection(self) -> ServerConnection | None:
+    async def ensure_browser_connection(self) -> WebSocket | None:
         self.discard_stale_browser()
         if self.active_browser is not None:
             return self.active_browser
@@ -611,13 +675,19 @@ async def async_main(
         except NotImplementedError:
             break
         handled_signals.append(shutdown_signal)
+    application = Application(name="PyJS browser tests")
+    application.get("/", daemon.runner_page)
+    application.get("/bundle.js", daemon.bundle_javascript)
+    application.get("/bundle.js.map", daemon.bundle_source_map)
+    application.get("/bundle.css", daemon.bundle_css)
+    application.get("/healthz", daemon.health)
+    application.get("/shutdown", daemon.request_shutdown)
+    application.websocket("/ws", daemon.handler)
+    application.websocket("/control", daemon.handler)
+    server = Server(application, host=host, port=port)
+    daemon.port = server.server_port
     try:
-        async with serve(
-            daemon.handler,
-            host,
-            port,
-            process_request=daemon.process_request,
-        ):
+        async with server:
 
             async def run_until_shutdown() -> None:
                 monitor_task = asyncio.create_task(daemon.monitor_idle())

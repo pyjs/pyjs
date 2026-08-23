@@ -39,7 +39,6 @@ class TooltipKeyListener:
     def __init__(self, tooltip: Tooltip):
         self.tooltip = tooltip
 
-    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         if event.key == "Escape":
             self.tooltip.close()
@@ -159,6 +158,5 @@ class Tooltip(Widget):
     def clicked(self, event: Event):
         self.close()
 
-    @js.keep
-    def disconnectedCallback(self):
+    def disconnected(self):
         self.close()

@@ -104,7 +104,7 @@ class GameState:
         self.status = "playing"
         self.spawn_wave()
 
-    def spawn_wave(self):
+    def spawn_wave(self) -> None:
         self.invaders = []
         row = 0
         while row < 3:
@@ -869,7 +869,6 @@ class GameKeyboardListener:
         self.app = app
         self.pressed = pressed
 
-    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         if event.key == "ArrowLeft" or event.key == "a" or event.key == "A":
             event.preventDefault()
@@ -887,27 +886,59 @@ class GameKeyboardListener:
 
 @js
 class SpaceInvadersApp(Widget):
+    game: GameState
+    renderer: GameRenderer | None
+    last_timestamp: float
+    keydown_listener: GameKeyboardListener
+    keyup_listener: GameKeyboardListener
+
     def __init__(self):
         super().__init__()
         self.score_text = ref(tag("span", "0"))
         self.lives_text = ref(tag("span", "3"))
         self.wave_text = ref(tag("span", "1"))
+        self.status_title = ref(
+            tag("p", tw("font-mono text-3xl font-bold text-cyan-300"), "GAME OVER")
+        )
+        self.status_detail = ref(
+            tag(
+                "p",
+                tw("mt-3 font-mono text-sm uppercase tracking-widest text-slate-300"),
+                "Press Enter to restart",
+            )
+        )
+        self.status_action = ref(
+            tag(
+                "a",
+                tw(
+                    "mt-5 hidden rounded-lg border border-cyan-300/40 px-4 py-2 "
+                    "font-mono text-xs font-bold uppercase tracking-wider text-cyan-200 "
+                    "transition hover:border-cyan-200 hover:bg-cyan-300/10"
+                ),
+                {
+                    "href": "https://pyjs.org/docs/guide/troubleshooting/#webgpu-is-unavailable",
+                    "rel": "noreferrer",
+                    "target": "_blank",
+                },
+                "Check WebGPU support",
+            )
+        )
         self.status_text = ref(
             tag(
                 "div",
                 tw(
-                    "pointer-events-none absolute inset-0 hidden items-center justify-center "
-                    "bg-slate-950/80 text-center"
+                    "absolute inset-0 hidden items-center justify-center bg-slate-950/85 "
+                    "p-5 text-center backdrop-blur-sm"
                 ),
                 tag(
                     "div",
-                    tw("rounded-2xl border border-cyan-400/30 bg-slate-950 p-8 shadow-2xl"),
-                    tag("p", tw("font-mono text-3xl font-bold text-cyan-300"), "GAME OVER"),
-                    tag(
-                        "p",
-                        tw("mt-3 font-mono text-sm uppercase tracking-widest text-slate-300"),
-                        "Press Enter to restart",
+                    tw(
+                        "max-w-md rounded-2xl border border-cyan-400/30 bg-slate-950/95 "
+                        "p-8 shadow-2xl shadow-cyan-950/60"
                     ),
+                    self.status_title,
+                    self.status_detail,
+                    self.status_action,
                 ),
             )
         )
@@ -971,22 +1002,40 @@ class SpaceInvadersApp(Widget):
 
     async def initialize(self):
         self.game = GameState()
-        self.renderer: GameRenderer | None = None
+        self.renderer = None
         self.last_timestamp = 0.0
         self.keydown_listener = GameKeyboardListener(self, True)
         self.keyup_listener = GameKeyboardListener(self, False)
         document.addEventListener("keydown", self.keydown_listener)
         document.addEventListener("keyup", self.keyup_listener)
+        if navigator.gpu is None:
+            self.show_compatibility("unsupported")
+            return
         self.renderer = await create_renderer(self.game_canvas)
         if self.renderer is None:
-            self.setAttribute("status", "unsupported")
-            self.status_text.textContent = "WebGPU is not available in this browser"
-            self.status_text.style.display = "flex"
+            self.show_compatibility("adapter-unavailable")
             return
         self.setAttribute("status", "playing")
         self.sync_hud()
         self.renderer.render(self.game)
         requestAnimationFrame(self.frame)
+
+    def show_compatibility(self, status: str):
+        self.setAttribute("status", status)
+        if status == "unsupported":
+            self.status_title.textContent = "WebGPU unavailable"
+            self.status_detail.textContent = (
+                "This browser does not expose WebGPU. Open the demo in a current "
+                "Chrome, Edge, or Safari release."
+            )
+        else:
+            self.status_title.textContent = "No GPU adapter"
+            self.status_detail.textContent = (
+                "WebGPU is enabled, but this browser could not access a compatible "
+                "graphics adapter."
+            )
+        self.status_action.style.display = "inline-flex"
+        self.status_text.style.display = "flex"
 
     def sync_hud(self):
         self.score_text.textContent = str(self.game.score)
@@ -997,6 +1046,9 @@ class SpaceInvadersApp(Widget):
         self.setAttribute("wave", str(self.game.wave))
         self.setAttribute("status", self.game.status)
         if self.game.status == "game-over":
+            self.status_title.textContent = "GAME OVER"
+            self.status_detail.textContent = "Press Enter to restart"
+            self.status_action.style.display = "none"
             self.status_text.style.display = "flex"
         else:
             self.status_text.style.display = "none"
@@ -1022,6 +1074,6 @@ def main():
 
 
 if __name__ == "__main__":
-    from pyjs.server import serve
+    from pyjs.server.dev import serve
 
     serve("space_invaders")

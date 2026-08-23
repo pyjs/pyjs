@@ -1,3 +1,12 @@
+"""Web components organized as focused, tree-shakeable modules.
+
+Import controls from modules such as ``pyjs.web.ui.button`` and
+``pyjs.web.ui.dialog`` rather than from this package root. Run
+``pyjs template pyjs_examples.components`` for the installed component catalog.
+The package root intentionally avoids re-exporting every component because that
+would make the supported import and tree-shaking boundary less obvious.
+"""
+
 from pyjs.web.crypto import crypto
 from pyjs.web.domx import CustomElement, tag
 

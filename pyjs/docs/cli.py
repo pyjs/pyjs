@@ -1,6 +1,6 @@
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from pyjs.server.dev import Application, Server
 
 from .builder import build
 from .config import load_config
@@ -8,17 +8,17 @@ from .config import load_config
 
 def _serve(project_root: Path, host: str, port: int):
     output = build(load_config(project_root))
-    handler = partial(SimpleHTTPRequestHandler, directory=str(output))
-    server = ThreadingHTTPServer((host, port), handler)
-    display_host = host or "localhost"
+    application = Application(name="PyJS documentation")
+    application.mount_files("/", output, index=True)
+    server = Server(application, host=host, port=port, allow_remote=True)
     print(f"Built documentation in {output}")
-    print(f"Serving documentation at http://{display_host}:{server.server_port}/")
+    print(f"Serving documentation at {server.url}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping documentation server.")
     finally:
-        server.server_close()
+        server.close()
 
 
 def _add_project_dir(command):

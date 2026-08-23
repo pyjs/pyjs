@@ -1,7 +1,12 @@
+from collections.abc import Mapping, Sequence
+
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
+from django.db.models import Prefetch, QuerySet, prefetch_related_objects
 from pydantic import TypeAdapter
 
 from pyjs.server import resolve_include_paths, resource_graph
+
+from .relationship import DjangoRelationship
 
 
 def _resource_type(metadata) -> str:
@@ -39,11 +44,70 @@ def _relationship_is_many(django_field) -> bool:
     return django_field.one_to_many or django_field.many_to_many
 
 
+def _relationship_loader(relationship):
+    loader = relationship.owner.resource_type.__pyjs_relationship_loaders__.get(
+        relationship.name
+    )
+    if loader is not None and not isinstance(loader, DjangoRelationship):
+        raise TypeError(
+            f"Relationship {relationship.owner.resource_type.__name__}."
+            f"{relationship.name} uses a loader not supported by Django."
+        )
+    return loader
+
+
+def _loader_queryset(loader, django_model):
+    queryset = loader.queryset
+    if callable(queryset) and not isinstance(queryset, QuerySet):
+        queryset = queryset()
+    if queryset is None:
+        queryset = django_model._default_manager.all()
+    if not isinstance(queryset, QuerySet):
+        raise TypeError("A Django relationship queryset must return a QuerySet.")
+    if queryset.model is not django_model:
+        raise TypeError(
+            f"A Django relationship for {django_model.__name__} cannot use a "
+            f"QuerySet for {queryset.model.__name__}."
+        )
+    return queryset
+
+
+def _loader_attribute(name: str) -> str:
+    return f"_pyjs_relationship_{name}"
+
+
+def _computed_model(relationship, loader):
+    model = loader.model or getattr(
+        relationship.target.model_type,
+        "__pyjs_django_model__",
+        None,
+    )
+    if model is None:
+        raise TypeError(
+            f"Computed relationship {relationship.owner.resource_type.__name__}."
+            f"{relationship.name} must target a ModelSchema or declare model=."
+        )
+    return model
+
+
+def _apply_loading_plan(queryset, django_model, tree):
+    selects, prefetches = _loading_plan(django_model, tree)
+    if selects:
+        queryset = queryset.select_related(*sorted(selects))
+    if prefetches:
+        queryset = queryset.prefetch_related(*prefetches)
+    return queryset
+
+
 def _loading_plan(django_model, tree, prefix=(), has_many=False):
     select_paths = set()
-    prefetch_paths = set()
+    prefetch_paths = []
     for name, (relationship, child_tree) in tree.items():
-        django_field = _relationship_field(django_model, name)
+        loader = _relationship_loader(relationship)
+        if loader is not None and loader.load is not None:
+            continue
+        source = name if loader is None or loader.source is None else loader.source
+        django_field = _relationship_field(django_model, source)
         many = _relationship_is_many(django_field)
         expected = "to-many" if relationship.many else "to-one"
         actual = "to-many" if many else "to-one"
@@ -54,7 +118,24 @@ def _loading_plan(django_model, tree, prefix=(), has_many=False):
                 f"relationship is {actual}."
             )
 
-        path = (*prefix, name)
+        path = (*prefix, source)
+        if loader is not None:
+            related_queryset = _loader_queryset(loader, django_field.related_model)
+            related_queryset = _apply_loading_plan(
+                related_queryset,
+                django_field.related_model,
+                child_tree,
+            )
+            if loader.limit is not None:
+                related_queryset = related_queryset[: loader.limit]
+            prefetch_paths.append(
+                Prefetch(
+                    "__".join(path),
+                    queryset=related_queryset,
+                    to_attr=_loader_attribute(name),
+                )
+            )
+            continue
         nested_selects, nested_prefetches = _loading_plan(
             django_field.related_model,
             child_tree,
@@ -62,14 +143,24 @@ def _loading_plan(django_model, tree, prefix=(), has_many=False):
             has_many or many,
         )
         select_paths.update(nested_selects)
-        prefetch_paths.update(nested_prefetches)
+        prefetch_paths.extend(nested_prefetches)
         lookup = "__".join(path)
         if has_many or many:
-            prefetch_paths.add(lookup)
+            prefetch_paths.append(lookup)
         else:
             select_paths.add(lookup)
-    prefetch_paths.difference_update(select_paths)
-    return select_paths, prefetch_paths
+    return select_paths, [
+        path
+        for path in prefetch_paths
+        if not isinstance(path, str) or path not in select_paths
+    ]
+
+
+def _prepare_loaded_instances(instances, django_model, tree):
+    if not instances or not tree:
+        return
+    selects, prefetches = _loading_plan(django_model, tree)
+    prefetch_related_objects(instances, *sorted(selects), *prefetches)
 
 
 class _QuerySetEncoder:
@@ -144,11 +235,19 @@ class _QuerySetEncoder:
             data = None
         resource.setdefault("relationships", {})[name] = {"data": data}
 
-    def _related_instances(self, instance, relationship):
+    def _related_instances(self, instance, relationship, loader):
+        name = (
+            relationship.name
+            if loader is None
+            else _loader_attribute(relationship.name)
+        )
         if relationship.many:
-            return list(getattr(instance, relationship.name).all())
+            related = getattr(instance, name)
+            if isinstance(related, list):
+                return related
+            return list(related.all())
         try:
-            related = getattr(instance, relationship.name)
+            related = getattr(instance, name)
         except ObjectDoesNotExist:
             related = None
         if related is None:
@@ -160,22 +259,98 @@ class _QuerySetEncoder:
             return []
         return [related]
 
+    def _computed_relationships(
+        self,
+        entries,
+        relationship,
+        loader,
+        related_model,
+    ):
+        instances = [instance for _, instance, _ in entries]
+        if not instances:
+            return []
+        values = loader.load(instances)
+        if not isinstance(values, Mapping):
+            raise TypeError(
+                f"Computed relationship {relationship.owner.resource_type.__name__}."
+                f"{relationship.name} must return a mapping keyed by parent ID."
+            )
+        related_by_entry = []
+        for instance in instances:
+            value = values.get(instance.pk)
+            if relationship.many:
+                if value is None:
+                    related = []
+                elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    related = list(value)
+                else:
+                    raise TypeError(
+                        f"Computed to-many relationship {relationship.name} must "
+                        "return a sequence for each parent."
+                    )
+                if loader.limit is not None:
+                    related = related[: loader.limit]
+            else:
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    raise TypeError(
+                        f"Computed to-one relationship {relationship.name} must "
+                        "return one model or None for each parent."
+                    )
+                if value is None:
+                    if not relationship.nullable:
+                        raise TypeError(
+                            f"Computed relationship {relationship.name} cannot "
+                            "return None."
+                        )
+                    related = []
+                else:
+                    related = [value]
+            for child in related:
+                if not isinstance(child, related_model):
+                    raise TypeError(
+                        f"Computed relationship {relationship.name} returned "
+                        f"{type(child).__name__}; expected {related_model.__name__}."
+                    )
+            related_by_entry.append(related)
+        return related_by_entry
+
     def _load_relationships(self, django_model, entries, tree):
         for name, (relationship, child_tree) in tree.items():
-            django_field = _relationship_field(django_model, name)
-            related_by_entry = []
-            related_instances = []
-            for _, instance, _ in entries:
-                related = self._related_instances(
-                    instance,
+            loader = _relationship_loader(relationship)
+            if loader is not None and loader.load is not None:
+                related_model = _computed_model(relationship, loader)
+                related_by_entry = self._computed_relationships(
+                    entries,
                     relationship,
+                    loader,
+                    related_model,
                 )
-                related_by_entry.append(related)
-                related_instances.extend(related)
+            else:
+                source = (
+                    name if loader is None or loader.source is None else loader.source
+                )
+                django_field = _relationship_field(django_model, source)
+                related_model = django_field.related_model
+                related_by_entry = []
+                for _, instance, _ in entries:
+                    related_by_entry.append(
+                        self._related_instances(instance, relationship, loader)
+                    )
+            related_instances = [
+                related
+                for values in related_by_entry
+                for related in values
+            ]
+            if loader is not None and loader.load is not None:
+                _prepare_loaded_instances(
+                    related_instances,
+                    related_model,
+                    child_tree,
+                )
 
             related_entries = self.load_instances(
                 relationship.target,
-                django_field.related_model,
+                related_model,
                 related_instances,
                 child_tree,
             )
@@ -213,14 +388,7 @@ class _QuerySetEncoder:
         primary=False,
     ):
         django_model = queryset.model
-        select_paths, prefetch_paths = _loading_plan(
-            django_model,
-            tree,
-        )
-        if select_paths:
-            queryset = queryset.select_related(*sorted(select_paths))
-        if prefetch_paths:
-            queryset = queryset.prefetch_related(*sorted(prefetch_paths))
+        queryset = _apply_loading_plan(queryset, django_model, tree)
         entries = self.load_instances(
             metadata,
             django_model,

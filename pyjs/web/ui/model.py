@@ -1,11 +1,12 @@
 import types
 from datetime import date
-from typing import Union, get_args, get_origin
+from typing import Self, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
 from pyjs import js, nojs
-from pyjs.server.errors import OperationIssue
+from pyjs.server.errors import OperationError
+from pyjs.server.pagination import Page
 from pyjs.web.crypto import crypto
 from pyjs.web.dom import Element
 from pyjs.web.domx import ProxyElement, form, input, tag, tw
@@ -402,6 +403,30 @@ class ModelAdapterAlias:
         return (self.adapter_type,)
 
 
+def _adapter_model_type(namespace):
+    for base in namespace.get("__orig_bases__", ()):
+        if isinstance(base, ModelAdapterAlias):
+            return base.model_type
+    return None
+
+
+def _declared_members(bases, namespace, metadata_name, member_type):
+    members = {
+        member.name: member
+        for base in bases
+        for member in getattr(base, metadata_name, ())
+    }
+    for name, value in namespace.items():
+        if not isinstance(value, member_type):
+            continue
+        value.name = name
+        if not value.label:
+            value.label = name.replace("_", " ")
+        value.__js__ = False
+        members[name] = value
+    return members
+
+
 def _member_javascript(member) -> str:
     class_name = type(member).__name__
     options = ", ".join(
@@ -460,22 +485,13 @@ def _form_javascript(
 
 class ModelFormMetaclass(type):
     def __new__(mcls, name, bases, namespace, /, **kwargs):
-        declared_by_name = {}
-        for base in bases:
-            for field in getattr(base, "__pyjs_fields__", ()):
-                declared_by_name[field.name] = field
-        for field_name, value in namespace.items():
-            if isinstance(value, ModelField):
-                value.name = field_name
-                if not value.label:
-                    value.label = field_name.replace("_", " ")
-                value.__js__ = False
-                declared_by_name[field_name] = value
-
-        model_type = None
-        for base in namespace.get("__orig_bases__", ()):
-            if isinstance(base, ModelAdapterAlias):
-                model_type = base.model_type
+        declared_by_name = _declared_members(
+            bases,
+            namespace,
+            "__pyjs_fields__",
+            ModelField,
+        )
+        model_type = _adapter_model_type(namespace)
         if model_type is not None:
             meta = namespace.get("Meta", None)
             if meta is not None:
@@ -655,9 +671,17 @@ def model_form_model_fields(form: object) -> list[str]:
     return type(form).__pyjs_model_fields__
 
 
-@js.inline("{form}.constructor.__pyjs_fields_by_name__.get({name})")
-def model_form_field(form: object, name: str) -> ModelField:
-    return type(form).__pyjs_fields_by_name__[name]
+@js.inline("{form}.constructor.__pyjs_model__.model_validate({values})")
+def model_form_validate(
+    form: object,
+    values: dict[str, object],
+) -> BaseModel:
+    return type(form).__pyjs_model__.model_validate(values)
+
+
+@js.inline("{form}.constructor.__pyjs_fields_by_name__.get({name}) ?? null")
+def model_form_field(form: object, name: str) -> ModelField | None:
+    return type(form).__pyjs_fields_by_name__.get(name)
 
 
 @js
@@ -684,7 +708,6 @@ class ModelForm(ProxyElement, metaclass=ModelFormMetaclass):
             self._field_elements[field.name] = field_element
             self.element.append(field_element)
 
-    @js.keep
     def set_model(self, model: BaseModel):
         for field in model_form_fields(self):
             if field.name in self._field_elements:
@@ -696,9 +719,33 @@ class ModelForm(ProxyElement, metaclass=ModelFormMetaclass):
             values[name] = self.get_value(name)
         return values
 
+    @js
+    def read_model(self) -> BaseModel:
+        return model_form_validate(self, self.values())
+
+    @read_model.analyze
+    def read_model(call):
+        return call.receiver_metadata_type(
+            "__pyjs_model__",
+            runtime_method="model_validate",
+        )
+
     def get_value(self, name: str) -> object:
+        return self.get_field(name).read(self.get_field_element(name))
+
+    def get_field(self, name: str) -> ModelField:
         field = model_form_field(self, name)
-        return field.read(self._field_elements[name])
+        if field is None:
+            raise ValueError("Unknown model form field: " + name)
+        return field
+
+    def get_field_element(self, name: str) -> Element:
+        if name not in self._field_elements:
+            raise ValueError("Unknown model form field: " + name)
+        return self._field_elements[name]
+
+    def get_control(self, name: str) -> HTMLInputElement:
+        return input_control(self.get_field_element(name))
 
     def clear_errors(self):
         for error in self._error_elements.values():
@@ -715,10 +762,10 @@ class ModelForm(ProxyElement, metaclass=ModelFormMetaclass):
         self._error_controls = []
         self._error_descriptions = []
 
-    def set_errors(self, issues: list[OperationIssue], argument: str = ""):
+    def set_errors(self, operation_error: OperationError, argument: str = ""):
         self.clear_errors()
         first_control: HTMLInputElement | None = None
-        for issue in issues:
+        for issue in operation_error.issues:
             location_index = 0
             if (
                 argument != ""
@@ -751,7 +798,7 @@ class ModelForm(ProxyElement, metaclass=ModelFormMetaclass):
                 self.element.append(error)
             else:
                 field_element.append(error)
-            field = model_form_field(self, name)
+            field = self.get_field(name)
             control = field.error_control(field_element)
             if control is not None:
                 described_by = control.getAttribute("aria-describedby")
@@ -763,7 +810,6 @@ class ModelForm(ProxyElement, metaclass=ModelFormMetaclass):
         if first_control is not None:
             first_control.focus()
 
-    @js.keep
     def _hydrate(self, element: Element):
         super()._hydrate(element)
         self._field_elements = {}
@@ -809,21 +855,14 @@ class BooleanModelColumn(ModelColumn):
 
 class DataTableMetaclass(type):
     def __new__(mcls, name, bases, namespace, /, **kwargs):
-        columns_by_name = {}
-        for base in bases:
-            for column in getattr(base, "__pyjs_columns__", ()):
-                columns_by_name[column.name] = column
-        for column_name, value in namespace.items():
-            if isinstance(value, ModelColumn):
-                value.name = column_name
-                value.__js__ = False
-                columns_by_name[column_name] = value
+        columns_by_name = _declared_members(
+            bases,
+            namespace,
+            "__pyjs_columns__",
+            ModelColumn,
+        )
         columns = list(columns_by_name.values())
-
-        model_type = None
-        for base in namespace.get("__orig_bases__", ()):
-            if isinstance(base, ModelAdapterAlias):
-                model_type = base.model_type
+        model_type = _adapter_model_type(namespace)
         if model_type is not None:
             unknown = [
                 column.name
@@ -860,28 +899,17 @@ class DataTable(ProxyElement, metaclass=DataTableMetaclass):
     def __class_getitem__(cls, model_type: type):
         return ModelAdapterAlias(cls, model_type)
 
-    def __init__(
-        self,
-        items: list[BaseModel] | None = None,
-        page: int = 1,
-        page_size: int = 25,
-        total: int = 0,
-    ):
+    def __init__(self):
         self.element = tag(
             "div",
             tw("grid gap-3 overflow-x-auto"),
             {"data-slot": "data-table"},
         )
-        if items is not None:
-            self.set_page(items, page, page_size, total)
 
-    def set_page(
+    def set_page[Value: BaseModel](
         self,
-        items: list[BaseModel],
-        page: int,
-        page_size: int,
-        total: int,
-    ):
+        page: Page[Value],
+    ) -> Self:
         headings: list[Element] = []
         for column in data_table_columns(self):
             headings.append(
@@ -893,7 +921,7 @@ class DataTable(ProxyElement, metaclass=DataTableMetaclass):
                 )
             )
         rows: list[Element] = []
-        for item in items:
+        for item in page.items:
             cells: list[Element] = []
             for column in data_table_columns(self):
                 cells.append(
@@ -904,10 +932,18 @@ class DataTable(ProxyElement, metaclass=DataTableMetaclass):
                     )
                 )
             rows.append(tag("tr", *cells))
-        first = 0 if total == 0 else (page - 1) * page_size + 1
-        last = page * page_size
-        if last > total:
-            last = total
+        count = len(page.items)
+        summary = f"Showing {count} items"
+        if page.total is not None:
+            summary = f"Showing {count} of {page.total} items"
+        if page.next is None:
+            self.element.removeAttribute("data-page-next")
+        else:
+            self.element.setAttribute("data-page-next", page.next)
+        if page.previous is None:
+            self.element.removeAttribute("data-page-previous")
+        else:
+            self.element.setAttribute("data-page-previous", page.previous)
         self.element.replaceChildren(
             tag(
                 "table",
@@ -918,6 +954,13 @@ class DataTable(ProxyElement, metaclass=DataTableMetaclass):
             tag(
                 "p",
                 tw("text-sm text-slate-500"),
-                f"Showing {first}–{last} of {total}",
+                summary,
             ),
         )
+        return self
+
+    def next_cursor(self) -> str | None:
+        return self.element.getAttribute("data-page-next")
+
+    def previous_cursor(self) -> str | None:
+        return self.element.getAttribute("data-page-previous")

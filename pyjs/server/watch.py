@@ -1,10 +1,11 @@
 import asyncio
 import json
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from typing import Self, TypedDict
 
 from pyjs import js
 from pyjs.javascript import _stringify_unchecked, encodeURIComponent
+from pyjs.server.transport import ClientTransport, FetchTransport
 from pyjs.web.events import Event, MessageEvent
 from pyjs.web.html import EventSource
 from pyjs.web.network import fetch
@@ -109,6 +110,16 @@ def _relative_operation(path: str, root: str) -> str:
 
 
 @js.inline(
+    "(({operation}) => {{ const separator = {operation}.lastIndexOf('.'); "
+    "return separator < 0 ? null : {operation}.slice(0, separator); }})"
+    "({operation})"
+)
+def _operation_topic(operation: str) -> str | None:
+    topic, separator, _ = operation.rpartition(".")
+    return topic if separator else None
+
+
+@js.inline(
     "{loader}.$decode ? {loader}.$decode({value}) : {value}"
 )
 def _decode_result(loader: callable, value: object) -> object:
@@ -175,7 +186,7 @@ async def _await_query(pending: object) -> object:
 
 @js
 class WatchedQuery[Value]:
-    def __init__(self, loader: callable, *args: object):
+    def __init__(self, loader: Callable[..., Awaitable[Value]], *args: object):
         self.current: Value | None = None
         self.loaded = False
         self.loading = False
@@ -244,6 +255,14 @@ class WatchedQuery[Value]:
             self._subscription_changed()
         return self
 
+    def seed(self, value: Value) -> Self:
+        self.current = value
+        self.loaded = True
+        self.loading = False
+        self.error = None
+        self.stale = False
+        return self
+
     def on_update(self, callback: callable) -> Self:
         self._update = callback
         return self
@@ -293,7 +312,18 @@ class WatchedQuery[Value]:
         for topic in topics:
             selected.append(topic)
         if not selected:
-            selected.append("*")
+            if self.operation_path is not None:
+                prefix = session.path + "/"
+                if self.operation_path.startswith(prefix):
+                    operation = _relative_operation(
+                        self.operation_path,
+                        session.path,
+                    )
+                    inferred_topic = _operation_topic(operation)
+                    if inferred_topic is not None:
+                        selected.append(inferred_topic)
+            if not selected:
+                selected.append("*")
         self._subscription_changed = _subscription_callback(session)
         session._add(
             self.invalidate,
@@ -372,11 +402,22 @@ class _LiveWatch:
 
 @js
 class LiveSession:
-    def __init__(self, path: str = "/api", *, autostart: bool = True):
+    __pyjs_generated_methods__ = ("_subscriptions_changed",)
+
+    def __init__(
+        self,
+        path: str = "/api",
+        *,
+        transport: ClientTransport | None = None,
+        autostart: bool = True,
+    ):
         self.path = path
         if path.endswith("/"):
             self.path = path[:-1]
         self.autostart = autostart
+        self._transport: ClientTransport = (
+            FetchTransport() if transport is None else transport
+        )
         self.transport = "stopped"
         self.sequence = 0
         self._source: EventSource | None = None
@@ -431,6 +472,7 @@ class LiveSession:
 
     def close(self):
         self._closed = True
+        self._result_queries.clear()
         if self._source is not None:
             self._source.close()
             self._source = None
@@ -444,9 +486,6 @@ class LiveSession:
                 queries.append(request)
         return queries
 
-    # This method is retained because _subscription_callback binds it through
-    # opaque inline JavaScript that the tree shaker cannot inspect.
-    @js.keep
     def _subscriptions_changed(self):
         self._subscription_version += 1
         if self.autostart:
@@ -473,20 +512,18 @@ class LiveSession:
                     subscription=self._subscription,
                 )
                 try:
-                    response = await fetch(
+                    response = await self._transport.request(
                         self.path + "/_live/subscribe",
-                        {
-                            "method": "POST",
-                            "headers": {"Content-Type": "application/json"},
-                            "body": _stringify_unchecked(request),
-                        },
+                        _stringify_unchecked(request),
                     )
                     if not response.ok:
                         raise ValueError("Live subscription failed.")
-                    message = _parse_live_subscribe(await response.text())
+                    message = _parse_live_subscribe(response.body)
+                    if self._closed:
+                        return
                     subscription = message["subscription"]
                 except Exception:
-                    if self.transport == "stopped":
+                    if not self._closed and self.transport == "stopped":
                         self._open_source("")
                     return
                 if version != self._subscription_version:
@@ -512,6 +549,8 @@ class LiveSession:
         self._receive(_parse_live_message(data))
 
     def _receive(self, message: LiveMessage):
+        if self._closed:
+            return
         sequence = message["sequence"]
         if message["type"] != "resync" and sequence <= self.sequence:
             return
@@ -578,25 +617,24 @@ class LiveSession:
     async def _refresh_results(self, queries: list[LiveQueryRequest]):
         request = LiveRefreshRequest(queries=queries)
         try:
-            response = await fetch(
+            response = await self._transport.request(
                 self.path + "/_live/refresh",
-                {
-                    "method": "POST",
-                    "headers": {"Content-Type": "application/json"},
-                    "body": _stringify_unchecked(request),
-                },
+                _stringify_unchecked(request),
             )
             if not response.ok:
                 self._fallback(queries)
                 return
-            message = _parse_live_refresh(await response.text())
+            message = _parse_live_refresh(response.body)
+            if self._closed:
+                return
             for result in message["results"]:
                 watch = self._watch(result["id"])
                 if watch is not None:
                     if not watch.accept(result):
                         watch.refresh()
         except Exception:
-            self._fallback(queries)
+            if not self._closed:
+                self._fallback(queries)
 
     async def _sse_failed(self, event: Event):
         if self.transport != "sse":
@@ -615,6 +653,9 @@ class LiveSession:
                 )
                 if response.status == 204:
                     continue
+                if response.status == 401 or response.status == 403:
+                    self.close()
+                    return
                 if not response.ok:
                     await _delay(1000)
                     continue

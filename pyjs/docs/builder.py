@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pyjs.transpiler import bundle
+from pyjs.transpiler import TranspiledJavaScript, bundle_with_source_map
 from pyjs.web.domx import tag
 from pyjs.web.ssr import raw_html, render_document
 
@@ -19,6 +19,7 @@ from .ui import main as docs_main
 
 LINK = re.compile(r'(?P<attribute>href|src)="(?P<url>[^"]+)"')
 FIRST_HEADING = re.compile(r"<h1[^>]*>(.*?)</h1>", re.DOTALL)
+FIRST_HEADING_ID = re.compile(r'<h1[^>]*\bid="([^"]+)"')
 TAG = re.compile(r"<[^>]+>")
 SPACE = re.compile(r"\s+")
 
@@ -210,12 +211,16 @@ def _render_article(page: Page, pages: list[Page], config: DocsConfig) -> str:
         f"{_pager_link(page, page.previous, 'Previous')}"
         f"{_pager_link(page, page.next, 'Next')}</nav>"
     )
-    content = _rewrite_links(page, pages, config)
+    content = FIRST_HEADING.sub("", _rewrite_links(page, pages, config), count=1)
+    title_id = ""
+    title_match = FIRST_HEADING_ID.search(page.html)
+    if title_match is not None:
+        title_id = f' id="{html.escape(title_match.group(1), quote=True)}"'
     return (
         '<article class="docs-article">'
         f"{_render_breadcrumbs(page, pages)}"
         f'<p class="page-eyebrow">{html.escape(section)}</p>'
-        f'<h1 class="page-title">{html.escape(page.title)}</h1>'
+        f'<h1 class="page-title"{title_id}>{html.escape(page.title)}</h1>'
         f"{description}"
         f'<div class="docs-content">{content}</div>'
         f"{pager}</article>"
@@ -263,10 +268,30 @@ def _render_page(
         site_navigation = raw_html(
             '<nav class="site-links" aria-label="Main navigation">'
             f'<a href="{site_root}">Home</a>'
-            f'<a href="{site_root}examples/">Examples</a>'
             f'<a href="{_relative_url(page, home)}" aria-current="page">Docs</a>'
+            f'<a href="{site_root}components/">Components</a>'
+            f'<a href="{site_root}examples/">Examples</a>'
+            f'<a href="{site_root}why-pyjs/">Why PyJS</a>'
             "</nav>"
         )
+    project_links = []
+    if config.repo_url:
+        project_links.append(
+            '<a aria-label="View the project on GitHub" '
+            f'class="icon-button project-button github-button" '
+            f'href="{html.escape(config.repo_url, quote=True)}">'
+            "GitHub</a>"
+        )
+    for label, url, aria_label in (
+        ("Discord", config.discord_url, "Join the project Discord"),
+        ("X", config.x_url, "Follow the project on X"),
+    ):
+        if url:
+            project_links.append(
+                f'<a aria-label="{aria_label}" '
+                f'class="icon-button project-button social-button" '
+                f'href="{html.escape(url, quote=True)}">{label}</a>'
+            )
     app = docs_main(
         config.site_name,
         _relative_url(page, home),
@@ -276,6 +301,8 @@ def _render_page(
         _search_records(pages, page),
         site_root,
         site_navigation,
+        raw_html("".join(project_links)),
+        config.version,
     )
     canonical = config.site_url.rstrip("/") + page.route if config.site_url else ""
     head_children = [
@@ -313,7 +340,12 @@ def _copy_assets(config: DocsConfig):
         shutil.copy2(source, target)
 
 
-def build(config: DocsConfig | None = None, *, clean: bool = True) -> Path:
+def build(
+    config: DocsConfig | None = None,
+    *,
+    clean: bool = True,
+    client_bundle: tuple[TranspiledJavaScript, str] | None = None,
+) -> Path:
     config = config or load_config()
     if config.site_dir == config.docs_dir or config.docs_dir in config.site_dir.parents:
         raise ValueError("Documentation output must be outside the source directory")
@@ -330,9 +362,22 @@ def build(config: DocsConfig | None = None, *, clean: bool = True) -> Path:
         shutil.rmtree(config.site_dir, ignore_errors=True)
     assets_dir = config.site_dir / "_pyjs"
     assets_dir.mkdir(parents=True)
-    javascript, generated_css = bundle(docs_main, include_css=False)
+    if client_bundle is None:
+        client_bundle = bundle_with_source_map(
+            docs_main,
+            include_css=False,
+            filename="docs.js",
+        )
+    generated, generated_css = client_bundle
     docs_css = Path(__file__).with_name("style.css").read_text(encoding="utf-8")
-    (assets_dir / "docs.js").write_text(javascript, encoding="utf-8")
+    (assets_dir / "docs.js").write_text(
+        generated.with_source_mapping_url("docs.js.map"),
+        encoding="utf-8",
+    )
+    (assets_dir / "docs.js.map").write_text(
+        generated.source_map.to_json(),
+        encoding="utf-8",
+    )
     (assets_dir / "docs.css").write_text(generated_css + docs_css, encoding="utf-8")
     shutil.copy2(Path(__file__).with_name("favicon.svg"), assets_dir / "favicon.svg")
     _copy_assets(config)

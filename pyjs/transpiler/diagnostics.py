@@ -3,6 +3,7 @@ import bisect
 import difflib
 import inspect
 import linecache
+import sys
 import textwrap
 import traceback
 from dataclasses import dataclass, field
@@ -11,11 +12,83 @@ from pathlib import Path
 from typing import Never
 
 
+def _inferable_js_value(value: object) -> bool:
+    if isinstance(value, (bool, int, float, str, type(None))):
+        return True
+    if isinstance(value, (list, tuple)):
+        return bool(value) and all(_inferable_js_value(item) for item in value)
+    if isinstance(value, dict):
+        return bool(value) and all(
+            _inferable_js_value(key) and _inferable_js_value(item)
+            for key, item in value.items()
+        )
+    return False
+
+
+def _source_assignment(source: str, name: str) -> tuple[ast.expr, object] | None:
+    try:
+        module = ast.parse(source)
+    except SyntaxError:
+        return None
+    for statement in module.body:
+        value = None
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in statement.targets
+        ):
+            value = statement.value
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == name
+        ):
+            value = statement.value
+        if value is None:
+            continue
+        try:
+            return value, ast.literal_eval(value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _client_binding_help(name: str, value: object) -> str:
+    if type(value) in (bool, int, float, type(None)):
+        try:
+            is_literal = ast.literal_eval(repr(value)) == value
+        except (SyntaxError, ValueError):
+            is_literal = False
+        if is_literal:
+            return (
+                "Import JS from pyjs and declare it as a client value: "
+                f"{name}: JS = {value!r}."
+            )
+    return (
+        "Import JS from pyjs and annotate the existing assignment with JS "
+        "so its value is available to client code."
+    )
+
+
+def _external_definition(value: object) -> bool:
+    module_name = getattr(value, "__module__", "")
+    if module_name.partition(".")[0] in sys.stdlib_module_names:
+        return True
+    try:
+        filename = inspect.getsourcefile(value)
+    except TypeError:
+        return True
+    return filename is not None and any(
+        part in {"site-packages", "dist-packages"}
+        for part in Path(filename).parts
+    )
+
+
 class DiagnosticCode(StrEnum):
     UNDEFINED_NAME = "PYJS1001"
     MISSING_JS_DECORATOR = "PYJS1002"
     UNDEFINED_ATTRIBUTE = "PYJS1003"
     MISSING_JS_BINDING = "PYJS1004"
+    UNDEFINED_KEY = "PYJS1005"
     TYPE_ANNOTATION_REQUIRED = "PYJS1101"
     INCOMPATIBLE_ASSIGNMENT = "PYJS1103"
     INCOMPATIBLE_ARGUMENT = "PYJS1104"
@@ -23,6 +96,7 @@ class DiagnosticCode(StrEnum):
     UNSUPPORTED_SYNTAX = "PYJS2001"
     INVALID_INLINE_DEPENDENCY = "PYJS2002"
     INLINE_FUNCTION_VALUE = "PYJS2003"
+    UNSUPPORTED_CLIENT_RESULT = "PYJS2004"
 
 
 @dataclass(frozen=True)
@@ -328,7 +402,15 @@ class CompilationContext:
         ):
             kind = "Class" if inspect.isclass(python_value) else "Function"
             nojs = getattr(python_value, "__js__", None) is False
-            if nojs:
+            external = _external_definition(python_value)
+            if external:
+                module_name = getattr(python_value, "__module__", "")
+                help_text = (
+                    f"{node.id!r} comes from external module {module_name!r}. "
+                    "Use a supported PyJS API or add a client binding for that "
+                    "library."
+                )
+            elif nojs:
                 help_text = (
                     f"Remove @nojs from {node.id!r} if it should run in the browser."
                 )
@@ -341,7 +423,7 @@ class CompilationContext:
             definition = self.sources.definition_span(python_value)
             secondary = (
                 (Label(definition, "defined here without client compilation enabled"),)
-                if definition is not None
+                if definition is not None and not external
                 else ()
             )
             self.error(
@@ -353,16 +435,36 @@ class CompilationContext:
                 help=help_text,
             )
         if python_value is not missing:
+            if _inferable_js_value(python_value):
+                help_text = _client_binding_help(node.id, python_value)
+            else:
+                help_text = (
+                    f"Annotate {node.id!r} with JS[...] if it is needed by "
+                    "client code."
+                )
             self.error(
                 fragment,
                 node,
                 DiagnosticCode.MISSING_JS_BINDING,
                 f"Name {node.id!r} is a Python value, not a client value",
-                help=(
-                    f"Annotate {node.id!r} with JS[...] if it is needed by "
-                    "client code."
-                ),
+                help=help_text,
             )
+        original_source = getattr(
+            namespace,
+            "__pyjs_original_source__",
+            fragment.source.text,
+        )
+        source_assignment = _source_assignment(original_source, node.id)
+        if source_assignment is not None:
+            _, value = source_assignment
+            if _inferable_js_value(value):
+                self.error(
+                    fragment,
+                    node,
+                    DiagnosticCode.MISSING_JS_BINDING,
+                    f"Name {node.id!r} is a Python value, not a client value",
+                    help=_client_binding_help(node.id, value),
+                )
         close_names = difflib.get_close_matches(
             node.id,
             sorted(visible_names),
@@ -383,7 +485,10 @@ class CompilationContext:
         node: ast.Attribute,
         class_name: str,
         available_names: set[str],
+        receiver: str,
         initializer: object | None,
+        *,
+        can_define: bool,
     ) -> Never:
         close_names = difflib.get_close_matches(
             node.attr,
@@ -391,10 +496,22 @@ class CompilationContext:
             n=1,
             cutoff=0.75,
         )
+        suggestion = None
+        if close_names:
+            suggestion = close_names[0]
+            if isinstance(node.value, (ast.Name, ast.Attribute)):
+                suggestion = f"{receiver}.{suggestion}"
         help_text = (
-            f"Did you mean 'self.{close_names[0]}'?"
-            if close_names
-            else f"Define self.{node.attr} in {class_name}.__init__()."
+            f"Did you mean {suggestion!r}?"
+            if suggestion is not None
+            else (
+                f"Define self.{node.attr} in {class_name}.__init__()."
+                if can_define
+                else (
+                    f"Use an attribute supported by PyJS for {class_name!r} or "
+                    "implement an equivalent client helper."
+                )
+            )
         )
         definition = (
             self.sources.definition_span(initializer)

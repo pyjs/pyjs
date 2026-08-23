@@ -40,7 +40,7 @@ class CloseEvent(Event):
         self.wasClean: bool = wasClean
 
 
-@js
+@js.dictionary
 class CloseEventInit:
     """WebIDL source: @webref/idl/websockets.idl"""
 
@@ -114,7 +114,7 @@ class Headers:
     def set(self, name: str, value: str) -> None: ...
 
 
-@js
+@js.dictionary
 class PrivateToken:
     """WebIDL source: @webref/idl/trust-token-api.idl"""
 
@@ -217,7 +217,7 @@ class Request:
     def textStream(self) -> ReadableStream: ...
 
 
-@js
+@js.dictionary
 class RequestInit:
     """WebIDL source: @webref/idl/fetch.idl"""
 
@@ -354,7 +354,7 @@ class Response:
     def textStream(self) -> ReadableStream: ...
 
 
-@js
+@js.dictionary
 class ResponseInit:
     """WebIDL source: @webref/idl/fetch.idl"""
 
@@ -449,7 +449,7 @@ class XMLHttpRequestEventTarget(EventTarget):
         self.ontimeout: callable = None
 
 
-@js
+@js.dictionary
 class DeferredRequestInit:
     """WebIDL source: @webref/idl/fetch.idl"""
 

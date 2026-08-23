@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pyjs.testing.assertion_rewriter import TestingAssertions
-from pyjs.transpiler import bundle
+from pyjs.testing.assertion_rewriter import TestingExtension
+from pyjs.transpiler import SourceMap, bundle_with_source_map
 
 ENTRYPOINT_MODULE = "__pyjs_test_entrypoint__"
 PYJS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +51,7 @@ class SelectedTest:
 class BrowserBundle:
     javascript: str
     css: str
+    source_map: SourceMap = SourceMap()
 
 
 class BrowserBundleBuilder:
@@ -69,15 +70,20 @@ class BrowserBundleBuilder:
     def build(self, selected_tests: list[SelectedTest], run_id: str) -> BrowserBundle:
         source = generate_entrypoint_source(run_id, selected_tests)
         module_names = [selected.module_name for selected in selected_tests]
-        extension = TestingAssertions(selected_tests)
+        extension = TestingExtension(selected_tests)
         with fresh_project_imports(self.project_root, self.cache_dir, run_id, module_names):
             entrypoint = load_entrypoint_module(source, self.entrypoint_path)
             try:
-                transpiled_js, css = bundle(entrypoint.main, True, (extension,))
+                generated, css = bundle_with_source_map(
+                    entrypoint.main,
+                    True,
+                    (extension,),
+                )
             finally:
                 sys.modules.pop(ENTRYPOINT_MODULE, None)
                 linecache.cache.pop(str(self.entrypoint_path), None)
-        return BrowserBundle(transpiled_js, css or "")
+        source_map = generated.source_map.shifted(2)
+        return BrowserBundle(generated.javascript, css or "", source_map)
 
 
 def is_within(path: Path, directory: Path) -> bool:

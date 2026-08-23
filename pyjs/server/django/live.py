@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 import json
 import secrets
 import threading
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.http import (
     HttpResponse,
@@ -11,12 +13,12 @@ from django.http import (
     StreamingHttpResponse,
 )
 from django.urls import path
-from pydantic import ValidationError
 
-from pyjs.server import OperationError, resource_graph
+from pyjs.server import operation_error, resource_graph
+from pyjs.server.django.errors import exception_response
 from pyjs.server.live import (
     Invalidation,
-    InvalidationHub,
+    InvalidationBackend,
     InvalidationPayload,
     InvalidationSubscription,
     api_topic,
@@ -56,7 +58,7 @@ class _LiveQueryRegistry:
 
 
 def publish_after_commit(
-    hub: InvalidationHub,
+    backend: InvalidationBackend,
     topics: tuple[str, ...],
     *,
     using: str | None = None,
@@ -64,7 +66,7 @@ def publish_after_commit(
     unique_topics = tuple(dict.fromkeys(topics))
     if unique_topics:
         transaction.on_commit(
-            lambda: hub.publish(*unique_topics),
+            lambda: backend.publish(*unique_topics),
             using=using,
         )
 
@@ -79,13 +81,31 @@ def _cursor(request) -> int | None:
         return -1
 
 
-def _resync_payload(
-    hub: InvalidationHub,
+def _initial_payload(
+    backend: InvalidationBackend,
     cursor: int | None,
+    topic: str,
 ) -> InvalidationPayload | None:
-    sequence = hub.sequence
+    sequence = backend.sequence
     if cursor is None or cursor == sequence:
         return None
+    replay = getattr(backend, "replay", None)
+    if replay is not None:
+        invalidations = replay(cursor, topic)
+        if invalidations is not None:
+            if not invalidations:
+                return None
+            topics = tuple(
+                dict.fromkeys(
+                    changed_topic
+                    for invalidation in invalidations
+                    for changed_topic in invalidation.topics
+                )
+            )
+            return _public_payload(
+                topic,
+                Invalidation(invalidations[-1].sequence, topics),
+            )
     return {
         "sequence": sequence,
         "topics": ["*"],
@@ -117,10 +137,17 @@ async def _event_stream(
     resync: InvalidationPayload | None,
     heartbeat: float = SSE_HEARTBEAT_SECONDS,
     result_payload=None,
+    live_access=None,
 ):
     try:
         yield f"retry: {SSE_RETRY_MILLISECONDS}\n\n"
         if resync is not None:
+            if live_access is not None:
+                try:
+                    if not await live_access():
+                        return
+                except Exception:
+                    return
             if result_payload is not None:
                 resync = await result_payload(resync)
             yield _sse_message(resync)
@@ -131,29 +158,42 @@ async def _event_stream(
                     heartbeat,
                 )
             except TimeoutError:
+                invalidation = None
+            if live_access is not None:
+                try:
+                    if not await live_access():
+                        return
+                except Exception:
+                    return
+            if invalidation is None:
                 yield ": keepalive\n\n"
-            else:
-                payload = _public_payload(topic, invalidation)
-                if result_payload is not None:
-                    payload = await result_payload(payload)
-                yield _sse_message(payload)
+                continue
+            payload = _public_payload(topic, invalidation)
+            if result_payload is not None:
+                payload = await result_payload(payload)
+            yield _sse_message(payload)
     finally:
         subscription.close()
 
 
 def _sse_view(
     root_type,
-    hub: InvalidationHub,
+    backend: InvalidationBackend,
     operation_result,
     registrations: _LiveQueryRegistry,
+    live_authorize,
 ):
     graph = resource_graph(root_type)
 
     async def view(request):
         if request.method != "GET":
             return HttpResponseNotAllowed(["GET"])
+        try:
+            await _require_live_access(live_authorize, request)
+        except Exception as error:
+            return exception_response(error)
         topic = api_topic(root_type)
-        subscription = hub.subscribe(topic)
+        subscription = backend.subscribe(topic)
         subscription_id = request.GET.get("subscription")
 
         async def result_payload(payload):
@@ -185,15 +225,20 @@ def _sse_view(
                     "topics": payload["topics"],
                     "type": "result",
                 }
-            except (OperationError, ValidationError, TypeError, ValueError):
+            except Exception:
                 return payload
 
         response = StreamingHttpResponse(
             _event_stream(
                 subscription,
                 topic,
-                _resync_payload(hub, _cursor(request)),
+                _initial_payload(backend, _cursor(request), topic),
                 result_payload=result_payload,
+                live_access=(
+                    None
+                    if live_authorize is None
+                    else lambda: _live_access(live_authorize, request)
+                ),
             ),
             content_type="text/event-stream",
         )
@@ -209,16 +254,20 @@ def _topics_match(watched: list[str], changed: list[str]) -> bool:
     return "*" in watched or "*" in changed or bool(set(watched) & set(changed))
 
 
-def _long_poll_view(root_type, hub: InvalidationHub):
+def _long_poll_view(root_type, backend: InvalidationBackend, live_authorize):
     async def view(request):
         if request.method != "GET":
             return HttpResponseNotAllowed(["GET"])
-        topic = api_topic(root_type)
-        subscription = hub.subscribe(topic)
         try:
-            resync = _resync_payload(hub, _cursor(request))
-            if resync is not None:
-                response = JsonResponse(resync)
+            await _require_live_access(live_authorize, request)
+        except Exception as error:
+            return exception_response(error)
+        topic = api_topic(root_type)
+        subscription = backend.subscribe(topic)
+        try:
+            initial = _initial_payload(backend, _cursor(request), topic)
+            if initial is not None:
+                response = JsonResponse(initial)
                 response["Cache-Control"] = "no-cache, no-store"
                 response["Vary"] = "Cookie"
                 return response
@@ -230,7 +279,13 @@ def _long_poll_view(root_type, hub: InvalidationHub):
             except TimeoutError:
                 response = HttpResponse(status=204)
             else:
+                await _require_live_access(live_authorize, request)
                 response = JsonResponse(_public_payload(topic, invalidation))
+            response["Cache-Control"] = "no-cache, no-store"
+            response["Vary"] = "Cookie"
+            return response
+        except Exception as error:
+            response = exception_response(error)
             response["Cache-Control"] = "no-cache, no-store"
             response["Vary"] = "Cookie"
             return response
@@ -293,17 +348,48 @@ def _live_queries(
     return normalized
 
 
-def _refresh_view(root_type, operation_result):
+def _live_request(
+    root_type,
+    request,
+    *,
+    request_name: str,
+    require_topics: bool,
+) -> tuple[dict, list[dict]]:
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        raise operation_error(
+            f"The live {request_name} body is not valid JSON.",
+            status=400,
+            title="Invalid request",
+        ) from None
+    try:
+        queries = _live_queries(
+            root_type,
+            payload,
+            request_name=request_name,
+            require_topics=require_topics,
+        )
+    except (TypeError, ValueError) as error:
+        raise operation_error(
+            str(error),
+            status=400,
+            title="Invalid request",
+        ) from error
+    return payload, queries
+
+
+def _refresh_view(root_type, operation_result, live_authorize):
     graph = resource_graph(root_type)
 
     async def view(request):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         try:
-            payload = json.loads(request.body or b"{}")
-            queries = _live_queries(
+            await _require_live_access(live_authorize, request)
+            _, queries = _live_request(
                 root_type,
-                payload,
+                request,
                 request_name="refresh",
                 require_topics=False,
             )
@@ -324,8 +410,8 @@ def _refresh_view(root_type, operation_result):
                     }
                 )
             response = JsonResponse({"results": results})
-        except (OperationError, ValidationError, TypeError, ValueError) as error:
-            response = JsonResponse({"error": str(error)}, status=400)
+        except Exception as error:
+            response = exception_response(error)
         response["Cache-Control"] = "no-cache, no-store"
         response["Vary"] = "Cookie"
         return response
@@ -333,15 +419,15 @@ def _refresh_view(root_type, operation_result):
     return view
 
 
-def _subscribe_view(root_type, registrations: _LiveQueryRegistry):
+def _subscribe_view(root_type, registrations: _LiveQueryRegistry, live_authorize):
     async def view(request):
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         try:
-            payload = json.loads(request.body or b"{}")
-            queries = _live_queries(
+            await _require_live_access(live_authorize, request)
+            payload, queries = _live_request(
                 root_type,
-                payload,
+                request,
                 request_name="subscription",
                 require_topics=True,
             )
@@ -350,8 +436,8 @@ def _subscribe_view(root_type, registrations: _LiveQueryRegistry):
                 subscription = None
             token = registrations.register(queries, subscription)
             response = JsonResponse({"subscription": token})
-        except (TypeError, ValueError) as error:
-            response = JsonResponse({"error": str(error)}, status=400)
+        except Exception as error:
+            response = exception_response(error)
         response["Cache-Control"] = "no-cache, no-store"
         response["Vary"] = "Cookie"
         return response
@@ -359,23 +445,52 @@ def _subscribe_view(root_type, registrations: _LiveQueryRegistry):
     return view
 
 
-def live_urls_for(root_type, hub: InvalidationHub, operation_result):
+async def _live_access(live_authorize, request) -> bool:
+    if live_authorize is None:
+        return True
+    result = live_authorize(request)
+    if inspect.isawaitable(result):
+        result = await result
+    return bool(result)
+
+
+async def _require_live_access(live_authorize, request):
+    if not await _live_access(live_authorize, request):
+        raise PermissionDenied
+
+
+def live_urls_for(
+    root_type,
+    backend: InvalidationBackend,
+    operation_result,
+    live_authorize=None,
+):
     registrations = _LiveQueryRegistry()
     return [
         path(
             "_live/events",
-            _sse_view(root_type, hub, operation_result, registrations),
+            _sse_view(
+                root_type,
+                backend,
+                operation_result,
+                registrations,
+                live_authorize,
+            ),
             name="pyjs_live_events",
         ),
-        path("_live/poll", _long_poll_view(root_type, hub), name="pyjs_live_poll"),
+        path(
+            "_live/poll",
+            _long_poll_view(root_type, backend, live_authorize),
+            name="pyjs_live_poll",
+        ),
         path(
             "_live/refresh",
-            _refresh_view(root_type, operation_result),
+            _refresh_view(root_type, operation_result, live_authorize),
             name="pyjs_live_refresh",
         ),
         path(
             "_live/subscribe",
-            _subscribe_view(root_type, registrations),
+            _subscribe_view(root_type, registrations, live_authorize),
             name="pyjs_live_subscribe",
         ),
     ]

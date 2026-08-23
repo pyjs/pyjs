@@ -1,6 +1,6 @@
 from pyjs import js
 from pyjs.javascript import JSON, JSONObject
-from pyjs.web.dom import document, localStorage, navigator, window
+from pyjs.web.dom import document, localStorage, navigator, sessionStorage, window
 from pyjs.web.domx import (
     CustomElement,
     button,
@@ -27,7 +27,6 @@ class DocsEventListener:
     def __init__(self, callback: callable):
         self.callback = callback
 
-    @js.keep
     def handleEvent(self, event: Event):
         self.callback(event)
 
@@ -38,7 +37,6 @@ class CodeCopyListener:
         self.button = button_element
         self.code = code_element
 
-    @js.keep
     async def handleEvent(self, event: Event):
         text = self.code.textContent
         if text is None:
@@ -80,6 +78,8 @@ class DocsApp(CustomElement):
         search_data="[]",
         site_home_href: str = "",
         site_navigation="",
+        project_links="",
+        version: str = "",
     ):
         super().__init__()
         if not site_home_href:
@@ -87,7 +87,6 @@ class DocsApp(CustomElement):
         self.menu_button = ref(
             button(
                 {
-                    "aria-controls": "docs-navigation",
                     "aria-expanded": "false",
                     "aria-label": "Open navigation",
                     "class": "icon-button mobile-menu-button",
@@ -164,6 +163,17 @@ class DocsApp(CustomElement):
                 search_data,
             )
         )
+        self.navigation_panel = ref(
+            tag(
+                "aside",
+                {
+                    "aria-label": "Documentation navigation",
+                    "class": "docs-sidebar",
+                },
+                navigation,
+            )
+        )
+        self.menu_button.setAttribute("aria-controls", self.navigation_panel.id)
         tag(
             self,
             tag(
@@ -184,32 +194,17 @@ class DocsApp(CustomElement):
                         tag("span", site_name),
                     ),
                     tag("a", {"class": "brand-section", "href": home_href}, "Docs"),
+                    tag("span", {"class": "docs-version"}, version) if version else "",
                     site_navigation,
                     div({"class": "header-spacer"}),
                     self.search_button,
-                    tag(
-                        "a",
-                        {
-                            "aria-label": "View PyJS on GitHub",
-                            "class": "icon-button github-button",
-                            "href": "https://github.com/pyjs/pyjs",
-                        },
-                        "GitHub",
-                    ),
+                    project_links,
                     self.theme_button,
                 ),
             ),
             div(
                 {"class": "docs-layout"},
-                tag(
-                    "aside",
-                    {
-                        "aria-label": "Documentation navigation",
-                        "class": "docs-sidebar",
-                        "id": "docs-navigation",
-                    },
-                    navigation,
-                ),
+                self.navigation_panel,
                 tag(
                     "main",
                     {"class": "docs-main", "id": "main-content"},
@@ -237,8 +232,21 @@ class DocsApp(CustomElement):
         )
         bind(self.search_dialog, "click", self.handle_dialog_click)
         bind(window, "keydown", self.handle_keyboard)
+        bind(self.navigation_panel, "click", self.save_navigation_position)
         self.apply_theme(localStorage.getItem("pyjs-docs-theme"))
+        self.restore_navigation_position()
         self.add_code_copy_buttons()
+
+    def save_navigation_position(self, event: Event | None = None):
+        sessionStorage.setItem(
+            "pyjs-docs-navigation-scroll",
+            str(self.navigation_panel.scrollTop),
+        )
+
+    def restore_navigation_position(self):
+        saved = sessionStorage.getItem("pyjs-docs-navigation-scroll")
+        if saved is not None:
+            self.navigation_panel.scrollTop = float(saved)
 
     def apply_theme(self, theme: str | None):
         root = document.documentElement
@@ -340,7 +348,7 @@ class DocsApp(CustomElement):
     def add_code_copy_buttons(self):
         for block in self.querySelectorAll(".highlight"):
             code = block.querySelector("code")
-            if code is not None:
+            if isinstance(code, HTMLElement):
                 copy_button = button({"class": "copy-button", "type": "button"}, "Copy")
                 copy_button.addEventListener("click", CodeCopyListener(copy_button, code))
                 block.append(copy_button)
@@ -356,6 +364,8 @@ def main(
     search_data="[]",
     site_home_href: str = "",
     site_navigation="",
+    project_links="",
+    version: str = "",
 ):
     return DocsApp(
         site_name,
@@ -366,4 +376,6 @@ def main(
         search_data,
         site_home_href,
         site_navigation,
+        project_links,
+        version,
     )

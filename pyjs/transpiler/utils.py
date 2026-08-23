@@ -7,7 +7,20 @@ from _ast_unparse import _Precedence
 from io import StringIO
 from pathlib import Path
 
+from pyjs.tooling.download import verify_sha256
+
 from .objects import Function, RuntimeFunctionReference
+
+
+class TailwindBuildError(RuntimeError):
+    def __init__(self, error: subprocess.CalledProcessError):
+        self.command = tuple(error.cmd)
+        self.exit_code = error.returncode
+        self.stderr = (error.stderr or b"").decode(errors="replace").strip()
+        message = f"Tailwind CSS compilation failed with exit code {self.exit_code}"
+        if self.stderr:
+            message += f": {self.stderr}"
+        super().__init__(message)
 
 
 class SourceWriter(StringIO):
@@ -62,6 +75,13 @@ class TypeWriter(_Unparser):
     def visit_StaticCast(self, node):
         self.traverse(node.value)
 
+    def visit_EvaluateOnce(self, node):
+        self.write("$evaluate_once(")
+        self.traverse(node.value)
+        self.write("; ")
+        self.traverse(node.body)
+        self.write(")")
+
     def visit_UnpackAssignment(self, node):
         self.fill("$unpack = ")
         self.traverse(node.value)
@@ -69,6 +89,17 @@ class TypeWriter(_Unparser):
 
     def visit_UnpackItem(self, node):
         self.write(f"$unpack[{node.index}]")
+
+    def visit_ChainedCompare(self, node):
+        self.write("$chained_compare(")
+        self.items_view(self.traverse, node.operands)
+        self.write("; ")
+        self.interleave(
+            lambda: self.write(" and "),
+            self.traverse,
+            node.comparisons,
+        )
+        self.write(")")
 
 
 def write_types(ast_obj):
@@ -120,19 +151,33 @@ class TailwindCSS:
     def install(self):
         asset = self.platform_asset()
         executable = self.cache_directory / self.VERSION / asset
-        if executable.exists():
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        checksums = executable.parent / "sha256sums.txt"
+        temporary = executable.with_suffix(f"{executable.suffix}.download")
+        temporary_checksums = checksums.with_suffix(".download")
+        base_url = (
+            "https://github.com/tailwindlabs/tailwindcss/releases/download/"
+            f"v{self.VERSION}"
+        )
+        if executable.exists() and checksums.exists():
+            verify_sha256(executable, checksums)
             return executable
 
-        executable.parent.mkdir(parents=True, exist_ok=True)
-        temporary = executable.with_suffix(f"{executable.suffix}.download")
-        url = f"https://github.com/tailwindlabs/tailwindcss/releases/download/v{self.VERSION}/{asset}"
         print(f"Downloading Tailwind CSS {self.VERSION} for {platform.system()}...")
         try:
-            urllib.request.urlretrieve(url, temporary)
+            urllib.request.urlretrieve(f"{base_url}/sha256sums.txt", temporary_checksums)
+            if executable.exists():
+                verify_sha256(executable, temporary_checksums)
+                temporary_checksums.replace(checksums)
+                return executable
+            urllib.request.urlretrieve(f"{base_url}/{asset}", temporary)
+            verify_sha256(temporary, temporary_checksums, asset)
             temporary.chmod(0o755)
             temporary.replace(executable)
+            temporary_checksums.replace(checksums)
         finally:
             temporary.unlink(missing_ok=True)
+            temporary_checksums.unlink(missing_ok=True)
         return executable
 
     def run(self, arguments, **kwargs):
@@ -155,8 +200,8 @@ class TailwindCSS:
                 capture_output=True,
             )
             return process.stdout.decode()
-        except subprocess.CalledProcessError as e:
-            print("Tailwind CLI failed:", e.stderr.decode())
+        except subprocess.CalledProcessError as error:
+            raise TailwindBuildError(error) from error
 
     def build(self, input_path, output_path, *, minify=False, cwd=None):
         input_path = Path(input_path).resolve()

@@ -1,4 +1,4 @@
-from pyjs.server import serve
+from pyjs.server.dev import serve
 
 from . import __PYJS_PACKAGE__ as application
 

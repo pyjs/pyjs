@@ -1,39 +1,43 @@
 import annotationlib
-import asyncio
-import importlib
 import inspect
 import json
-import secrets
-import sys
-import threading
 import types
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from http import HTTPStatus
-from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from types import MappingProxyType
-from typing import Union, get_args, get_origin
-from urllib.parse import urlsplit
-
-from websockets.asyncio.server import ServerConnection
-from websockets.asyncio.server import serve as websocket_serve
-from websockets.datastructures import Headers
-from websockets.http11 import Request, Response
+from typing import Protocol, Union, cast, get_args, get_origin, runtime_checkable
 
 from pyjs import js, nojs
 from pyjs.javascript import _stringify_unchecked
 from pyjs.server import live as _live
+from pyjs.server.application import ApplicationPage as ApplicationPage
+from pyjs.server.application import ApplicationSection as ApplicationSection
+from pyjs.server.atomic import AtomicBatch as AtomicBatch
 from pyjs.server.errors import (
     OperationError,
     OperationIssue,
+    OperationResultError,
     parse_operation_error,
 )
 from pyjs.server.errors import operation_error as operation_error
-from pyjs.server.jsonapi import DecodedJSONAPIDocument, JSONAPIDecoder
+from pyjs.server.jsonapi import (
+    DecodedJSONAPIDocument,
+    JSONAPIDecoder,
+    JSONAPIDocument,
+    model_document,
+)
+from pyjs.server.pagination import (
+    CursorPageRequest as CursorPageRequest,
+)
+from pyjs.server.pagination import OffsetPageRequest as OffsetPageRequest
+from pyjs.server.pagination import Page as Page
 from pyjs.server.protocol import InvalidationPayload as InvalidationPayload
+from pyjs.server.rendering import NavigationPage as NavigationPage
+from pyjs.server.rendering import html as html
+from pyjs.server.rendering import navigation_fragment as navigation_fragment
+from pyjs.server.rendering import page as page
+from pyjs.server.rendering import write as write
 from pyjs.server.transport import (
     ClientTransport,
     FetchTransport,
@@ -43,20 +47,14 @@ from pyjs.server.transport import (
 )
 from pyjs.server.watch import LiveSession as LiveSession
 from pyjs.server.watch import WatchedQuery as WatchedQuery
-from pyjs.transpiler import prepare_bundle
-from pyjs.web.domx import HTMLElement, tag
-from pyjs.web.navigation import NAVIGATION_HEADER, navigation_page
-from pyjs.web.ssr import render_document, render_html, write_html
 
 Invalidation = _live.Invalidation
+InvalidationBackend = _live.InvalidationBackend
 InvalidationHub = _live.InvalidationHub
 InvalidationSubscription = _live.InvalidationSubscription
+ReplayInvalidationBackend = _live.ReplayInvalidationBackend
 api_topic = _live.api_topic
 resource_topic = _live.resource_topic
-
-SESSION_COOKIE_NAME = "pyjs-session"
-MAX_REQUEST_BODY_SIZE = 64 * 1024
-
 
 class Operation:
     def __init__(self, kind: str, function):
@@ -67,6 +65,14 @@ class Operation:
         self.jsonapi = False
         self.jsonapi_many = False
         self.client_model_references = {}
+
+
+@runtime_checkable
+class DeferredOperationResult(Protocol):
+    def materialize_operation_result(
+        self,
+        result_type: object,
+    ) -> object | Awaitable[object]: ...
 
 
 def _operation_argument_names(operation: Operation) -> list[str]:
@@ -87,13 +93,25 @@ def _client_model_map_source(operation: Operation) -> str:
     return f"new Map([{models}])"
 
 
-def _client_operation_source(operation: Operation) -> str:
+def _client_result_source(analyzed_function, value: str, receiver: str) -> str:
+    from pyjs.transpiler.objects import (
+        client_result_requires_decoding,
+        client_type_descriptor,
+    )
+
+    if not client_result_requires_decoding(analyzed_function.return_type):
+        return value
+    descriptor = json.dumps(
+        client_type_descriptor(analyzed_function.return_type),
+        separators=(",", ":"),
+    )
+    return f"{receiver}._decode_result({value}, {descriptor})"
+
+
+def _client_operation_source(operation: Operation, analyzed_function) -> str:
     function = operation.function
-    signature = operation.signature
     arguments = _operation_argument_names(operation)
     payload = ", ".join(f"{name}: {name}" for name in arguments)
-    return_type = signature.return_annotation
-    validate = getattr(return_type, "model_validate", None)
     request = (
         f"await this._request('{function.__name__}', "
         f"{{{payload}}})"
@@ -103,37 +121,34 @@ def _client_operation_source(operation: Operation) -> str:
             (
                 f"const $document = new $JSONAPIDecoder(JSON.parse({request}), "
                 f"{_client_model_map_source(operation)});",
-                "this._document = $document;",
                 "return $document.data;",
             )
         )
-    lines = [f"const $value = JSON.parse({request});"]
-    if validate is not None:
-        function.__pyjs_source_dependencies__ = (return_type,)
-        lines.append(f"return new {return_type.__name__}($value);")
-    else:
-        lines.append("return $value;")
-    return "\n".join(lines)
+    return "\n".join(
+        (
+            f"const $value = JSON.parse({request});",
+            f"return {_client_result_source(analyzed_function, '$value', 'this')};",
+        )
+    )
 
 
 def _client_operation_binding_source(
     operation: Operation,
     source: str,
     receiver: str,
+    analyzed_function,
 ) -> str:
     arguments = _operation_argument_names(operation)
-    return_type = operation.signature.return_annotation
     if operation.jsonapi:
         decode = (
-            "($value) => { const $document = new $JSONAPIDecoder($value, "
-            f"{_client_model_map_source(operation)}); "
-            f"{receiver}._document = $document; "
-            "return $document.data; }"
+            f"($value) => {receiver}._decode_jsonapi("
+            f"$value, {_client_model_map_source(operation)})"
         )
-    elif getattr(return_type, "model_validate", None) is not None:
-        decode = f"($value) => new {return_type.__name__}($value)"
     else:
-        decode = "($value) => $value"
+        decode = (
+            "($value) => "
+            + _client_result_source(analyzed_function, "$value", receiver)
+        )
     return (
         f"Object.assign({source}.bind({receiver}), {{"
         f"$operation: {receiver}._path + '/{operation.function.__name__}', "
@@ -149,15 +164,15 @@ def operation(kind: str):
         remote_operation = Operation(kind, function)
         function.__pyjs_operation__ = remote_operation
         js(function)
-        return_type = remote_operation.signature.return_annotation
-        if getattr(return_type, "model_validate", None):
-            function.__pyjs_source_dependencies__ = (return_type,)
-        function.source(lambda: _client_operation_source(remote_operation))
+        function.source(
+            lambda analyzed: _client_operation_source(remote_operation, analyzed)
+        )
         function.__js_bind_source__ = (
-            lambda source, receiver: _client_operation_binding_source(
+            lambda source, receiver, analyzed: _client_operation_binding_source(
                 remote_operation,
                 source,
                 receiver,
+                analyzed,
             )
         )
         return function
@@ -543,43 +558,43 @@ def resolve_include_paths(
     return tuple(includes)
 
 
-async def dispatch_operation(
-    root: type | object,
+async def _dispatch_resource_operation(
+    resource: object,
+    operation: Operation,
     identity: str,
-    values: object,
-    request: object = None,
+    values: dict[str, object],
+    request: object,
     *,
     serialize: bool = True,
+    defer_result: bool = False,
 ) -> object:
     from pydantic import TypeAdapter, ValidationError
 
-    if not isinstance(values, dict):
-        raise TypeError("Operation arguments must be a JSON object.")
-    graph = resource_graph(root)
-    operation_metadata = graph.operations_by_identity.get(identity)
-    if operation_metadata is None:
-        raise TypeError(f"Unknown operation: {identity}.")
-
-    root_type = root if isinstance(root, type) else type(root)
-    resource = root_type()
-    for name in operation_metadata.owner.path:
-        resource = getattr(resource, name)
     resource.request = request
-
-    operation = operation_metadata.operation
     parameters = list(operation.signature.parameters.values())[1:]
-    expected = set(operation_metadata.argument_names)
+    expected = {parameter.name for parameter in parameters}
     unexpected = set(values) - expected
     if unexpected:
         names = ", ".join(sorted(unexpected))
-        raise TypeError(f"Unexpected argument(s): {names}.")
+        raise operation_error(
+            f"Unexpected argument(s): {names}.",
+            status=400,
+            title="Invalid request",
+            code="unexpected_arguments",
+        )
 
     arguments = {}
     for parameter in parameters:
         if parameter.name not in values:
             if parameter.default is not inspect.Parameter.empty:
                 continue
-            raise TypeError(f"Missing argument: {parameter.name}.")
+            raise operation_error(
+                f"Missing argument: {parameter.name}.",
+                parameter.name,
+                status=400,
+                title="Invalid request",
+                code="missing_argument",
+            )
         try:
             arguments[parameter.name] = TypeAdapter(
                 parameter.annotation
@@ -603,13 +618,122 @@ async def dispatch_operation(
     result = getattr(resource, operation.name)(**arguments)
     if inspect.isawaitable(result):
         result = await result
-    if getattr(result, "__pyjs_deferred_operation_result__", False):
-        return result
-    result_adapter = TypeAdapter(operation.signature.return_annotation)
-    result = result_adapter.validate_python(result)
+    return_type = operation.signature.return_annotation
+    try:
+        if isinstance(result, DeferredOperationResult):
+            if defer_result:
+                return result
+            result = result.materialize_operation_result(return_type)
+            if inspect.isawaitable(result):
+                result = await result
+        result_adapter = TypeAdapter(return_type)
+        result = result_adapter.validate_python(result)
+    except ValidationError as error:
+        raise OperationResultError(
+            f"Operation {identity!r} returned a value that does not match "
+            "its annotation."
+        ) from error
     if not serialize:
         return result
     return result_adapter.dump_python(result, mode="json")
+
+
+async def dispatch_operation(
+    root: type | object,
+    identity: str,
+    values: object,
+    request: object = None,
+    *,
+    serialize: bool = True,
+    defer_result: bool = False,
+) -> object:
+    if not isinstance(values, dict):
+        raise operation_error(
+            "Operation arguments must be a JSON object.",
+            status=400,
+            title="Invalid request",
+            code="invalid_arguments",
+        )
+    graph = resource_graph(root)
+    operation_metadata = graph.operations_by_identity.get(identity)
+    if operation_metadata is None:
+        raise operation_error(
+            f"Unknown operation: {identity}.",
+            status=400,
+            title="Invalid request",
+            code="unknown_operation",
+        )
+
+    root_type = root if isinstance(root, type) else type(root)
+    resource = root_type()
+    for name in operation_metadata.owner.path:
+        resource = getattr(resource, name)
+    return await _dispatch_resource_operation(
+        resource,
+        operation_metadata.operation,
+        identity,
+        values,
+        request,
+        serialize=serialize,
+        defer_result=defer_result,
+    )
+
+
+async def _dispatch_bound_operation(
+    remote_operation: object,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+    request: object,
+) -> object:
+    function = getattr(remote_operation, "__func__", None)
+    operation = getattr(function, "__pyjs_operation__", None)
+    resource = getattr(remote_operation, "__self__", None)
+    if operation is None and resource is not None and function is not None:
+        operation = getattr(type(resource), "__pyjs_operations__", {}).get(
+            function.__name__
+        )
+    if not isinstance(operation, Operation) or resource is None:
+        raise TypeError("dispatch() requires a bound resource operation")
+    try:
+        bound = operation.signature.bind(resource, *args, **kwargs)
+    except TypeError as error:
+        raise TypeError(f"Cannot dispatch {operation.name}(): {error}") from error
+    values = {
+        name: value
+        for name, value in bound.arguments.items()
+        if name != "self"
+    }
+    return await _dispatch_resource_operation(
+        resource,
+        operation,
+        f"{type(resource).__name__}.{operation.name}",
+        values,
+        request,
+        serialize=False,
+    )
+
+
+async def dispatch[**Arguments, Result](
+    remote_operation: Callable[Arguments, Awaitable[Result]],
+    *args: Arguments.args,
+    **kwargs: Arguments.kwargs,
+) -> Result:
+    return cast(
+        Result,
+        await _dispatch_bound_operation(remote_operation, args, kwargs, None),
+    )
+
+
+async def dispatch_for_request[**Arguments, Result](
+    request: object,
+    remote_operation: Callable[Arguments, Awaitable[Result]],
+    *args: Arguments.args,
+    **kwargs: Arguments.kwargs,
+) -> Result:
+    return cast(
+        Result,
+        await _dispatch_bound_operation(remote_operation, args, kwargs, request),
+    )
 
 
 class ResourceAlias:
@@ -685,16 +809,24 @@ class APIMetaclass(type):
         return instance
 
     def __new__(mcls, name, bases, namespace, /, **kwargs):
+        # API subclasses are server-only unless their own declaration is
+        # explicitly marked @js. Do not inherit the client marker from API or
+        # a client-visible contract base.
+        namespace.setdefault("__js__", False)
         children = {}
         operations = {}
         relationships = {}
         relationship_resources = {}
+        relationship_loaders = {}
         for base in bases:
             children.update(getattr(base, "__pyjs_api_children__", {}))
             operations.update(getattr(base, "__pyjs_operations__", {}))
             relationships.update(getattr(base, "__pyjs_relationships__", {}))
             relationship_resources.update(
                 getattr(base, "__pyjs_relationship_resources__", {})
+            )
+            relationship_loaders.update(
+                getattr(base, "__pyjs_relationship_loaders__", {})
             )
 
         annotate = annotationlib.get_annotate_from_class_namespace(namespace)
@@ -712,6 +844,12 @@ class APIMetaclass(type):
                 value_type, selected_resource = get_args(annotation)
                 relationships[attribute] = value_type
                 relationship_resources[attribute] = selected_resource
+                if attribute in namespace:
+                    loader = namespace[attribute]
+                    if loader is None:
+                        relationship_loaders.pop(attribute, None)
+                    else:
+                        relationship_loaders[attribute] = loader
                 if selected_resource is not None:
                     resource_type = globals().get("Resource")
                     try:
@@ -733,6 +871,8 @@ class APIMetaclass(type):
                         selected_resource,
                         relationship=True,
                     )
+                else:
+                    namespace.pop(attribute, None)
                 continue
             try:
                 is_api = issubclass(annotation, API)
@@ -746,12 +886,24 @@ class APIMetaclass(type):
             remote_operation = getattr(value, "__pyjs_operation__", None)
             if remote_operation is not None:
                 operations[attribute] = remote_operation
+            elif attribute in operations:
+                inherited = operations[attribute]
+                if not inspect.iscoroutinefunction(value):
+                    raise TypeError(
+                        f"Operation override {name}.{attribute} must be async."
+                    )
+                if inspect.signature(value) != inherited.signature:
+                    raise TypeError(
+                        f"Operation override {name}.{attribute} must preserve "
+                        "its inherited signature."
+                    )
 
         namespace["__pyjs_api_children__"] = children
         namespace["__pyjs_instance_annotations__"] = children
         namespace["__pyjs_operations__"] = operations
         namespace["__pyjs_relationships__"] = relationships
         namespace["__pyjs_relationship_resources__"] = relationship_resources
+        namespace["__pyjs_relationship_loaders__"] = relationship_loaders
         for base in namespace.get("__orig_bases__", ()):
             if isinstance(base, ResourceAlias):
                 namespace["__pyjs_model__"] = base.model_type
@@ -768,6 +920,13 @@ class APIMetaclass(type):
 
 @js
 class API(metaclass=APIMetaclass):
+    __pyjs_generated_methods__ = ("_decode_jsonapi", "_request")
+
+    @nojs
+    @classmethod
+    def __pyjs_prepare_client__(cls):
+        resource_graph(cls)
+
     def __init__(
         self,
         path: str = "/api",
@@ -781,24 +940,30 @@ class API(metaclass=APIMetaclass):
             FetchTransport() if transport is None else transport
         )
         self._timeout_ms = timeout_ms
-        self._document: DecodedJSONAPIDocument | None = None
 
+    @js
     def related(
         self,
-        identifier: str,
+        model: object,
         relationship: API,
     ) -> object | None:
-        if self._document is None:
+        document = model_document(model)
+        if not isinstance(document, DecodedJSONAPIDocument):
             return None
-        resource_type = self._path.split("/")[-1]
         relationship_name = relationship._path.split("/")[-1]
-        return self._document.related(
-            resource_type,
-            identifier,
+        return document.related_model(
+            model,
             relationship_name,
         )
 
-    @js.keep
+    @related.analyze
+    def related(call):
+        return call.receiver_mapped_annotation_type(
+            "__pyjs_relationships__",
+            1,
+            optional=True,
+        )
+
     async def _request(self, operation_name: str, values: object) -> str:
         response = await self._transport.request(
             self._path + "/" + operation_name,
@@ -808,6 +973,28 @@ class API(metaclass=APIMetaclass):
         if not response.ok:
             raise parse_operation_error(response.body, response.status)
         return response.body
+
+    def _decode_jsonapi(
+        self,
+        value: JSONAPIDocument,
+        model_types: dict[str, type],
+    ) -> object:
+        document = JSONAPIDecoder(value, model_types)
+        return document.data
+
+    @js
+    def _decode_result(self, value: object, descriptor: object) -> object:
+        return value
+
+    def live_session(self, autostart: bool = True) -> LiveSession:
+        return LiveSession(
+            self._path,
+            transport=self._transport,
+            autostart=autostart,
+        )
+
+    def atomic(self) -> AtomicBatch:
+        return AtomicBatch(self)
 
     @property
     @nojs
@@ -821,6 +1008,67 @@ class API(metaclass=APIMetaclass):
     @nojs
     def resource_graph(self):
         return resource_graph(self)
+
+
+API._decode_result.source(
+    """
+    if (Array.isArray(descriptor)) {
+        const [kind, ...members] = descriptor;
+        if (kind === 'model') {
+            const model = globalThis.$pyjsModels?.get(members[0]);
+            if (model === undefined) {
+                throw new TypeError(`Client model ${members[0]} is unavailable`);
+            }
+            return value instanceof model ? value : new model(value);
+        }
+        if (kind === 'union') {
+            if (!members.includes('NoneType')) return value;
+            if (value === null || value === undefined) return null;
+            const member = members.find((candidate) => candidate !== 'NoneType');
+            return this._decode_result(value, member);
+        }
+        if (kind === 'list') {
+            return value.map((item) => this._decode_result(item, members[0]));
+        }
+        if (kind === 'tuple') {
+            return value.map((item, index) =>
+                this._decode_result(item, members[index])
+            );
+        }
+        if (kind === 'set') {
+            const items = value instanceof Set ? [...value] : value;
+            return new Set(items.map((item) =>
+                this._decode_result(item, members[0])
+            ));
+        }
+        if (kind === 'dict') {
+            const entries = value instanceof Map
+                ? [...value.entries()]
+                : Object.entries(value);
+            return new Map(entries.map(([key, item]) => [
+                this._decode_result(key, members[0]),
+                this._decode_result(item, members[1]),
+            ]));
+        }
+        return value;
+    }
+    if (descriptor === 'Date') {
+        if (value instanceof Date) return value;
+        const source = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)
+            ? `${value}T00:00:00`
+            : value;
+        return new Date(source);
+    }
+    if ((descriptor === 'int' || descriptor === 'float')
+            && typeof value === 'string') {
+        return Number(value);
+    }
+    if (descriptor === 'bool' && typeof value === 'string') {
+        return value === 'true';
+    }
+    return value;
+    """
+)
 
 
 @js
@@ -846,556 +1094,3 @@ def include_paths(resource: API, *relationships: API) -> list[str]:
             )
         paths.append(relationship._path[len(prefix) :].replace("/", "."))
     return paths
-
-
-def _server_url(host, port):
-    if not host or host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
-    elif ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    return f"http://{host}:{port}/"
-
-
-def _module_name(module):
-    path = Path(module)
-    if not path.is_file():
-        return module
-
-    source = path.resolve()
-    for loaded_module in tuple(sys.modules.values()):
-        spec = getattr(loaded_module, "__spec__", None)
-        loaded_file = getattr(loaded_module, "__file__", None)
-        if spec is not None and loaded_file is not None and Path(loaded_file).resolve() == source:
-            return spec.name
-    return path.stem
-
-
-class ServerRequest:
-    def __init__(self, method, path, headers, body, session, session_id, new_session):
-        self.method = method
-        self.path = path
-        self.headers = headers
-        self.body = body
-        self.session = session
-        self.session_id = session_id
-        self.new_session = new_session
-
-    def json(self):
-        return json.loads(self.body.decode("utf-8"))
-
-
-class ServerResponse:
-    def __init__(self, body="", status=200, content_type="text/plain", headers=None):
-        self.body = body
-        self.status = status
-        self.content_type = content_type
-        self.headers = headers or {}
-
-
-class NavigationPage:
-    def __init__(self, body, title, status=200, headers=None):
-        self.body = body
-        self.title = title
-        self.status = status
-        self.headers = headers or {}
-
-
-def websocket_response(response, request=None):
-    body = response.body
-    if isinstance(body, str):
-        body = body.encode("utf-8")
-    headers = Headers()
-    if response.content_type is not None:
-        headers["Content-Type"] = response.content_type
-    headers["Content-Length"] = str(len(body))
-    if request is not None and request.new_session:
-        headers["Set-Cookie"] = (
-            f"{SESSION_COOKIE_NAME}={request.session_id}; HttpOnly; Path=/; SameSite=Lax"
-        )
-    for name, value in response.headers.items():
-        headers[name] = value
-    status = HTTPStatus(response.status)
-    return Response(status.value, status.phrase, headers, body)
-
-
-def html(body, js, css, script_type, title=""):
-    return tag(
-        "html",
-        tag(
-            "head",
-            tag("meta", {"charset": "utf-8"}),
-            tag("title", title),
-            tag("link", {"rel": "stylesheet", "href": css}),
-        ),
-        tag("body", body),
-        tag("script", {"type": script_type, "src": js}, " "),
-    )
-
-
-def page(body, js, css, script_type="module", title=""):
-    return render_document(html(body, js, css, script_type, title))
-
-
-def navigation_fragment(body, title, layout_id):
-    return render_html(
-        tag(
-            "div",
-            tag("title", title),
-            navigation_page(body, layout_id),
-        )
-    )
-
-
-def write(parent: HTMLElement, src):
-    write_html(parent, src)
-
-
-class RequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        server: PyjsServer = self.server
-        server.refresh()
-        path = urlsplit(self.path).path
-        if path == "/" and ("GET", path) in server.routes:
-            request = server.create_request("GET", path, self.headers, b"")
-            self.send_server_response(server.dispatch(request), request)
-        elif path == "/":
-            request = server.create_request("GET", path, self.headers, b"")
-            response = ServerResponse(
-                page(
-                    server.get_html(request),
-                    f"{server.entry_point.container.name}.js",
-                    "index.css",
-                ),
-                content_type="text/html",
-            )
-            self.send_server_response(response, request)
-        elif path == "/index.css":
-            self.send_server_response(ServerResponse(server.get_css(), content_type="text/css"))
-        elif ("GET", path) in server.routes:
-            request = server.create_request("GET", path, self.headers, b"")
-            self.send_server_response(server.dispatch(request), request)
-        elif path.endswith(".js"):
-            module_name = Path(path).stem
-            if module_name not in server.package:
-                self.send_error(404)
-                return
-            self.send_server_response(
-                ServerResponse(server.package[module_name], content_type="application/javascript")
-            )
-        else:
-            self.send_error(404)
-
-    def do_POST(self):
-        server: PyjsServer = self.server
-        server.refresh()
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            self.send_error(400, "Invalid Content-Length")
-            return
-        if content_length < 0:
-            self.send_error(400, "Invalid Content-Length")
-            return
-        if content_length > MAX_REQUEST_BODY_SIZE:
-            self.send_error(413, "Request body is too large")
-            return
-
-        path = urlsplit(self.path).path
-        request = server.create_request(
-            "POST",
-            path,
-            self.headers,
-            self.rfile.read(content_length),
-        )
-        try:
-            response = server.dispatch(request)
-        except ValueError as error:
-            response = ServerResponse(str(error), status=400)
-        self.send_server_response(response, request)
-
-    def send_server_response(self, response, request=None):
-        body = response.body
-        if isinstance(body, str):
-            body = body.encode("utf-8")
-
-        self.send_response(response.status)
-        if response.content_type is not None:
-            self.send_header("Content-Type", response.content_type)
-        if body:
-            self.send_header("Content-Length", str(len(body)))
-        if request is not None and request.new_session:
-            self.send_header(
-                "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}={request.session_id}; HttpOnly; Path=/; SameSite=Lax",
-            )
-        for name, value in response.headers.items():
-            self.send_header(name, value)
-        self.end_headers()
-        if body:
-            self.wfile.write(body)
-
-
-class PyjsApplication:
-    def __init__(
-        self,
-        module: str,
-        css: str,
-        entry_point: str,
-        *entry_point_args,
-        render=None,
-        routes=None,
-        layout=None,
-        layout_id="main",
-        page_entry_points=(),
-    ):
-        self.module_name = _module_name(module)
-        self.module = importlib.import_module(self.module_name)
-        self.module_path = Path(self.module.__file__)
-        self.module_last_modified = None
-        self.package = None
-        self.css_provided = bool(css)
-        self.css = css
-        self.entry_point = None
-        self.entry_point_name = entry_point or "main"
-        self.entry_point_args = entry_point_args
-        self.render_name = self.callback_name(render) if render is not None else None
-        self.layout_name = self.callback_name(layout) if layout is not None else None
-        self.layout_id = layout_id
-        self.page_entry_point_names = tuple(
-            self.callback_name(callback) for callback in page_entry_points
-        )
-        self.routes = {
-            (method.upper(), path): self.callback_name(callback)
-            for (method, path), callback in (routes or {}).items()
-        }
-        self.sessions = {}
-        self.refresh()
-
-    def callback_name(self, callback):
-        if isinstance(callback, str):
-            return callback
-        name = callback.__name__
-        if not hasattr(self.module, name):
-            raise ValueError("server callbacks must be module-level functions in the served module")
-        return name
-
-    def resolve_callback(self, name):
-        return getattr(self.module, name)
-
-    def create_request(self, method, path, headers, body):
-        cookies = SimpleCookie(headers.get("Cookie", ""))
-        session_cookie = cookies.get(SESSION_COOKIE_NAME)
-        session_id = session_cookie.value if session_cookie is not None else None
-        new_session = session_id not in self.sessions
-        if new_session:
-            session_id = secrets.token_urlsafe(24)
-            self.sessions[session_id] = {}
-        return ServerRequest(
-            method,
-            path,
-            headers,
-            body,
-            self.sessions[session_id],
-            session_id,
-            new_session,
-        )
-
-    def dispatch(self, request):
-        callback_name = self.routes.get((request.method, request.path))
-        if callback_name is None:
-            return ServerResponse("Not found", status=404)
-        response = self.resolve_callback(callback_name)(request)
-        if response is None:
-            return ServerResponse(status=204, content_type=None)
-        if isinstance(response, NavigationPage):
-            return self.render_navigation_response(request, response)
-        if not isinstance(response, ServerResponse):
-            raise TypeError(
-                "server route callbacks must return NavigationPage, ServerResponse, or None"
-            )
-        return response
-
-    def render_navigation_response(self, request, response):
-        if self.layout_name is None:
-            raise TypeError("NavigationPage responses require a layout callback")
-
-        headers = dict(response.headers)
-        vary = headers.get("Vary")
-        if vary is None:
-            headers["Vary"] = NAVIGATION_HEADER
-        elif NAVIGATION_HEADER.lower() not in vary.lower():
-            headers["Vary"] = f"{vary}, {NAVIGATION_HEADER}"
-
-        if request.headers.get(NAVIGATION_HEADER) == "1":
-            body = navigation_fragment(response.body, response.title, self.layout_id)
-        else:
-            layout = self.resolve_callback(self.layout_name)(
-                request,
-                response.body,
-                self.layout_id,
-            )
-            body = page(
-                layout,
-                f"{self.entry_point.container.name}.js",
-                "index.css",
-                title=response.title,
-            )
-        return ServerResponse(
-            body,
-            status=response.status,
-            content_type="text/html",
-            headers=headers,
-        )
-
-    def refresh(self):
-        last_modified = self.module_path.stat().st_mtime
-        if self.module_last_modified != last_modified:
-            self.module_last_modified = last_modified
-            importlib.reload(self.module)
-            entry_point_py_func = getattr(self.module, self.entry_point_name)
-            additional_entry_points = tuple(
-                getattr(self.module, name) for name in self.page_entry_point_names
-            )
-            self.package, self.entry_point, css = prepare_bundle(
-                entry_point_py_func,
-                additional_entry_points=additional_entry_points,
-            )
-            if not self.css_provided:
-                self.css = css
-            for package_name, js in self.package.items():
-                self.package[package_name] = js.encode("utf-8")
-
-    def get_html(self, request=None):
-        if self.render_name is not None:
-            return self.resolve_callback(self.render_name)(request)
-        return self.entry_point.py_func(*self.entry_point_args)
-
-    def get_css(self):
-        return self.css
-
-
-class PyjsServer(HTTPServer, PyjsApplication):
-    def __init__(
-        self,
-        module: str,
-        css: str,
-        entry_point: str,
-        *entry_point_args,
-        render=None,
-        routes=None,
-        layout=None,
-        layout_id="main",
-        page_entry_points=(),
-        host="",
-        port=8000,
-    ):
-        HTTPServer.__init__(self, (host, port), RequestHandler)
-        PyjsApplication.__init__(
-            self,
-            module,
-            css,
-            entry_point,
-            *entry_point_args,
-            render=render,
-            routes=routes,
-            layout=layout,
-            layout_id=layout_id,
-            page_entry_points=page_entry_points,
-        )
-
-    def serve_forever(self, poll_interval=0.5):
-        print(f"Serving at {_server_url(self.server_address[0], self.server_port)}")
-        super().serve_forever(poll_interval)
-
-
-class WebSocketPyjsServer(PyjsApplication):
-    def __init__(
-        self,
-        module: str,
-        css: str,
-        entry_point: str,
-        *entry_point_args,
-        render=None,
-        routes=None,
-        layout=None,
-        layout_id="main",
-        page_entry_points=(),
-        websocket_routes=None,
-        host="",
-        port=8000,
-    ):
-        super().__init__(
-            module,
-            css,
-            entry_point,
-            *entry_point_args,
-            render=render,
-            routes=routes,
-            layout=layout,
-            layout_id=layout_id,
-            page_entry_points=page_entry_points,
-        )
-        self.websocket_routes = {
-            path: self.callback_name(callback)
-            for path, callback in (websocket_routes or {}).items()
-        }
-        self.host = host
-        self.server_port = port
-        self.started = threading.Event()
-        self._loop = None
-        self._shutdown_event = None
-        self._shutdown_requested = False
-
-    async def process_request(
-        self,
-        connection: ServerConnection,
-        request: Request,
-    ) -> Response | None:
-        self.refresh()
-        path = urlsplit(request.path).path
-        if path in self.websocket_routes:
-            return None
-        if path == "/" and ("GET", path) in self.routes:
-            server_request = self.create_request("GET", path, request.headers, b"")
-            return websocket_response(self.dispatch(server_request), server_request)
-        if path == "/":
-            server_request = self.create_request("GET", path, request.headers, b"")
-            response = ServerResponse(
-                page(
-                    self.get_html(server_request),
-                    f"{self.entry_point.container.name}.js",
-                    "index.css",
-                ),
-                content_type="text/html",
-            )
-            return websocket_response(response, server_request)
-        if path == "/index.css":
-            return websocket_response(ServerResponse(self.get_css(), content_type="text/css"))
-        if ("GET", path) in self.routes:
-            server_request = self.create_request("GET", path, request.headers, b"")
-            return websocket_response(self.dispatch(server_request), server_request)
-        if path.endswith(".js"):
-            module_name = Path(path).stem
-            if module_name not in self.package:
-                return websocket_response(ServerResponse("Not found", status=404))
-            return websocket_response(
-                ServerResponse(self.package[module_name], content_type="application/javascript")
-            )
-
-        server_request = self.create_request("GET", path, request.headers, b"")
-        return websocket_response(self.dispatch(server_request), server_request)
-
-    async def handle_websocket(self, connection: ServerConnection):
-        path = urlsplit(connection.request.path).path
-        callback_name = self.websocket_routes.get(path)
-        if callback_name is None:
-            await connection.close(1008, "Unknown WebSocket route")
-            return
-        await self.resolve_callback(callback_name)(connection)
-
-    async def run(self):
-        self._loop = asyncio.get_running_loop()
-        self._shutdown_event = asyncio.Event()
-        if self._shutdown_requested:
-            self._shutdown_event.set()
-        async with websocket_serve(
-            self.handle_websocket,
-            self.host,
-            self.server_port,
-            process_request=self.process_request,
-        ) as server:
-            self.server_port = server.sockets[0].getsockname()[1]
-            self.started.set()
-            print(f"Serving at {_server_url(self.host, self.server_port)}")
-            await self._shutdown_event.wait()
-
-    def serve_forever(self):
-        asyncio.run(self.run())
-
-    def shutdown(self):
-        self._shutdown_requested = True
-        if self._loop is not None and self._shutdown_event is not None:
-            self._loop.call_soon_threadsafe(self._shutdown_event.set)
-
-    def server_close(self):
-        pass
-
-
-def create_server(
-    module,
-    css="",
-    entry_point=None,
-    *args,
-    render=None,
-    routes=None,
-    layout=None,
-    layout_id="main",
-    page_entry_points=(),
-    websocket_routes=None,
-    host="",
-    port=8000,
-):
-    if websocket_routes:
-        return WebSocketPyjsServer(
-            module,
-            css,
-            entry_point,
-            *args,
-            render=render,
-            routes=routes,
-            layout=layout,
-            layout_id=layout_id,
-            page_entry_points=page_entry_points,
-            websocket_routes=websocket_routes,
-            host=host,
-            port=port,
-        )
-    return PyjsServer(
-        module,
-        css,
-        entry_point,
-        *args,
-        render=render,
-        routes=routes,
-        layout=layout,
-        layout_id=layout_id,
-        page_entry_points=page_entry_points,
-        host=host,
-        port=port,
-    )
-
-
-def serve(
-    module,
-    css="",
-    entry_point=None,
-    *args,
-    render=None,
-    routes=None,
-    layout=None,
-    layout_id="main",
-    page_entry_points=(),
-    websocket_routes=None,
-    host="",
-    port=8000,
-):
-    httpd = create_server(
-        module,
-        css,
-        entry_point,
-        *args,
-        render=render,
-        routes=routes,
-        layout=layout,
-        layout_id=layout_id,
-        page_entry_points=page_entry_points,
-        websocket_routes=websocket_routes,
-        host=host,
-        port=port,
-    )
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\nServer stopped.")
-    finally:
-        httpd.server_close()

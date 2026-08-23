@@ -21,7 +21,7 @@ class Slider(ProxyElement):
             value = maximum
         self.element = input(
             tw(
-                "h-5 w-full cursor-pointer appearance-none bg-transparent accent-slate-950 "
+                "h-5 w-full cursor-pointer accent-slate-950 "
                 "disabled:cursor-not-allowed disabled:opacity-50"
             ),
             {

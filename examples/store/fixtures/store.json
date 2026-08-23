@@ -1,0 +1,258 @@
+[
+  {
+    "model": "store.product",
+    "pk": 1,
+    "fields": {
+      "slug": "canvas-field-bag",
+      "name": "Canvas field bag",
+      "description": "Waxed canvas with solid brass hardware.",
+      "cents": 8800,
+      "symbol": "▰",
+      "tone": "clay",
+      "inventory": 4
+    }
+  },
+  {
+    "model": "store.product",
+    "pk": 2,
+    "fields": {
+      "slug": "daily-notebook",
+      "name": "Daily notebook",
+      "description": "Lay-flat binding and 192 fountain-pen pages.",
+      "cents": 2400,
+      "symbol": "▤",
+      "tone": "moss",
+      "inventory": 12
+    }
+  },
+  {
+    "model": "store.product",
+    "pk": 3,
+    "fields": {
+      "slug": "task-lamp",
+      "name": "Task lamp",
+      "description": "Warm, dimmable light in powder-coated steel.",
+      "cents": 14800,
+      "symbol": "◒",
+      "tone": "ink",
+      "inventory": 3
+    }
+  },
+  {
+    "model": "store.product",
+    "pk": 4,
+    "fields": {
+      "slug": "travel-tumbler",
+      "name": "Travel tumbler",
+      "description": "Ceramic-lined steel, sized for a daily commute.",
+      "cents": 3800,
+      "symbol": "◉",
+      "tone": "sand",
+      "inventory": 0
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 1,
+    "fields": {
+      "product": 1,
+      "author_name": "Maya",
+      "rating": 5,
+      "body": "The canvas softens beautifully without losing its shape.",
+      "created_at": "2026-08-01T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 2,
+    "fields": {
+      "product": 1,
+      "author_name": "Theo",
+      "rating": 4,
+      "body": "A sturdy daily bag with just the right number of pockets.",
+      "created_at": "2026-08-08T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 3,
+    "fields": {
+      "product": 1,
+      "author_name": "Inez",
+      "rating": 5,
+      "body": "Comfortable on a long walk and easy to organize.",
+      "created_at": "2026-08-15T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 4,
+    "fields": {
+      "product": 1,
+      "author_name": "Noah",
+      "rating": 3,
+      "body": "Well made, though a little larger than I expected.",
+      "created_at": "2026-08-18T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 5,
+    "fields": {
+      "product": 2,
+      "author_name": "June",
+      "rating": 5,
+      "body": "The paper handles fountain pen ink without feathering.",
+      "created_at": "2026-08-10T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.review",
+    "pk": 6,
+    "fields": {
+      "product": 2,
+      "author_name": "Omar",
+      "rating": 4,
+      "body": "It opens flat and the page ruling stays out of the way.",
+      "created_at": "2026-08-17T12:00:00Z",
+      "status": "published"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 1,
+    "fields": {
+      "path": "/",
+      "source": "Direct",
+      "region": "New York, US",
+      "device": "Desktop",
+      "occurred_at": "2026-08-14T09:15:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 2,
+    "fields": {
+      "path": "/story/",
+      "source": "Search",
+      "region": "London, UK",
+      "device": "Mobile",
+      "occurred_at": "2026-08-14T14:42:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 3,
+    "fields": {
+      "path": "/",
+      "source": "Newsletter",
+      "region": "Toronto, CA",
+      "device": "Tablet",
+      "occurred_at": "2026-08-15T11:03:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 4,
+    "fields": {
+      "path": "/",
+      "source": "Search",
+      "region": "Austin, US",
+      "device": "Mobile",
+      "occurred_at": "2026-08-16T08:27:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 5,
+    "fields": {
+      "path": "/story/",
+      "source": "Direct",
+      "region": "Berlin, DE",
+      "device": "Desktop",
+      "occurred_at": "2026-08-16T17:19:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 6,
+    "fields": {
+      "path": "/",
+      "source": "Social",
+      "region": "Lisbon, PT",
+      "device": "Mobile",
+      "occurred_at": "2026-08-17T10:51:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 7,
+    "fields": {
+      "path": "/",
+      "source": "Newsletter",
+      "region": "Chicago, US",
+      "device": "Desktop",
+      "occurred_at": "2026-08-18T07:36:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 8,
+    "fields": {
+      "path": "/story/",
+      "source": "Search",
+      "region": "Sydney, AU",
+      "device": "Tablet",
+      "occurred_at": "2026-08-18T15:22:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 9,
+    "fields": {
+      "path": "/",
+      "source": "Direct",
+      "region": "Seattle, US",
+      "device": "Desktop",
+      "occurred_at": "2026-08-19T08:04:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 10,
+    "fields": {
+      "path": "/",
+      "source": "Search",
+      "region": "Paris, FR",
+      "device": "Mobile",
+      "occurred_at": "2026-08-19T12:48:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 11,
+    "fields": {
+      "path": "/story/",
+      "source": "Social",
+      "region": "Tokyo, JP",
+      "device": "Mobile",
+      "occurred_at": "2026-08-20T06:31:00Z"
+    }
+  },
+  {
+    "model": "store.visitorevent",
+    "pk": 12,
+    "fields": {
+      "path": "/",
+      "source": "Newsletter",
+      "region": "Boston, US",
+      "device": "Desktop",
+      "occurred_at": "2026-08-20T13:17:00Z"
+    }
+  }
+]

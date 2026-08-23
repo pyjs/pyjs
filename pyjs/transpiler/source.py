@@ -1,4 +1,5 @@
 import ast
+import contextlib
 import linecache
 import sys
 import textwrap
@@ -7,13 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from .analyzer import analyze_module
+from .analyzer import analyze_module, release_compilation
 from .objects import CompilationExtension, Function
+from .sourcemap import SourceMap, TranspiledJavaScript
 from .transpiler import (
     Transpiler,
     _write_bundle,
     bundle_import,
-    prepare_bundle,
+    prepare_bundle_with_source_maps,
     transpile_module,
 )
 from .utils import write_types
@@ -60,6 +62,19 @@ class SourceAnalysis:
     entry_point: Function
     wrapped: bool
 
+    def close(self) -> None:
+        release_compilation(self.entry_point)
+
+    def __enter__(self) -> SourceAnalysis:
+        return self
+
+    def __exit__(self, *_exc_info) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        with contextlib.suppress(Exception):
+            self.close()
+
     @property
     def types(self) -> str:
         return write_types(self.entry_point.container.node)
@@ -77,6 +92,16 @@ class SourceCompilation:
     css: str
     elapsed: float
     filename: str
+    source_map: SourceMap
+
+    def close(self) -> None:
+        self.analysis.close()
+
+    def __enter__(self) -> SourceCompilation:
+        return self
+
+    def __exit__(self, *_exc_info) -> None:
+        self.close()
 
     @property
     def entry_point(self) -> Function:
@@ -88,6 +113,8 @@ class SourceCompilation:
 
 
 def is_js_module_annotation(annotation: ast.expr) -> bool:
+    if isinstance(annotation, ast.Name) and annotation.id == "JS":
+        return True
     if not isinstance(annotation, ast.Subscript):
         return False
     if isinstance(annotation.value, ast.Name) and annotation.value.id == "JS":
@@ -238,6 +265,7 @@ def analyze_source(
     wrap: bool | None = None,
     extensions: tuple[CompilationExtension, ...] = (),
 ) -> SourceAnalysis:
+    original_source = textwrap.dedent(source)
     source, wrapped, display_source, simple_wrapper = _prepare_source(
         source,
         filename,
@@ -250,10 +278,12 @@ def analyze_source(
         display_source=display_source,
         simple_wrapper=simple_wrapper,
     )
+    module.__pyjs_original_source__ = original_source
     entry = module.main
     entry.__js__ = True
-    entry.__js_keep__ = True
     entry_point, _ = analyze_module(module, extensions=extensions)
+    entry_point.visited.add(entry_point)
+    entry_point.compilation_objects.add(entry_point)
     return SourceAnalysis(module, entry_point, wrapped)
 
 
@@ -267,6 +297,7 @@ def compile_source(
     extensions: tuple[CompilationExtension, ...] = (),
 ) -> SourceCompilation:
     started = time.perf_counter()
+    original_source = textwrap.dedent(source)
     source, wrapped, display_source, simple_wrapper = _prepare_source(
         source,
         filename,
@@ -279,9 +310,9 @@ def compile_source(
         display_source=display_source,
         simple_wrapper=simple_wrapper,
     )
+    module.__pyjs_original_source__ = original_source
     module.main.__js__ = True
-    module.main.__js_keep__ = True
-    package, entry_point, css = prepare_bundle(
+    package, source_maps, entry_point, css = prepare_bundle_with_source_maps(
         module.main,
         bundle_import,
         lambda name: f"__export_js__.{name} = {name};",
@@ -294,12 +325,21 @@ def compile_source(
     for module_name, module_obj in entry_point.container.container.items():
         if source := transpile_module(module_obj):
             sources[module_name] = source
-    javascript = _write_bundle(package, entry_point, call_main=False, expose_entry=True)
+    generated = _write_bundle(
+        package,
+        entry_point,
+        call_main=False,
+        expose_entry=True,
+        source_maps=source_maps,
+        filename=f"{Path(filename).stem}.js",
+    )
+    assert isinstance(generated, TranspiledJavaScript)
     return SourceCompilation(
         analysis,
         sources,
-        javascript,
+        generated.javascript,
         css,
         time.perf_counter() - started,
         filename,
+        generated.source_map,
     )

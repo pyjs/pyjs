@@ -58,7 +58,6 @@ class ResizableMoveListener:
     def __init__(self, group: ResizablePanelGroup):
         self.group = group
 
-    @js.keep
     def handleEvent(self, event: PointerEvent):
         self.group.pointer_moved(event)
 
@@ -68,7 +67,6 @@ class ResizableUpListener:
     def __init__(self, group: ResizablePanelGroup):
         self.group = group
 
-    @js.keep
     def handleEvent(self, event: PointerEvent):
         self.group.pointer_released(event)
 
@@ -81,20 +79,9 @@ class ResizablePanelGroup(Widget):
         direction: str = "horizontal",
     ):
         super().__init__()
-        self.panels: list[ResizablePanel] = []
-        self.handles: list[ResizableHandle] = []
         for child in children:
-            if isinstance(child, ResizablePanel):
-                self.panels.append(child)
             if isinstance(child, ResizableHandle):
                 child.setAttribute("data-direction", direction)
-                self.handles.append(child)
-        self.drag_index = -1
-        self.drag_start = 0
-        self.before_start = 0.0
-        self.after_start = 0.0
-        self.move_listener = ResizableMoveListener(self)
-        self.up_listener = ResizableUpListener(self)
         self.add(
             tw(
                 "flex min-h-48 w-full overflow-hidden rounded-lg border border-slate-200 "
@@ -110,8 +97,38 @@ class ResizablePanelGroup(Widget):
         self.addEventListener("pointerdown", self.pointer_pressed)
         self.update_handle_values()
 
+    def initialize(self):
+        self.drag_index = -1
+        self.drag_start = 0
+        self.before_start = 0.0
+        self.after_start = 0.0
+        self.move_listener = ResizableMoveListener(self)
+        self.up_listener = ResizableUpListener(self)
+
     def is_vertical(self) -> bool:
         return self.getAttribute("data-direction") == "vertical"
+
+    def panel_elements(self) -> list[Element]:
+        panels: list[Element] = []
+        for child in self.children:
+            if child.getAttribute("data-slot") == "resizable-panel":
+                panels.append(child)
+        return panels
+
+    def handle_elements(self) -> list[Element]:
+        handles: list[Element] = []
+        for child in self.children:
+            if child.getAttribute("data-slot") == "resizable-handle":
+                handles.append(child)
+        return handles
+
+    def current_size(self, panel: Element) -> float:
+        value = panel.getAttribute("data-size")
+        return 0.0 if value is None else float(value)
+
+    def set_size(self, panel: Element, size: float):
+        panel.setAttribute("data-size", str(size))
+        panel.setAttribute("style", "flex-basis: " + str(size) + "%")
 
     def resize_pair(self, index: int, before_size: float, after_size: float):
         if before_size < 10:
@@ -120,20 +137,24 @@ class ResizablePanelGroup(Widget):
         elif after_size < 10:
             before_size = 90
             after_size = 10
-        self.panels[index].set_size(before_size)
-        self.panels[index + 1].set_size(after_size)
+        panels = self.panel_elements()
+        self.set_size(panels[index], before_size)
+        self.set_size(panels[index + 1], after_size)
         self.update_handle_values()
 
     def update_handle_values(self):
-        for index in range(len(self.handles)):
-            self.handles[index].setAttribute(
+        panels = self.panel_elements()
+        handles = self.handle_elements()
+        for index in range(len(handles)):
+            handles[index].setAttribute(
                 "aria-valuenow",
-                str(round(self.panels[index].current_size())),
+                str(round(self.current_size(panels[index]))),
             )
 
     def handle_index(self, target: Element) -> int:
-        for index in range(len(self.handles)):
-            if self.handles[index].element is target:
+        handles = self.handle_elements()
+        for index in range(len(handles)):
+            if handles[index] is target:
                 return index
         return -1
 
@@ -153,10 +174,11 @@ class ResizablePanelGroup(Widget):
         if index < 0:
             return
         event.preventDefault()
+        panels = self.panel_elements()
         self.resize_pair(
             index,
-            self.panels[index].current_size() + delta,
-            self.panels[index + 1].current_size() - delta,
+            self.current_size(panels[index]) + delta,
+            self.current_size(panels[index + 1]) - delta,
         )
 
     def pointer_pressed(self, event: PointerEvent):
@@ -168,10 +190,11 @@ class ResizablePanelGroup(Widget):
         if index < 0:
             return
         event.preventDefault()
+        panels = self.panel_elements()
         self.drag_index = index
         self.drag_start = event.clientY if self.is_vertical() else event.clientX
-        self.before_start = self.panels[index].current_size()
-        self.after_start = self.panels[index + 1].current_size()
+        self.before_start = self.current_size(panels[index])
+        self.after_start = self.current_size(panels[index + 1])
         window.addEventListener("pointermove", self.move_listener)
         window.addEventListener("pointerup", self.up_listener)
 
@@ -191,6 +214,13 @@ class ResizablePanelGroup(Widget):
         )
 
     def pointer_released(self, event: Event):
+        self.stop_drag()
+
+    def stop_drag(self):
         window.removeEventListener("pointermove", self.move_listener)
         window.removeEventListener("pointerup", self.up_listener)
         self.drag_index = -1
+
+    def disconnected(self):
+        if self.drag_index >= 0:
+            self.stop_drag()

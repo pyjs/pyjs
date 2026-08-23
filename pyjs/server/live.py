@@ -2,6 +2,7 @@ import asyncio
 import threading
 from collections import deque
 from dataclasses import dataclass
+from typing import Protocol
 
 from pyjs.server.protocol import InvalidationPayload
 
@@ -19,7 +20,30 @@ class Invalidation:
         }
 
 
-class InvalidationSubscription:
+class InvalidationSubscription(Protocol):
+    async def receive(self) -> Invalidation: ...
+
+    def close(self) -> None: ...
+
+
+class InvalidationBackend(Protocol):
+    @property
+    def sequence(self) -> int: ...
+
+    def subscribe(self, *topics: str) -> InvalidationSubscription: ...
+
+    def publish(self, *topics: str) -> Invalidation: ...
+
+
+class ReplayInvalidationBackend(InvalidationBackend, Protocol):
+    def replay(
+        self,
+        after: int,
+        *topics: str,
+    ) -> tuple[Invalidation, ...] | None: ...
+
+
+class _InMemorySubscription:
     def __init__(self, hub: InvalidationHub, topics: tuple[str, ...]):
         self._hub = hub
         self.topics = topics
@@ -108,10 +132,13 @@ class InvalidationSubscription:
 
 
 class InvalidationHub:
-    def __init__(self):
+    def __init__(self, replay_limit: int = 256):
+        if replay_limit < 0:
+            raise ValueError("The invalidation replay limit cannot be negative.")
         self._lock = threading.Lock()
-        self._subscriptions: dict[str, set[InvalidationSubscription]] = {}
+        self._subscriptions: dict[str, set[_InMemorySubscription]] = {}
         self._sequence = 0
+        self._history: deque[Invalidation] = deque(maxlen=replay_limit)
 
     @property
     def sequence(self) -> int:
@@ -122,7 +149,7 @@ class InvalidationHub:
         unique_topics = tuple(dict.fromkeys(topics))
         if not unique_topics:
             raise ValueError("An invalidation subscription requires a topic.")
-        subscription = InvalidationSubscription(self, unique_topics)
+        subscription = _InMemorySubscription(self, unique_topics)
         with self._lock:
             for topic in unique_topics:
                 self._subscriptions.setdefault(topic, set()).add(subscription)
@@ -135,16 +162,40 @@ class InvalidationHub:
         with self._lock:
             self._sequence += 1
             invalidation = Invalidation(self._sequence, unique_topics)
+            self._history.append(invalidation)
             subscriptions = {
                 subscription
                 for topic in unique_topics
                 for subscription in self._subscriptions.get(topic, ())
             }
-        for subscription in subscriptions:
-            subscription._deliver(invalidation)
+            for subscription in subscriptions:
+                subscription._deliver(invalidation)
         return invalidation
 
-    def _unsubscribe(self, subscription: InvalidationSubscription):
+    def replay(
+        self,
+        after: int,
+        *topics: str,
+    ) -> tuple[Invalidation, ...] | None:
+        selected = set(topics)
+        with self._lock:
+            if after < 0 or after > self._sequence:
+                return None
+            if after == self._sequence:
+                return ()
+            if not self._history or after < self._history[0].sequence - 1:
+                return None
+            return tuple(
+                invalidation
+                for invalidation in self._history
+                if invalidation.sequence > after
+                and (
+                    not selected
+                    or bool(selected.intersection(invalidation.topics))
+                )
+            )
+
+    def _unsubscribe(self, subscription: _InMemorySubscription):
         with self._lock:
             for topic in subscription.topics:
                 subscriptions = self._subscriptions.get(topic)
@@ -164,4 +215,4 @@ def resource_topic(root: type | object, path: tuple[str, ...]) -> str:
     return api_topic(root) + ":" + ".".join(path)
 
 
-default_invalidation_hub = InvalidationHub()
+default_invalidation_backend = InvalidationHub()

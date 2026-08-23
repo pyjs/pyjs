@@ -1,3 +1,5 @@
+from collections.abc import Awaitable
+
 from pyjs import JS, js
 from pyjs.web.dom import AbortController, Element, document, location, window
 from pyjs.web.domx import CustomElement, ref, tag
@@ -11,15 +13,22 @@ PAGE_SELECTOR: JS[str] = "[data-pyjs-page]"
 
 
 @js
-def navigation_page(content: Element, layout_id: str) -> HTMLElement:
-    return tag(
-        "div",
-        {
-            "data-pyjs-layout": layout_id,
-            "data-pyjs-page": "",
-        },
-        content,
-    )
+def navigation_page(
+    content: Element,
+    layout_id: str,
+    bundle: str | None = None,
+) -> HTMLElement:
+    attributes = {
+        "data-pyjs-layout": layout_id,
+        "data-pyjs-page": "",
+    }
+    if bundle is not None:
+        attributes["data-pyjs-bundle"] = bundle
+    return tag("div", attributes, content)
+
+
+@js.inline("import({source})")
+def import_client_bundle(source: str) -> Awaitable[None]: ...
 
 
 @js
@@ -133,6 +142,10 @@ class NavigationLayout(CustomElement):
             if next_layout != current_layout:
                 location.assign(target_url)
                 return
+
+            bundle = next_page.getAttribute("data-pyjs-bundle")
+            if bundle is not None:
+                await import_client_bundle(bundle)
 
             self.outlet.replaceChildren(next_page)
             next_title = parsed.querySelector("title")

@@ -22,6 +22,7 @@ class RenderArtifact:
         max_different_pixel_ratio: float,
         element_id: str = "",
         animation_time_ms: float | None = None,
+        diagnostics: str = "",
     ):
         self.name = name
         self.dataUrl = data_url
@@ -29,6 +30,15 @@ class RenderArtifact:
         self.maxDifferentPixelRatio = max_different_pixel_ratio
         self.elementId = element_id
         self.animationTimeMs = animation_time_ms
+        self.diagnostics = diagnostics
+
+
+@js
+class RuntimeException:
+    def __init__(self, name: str, message: str, stack: str):
+        self.name = name
+        self.message = message
+        self.stack = stack
 
 
 @js
@@ -38,12 +48,12 @@ class TestResult:
         nodeid: str,
         outcome: str,
         artifacts: list[RenderArtifact],
-        error: str = "",
+        exception: RuntimeException | None = None,
     ):
         self.nodeid = nodeid
         self.outcome = outcome
         self.artifacts = artifacts
-        self.error = error
+        self.exception = exception
 
 
 @js

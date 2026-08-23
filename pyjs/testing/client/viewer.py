@@ -240,12 +240,12 @@ class RunnerViewer(CustomElement):
 
     def selectPanel(self, panel: str):
         self.selectedPanel = panel
-        buttons: list[HTMLElement] = self.viewerRoot.querySelectorAll("[data-panel-button]")
+        buttons = self.viewerRoot.querySelectorAll("[data-panel-button]")
         for candidate in buttons:
             selected = candidate.getAttribute("data-panel-button") == panel
             candidate.setAttribute("aria-selected", "true" if selected else "false")
             candidate.setAttribute("data-selected", "true" if selected else "false")
-        panels: list[HTMLElement] = self.viewerRoot.querySelectorAll("[data-panel]")
+        panels = self.viewerRoot.querySelectorAll("[data-panel]")
         for candidate in panels:
             selected = candidate.getAttribute("data-panel") == panel
             candidate.classList.toggle("hidden", not selected)

@@ -18,7 +18,7 @@ from pyjs.javascript import (
 )
 
 
-@js
+@js.dictionary
 class TextDecodeOptions:
     """WebIDL source: @webref/idl/encoding.idl"""
 
@@ -64,7 +64,7 @@ class TextDecoder:
     ) -> str: ...
 
 
-@js
+@js.dictionary
 class TextDecoderOptions:
     """WebIDL source: @webref/idl/encoding.idl"""
 
@@ -107,7 +107,7 @@ class TextEncoder:
     ) -> TextEncoderEncodeIntoResult: ...
 
 
-@js
+@js.dictionary
 class TextEncoderEncodeIntoResult:
     """WebIDL source: @webref/idl/encoding.idl"""
 

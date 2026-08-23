@@ -37,7 +37,7 @@ class ClipboardChangeEvent(Event):
         self.types: list[str] = types
 
 
-@js
+@js.dictionary
 class ClipboardChangeEventInit:
     """WebIDL source: @webref/idl/clipboard-apis.idl"""
 
@@ -61,7 +61,7 @@ class ClipboardEvent(Event):
         self.clipboardData: DataTransfer | None = clipboardData
 
 
-@js
+@js.dictionary
 class ClipboardEventInit:
     """WebIDL source: @webref/idl/clipboard-apis.idl"""
 
@@ -89,7 +89,7 @@ class ClipboardItem:
     def supports(type: str) -> bool: ...
 
 
-@js
+@js.dictionary
 class ClipboardItemOptions:
     """WebIDL source: @webref/idl/clipboard-apis.idl"""
 
@@ -97,7 +97,7 @@ class ClipboardItemOptions:
         self.presentationStyle = presentationStyle
 
 
-@js
+@js.dictionary
 class ClipboardUnsanitizedFormats:
     """WebIDL source: @webref/idl/clipboard-apis.idl"""
 
@@ -122,7 +122,7 @@ navigator = Navigator()
 js.native(navigator)
 
 
-@js
+@js.dictionary
 class PermissionDescriptor:
     """WebIDL source: @webref/idl/permissions.idl"""
 
@@ -130,7 +130,7 @@ class PermissionDescriptor:
         self.name = name
 
 
-@js
+@js.dictionary
 class ClipboardPermissionDescriptor:
     """WebIDL source: @webref/idl/clipboard-apis.idl"""
 

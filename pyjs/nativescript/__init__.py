@@ -1,6 +1,27 @@
 from dataclasses import dataclass
+from typing import TypedDict
 
 from pyjs import js
+
+
+class AnimationPair(TypedDict):
+    x: float
+    y: float
+
+
+class AnimationDefinition(TypedDict, total=False):
+    backgroundColor: object | str
+    curve: object | str
+    delay: int | float
+    duration: int | float
+    height: int | float | str
+    iterations: int | float
+    opacity: float
+    rotate: float | object
+    scale: AnimationPair
+    target: object
+    translate: AnimationPair
+    width: int | float | str
 
 
 @dataclass(frozen=True)
@@ -194,13 +215,21 @@ class View:
         self.accessible = False
         self.accessibilityLabel = ""
         self.accessibilityHint = ""
+        self.accessibilityHidden = False
+        self.accessibilityLiveRegion = "none"
         self.accessibilityRole = ""
         self.accessibilityState = ""
         self.accessibilityValue = ""
         self.backgroundColor = ""
+        self.borderColor = ""
+        self.borderRadius: int | float | str = 0
+        self.borderWidth: int | float | str = 0
         self.color = ""
-        self.height: int | str = "auto"
-        self.width: int | str = "auto"
+        self.fontFamily = ""
+        self.fontSize: int | float = 14
+        self.fontWeight: int | str = "normal"
+        self.height: int | float | str = "auto"
+        self.width: int | float | str = "auto"
         self.horizontalAlignment = "stretch"
         self.verticalAlignment = "stretch"
         self.margin: int | str = 0
@@ -214,8 +243,10 @@ class View:
         self.opacity = 1.0
         self.scaleX = 1.0
         self.scaleY = 1.0
+        self.statusBarStyle = "light"
         self.translateX = 0.0
         self.translateY = 0.0
+        self.zIndex = 0
         self.androidElevation = 0
         self.androidDynamicElevationOffset = 0
         self.row = 0
@@ -229,6 +260,8 @@ class View:
 
     def focus(self) -> bool:
         return True
+
+    def accessibilityAnnouncement(self, message: str = ""): ...
 
     def getViewById(self, view_id: str) -> View | None:
         if self.id == view_id:
@@ -246,7 +279,7 @@ class View:
         height = self.height if isinstance(self.height, int) else 0
         return Size(width, height)
 
-    async def animate(self, options: object): ...
+    async def animate(self, options: AnimationDefinition): ...
 
 
 @js.native
@@ -317,15 +350,15 @@ class ScrollView(View):
         self.orientation = "vertical"
         self.isScrollEnabled = True
         self.scrollBarIndicatorVisible = True
-        self.horizontalOffset = 0
-        self.verticalOffset = 0
-        self.scrollableHeight = 0
-        self.scrollableWidth = 0
+        self.horizontalOffset = 0.0
+        self.verticalOffset = 0.0
+        self.scrollableHeight = 0.0
+        self.scrollableWidth = 0.0
 
-    def scrollToHorizontalOffset(self, value: int, animated: bool):
+    def scrollToHorizontalOffset(self, value: float, animated: bool):
         self.horizontalOffset = value
 
-    def scrollToVerticalOffset(self, value: int, animated: bool):
+    def scrollToVerticalOffset(self, value: float, animated: bool):
         self.verticalOffset = value
 
     def getViewById(self, view_id: str) -> View | None:
@@ -349,6 +382,7 @@ class Label(View):
         self.text = ""
         self.fontSize = 14
         self.fontWeight = "normal"
+        self.lineHeight = 0
         self.textAlignment = "left"
         self.textTransform = "none"
         self.textWrap = False
@@ -362,6 +396,7 @@ class Button(View):
         super().__init__()
         self.text = ""
         self.fontSize = 14
+        self.lineHeight = 0
         self.textTransform = "none"
         self.textWrap = False
 
@@ -376,6 +411,7 @@ class EditableTextBase(View):
         super().__init__()
         self.text = ""
         self.hint = ""
+        self.lineHeight = 0
         self.editable = True
         self.autocorrect = True
         self.maxLength = 0
@@ -443,6 +479,8 @@ js.native(Application)
 
 __all__ = [
     "AndroidActivityBackPressedEventData",
+    "AnimationDefinition",
+    "AnimationPair",
     "Application",
     "Button",
     "EditableTextBase",

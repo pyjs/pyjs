@@ -2,12 +2,13 @@ import asyncio
 import base64
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -15,6 +16,39 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed
+
+CHROME_STDERR_TAIL_LINES = 40
+PAGE_CONNECT_ATTEMPTS = 3
+PAGE_CONNECT_RETRY_DELAY = 0.1
+
+
+class BrowserLaunchError(RuntimeError):
+    def __init__(
+        self,
+        reason: str,
+        executable: str,
+        arguments: Sequence[str],
+        exit_code: int | None,
+        devtools_url: str,
+        stderr: str,
+    ):
+        self.reason = reason
+        self.executable = executable
+        self.arguments = tuple(arguments)
+        self.exit_code = exit_code
+        self.devtools_url = devtools_url
+        self.stderr = stderr
+        details = [
+            f"Chrome failed to start: {reason}",
+            f"executable: {executable}",
+            f"arguments: {shlex.join(arguments[1:])}",
+            f"exit code: {exit_code if exit_code is not None else 'still running'}",
+            f"DevTools endpoint: {devtools_url}",
+        ]
+        if stderr:
+            details.extend(("Chrome stderr:", stderr))
+        super().__init__("\n".join(details))
 
 
 def browser_executable() -> str:
@@ -75,7 +109,7 @@ class CDPSession:
 
     @classmethod
     async def open(cls, url: str) -> CDPSession:
-        return cls(await connect(url, max_size=None))
+        return cls(await connect(url, max_size=None, open_timeout=5))
 
     async def _read_messages(self) -> None:
         try:
@@ -93,6 +127,8 @@ class CDPSession:
                     continue
                 for listener in self.listeners.get(message.get("method", ""), ()):
                     listener(message.get("params", {}))
+        except ConnectionClosed:
+            pass
         finally:
             for future in self.pending.values():
                 if not future.done():
@@ -134,6 +170,28 @@ class BrowserPage:
     async def initialize(self) -> None:
         await self.session.send("Page.enable")
         await self.session.send("Runtime.enable")
+        await self._runtime_evaluate(
+            {"expression": "true", "returnByValue": True},
+        )
+
+    async def _runtime_evaluate(
+        self,
+        params: dict[str, Any],
+        *,
+        timeout: float = 15,
+    ) -> dict[str, Any]:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            try:
+                return await self.session.send("Runtime.evaluate", params)
+            except RuntimeError as error:
+                if "Cannot find default execution context" not in str(error):
+                    raise
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError(
+                        "Timed out waiting for the page execution context"
+                    ) from error
+                await asyncio.sleep(0.05)
 
     def _record_exception(self, params: dict[str, Any]) -> None:
         detail = params.get("exceptionDetails", {})
@@ -149,8 +207,7 @@ class BrowserPage:
         self.console.append({"level": params.get("type", "log"), "values": values})
 
     async def evaluate(self, expression: str, *, user_gesture: bool = False) -> Any:
-        result = await self.session.send(
-            "Runtime.evaluate",
+        result = await self._runtime_evaluate(
             {
                 "expression": expression,
                 "awaitPromise": True,
@@ -601,14 +658,28 @@ class Browser:
         executable: str | None = None,
         headless: bool = True,
         webgpu: bool = False,
+        extra_arguments: Sequence[str] = (),
     ):
         self.executable = executable or browser_executable()
         self.headless = headless
         self.webgpu = webgpu
+        try:
+            environment_arguments = shlex.split(
+                os.environ.get("PYJS_CHROME_ARGS", "")
+            )
+        except ValueError as error:
+            raise RuntimeError(f"Invalid PYJS_CHROME_ARGS: {error}") from error
+        self.extra_arguments = (*environment_arguments, *extra_arguments)
         self.debug_port = free_port()
         self.profile: Path | None = None
         self.process: subprocess.Popen[bytes] | None = None
         self.pages: list[BrowserPage] = []
+        self.launch_arguments: list[str] = []
+        self.stderr_path: Path | None = None
+
+    @property
+    def devtools_url(self) -> str:
+        return f"http://127.0.0.1:{self.debug_port}/json/version"
 
     def _launch_arguments(self, profile: Path) -> list[str]:
         arguments = [self.executable]
@@ -630,41 +701,104 @@ class Browser:
                 f"--remote-debugging-port={self.debug_port}",
                 f"--user-data-dir={profile}",
                 "--hide-scrollbars",
-                "about:blank",
             ]
         )
+        arguments.extend(self.extra_arguments)
+        arguments.append("about:blank")
         return arguments
 
     async def __aenter__(self) -> Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="pyjs-browser-"))
+        self.stderr_path = self.profile / "chrome-stderr.log"
+        self.launch_arguments = self._launch_arguments(self.profile)
         try:
-            self.process = subprocess.Popen(
-                self._launch_arguments(self.profile),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            with self.stderr_path.open("wb") as stderr:
+                self.process = subprocess.Popen(
+                    self.launch_arguments,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=stderr,
+                )
+            await self._wait_for_startup()
+        except asyncio.CancelledError:
+            await self.close()
+            raise
+        except Exception as error:
+            process = self.process
+            exit_code = process.poll() if process is not None else None
+            self._close_process()
+            launch_error = BrowserLaunchError(
+                str(error),
+                self.executable,
+                self.launch_arguments,
+                exit_code,
+                self.devtools_url,
+                self._stderr_tail(),
             )
-            await wait_for_http(
-                f"http://127.0.0.1:{self.debug_port}/json/version",
-                timeout=30,
-            )
+            await self.close()
+            raise launch_error from error
         except BaseException:
             await self.close()
             raise
         return self
 
+    async def _wait_for_startup(self) -> None:
+        waiting = asyncio.create_task(wait_for_http(self.devtools_url, timeout=30))
+        try:
+            while not waiting.done():
+                if self.process is not None and self.process.poll() is not None:
+                    raise RuntimeError("Chrome exited before opening DevTools")
+                await asyncio.sleep(0.05)
+            await waiting
+        finally:
+            if not waiting.done():
+                waiting.cancel()
+                try:
+                    await waiting
+                except asyncio.CancelledError:
+                    pass
+
+    def _stderr_tail(self) -> str:
+        if self.stderr_path is None:
+            return ""
+        try:
+            lines = self.stderr_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            ).splitlines()
+        except OSError:
+            return ""
+        return "\n".join(lines[-CHROME_STDERR_TAIL_LINES:])
+
     async def new_page(self, url: str = "about:blank") -> BrowserPage:
-        target = request_json(
-            f"http://127.0.0.1:{self.debug_port}/json/new?{quote(url, safe='')}",
-            method="PUT",
-        )
-        page = BrowserPage(
-            await CDPSession.open(target["webSocketDebuggerUrl"]),
-            target["id"],
-        )
-        await page.initialize()
-        self.pages.append(page)
-        return page
+        for attempt in range(PAGE_CONNECT_ATTEMPTS):
+            target = request_json(
+                f"http://127.0.0.1:{self.debug_port}/json/new?{quote(url, safe='')}",
+                method="PUT",
+            )
+            session = None
+            try:
+                session = await CDPSession.open(target["webSocketDebuggerUrl"])
+                page = BrowserPage(session, target["id"])
+                await page.initialize()
+            except Exception:
+                if session is not None:
+                    await session.close()
+                try:
+                    await asyncio.to_thread(
+                        request,
+                        f"http://127.0.0.1:{self.debug_port}/json/close/"
+                        f"{target['id']}",
+                    )
+                except OSError, URLError:
+                    pass
+                if attempt + 1 == PAGE_CONNECT_ATTEMPTS:
+                    raise
+                await asyncio.sleep(PAGE_CONNECT_RETRY_DELAY * (attempt + 1))
+            else:
+                self.pages.append(page)
+                return page
+        raise AssertionError("unreachable")
 
     async def close_page(self, page: BrowserPage) -> None:
         if page not in self.pages:
@@ -689,6 +823,7 @@ class Browser:
             if self.profile is not None:
                 shutil.rmtree(self.profile, ignore_errors=True)
             self.profile = None
+            self.stderr_path = None
 
     def _close_process(self) -> None:
         process = self.process

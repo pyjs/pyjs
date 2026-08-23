@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 from pyjs.nativescript import NativeScriptModule
@@ -136,6 +137,7 @@ class NativeScriptProject:
         android: AndroidSDK | None = None,
         build_root: Path | None = None,
         modules: tuple[NativeScriptModule, ...] = (),
+        app_assets: Path | None = None,
     ):
         self.entry_point = entry_point
         self.name = project_name(name)
@@ -143,6 +145,7 @@ class NativeScriptProject:
         self.cli = cli or NativeScriptCLI()
         self.android = android
         self.modules = modules
+        self.app_assets = app_assets
         app_directory = re.sub(r"[^A-Za-z0-9._-]", "-", app_id)
         self.project = (
             (build_root or cache_root() / "builds" / "nativescript")
@@ -190,6 +193,13 @@ class NativeScriptProject:
             self.cli.install(self.project, missing)
         app = self.project / "app"
         app.mkdir(parents=True, exist_ok=True)
+        if self.app_assets is not None:
+            if not self.app_assets.is_dir():
+                raise ValueError(
+                    f"NativeScript app assets directory does not exist: "
+                    f"{self.app_assets}"
+                )
+            shutil.copytree(self.app_assets, app, dirs_exist_ok=True)
         (app / "app.js").write_text(self.javascript(), encoding="utf-8")
         (app / "app.css").write_text(
             "@import 'tailwindcss';\n",

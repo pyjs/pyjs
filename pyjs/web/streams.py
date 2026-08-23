@@ -25,8 +25,8 @@ class ByteLengthQueuingStrategy:
 
     Browser support: Chrome 52, Safari 10.1"""
 
-    def __init__(self, *, highWaterMark: float):
-        self.highWaterMark: float = highWaterMark
+    def __init__(self, init: QueuingStrategyInit):
+        self.highWaterMark = init.highWaterMark
         self.size: callable = None
 
 
@@ -38,12 +38,12 @@ class CountQueuingStrategy:
 
     Browser support: Chrome 52, Safari 10.1"""
 
-    def __init__(self, *, highWaterMark: float):
-        self.highWaterMark: float = highWaterMark
+    def __init__(self, init: QueuingStrategyInit):
+        self.highWaterMark = init.highWaterMark
         self.size: callable = None
 
 
-@js
+@js.dictionary
 class QueuingStrategy:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -54,7 +54,7 @@ class QueuingStrategy:
             self.size = size
 
 
-@js
+@js.dictionary
 class QueuingStrategyInit:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -175,7 +175,7 @@ class ReadableStreamBYOBReader:
     def releaseLock(self) -> None: ...
 
 
-@js
+@js.dictionary
 class ReadableStreamBYOBReaderReadOptions:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -250,7 +250,7 @@ class ReadableStreamDefaultReader:
     def releaseLock(self) -> None: ...
 
 
-@js
+@js.dictionary
 class ReadableStreamGetReaderOptions:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -259,7 +259,7 @@ class ReadableStreamGetReaderOptions:
             self.mode = mode
 
 
-@js
+@js.dictionary
 class ReadableStreamIteratorOptions:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -267,7 +267,7 @@ class ReadableStreamIteratorOptions:
         self.preventCancel = preventCancel
 
 
-@js
+@js.dictionary
 class ReadableStreamReadResult:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -278,7 +278,7 @@ class ReadableStreamReadResult:
             self.value = value
 
 
-@js
+@js.dictionary
 class ReadableWritablePair:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -287,7 +287,7 @@ class ReadableWritablePair:
         self.writable = writable
 
 
-@js
+@js.dictionary
 class StreamPipeOptions:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -305,7 +305,7 @@ class StreamPipeOptions:
             self.signal = signal
 
 
-@js
+@js.dictionary
 class Transformer:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -370,7 +370,7 @@ class TransformStreamDefaultController:
     def terminate(self) -> None: ...
 
 
-@js
+@js.dictionary
 class UnderlyingSink:
     """WebIDL source: @webref/idl/streams.idl"""
 
@@ -394,7 +394,7 @@ class UnderlyingSink:
             self.write = write
 
 
-@js
+@js.dictionary
 class UnderlyingSource:
     """WebIDL source: @webref/idl/streams.idl"""
 

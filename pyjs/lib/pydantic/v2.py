@@ -19,7 +19,11 @@ def assign_model_values(model: object, values: dict[str, object]) -> None:
 
 assign_model_values.source(
     """
-    const data = values instanceof Map ? Object.fromEntries(values) : values;
+    const data = values === undefined
+        ? {}
+        : values instanceof Map
+            ? Object.fromEntries(values)
+            : values;
     if (data === null || typeof data !== 'object' || Array.isArray(data)) {
         throw new TypeError('Model input must be a dict or model');
     }
@@ -31,8 +35,19 @@ assign_model_values.source(
         throw new TypeError(`${path} must be ${expected}`);
     };
     const validate = (value, descriptor, path) => {
+        if (Array.isArray(descriptor) && descriptor[0] === 'model') {
+            const modelName = descriptor[1];
+            descriptor = globalThis.$pyjsModels?.get(modelName);
+            if (descriptor === undefined) {
+                fail(path, modelName);
+            }
+        }
         if (typeof descriptor === 'function') {
             if (value instanceof descriptor) return value;
+            if (value !== null && typeof value === 'object'
+                    && descriptor.__pyjs_fields__ !== undefined) {
+                return new descriptor(value);
+            }
             if (value !== null && typeof value === 'object'
                     && typeof descriptor.model_validate === 'function') {
                 return descriptor.model_validate(value);
@@ -66,7 +81,10 @@ assign_model_values.source(
         if (descriptor === 'Date') {
             if (value instanceof Date) return value;
             if (typeof value === 'string') {
-                const parsed = new Date(value);
+                const source = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)
+                    ? `${value}T00:00:00`
+                    : value;
+                const parsed = new Date(source);
                 if (!Number.isNaN(parsed.getTime())) return parsed;
             }
             fail(path, 'date');

@@ -19,6 +19,7 @@ from pyjs.web.html import (
     HTMLSpanElement,
     HTMLTextAreaElement,
 )
+from pyjs.web.timers import queueMicrotask
 
 
 def custom_element_javascript(
@@ -84,6 +85,13 @@ class CustomElementMetaclass(type):
         }
         namespace["__pyjs_state_fields__"] = state_fields
         namespace["__pyjs_state_effects__"] = state_effects
+        namespace["__pyjs_generated_methods__"] = tuple(
+            dict.fromkeys(
+                method_name
+                for method_names in state_effects.values()
+                for method_name in method_names
+            )
+        )
         namespace["observedAttributes"] = [
             field.attribute_name for field in state_fields.values()
         ]
@@ -118,6 +126,13 @@ class CustomElementMetaclass(type):
 @js
 class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     CUSTOM_ELEMENT_COUNTER = 0
+    __pyjs_constructor_method__ = "_create"
+    __pyjs_external_methods__ = (
+        "connectedCallback",
+        "disconnectedCallback",
+        "adoptedCallback",
+        "attributeChangedCallback",
+    )
 
     @js
     def __init__(self):
@@ -132,9 +147,9 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
         self._initialized = False
 
     @nojs
-    def __setattr__(self, name: str, value: HTMLElement):
+    def __setattr__(self, name: str, value: Element):
         if (
-            isinstance(value, (HTMLElement, ProxyElement))
+            isinstance(value, (Element, ProxyElement))
             and name not in {"parentElement", "parentNode"}
             and getattr(value, "__pyjs_ref__", False)
         ):
@@ -148,24 +163,33 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def set_data(self, name: str, value: str):
         self.setAttribute(f"data-{name}", value)
 
-    @js.keep
     def get_data(self, name: str) -> str | None:
         return self.getAttribute(f"data-{name}")
 
-    @js.keep
     def connectedCallback(self):
         if self._initialized:
+            self.reconnected()
             return
         self._initialize_state()
         hydrated = self.get_data("self-id") is not None
         if hydrated:
-            self._hydrate()
+            queueMicrotask(self._finish_hydration)
+            return
         self._initialized = True
-        if not hydrated:
-            self._run_initial_effects()
+        self._run_initial_effects()
         self.initialize()
 
-    @js.keep
+    def disconnectedCallback(self):
+        if self._initialized:
+            self.disconnected()
+
+    def _finish_hydration(self):
+        if self._initialized or not self.isConnected:
+            return
+        self._hydrate()
+        self._initialized = True
+        self.initialize()
+
     def attributeChangedCallback(
         self, name: str, old_value: str | None, new_value: str | None
     ):
@@ -195,38 +219,39 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def _run_initial_effects(self):
         self._run_initial_state_effects()
 
-    @js.keep
     def _initialize_state(self):
         pass
 
-    @js.keep
     def _run_state_effects(self, name: str):
         pass
 
-    @js.keep
     def _run_initial_state_effects(self):
         pass
 
-    @js.keep
     def _create(self, *args):
         return tag(self, *args)
 
-    @js.keep
     def _hydrate(self):
         pass
 
-    @js.keep
     def initialize(self):
+        pass
+
+    def reconnected(self):
+        pass
+
+    def disconnected(self):
         pass
 
 
 @js
 class ProxyElement:
-    @js.keep
+    __pyjs_constructor_method__ = "_create"
+    __pyjs_reference_method__ = "_hydrate"
+
     def _create(self, *args):
         return tag(self, *args)
 
-    @js.keep
     def _hydrate(self, e: Element):
         self.element = e
         return self
@@ -237,10 +262,13 @@ class ProxyElement:
     def getAttribute(self, name: str):
         return self.element.getAttribute(name)
 
+    def removeAttribute(self, name: str):
+        self.element.removeAttribute(name)
+
 
 @js.inline("{value}")
 def ref[T](value: T) -> T:
-    if isinstance(value, (HTMLElement, ProxyElement)):
+    if isinstance(value, (Element, ProxyElement)):
         value.__pyjs_ref__ = True
     return value
 
@@ -326,7 +354,7 @@ def tag(
             for attr, value in attrs.items():
                 e.setAttribute(attr, value)
         else:
-            raise TypeError
+            raise TypeError()
     return e
 
 
@@ -352,7 +380,53 @@ def tag(
             for attr, value in attrs.items():
                 e.setAttribute(attr, value)
         else:
-            raise TypeError
+            raise TypeError()
+    return e
+
+
+@js
+def svg_tag(
+    name: str,
+    *args: str | dict[str, str] | Element | ProxyElement,
+) -> Element:
+    e = document.createElementNS("http://www.w3.org/2000/svg", name)
+    for arg in args:
+        if isinstance(arg, str):
+            e.append(arg)
+        elif isinstance(arg, Element):
+            arg.parentElement = e
+            e.append(arg)
+        elif isinstance(arg, ProxyElement):
+            arg.element.parentElement = e
+            e.append(arg.element)
+        elif isinstance(arg, dict):
+            attrs: dict[str, str] = arg
+            for attr, value in attrs.items():
+                e.setAttribute(attr, value)
+        else:
+            raise TypeError()
+    return e
+
+
+@svg_tag.client
+def svg_tag(
+    name: str,
+    *args: str | dict[str, str] | Element | ProxyElement,
+) -> Element:
+    e = document.createElementNS("http://www.w3.org/2000/svg", name)
+    for arg in args:
+        if isinstance(arg, str):
+            e.append(arg)
+        elif isinstance(arg, Element):
+            e.append(arg)
+        elif isinstance(arg, ProxyElement):
+            e.append(arg.element)
+        elif isinstance(arg, dict):
+            attrs: dict[str, str] = arg
+            for attr, value in attrs.items():
+                e.setAttribute(attr, value)
+        else:
+            raise TypeError()
     return e
 
 
@@ -412,9 +486,11 @@ def img(*args) -> HTMLImageElement:
     return image_element
 
 
-@js.inline("document.createElement('canvas')")
-def canvas() -> HTMLCanvasElement:
-    return HTMLCanvasElement()
+@html_tag("canvas")
+def canvas(*args) -> HTMLCanvasElement:
+    canvas_element = HTMLCanvasElement()
+    tag(canvas_element, *args)
+    return canvas_element
 
 
 @html_tag("iframe")

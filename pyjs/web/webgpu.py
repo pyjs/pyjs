@@ -98,7 +98,7 @@ GPUMapMode = _GPUMapMode()
 js.native(GPUMapMode)
 
 
-@js
+@js.dictionary
 class GPURequestAdapterOptions:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -116,7 +116,7 @@ class GPURequestAdapterOptions:
         self.xrCompatible = xrCompatible
 
 
-@js
+@js.dictionary
 class GPUBufferBindingLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -131,7 +131,7 @@ class GPUBufferBindingLayout:
         self.type = type
 
 
-@js
+@js.dictionary
 class GPUCanvasConfiguration:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -159,7 +159,7 @@ class GPUCanvasConfiguration:
         self.viewFormats = viewFormats
 
 
-@js
+@js.dictionary
 class GPUExtent3D:
     def __init__(self, width: int, height: int, depth_or_array_layers: int = 1):
         self.width = width
@@ -175,12 +175,14 @@ class GPUUncapturedErrorEvent(Event):
 
     Browser support: Chrome 144, Safari 26"""
 
-    def __init__(self, type: str, *, error: GPUError):
+    def __init__(
+        self, type: str, gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit
+    ):
         super().__init__()
-        self.error: GPUError = error
+        self.error = gpuUncapturedErrorEventInitDict.error
 
 
-@js
+@js.dictionary
 class GPUUncapturedErrorEventInit:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -188,7 +190,7 @@ class GPUUncapturedErrorEventInit:
         self.error = error
 
 
-@js
+@js.dictionary
 class GPUVertexAttribute:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -198,7 +200,7 @@ class GPUVertexAttribute:
         self.shaderLocation = shader_location
 
 
-@js
+@js.dictionary
 class GPUVertexBufferLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -213,7 +215,7 @@ class GPUVertexBufferLayout:
         self.stepMode = step_mode
 
 
-@js
+@js.dictionary
 class GPUCanvasToneMapping:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -221,7 +223,7 @@ class GPUCanvasToneMapping:
         self.mode = mode
 
 
-@js
+@js.dictionary
 class GPUColorDict:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -232,7 +234,7 @@ class GPUColorDict:
         self.r = r
 
 
-@js
+@js.dictionary
 class GPUColorTargetState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -270,7 +272,7 @@ class GPUError:
         self.message: str = ""
 
 
-@js
+@js.dictionary
 class GPUExtent3DDict:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -292,14 +294,14 @@ class GPUExternalTexture:
         self.label: str = ""
 
 
-@js
+@js.dictionary
 class GPUExternalTextureBindingLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
     def __init__(self): ...
 
 
-@js
+@js.dictionary
 class GPUMultisampleState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -311,7 +313,7 @@ class GPUMultisampleState:
         self.mask = mask
 
 
-@js
+@js.dictionary
 class GPUObjectDescriptorBase:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -319,7 +321,7 @@ class GPUObjectDescriptorBase:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUOrigin2DDict:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -328,7 +330,7 @@ class GPUOrigin2DDict:
         self.y = y
 
 
-@js
+@js.dictionary
 class GPUOrigin3DDict:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -346,12 +348,12 @@ class GPUPipelineError(DOMException):
 
     Browser support: Chrome 144, Safari 26"""
 
-    def __init__(self, message: str = "", *, reason: str):
+    def __init__(self, message: str = "", *, options: GPUPipelineErrorInit):
         super().__init__()
-        self.reason: str = reason
+        self.reason = options.reason
 
 
-@js
+@js.dictionary
 class GPUPipelineErrorInit:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -371,7 +373,7 @@ class GPUPipelineLayout:
         self.label: str = ""
 
 
-@js
+@js.dictionary
 class GPUPrimitiveState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -480,7 +482,7 @@ class GPUComputePassEncoder:
     def setPipeline(self, pipeline: GPUComputePipeline) -> None: ...
 
 
-@js
+@js.dictionary
 class GPUComputePassTimestampWrites:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -511,7 +513,7 @@ class GPUComputePipeline:
     def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout: ...
 
 
-@js
+@js.dictionary
 class GPUCopyExternalImageSourceInfo:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -534,7 +536,7 @@ class GPUCopyExternalImageSourceInfo:
         self.origin = origin
 
 
-@js
+@js.dictionary
 class GPUDepthStencilState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -568,7 +570,7 @@ class GPUDepthStencilState:
         self.stencilWriteMask = stencilWriteMask
 
 
-@js
+@js.dictionary
 class GPUBufferBinding:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -579,7 +581,7 @@ class GPUBufferBinding:
             self.size = size
 
 
-@js
+@js.dictionary
 class GPUBindGroupEntry:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -619,7 +621,7 @@ class WGSLLanguageFeatures:
     pass
 
 
-@js
+@js.dictionary
 class GPUColor:
     def __init__(self, red: float, green: float, blue: float, alpha: float = 1.0):
         self.r = red
@@ -730,14 +732,14 @@ class GPURenderBundleEncoder:
     ) -> None: ...
 
 
-@js
+@js.dictionary
 class GPURenderPassColorAttachment:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
     def __init__(
         self,
         view: GPUTexture | GPUTextureView,
-        clear_value: list[float] | GPUColorDict | None,
+        clear_value: list[float] | GPUColor | GPUColorDict | None,
         load_op: str = "clear",
         store_op: str = "store",
         *,
@@ -754,7 +756,7 @@ class GPURenderPassColorAttachment:
             self.resolveTarget = resolveTarget
 
 
-@js
+@js.dictionary
 class GPURenderPassDepthStencilAttachment:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -784,7 +786,7 @@ class GPURenderPassDepthStencilAttachment:
             self.stencilStoreOp = stencilStoreOp
 
 
-@js
+@js.dictionary
 class GPUBindGroupLayoutEntry:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -812,7 +814,7 @@ class GPUBindGroupLayoutEntry:
             self.texture = texture
 
 
-@js
+@js.dictionary
 class GPUBlendComponent:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -824,7 +826,7 @@ class GPUBlendComponent:
         self.srcFactor = srcFactor
 
 
-@js
+@js.dictionary
 class GPUBlendState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -858,7 +860,7 @@ class GPUBuffer:
     def unmap(self) -> None: ...
 
 
-@js
+@js.dictionary
 class GPUTextureBindingLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -887,7 +889,7 @@ class GPUTextureView:
         self.label: str = ""
 
 
-@js
+@js.dictionary
 class GPUShaderModuleCompilationHint:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -897,7 +899,7 @@ class GPUShaderModuleCompilationHint:
             self.layout = layout
 
 
-@js
+@js.dictionary
 class GPUStencilFaceState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -914,7 +916,7 @@ class GPUStencilFaceState:
         self.passOp = passOp
 
 
-@js
+@js.dictionary
 class GPUStorageTextureBindingLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -984,7 +986,7 @@ class GPUSupportedLimits:
         self.minUniformBufferOffsetAlignment: int = 0
 
 
-@js
+@js.dictionary
 class GPUTexelCopyBufferLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1001,7 +1003,7 @@ class GPUTexelCopyBufferLayout:
             self.rowsPerImage = rowsPerImage
 
 
-@js
+@js.dictionary
 class GPUTexelCopyTextureInfo:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1070,7 +1072,7 @@ class GPUSampler:
         self.label: str = ""
 
 
-@js
+@js.dictionary
 class GPUSamplerBindingLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1140,7 +1142,7 @@ class GPUBindGroup:
         self.label: str = ""
 
 
-@js
+@js.dictionary
 class GPURenderPassTimestampWrites:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1316,14 +1318,7 @@ class GPUCommandEncoder:
     ) -> GPUComputePassEncoder: ...
 
     def beginRenderPass(
-        self,
-        *,
-        label: str = "",
-        colorAttachments: list[GPURenderPassColorAttachment | None],
-        depthStencilAttachment: GPURenderPassDepthStencilAttachment | None = None,
-        occlusionQuerySet: GPUQuerySet | None = None,
-        timestampWrites: GPURenderPassTimestampWrites | None = None,
-        maxDrawCount: int = 50000000,
+        self, descriptor: GPURenderPassDescriptor
     ) -> GPURenderPassEncoder: ...
 
     def clearBuffer(
@@ -1382,7 +1377,7 @@ class GPUCommandEncoder:
     ) -> None: ...
 
 
-@js
+@js.dictionary
 class GPUProgrammableStage:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1509,26 +1504,12 @@ class GPUDevice(EventTarget):
         self.queue: GPUQueue = GPUQueue()
 
     def createBindGroupLayout(
-        self, *, label: str = "", entries: list[GPUBindGroupLayoutEntry]
+        self, descriptor: GPUBindGroupLayoutDescriptor
     ) -> GPUBindGroupLayout: ...
 
-    def createBuffer(
-        self, *, label: str = "", size: int, usage: int, mappedAtCreation: bool = False
-    ) -> GPUBuffer: ...
+    def createBuffer(self, descriptor: GPUBufferDescriptor) -> GPUBuffer: ...
 
-    def createTexture(
-        self,
-        *,
-        label: str = "",
-        size: list[int] | GPUExtent3DDict,
-        mipLevelCount: int = 1,
-        sampleCount: int = 1,
-        dimension: str = "2d",
-        format: str,
-        usage: int,
-        viewFormats: list[str] | None = None,
-        textureBindingViewDimension: str | None = None,
-    ) -> GPUTexture: ...
+    def createTexture(self, descriptor: GPUTextureDescriptor) -> GPUTexture: ...
 
     def createSampler(
         self,
@@ -1547,94 +1528,43 @@ class GPUDevice(EventTarget):
     ) -> GPUSampler: ...
 
     def createShaderModule(
-        self,
-        *,
-        label: str = "",
-        code: str,
-        compilationHints: list[GPUShaderModuleCompilationHint] | None = None,
+        self, descriptor: GPUShaderModuleDescriptor
     ) -> GPUShaderModule: ...
 
     def createComputePipeline(
-        self,
-        *,
-        label: str = "",
-        layout: GPUPipelineLayout | str,
-        compute: GPUProgrammableStage,
+        self, descriptor: GPUComputePipelineDescriptor
     ) -> GPUComputePipeline: ...
 
     async def createComputePipelineAsync(
-        self,
-        *,
-        label: str = "",
-        layout: GPUPipelineLayout | str,
-        compute: GPUProgrammableStage,
+        self, descriptor: GPUComputePipelineDescriptor
     ) -> GPUComputePipeline: ...
 
     def createPipelineLayout(
-        self,
-        *,
-        label: str = "",
-        bindGroupLayouts: list[GPUBindGroupLayout | None],
-        immediateSize: int = 0,
+        self, descriptor: GPUPipelineLayoutDescriptor
     ) -> GPUPipelineLayout: ...
 
-    def createQuerySet(
-        self, *, label: str = "", type: str, count: int
-    ) -> GPUQuerySet: ...
+    def createQuerySet(self, descriptor: GPUQuerySetDescriptor) -> GPUQuerySet: ...
 
     def createRenderBundleEncoder(
-        self,
-        *,
-        label: str = "",
-        colorFormats: list[str | None],
-        depthStencilFormat: str | None = None,
-        sampleCount: int = 1,
-        depthReadOnly: bool = False,
-        stencilReadOnly: bool = False,
+        self, descriptor: GPURenderBundleEncoderDescriptor
     ) -> GPURenderBundleEncoder: ...
 
     def createRenderPipeline(
-        self,
-        *,
-        label: str = "",
-        layout: GPUPipelineLayout | str,
-        vertex: GPUVertexState,
-        primitive: GPUPrimitiveState | None = None,
-        depthStencil: GPUDepthStencilState | None = None,
-        multisample: GPUMultisampleState | None = None,
-        fragment: GPUFragmentState | None = None,
+        self, descriptor: GPURenderPipelineDescriptor
     ) -> GPURenderPipeline: ...
 
     async def createRenderPipelineAsync(
-        self,
-        *,
-        label: str = "",
-        layout: GPUPipelineLayout | str,
-        vertex: GPUVertexState,
-        primitive: GPUPrimitiveState | None = None,
-        depthStencil: GPUDepthStencilState | None = None,
-        multisample: GPUMultisampleState | None = None,
-        fragment: GPUFragmentState | None = None,
+        self, descriptor: GPURenderPipelineDescriptor
     ) -> GPURenderPipeline: ...
 
-    def createBindGroup(
-        self,
-        *,
-        label: str = "",
-        layout: GPUBindGroupLayout,
-        entries: list[GPUBindGroupEntry],
-    ) -> GPUBindGroup: ...
+    def createBindGroup(self, descriptor: GPUBindGroupDescriptor) -> GPUBindGroup: ...
 
     def createCommandEncoder(self, *, label: str = "") -> GPUCommandEncoder: ...
 
     def destroy(self) -> None: ...
 
     def importExternalTexture(
-        self,
-        *,
-        label: str = "",
-        source: HTMLVideoElement | VideoFrame,
-        colorSpace: str = "srgb",
+        self, descriptor: GPUExternalTextureDescriptor
     ) -> GPUExternalTexture: ...
 
     async def popErrorScope(self) -> GPUError | None: ...
@@ -1715,17 +1645,7 @@ class GPUCanvasContext:
     def __init__(self):
         self.canvas: HTMLCanvasElement | OffscreenCanvas = None
 
-    def configure(
-        self,
-        *,
-        device: GPUDevice,
-        format: str,
-        usage: int = 16,
-        viewFormats: list[str] | None = None,
-        colorSpace: str = "srgb",
-        toneMapping: GPUCanvasToneMapping | None = None,
-        alphaMode: str = "opaque",
-    ) -> None: ...
+    def configure(self, configuration: GPUCanvasConfiguration) -> None: ...
 
     def getConfiguration(self) -> GPUCanvasConfiguration | None: ...
 
@@ -1734,7 +1654,7 @@ class GPUCanvasContext:
     def unconfigure(self) -> None: ...
 
 
-@js
+@js.dictionary
 class GPUDeviceDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1758,7 +1678,7 @@ class GPUDeviceDescriptor:
         self.requiredLimits = requiredLimits
 
 
-@js
+@js.dictionary
 class GPUBufferDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1771,7 +1691,7 @@ class GPUBufferDescriptor:
         self.mappedAtCreation = mapped_at_creation
 
 
-@js
+@js.dictionary
 class GPUShaderModuleDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1789,13 +1709,13 @@ class GPUShaderModuleDescriptor:
         self.compilationHints = compilationHints
 
 
-@js
+@js.dictionary
 class GPUTextureDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
     def __init__(
         self,
-        size: list[int] | GPUExtent3DDict,
+        size: list[int] | GPUExtent3D | GPUExtent3DDict,
         format: str,
         usage: int,
         label: str = "",
@@ -1820,7 +1740,7 @@ class GPUTextureDescriptor:
         self.viewFormats = viewFormats
 
 
-@js
+@js.dictionary
 class GPUVertexState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1840,7 +1760,7 @@ class GPUVertexState:
         self.constants = constants
 
 
-@js
+@js.dictionary
 class GPUFragmentState:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1860,7 +1780,7 @@ class GPUFragmentState:
         self.constants = constants
 
 
-@js
+@js.dictionary
 class GPUTextureViewDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1893,7 +1813,7 @@ class GPUTextureViewDescriptor:
         self.usage = usage
 
 
-@js
+@js.dictionary
 class GPUSamplerDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1925,7 +1845,7 @@ class GPUSamplerDescriptor:
         self.mipmapFilter = mipmapFilter
 
 
-@js
+@js.dictionary
 class GPURenderPassLayout:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1943,7 +1863,7 @@ class GPURenderPassLayout:
         self.sampleCount = sampleCount
 
 
-@js
+@js.dictionary
 class GPUExternalTextureDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1958,7 +1878,7 @@ class GPUExternalTextureDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUComputePassDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1972,7 +1892,7 @@ class GPUComputePassDescriptor:
             self.timestampWrites = timestampWrites
 
 
-@js
+@js.dictionary
 class GPUCommandEncoderDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1980,7 +1900,7 @@ class GPUCommandEncoderDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUCommandBufferDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1988,7 +1908,7 @@ class GPUCommandBufferDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUBindGroupLayoutDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -1997,7 +1917,7 @@ class GPUBindGroupLayoutDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUBindGroupDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2012,7 +1932,7 @@ class GPUBindGroupDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUPipelineDescriptorBase:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2021,7 +1941,7 @@ class GPUPipelineDescriptorBase:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUPipelineLayoutDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2036,7 +1956,7 @@ class GPUPipelineLayoutDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUQuerySetDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2046,7 +1966,7 @@ class GPUQuerySetDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPUQueueDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2054,7 +1974,7 @@ class GPUQueueDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPURenderBundleDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2062,7 +1982,7 @@ class GPURenderBundleDescriptor:
         self.label = label
 
 
-@js
+@js.dictionary
 class GPURenderPassDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2086,7 +2006,7 @@ class GPURenderPassDescriptor:
             self.timestampWrites = timestampWrites
 
 
-@js
+@js.dictionary
 class GPUTexelCopyBufferInfo:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2105,7 +2025,7 @@ class GPUTexelCopyBufferInfo:
             self.rowsPerImage = rowsPerImage
 
 
-@js
+@js.dictionary
 class GPUCopyExternalImageDestInfo:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2128,7 +2048,7 @@ class GPUCopyExternalImageDestInfo:
         self.premultipliedAlpha = premultipliedAlpha
 
 
-@js
+@js.dictionary
 class GPURenderBundleEncoderDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2150,7 +2070,7 @@ class GPURenderBundleEncoderDescriptor:
         self.stencilReadOnly = stencilReadOnly
 
 
-@js
+@js.dictionary
 class GPURenderPipelineDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 
@@ -2176,7 +2096,7 @@ class GPURenderPipelineDescriptor:
         self.multisample = multisample
 
 
-@js
+@js.dictionary
 class GPUComputePipelineDescriptor:
     """WebIDL source: @webref/idl/webgpu.idl"""
 

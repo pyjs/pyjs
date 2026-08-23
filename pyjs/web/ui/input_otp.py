@@ -1,5 +1,5 @@
 from pyjs import js
-from pyjs.web.domx import div, input, span, tw
+from pyjs.web.domx import div, input, ref, span, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
 
@@ -20,7 +20,7 @@ class InputOTP(Widget):
         if length < 1:
             raise ValueError("InputOTP length must be positive")
         self.length = length
-        self.input = input(
+        self.input = ref(input(
             tw("absolute inset-0 z-10 h-full w-full opacity-0"),
             {
                 "aria-label": label,
@@ -32,7 +32,7 @@ class InputOTP(Widget):
                 "pattern": "[0-9]*",
                 "type": "text",
             },
-        )
+        ))
         slots = div(
             tw("flex items-center"),
             {"aria-hidden": "true", "data-slot": "input-otp-group"},
@@ -54,17 +54,19 @@ class InputOTP(Widget):
             self.input,
             slots,
         )
+
+    def initialize(self):
         self.input.addEventListener("input", self.update_slots)
 
     def get_value(self) -> str:
         return self.input.value
 
     def set_value(self, value: str):
-        self.input.value = value.substring(0, self.length)
+        self.input.value = value[: self.length]
         self.render_value()
 
     def update_slots(self, event: Event):
-        self.input.value = self.input.value.substring(0, self.length)
+        self.input.value = self.input.value[: self.length]
         self.render_value()
 
     def render_value(self):

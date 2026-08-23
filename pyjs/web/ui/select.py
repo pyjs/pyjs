@@ -62,7 +62,6 @@ class Select(DropdownMenu):
         *,
         value: str = "",
     ):
-        self.select_trigger = trigger
         super().__init__(trigger, content)
         self.setAttribute("data-slot", "select")
         if value != "":
@@ -70,12 +69,16 @@ class Select(DropdownMenu):
 
     def select(self, value: str):
         self.selected_value = value
-        for item in self.content.items:
-            selected = item.value == value
+        self.set_data("value", value)
+        for item in self.item_elements():
+            selected = item.getAttribute("data-value") == value
             item.setAttribute("aria-selected", "true" if selected else "false")
             if selected:
                 label = item.getAttribute("data-label")
                 if label is not None:
-                    self.select_trigger.set_value_text(label)
-        if self.is_open:
+                    value_element = require_element(
+                        self.trigger.element, "[data-slot=select-value]"
+                    )
+                    value_element.textContent = label
+        if self.content.getAttribute("data-state") == "open":
             self.close()

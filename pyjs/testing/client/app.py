@@ -6,7 +6,9 @@ from pyjs.testing.client.runtime import (
     BrowserTest,
     TestingWindow,
     call_selected_tests,
+    exception_details,
     exception_text,
+    runtime_exception_text,
 )
 from pyjs.testing.client.sidebar import RunnerSidebar
 from pyjs.testing.client.state import (
@@ -16,6 +18,7 @@ from pyjs.testing.client.state import (
     PreservedEntry,
     RegisterBrowserMessage,
     RunBundleMessage,
+    RuntimeException,
     SingleTestRun,
     TestResult,
     TestResultsMessage,
@@ -91,7 +94,6 @@ class WindowErrorListener:
     def __init__(self, logs: list[ConsoleLine]):
         self.logs = logs
 
-    @js.keep
     def handleEvent(self, event: ErrorEvent):
         detail = event.message
         error = event.error
@@ -109,7 +111,6 @@ class RejectionErrorListener:
     def __init__(self, logs: list[ConsoleLine]):
         self.logs = logs
 
-    @js.keep
     def handleEvent(self, event: PromiseRejectionEvent):
         reason = event.reason
         if isinstance(reason, Exception):
@@ -121,7 +122,8 @@ class RejectionErrorListener:
 
 @js
 def failed_test_run(nodeid: str, error: str, logs: list[ConsoleLine]) -> SingleTestRun:
-    return SingleTestRun(TestResult(nodeid, "failed", [], error=error), logs)
+    exception = RuntimeException("Error", error, "")
+    return SingleTestRun(TestResult(nodeid, "failed", [], exception), logs)
 
 
 @js
@@ -562,7 +564,7 @@ async def execute_single_test(
 ) -> SingleTestRun:
     logs: list[ConsoleLine] = []
     # Test bundles extend their iframe window with the runner protocol fields.
-    frame_window: TestingWindow | None = frame.contentWindow
+    frame_window = cast(TestingWindow | None, frame.contentWindow)
     if frame_window is None:
         return failed_test_run(
             nodeid,
@@ -582,10 +584,10 @@ async def execute_single_test(
     frame_document.head.append(style)
 
     original_console = frame_window.console
-    capturing_console: Console = CapturingConsole(original_console, logs)
+    capturing_console = CapturingConsole(original_console, logs)
     error_listener = WindowErrorListener(logs)
     rejection_listener = RejectionErrorListener(logs)
-    frame_window.console = capturing_console
+    frame_window.console = cast(Console, capturing_console)
     frame_window.addEventListener("error", error_listener)
     frame_window.addEventListener("unhandledrejection", rejection_listener)
     frame_window.__pyjsAutoRun__ = False
@@ -629,7 +631,6 @@ class TransportOpenListener:
         self.app = app
         self.socket = socket
 
-    @js.keep
     def handleEvent(self, event: Event):
         self.socket.send(_stringify_unchecked(RegisterBrowserMessage()))
         self.app._heartbeatTimer = setInterval(self.sendHeartbeat, 5_000)
@@ -646,7 +647,6 @@ class TransportMessageListener:
         self.app = app
         self.socket = socket
 
-    @js.keep
     async def handleEvent(self, event: MessageEvent):
         message: RunBundleMessage = JSON.parse(cast(str, event.data))
         if message["type"] != "run_bundle":
@@ -686,7 +686,13 @@ class TransportMessageListener:
                 if result.outcome == "passed":
                     app.markTestPassed(nodeid)
                 else:
-                    app.markTestFailed(nodeid, result.error or "Test failed")
+                    exception = result.exception
+                    app.markTestFailed(
+                        nodeid,
+                        runtime_exception_text(exception)
+                        if exception is not None
+                        else "Test failed",
+                    )
                 app.retainRenderedFrame(
                     nodeid,
                     frame,
@@ -700,8 +706,9 @@ class TransportMessageListener:
                 _stringify_unchecked(TestResultsMessage(message["run_id"], results))
             )
         except Exception as error:
-            error_text = exception_text(error)
-            failed_result = TestResult("<bundle>", "failed", [], error=error_text)
+            exception = exception_details(error)
+            error_text = runtime_exception_text(exception)
+            failed_result = TestResult("<bundle>", "failed", [], exception)
             self.socket.send(
                 _stringify_unchecked(
                     TestResultsMessage(message["run_id"], [failed_result])
@@ -715,7 +722,6 @@ class TransportCloseListener:
     def __init__(self, app: BrowserRunnerApp):
         self.app = app
 
-    @js.keep
     def handleEvent(self, event: Event):
         clearInterval(self.app._heartbeatTimer)
         self.app._heartbeatTimer = None

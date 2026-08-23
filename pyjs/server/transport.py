@@ -51,6 +51,9 @@ class ClientTransport:
 
 @js
 class FetchTransport(ClientTransport):
+    def request_headers(self) -> dict[str, str]:
+        return {"Content-Type": "application/json"}
+
     async def request(
         self,
         url: str,
@@ -59,7 +62,7 @@ class FetchTransport(ClientTransport):
     ) -> TransportResponse:
         options = FetchOptions(
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=self.request_headers(),
             body=body,
         )
         if timeout_ms > 0:

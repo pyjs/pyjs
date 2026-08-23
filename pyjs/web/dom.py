@@ -1,9 +1,11 @@
-from pyjs import js, nojs
+from collections.abc import Iterator
+
+from pyjs import js
 from pyjs.web.console import Console
 from pyjs.web.events import AbortSignal, Event, EventListener, EventTarget
 
 
-@js
+@js.dictionary
 class CSSStyleSheetInit:
     """WebIDL source: @webref/idl/cssom.idl"""
 
@@ -94,7 +96,7 @@ class DOMImplementation:
     def hasFeature(self) -> bool: ...
 
 
-@js
+@js.dictionary
 class DOMPointInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -127,7 +129,7 @@ class DOMQuad:
     pass
 
 
-@js
+@js.dictionary
 class DOMQuadInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -148,7 +150,7 @@ class DOMQuadInit:
             self.p4 = p4
 
 
-@js
+@js.dictionary
 class DOMRectInit:
     """WebIDL source: @webref/idl/geometry.idl"""
 
@@ -220,24 +222,51 @@ class DOMTokenList:
         self.length: int = 0
         self.value: str = ""
 
-    def add(self, *tokens: str) -> None:
-        self.tokens.extend(tokens)
+    def _sync(self) -> None:
+        self.length = len(self.tokens)
+        self.value = " ".join(self.tokens)
 
-    def item(self, index: int) -> str | None: ...
+    def add(self, *tokens: str) -> None:
+        for token in tokens:
+            if token not in self.tokens:
+                self.tokens.append(token)
+        self._sync()
+
+    def item(self, index: int) -> str | None:
+        if index < 0 or index >= len(self.tokens):
+            return None
+        return self.tokens[index]
 
     def remove(self, *tokens: str) -> None:
         for token in tokens:
-            self.tokens.remove(token)
+            if token in self.tokens:
+                self.tokens.remove(token)
+        self._sync()
 
-    def replace(self, token: str, newToken: str) -> bool: ...
+    def replace(self, token: str, newToken: str) -> bool:
+        if token not in self.tokens:
+            return False
+        index = self.tokens.index(token)
+        if newToken in self.tokens:
+            self.tokens.remove(token)
+        else:
+            self.tokens[index] = newToken
+        self._sync()
+        return True
 
     def supports(self, token: str) -> bool: ...
 
     def toggle(self, token: str, force: bool | None = None) -> bool:
-        return False
+        present = token in self.tokens
+        enabled = not present if force is None else force
+        if enabled:
+            self.add(token)
+        else:
+            self.remove(token)
+        return enabled
 
     def contains(self, token: str) -> bool:
-        return False
+        return token in self.tokens
 
 
 @js.native
@@ -292,7 +321,7 @@ class Blob:
     pass
 
 
-@js
+@js.dictionary
 class BoxQuadOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -321,7 +350,7 @@ class CaretPosition:
     def getClientRect(self) -> DOMRect | None: ...
 
 
-@js
+@js.dictionary
 class CaretPositionFromPointOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -331,7 +360,7 @@ class CaretPositionFromPointOptions:
         self.shadowRoots = shadowRoots
 
 
-@js
+@js.dictionary
 class CheckVisibilityOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -350,7 +379,7 @@ class CheckVisibilityOptions:
         self.visibilityProperty = visibilityProperty
 
 
-@js
+@js.dictionary
 class ConvertCoordinateOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -445,7 +474,7 @@ class CSSStyleDeclaration:
     def setProperty(self, property: str, value: str, priority: str = "") -> None: ...
 
 
-@js
+@js.dictionary
 class ElementCreationOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -467,7 +496,7 @@ class External:
     pass
 
 
-@js
+@js.dictionary
 class GetRootNodeOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -515,8 +544,8 @@ class HTMLCollection[T]:
     def __getitem__(self, index: int) -> T:
         return self._items[index]
 
-    @nojs
-    def __iter__(self):
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[T]:
         return iter(self._items)
 
     @js.inline("{self}.length")
@@ -561,7 +590,7 @@ class ImageBitmap:
     pass
 
 
-@js
+@js.dictionary
 class ImageBitmapOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -595,7 +624,7 @@ class ImageData:
     pass
 
 
-@js
+@js.dictionary
 class ImportNodeOptions:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -641,7 +670,7 @@ class MediaQueryListEvent(Event):
         self.media: str = media
 
 
-@js
+@js.dictionary
 class MediaQueryListEventInit:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -689,7 +718,7 @@ class MutationObserver:
     def takeRecords(self) -> list[MutationRecord]: ...
 
 
-@js
+@js.dictionary
 class MutationObserverInit:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -755,8 +784,8 @@ class NamedNodeMap[T]:
             return list(self._attributes.values())[key]
         return self._attributes[key]
 
-    @nojs
-    def __iter__(self):
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[T]:
         return iter(self._attributes.values())
 
     @js.inline("{name} in {self}")
@@ -948,8 +977,8 @@ class NodeList[T]:
     def __getitem__(self, index: int) -> T:
         return self._items[index]
 
-    @nojs
-    def __iter__(self):
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[T]:
         return iter(self._items)
 
     @js.inline("{self}.length")
@@ -998,7 +1027,7 @@ class PluginArray:
     pass
 
 
-@js
+@js.dictionary
 class QuotaExceededErrorOptions:
     """WebIDL source: @webref/idl/webidl.idl"""
 
@@ -1007,6 +1036,60 @@ class QuotaExceededErrorOptions:
             self.quota = quota
         if requested is not None:
             self.requested = requested
+
+
+@js.native
+class ResizeObserver:
+    """WebIDL source: @webref/idl/resize-observer.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ResizeObserver
+
+    Browser support: Chrome 64, Safari 13.1"""
+
+    def __init__(self, callback: callable): ...
+
+    def disconnect(self) -> None: ...
+
+    def observe(self, target: Element, *, box: str = "content-box") -> None: ...
+
+    def unobserve(self, target: Element) -> None: ...
+
+
+@js.native
+class ResizeObserverEntry:
+    """WebIDL source: @webref/idl/resize-observer.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ResizeObserverEntry
+
+    Browser support: Chrome 64, Safari 13.1"""
+
+    def __init__(self):
+        self.borderBoxSize: list[ResizeObserverSize] = []
+        self.contentBoxSize: list[ResizeObserverSize] = []
+        self.contentRect: DOMRectReadOnly = None
+        self.devicePixelContentBoxSize: list[ResizeObserverSize] = []
+        self.target: Element = None
+
+
+@js.dictionary
+class ResizeObserverOptions:
+    """WebIDL source: @webref/idl/resize-observer.idl"""
+
+    def __init__(self, box: str = "content-box"):
+        self.box = box
+
+
+@js.native
+class ResizeObserverSize:
+    """WebIDL source: @webref/idl/resize-observer.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/ResizeObserverSize
+
+    Browser support: Chrome 84, Safari 15.4"""
+
+    def __init__(self):
+        self.blockSize: float = 0.0
+        self.inlineSize: float = 0.0
 
 
 @js.native
@@ -1026,7 +1109,7 @@ class Screen:
         self.width: int = 0
 
 
-@js
+@js.dictionary
 class ScrollOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -1034,7 +1117,7 @@ class ScrollOptions:
         self.behavior = behavior
 
 
-@js
+@js.dictionary
 class ShadowRootInit:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -1055,7 +1138,7 @@ class ShadowRootInit:
         self.slotAssignment = slotAssignment
 
 
-@js
+@js.dictionary
 class StructuredSerializeOptions:
     """WebIDL source: @webref/idl/html.idl"""
 
@@ -1232,7 +1315,7 @@ class XSLTProcessor:
     def transformToFragment(self, source: Node, output: Document) -> DocumentFragment: ...
 
 
-@js
+@js.dictionary
 class StaticRangeInit:
     """WebIDL source: @webref/idl/dom.idl"""
 
@@ -1275,6 +1358,12 @@ js.native(localStorage)
 
 @js.native
 class Clipboard:
+    """WebIDL source: @webref/idl/clipboard-apis.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/Clipboard
+
+    Browser support: Chrome 66, Safari 13.1"""
+
     async def readText(self) -> str: ...
 
     async def writeText(self, value: str): ...
@@ -1300,7 +1389,7 @@ class Navigator:
     Browser support: Chrome 1, Safari 1"""
 
     def __init__(self):
-        self.clipboard = Clipboard()
+        self.clipboard: Clipboard = Clipboard()
         self.appCodeName: str = ""
         self.appName: str = ""
         self.appVersion: str = ""
@@ -1415,7 +1504,7 @@ class Window(EventTarget):
 
     def __init__(self):
         super().__init__()
-        self.console = Console()
+        self.console: Console = Console()
         self.clientInformation: Navigator = None
         self.closed: bool = False
         self.crossOriginIsolated: bool = False
@@ -1701,6 +1790,98 @@ js.native(window)
 
 
 @js.native
+class IntersectionObserver:
+    """WebIDL source: @webref/idl/intersection-observer.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/IntersectionObserver
+
+    Browser support: Chrome 51, Safari 12.1"""
+
+    def __init__(
+        self, callback: callable, options: IntersectionObserverInit | None = None
+    ):
+        self.delay: int = 0
+        self.root: Element | Document | None = None
+        self.rootMargin: str = ""
+        self.scrollMargin: str = ""
+        self.thresholds: list[float] = []
+        self.trackVisibility: bool = False
+
+    def disconnect(self) -> None: ...
+
+    def observe(self, target: Element) -> None: ...
+
+    def takeRecords(self) -> list[IntersectionObserverEntry]: ...
+
+    def unobserve(self, target: Element) -> None: ...
+
+
+@js.native
+class IntersectionObserverEntry:
+    """WebIDL source: @webref/idl/intersection-observer.idl
+
+    MDN: https://developer.mozilla.org/docs/Web/API/IntersectionObserverEntry
+
+    Browser support: Chrome 51, Safari 12.1"""
+
+    def __init__(self, intersectionObserverEntryInit: IntersectionObserverEntryInit):
+        self.boundingClientRect: DOMRectReadOnly = None
+        self.intersectionRatio: float = 0.0
+        self.intersectionRect: DOMRectReadOnly = None
+        self.isIntersecting: bool = False
+        self.isVisible: bool = False
+        self.rootBounds: DOMRectReadOnly | None = None
+        self.target: Element = None
+        self.time: float = 0.0
+
+
+@js.dictionary
+class IntersectionObserverEntryInit:
+    """WebIDL source: @webref/idl/intersection-observer.idl"""
+
+    def __init__(
+        self,
+        boundingClientRect: DOMRectInit,
+        intersectionRatio: float,
+        intersectionRect: DOMRectInit,
+        isIntersecting: bool,
+        isVisible: bool,
+        rootBounds: DOMRectInit | None,
+        target: Element,
+        time: float,
+    ):
+        self.boundingClientRect = boundingClientRect
+        self.intersectionRatio = intersectionRatio
+        self.intersectionRect = intersectionRect
+        self.isIntersecting = isIntersecting
+        self.isVisible = isVisible
+        self.rootBounds = rootBounds
+        self.target = target
+        self.time = time
+
+
+@js.dictionary
+class IntersectionObserverInit:
+    """WebIDL source: @webref/idl/intersection-observer.idl"""
+
+    def __init__(
+        self,
+        delay: int = 0,
+        root: Element | Document | None = None,
+        rootMargin: str = "0px",
+        scrollMargin: str = "0px",
+        threshold: float | list[float] = 0,
+        trackVisibility: bool = False,
+    ):
+        self.delay = delay
+        self.root = root
+        self.rootMargin = rootMargin
+        self.scrollMargin = scrollMargin
+        self.threshold = threshold
+        self.trackVisibility = trackVisibility
+
+
+@js.native
 class Location:
     """WebIDL source: @webref/idl/html.idl
 
@@ -1731,7 +1912,7 @@ location = Location()
 js.native(location)
 
 
-@js
+@js.dictionary
 class ScrollIntoViewOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -1748,7 +1929,7 @@ class ScrollIntoViewOptions:
         self.inline = inline
 
 
-@js
+@js.dictionary
 class ScrollToOptions:
     """WebIDL source: @webref/idl/cssom-view.idl"""
 
@@ -2068,16 +2249,7 @@ class Element(Node):
     def contains(self, node: Node) -> bool:
         return False
 
-    def attachShadow(
-        self,
-        *,
-        mode: str,
-        delegatesFocus: bool = False,
-        slotAssignment: str = "named",
-        clonable: bool = False,
-        serializable: bool = False,
-        customElementRegistry: CustomElementRegistry | None = None,
-    ) -> ShadowRoot: ...
+    def attachShadow(self, init: ShadowRootInit) -> ShadowRoot: ...
 
     def before(self, *nodes: Node | str) -> None: ...
 
@@ -2619,14 +2791,7 @@ class StaticRange(AbstractRange):
 
     Browser support: Chrome 60, Safari 10.1"""
 
-    def __init__(
-        self,
-        *,
-        startContainer: Node,
-        startOffset: int,
-        endContainer: Node,
-        endOffset: int,
-    ):
+    def __init__(self, init: StaticRangeInit):
         super().__init__()
 
 

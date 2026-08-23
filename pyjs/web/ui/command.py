@@ -1,7 +1,16 @@
 from pyjs import js
-from pyjs.web.domx import ProxyElement, div, input, span, tag, tw
+from pyjs.web.dom import Element
+from pyjs.web.domx import ProxyElement, div, input, ref, span, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
+from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
+
+
+@js.inline("{element}")
+def command_item_element(element: Element) -> HTMLElement:
+    if not isinstance(element, HTMLElement):
+        raise TypeError("Command items must be HTML elements.")
+    return element
 
 
 @js
@@ -63,10 +72,10 @@ def CommandShortcut(*children):
 class Command(Widget):
     def __init__(self, *items: CommandItem, placeholder: str = "Type a command..."):
         super().__init__()
-        self.items: list[CommandItem] = []
+        self.items: list[HTMLElement] = []
         for item in items:
-            self.items.append(item)
-        self.input = input(
+            self.items.append(item.element)
+        self.input = ref(input(
             tw("h-11 w-full border-b border-slate-200 px-3 text-sm outline-none"),
             {
                 "aria-label": placeholder,
@@ -75,12 +84,12 @@ class Command(Widget):
                 "placeholder": placeholder,
                 "role": "combobox",
             },
-        )
-        self.empty = div(
+        ))
+        self.empty = ref(div(
             tw("py-6 text-center text-sm text-slate-500"),
             {"data-slot": "command-empty", "hidden": ""},
             "No results found.",
-        )
+        ))
         self.add(
             tw("overflow-hidden rounded-md border border-slate-200 bg-white"),
             {"data-slot": "command"},
@@ -92,6 +101,11 @@ class Command(Widget):
                 *items,
             ),
         )
+
+    def initialize(self):
+        self.items = []
+        for item in self.querySelectorAll("[data-slot=command-item]"):
+            self.items.append(command_item_element(item))
         self.input.addEventListener("input", self.search)
         self.input.addEventListener("keydown", self.keydown)
 
@@ -99,8 +113,12 @@ class Command(Widget):
         query = self.input.value.lower()
         visible_count = 0
         for item in self.items:
-            visible = query == "" or query in item.value.lower()
-            item.set_visible(visible)
+            value = item.getAttribute("data-value") or ""
+            visible = query == "" or query in value.lower()
+            if visible:
+                item.removeAttribute("hidden")
+            else:
+                item.setAttribute("hidden", "")
             if visible:
                 visible_count += 1
         if visible_count == 0:
@@ -112,7 +130,7 @@ class Command(Widget):
         if event.key != "ArrowDown":
             return
         for item in self.items:
-            if item.element.getAttribute("hidden") is None:
+            if item.getAttribute("hidden") is None:
                 event.preventDefault()
-                item.element.focus()
+                item.focus()
                 return

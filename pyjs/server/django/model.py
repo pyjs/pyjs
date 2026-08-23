@@ -1,6 +1,7 @@
 import annotationlib
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID
 
 from django.db import models
@@ -78,6 +79,8 @@ def _default(field):
     if isinstance(field, models.AutoField):
         return None
     if field.default is not NOT_PROVIDED and not callable(field.default):
+        if isinstance(field.default, Enum):
+            return field.default.value
         return field.default
     if field.null:
         return None

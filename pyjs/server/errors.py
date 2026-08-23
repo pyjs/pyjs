@@ -73,6 +73,10 @@ class OperationError(Exception):
         return self.issues[0].status
 
 
+class OperationResultError(Exception):
+    pass
+
+
 def operation_error(
     detail: str,
     *location: str,

@@ -17,7 +17,7 @@ navigator = Navigator()
 js.native(navigator)
 
 
-@js
+@js.dictionary
 class StorageEstimate:
     """WebIDL source: @webref/idl/storage.idl"""
 

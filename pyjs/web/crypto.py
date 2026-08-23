@@ -17,7 +17,7 @@ from pyjs.javascript import (
 )
 
 
-@js
+@js.dictionary
 class Algorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -73,6 +73,7 @@ class Crypto:
 
         return str(uuid.uuid4())
 
+
 crypto = Crypto()
 js.native(crypto)
 
@@ -92,7 +93,7 @@ class CryptoKey:
         self.usages: object = None
 
 
-@js
+@js.dictionary
 class CryptoKeyPair:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -103,7 +104,7 @@ class CryptoKeyPair:
         self.publicKey = publicKey
 
 
-@js
+@js.dictionary
 class EncapsulatedBits:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -116,7 +117,7 @@ class EncapsulatedBits:
             self.sharedKey = sharedKey
 
 
-@js
+@js.dictionary
 class EncapsulatedKey:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -129,7 +130,7 @@ class EncapsulatedKey:
             self.sharedKey = sharedKey
 
 
-@js
+@js.dictionary
 class JsonWebKey:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -181,7 +182,7 @@ class JsonWebKey:
             self.pub = pub
 
 
-@js
+@js.dictionary
 class KeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -189,7 +190,7 @@ class KeyAlgorithm:
         self.name = name
 
 
-@js
+@js.dictionary
 class RsaOtherPrimesInfo:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -460,7 +461,7 @@ class SubtleCrypto:
     ) -> ArrayBuffer: ...
 
 
-@js
+@js.dictionary
 class AeadParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -506,7 +507,7 @@ class AeadParams:
             self.tagLength = tagLength
 
 
-@js
+@js.dictionary
 class AesCbcParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -532,7 +533,7 @@ class AesCbcParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class AesCtrParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -560,7 +561,7 @@ class AesCtrParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class AesDerivedKeyParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -569,7 +570,7 @@ class AesDerivedKeyParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class AesGcmParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -615,7 +616,7 @@ class AesGcmParams:
             self.tagLength = tagLength
 
 
-@js
+@js.dictionary
 class AesKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -624,7 +625,7 @@ class AesKeyAlgorithm:
         self.name = name
 
 
-@js
+@js.dictionary
 class AesKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -633,7 +634,7 @@ class AesKeyGenParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class Argon2Params:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -702,7 +703,7 @@ class Argon2Params:
             self.version = version
 
 
-@js
+@js.dictionary
 class ContextParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -730,7 +731,7 @@ class ContextParams:
             self.context = context
 
 
-@js
+@js.dictionary
 class CShakeParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -777,7 +778,7 @@ class CShakeParams:
             self.functionName = functionName
 
 
-@js
+@js.dictionary
 class EcdhKeyDeriveParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -786,7 +787,7 @@ class EcdhKeyDeriveParams:
         self.public = public
 
 
-@js
+@js.dictionary
 class EcdsaParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -795,7 +796,7 @@ class EcdsaParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class EcKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -804,7 +805,7 @@ class EcKeyAlgorithm:
         self.namedCurve = namedCurve
 
 
-@js
+@js.dictionary
 class EcKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -813,7 +814,7 @@ class EcKeyGenParams:
         self.namedCurve = namedCurve
 
 
-@js
+@js.dictionary
 class EcKeyImportParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -822,7 +823,7 @@ class EcKeyImportParams:
         self.namedCurve = namedCurve
 
 
-@js
+@js.dictionary
 class Ed448Params:
     """WebIDL source: @webref/idl/webcrypto-secure-curves.idl"""
 
@@ -850,7 +851,7 @@ class Ed448Params:
             self.context = context
 
 
-@js
+@js.dictionary
 class HkdfParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -893,7 +894,7 @@ class HkdfParams:
         self.salt = salt
 
 
-@js
+@js.dictionary
 class HmacImportParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -904,7 +905,7 @@ class HmacImportParams:
             self.length = length
 
 
-@js
+@js.dictionary
 class HmacKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -914,7 +915,7 @@ class HmacKeyAlgorithm:
         self.name = name
 
 
-@js
+@js.dictionary
 class HmacKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -925,7 +926,7 @@ class HmacKeyGenParams:
             self.length = length
 
 
-@js
+@js.dictionary
 class KangarooTwelveParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -955,7 +956,7 @@ class KangarooTwelveParams:
             self.customization = customization
 
 
-@js
+@js.dictionary
 class KmacImportParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -965,7 +966,7 @@ class KmacImportParams:
             self.length = length
 
 
-@js
+@js.dictionary
 class KmacKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -974,7 +975,7 @@ class KmacKeyAlgorithm:
         self.name = name
 
 
-@js
+@js.dictionary
 class KmacKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -984,7 +985,7 @@ class KmacKeyGenParams:
             self.length = length
 
 
-@js
+@js.dictionary
 class KmacParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -1014,7 +1015,7 @@ class KmacParams:
             self.customization = customization
 
 
-@js
+@js.dictionary
 class Pbkdf2Params:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1044,7 +1045,7 @@ class Pbkdf2Params:
         self.salt = salt
 
 
-@js
+@js.dictionary
 class RsaHashedImportParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1053,7 +1054,7 @@ class RsaHashedImportParams:
         self.name = name
 
 
-@js
+@js.dictionary
 class RsaKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1063,7 +1064,7 @@ class RsaKeyAlgorithm:
         self.publicExponent = publicExponent
 
 
-@js
+@js.dictionary
 class RsaKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1073,7 +1074,7 @@ class RsaKeyGenParams:
         self.publicExponent = publicExponent
 
 
-@js
+@js.dictionary
 class RsaOaepParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1101,7 +1102,7 @@ class RsaOaepParams:
             self.label = label
 
 
-@js
+@js.dictionary
 class RsaPssParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1110,7 +1111,7 @@ class RsaPssParams:
         self.saltLength = saltLength
 
 
-@js
+@js.dictionary
 class TurboShakeParams:
     """WebIDL source: @webref/idl/webcrypto-modern-algos.idl"""
 
@@ -1121,7 +1122,7 @@ class TurboShakeParams:
             self.domainSeparation = domainSeparation
 
 
-@js
+@js.dictionary
 class RsaHashedKeyAlgorithm:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 
@@ -1138,7 +1139,7 @@ class RsaHashedKeyAlgorithm:
         self.publicExponent = publicExponent
 
 
-@js
+@js.dictionary
 class RsaHashedKeyGenParams:
     """WebIDL source: @webref/idl/webcrypto.idl"""
 

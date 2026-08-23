@@ -190,7 +190,7 @@ class SidebarLayout(Widget):
 
     def set_open(self, open: bool):
         self.setAttribute("data-state", "expanded" if open else "collapsed")
-        triggers: list[Element] = self.querySelectorAll("[data-sidebar-toggle]")
+        triggers = self.querySelectorAll("[data-sidebar-toggle]")
         for trigger in triggers:
             trigger.setAttribute("aria-expanded", "true" if open else "false")
 

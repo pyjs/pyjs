@@ -4,7 +4,6 @@ from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import ProxyElement, button, tw
 from pyjs.web.events import Event
-from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 
 
@@ -104,7 +103,7 @@ class ToggleGroup(Widget):
         value = selected.getAttribute("data-value")
         if value is not None:
             self.setAttribute("data-value", value)
-        items: list[HTMLElement] = self.querySelectorAll("[data-slot=toggle]")
+        items = self.querySelectorAll("[data-slot=toggle]")
         for item in items:
             if item is not selected:
                 item.setAttribute("aria-pressed", "false")

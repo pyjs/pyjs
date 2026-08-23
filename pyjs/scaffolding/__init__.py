@@ -248,7 +248,7 @@ requires-python = ">=3.14"
 dependencies = ["pyjs~={version}"]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0"]
+test = ["pytest>=9.0", "ruff>=0.15.0"]
 
 {setuptools}
 {application}

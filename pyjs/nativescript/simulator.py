@@ -1,4 +1,5 @@
 from pyjs import js
+from pyjs.ui.reorderable import edge_scroll_offset
 
 
 @js
@@ -13,6 +14,13 @@ def _maximum(left: float, right: float) -> float:
     if left > right:
         return left
     return right
+
+
+@js
+class MasonryTranslation:
+    def __init__(self, x: float = 0, y: float = 0):
+        self.x = x
+        self.y = y
 
 
 @js
@@ -39,11 +47,13 @@ class NativeRect:
         top = _maximum(self.y, other.y)
         right = _minimum(self.right, other.right)
         bottom = _minimum(self.bottom, other.bottom)
+        if right <= left or bottom <= top:
+            return NativeRect()
         return NativeRect(
             left,
             top,
-            _maximum(0.0, right - left),
-            _maximum(0.0, bottom - top),
+            right - left,
+            bottom - top,
         )
 
     def contains(self, x: float, y: float) -> bool:
@@ -297,6 +307,7 @@ class MasonryDragSimulator:
         edge_step: float = 24,
         edge_interval_ms: float = 50,
         hysteresis: float = 12,
+        group_gap: float = 0,
     ):
         self.column_lefts: list[float] = []
         for left in column_lefts:
@@ -305,6 +316,7 @@ class MasonryDragSimulator:
             self.column_lefts.append(0.0)
         self.content_top = content_top
         self.vertical_gap = vertical_gap
+        self.group_gap = group_gap
         self.edge_size = edge_size
         self.edge_step = edge_step
         self.edge_interval_ms = edge_interval_ms
@@ -321,7 +333,15 @@ class MasonryDragSimulator:
             actual_bottoms.append(self.content_top)
 
         content_height = self.content_top
+        previous_group = ""
         for item in items:
+            if previous_group != "" and item.group != previous_group:
+                group_top = max(actual_bottoms) + self.group_gap
+                placement_heights = []
+                actual_bottoms = []
+                for _column in self.column_lefts:
+                    placement_heights.append(0.0)
+                    actual_bottoms.append(group_top)
             target_column = 0
             for column in range(1, len(self.column_lefts)):
                 if placement_heights[column] < placement_heights[target_column]:
@@ -341,12 +361,14 @@ class MasonryDragSimulator:
             )
             if rect.bottom > content_height:
                 content_height = rect.bottom
+            previous_group = item.group
         return MasonryLayoutSnapshot(item_ids, rects, columns, content_height)
 
     def layout_in_columns(
         self,
         items: list[MasonryItemGeometry],
         assigned_columns: list[int],
+        group_runs: list[int] | None = None,
     ) -> MasonryLayoutSnapshot:
         """Lay out items in explicit columns while retaining natural heights."""
 
@@ -360,8 +382,23 @@ class MasonryDragSimulator:
             actual_bottoms.append(self.content_top)
 
         content_height = self.content_top
+        previous_group = ""
+        previous_run = -1
         for index in range(len(items)):
             item = items[index]
+            run = -1
+            if group_runs is not None and index < len(group_runs):
+                run = group_runs[index]
+            group_changed = previous_group != "" and item.group != previous_group
+            if run >= 0 and previous_run >= 0:
+                group_changed = run != previous_run
+            if group_changed:
+                group_top = max(actual_bottoms) + self.group_gap
+                placement_heights = []
+                actual_bottoms = []
+                for _column in self.column_lefts:
+                    placement_heights.append(0.0)
+                    actual_bottoms.append(group_top)
             target_column = -1
             if index < len(assigned_columns):
                 candidate = assigned_columns[index]
@@ -387,6 +424,8 @@ class MasonryDragSimulator:
             )
             if rect.bottom > content_height:
                 content_height = rect.bottom
+            previous_group = item.group
+            previous_run = run
         return MasonryLayoutSnapshot(item_ids, rects, columns, content_height)
 
     def moved_items(
@@ -420,7 +459,7 @@ class MasonryDragSimulator:
     ) -> MasonryLayoutSnapshot:
         """Order persisted items by visual position without mixing groups."""
 
-        initial = self.layout_in_columns(items, columns)
+        initial = self.layout_in_columns(items, columns, group_runs)
         ordered_ids: list[str] = []
         ordered_rects: list[NativeRect] = []
         ordered_columns: list[int] = []
@@ -519,7 +558,21 @@ class MasonryDragSimulator:
         remaining_layout = self.layout_in_columns(
             remaining_items,
             remaining_columns,
+            remaining_runs,
         )
+        group_top = self.content_top
+        found_group_top = False
+        for index in range(len(items)):
+            if item_runs[index] != source_run:
+                continue
+            layout_index = layout.index_of(items[index].id)
+            if layout_index < 0:
+                continue
+            rect = layout.rects[layout_index]
+            candidate_top = rect.y - items[index].margin_top
+            if not found_group_top or candidate_top < group_top:
+                group_top = candidate_top
+                found_group_top = True
         earlier_run_items = 0
         for run in remaining_runs:
             if run < source_run:
@@ -534,7 +587,7 @@ class MasonryDragSimulator:
                     and remaining_columns[index] == target_column
                 ):
                     lane_positions.append(index)
-            column_bottom = self.content_top
+            column_bottom = group_top
             scanned_index = 0
             for lane_index in range(len(lane_positions) + 1):
                 insertion_index = source_index
@@ -555,7 +608,10 @@ class MasonryDragSimulator:
                 )
 
                 while scanned_index < insertion_index:
-                    if remaining_columns[scanned_index] == target_column:
+                    if (
+                        remaining_runs[scanned_index] == source_run
+                        and remaining_columns[scanned_index] == target_column
+                    ):
                         rect = remaining_layout.rects[scanned_index]
                         item = remaining_items[scanned_index]
                         column_bottom = (
@@ -698,18 +754,17 @@ class MasonryDragSimulator:
         pointer_screen_y: float,
         elapsed_ms: float = -1,
     ) -> float:
-        if elapsed_ms < 0:
-            elapsed_ms = self.edge_interval_ms
-        interval = self.edge_interval_ms
-        if interval <= 0:
-            interval = 1.0
-        step = self.edge_step * _maximum(0, elapsed_ms) / interval
-        target = viewport.scroll_offset
-        if pointer_screen_y < viewport.screen_y + self.edge_size:
-            target -= step
-        elif pointer_screen_y > viewport.screen_y + viewport.height - self.edge_size:
-            target += step
-        return _clamp(target, 0, viewport.maximum_scroll)
+        return edge_scroll_offset(
+            pointer_screen_y,
+            viewport.screen_y,
+            viewport.height,
+            viewport.scroll_offset,
+            viewport.maximum_scroll,
+            self.edge_size,
+            self.edge_step,
+            elapsed_ms,
+            self.edge_interval_ms,
+        )
 
     def column_clip(self, column: int, viewport: MasonryViewport) -> NativeRect:
         if column < 0 or column >= len(self.column_lefts):
@@ -862,6 +917,16 @@ class MasonryDragSimulator:
             session.preview_column = selected.destination_column
             session.preview_lane_index = selected.destination_lane_index
         preview_layout = session.preview_layout
+        source_visual_y = desired_y
+        minimum_source_y = -1.0
+        for slot in slots:
+            if slot.destination_column != selected_column:
+                continue
+            slot_y = slot.source_rect.y
+            if minimum_source_y < 0 or slot_y < minimum_source_y:
+                minimum_source_y = slot_y
+        if minimum_source_y >= 0 and source_visual_y < minimum_source_y:
+            source_visual_y = minimum_source_y
 
         translate_x: list[float] = []
         translate_y: list[float] = []
@@ -876,7 +941,7 @@ class MasonryDragSimulator:
                 translate_y.append(0.0)
             elif index == session.source_index:
                 translate_x.append(desired_x - original_rect.x)
-                translate_y.append(desired_y - original_rect.y)
+                translate_y.append(source_visual_y - original_rect.y)
             else:
                 translate_x.append(target_rect.x - original_rect.x)
                 translate_y.append(target_rect.y - original_rect.y)
@@ -899,6 +964,7 @@ class MasonryDragSimulator:
         selected_id = ""
         selected_y = 0.0
         selected_distance = -1.0
+        selected_visible_top = False
         viewport_bottom = viewport.scroll_offset + viewport.height
         for index in range(len(layout.item_ids)):
             item_id = layout.item_ids[index]
@@ -909,11 +975,23 @@ class MasonryDragSimulator:
                 and rect.y <= viewport_bottom
             ):
                 screen_y = viewport.screen_y + rect.y - viewport.scroll_offset
-                distance = abs(screen_y - viewport.screen_y)
-                if selected_distance < 0 or distance < selected_distance:
+                visible_top = rect.y >= viewport.scroll_offset
+                if not visible_top and screen_y < viewport.screen_y:
+                    screen_y = viewport.screen_y
+                distance = screen_y - viewport.screen_y
+                if distance < 0:
+                    distance = -distance
+                if (
+                    (visible_top and not selected_visible_top)
+                    or (
+                        visible_top == selected_visible_top
+                        and (selected_distance < 0 or distance < selected_distance)
+                    )
+                ):
                     selected_id = item_id
                     selected_y = screen_y
                     selected_distance = distance
+                    selected_visible_top = visible_top
         return MasonryViewportAnchor(selected_id, selected_y)
 
     def restore_anchor(
@@ -936,6 +1014,7 @@ __all__ = [
     "MasonryDropSlot",
     "MasonryItemGeometry",
     "MasonryLayoutSnapshot",
+    "MasonryTranslation",
     "MasonryProjectedItem",
     "MasonryProjectionSnapshot",
     "MasonryViewport",

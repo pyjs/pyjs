@@ -26,7 +26,8 @@ class Combobox(Command):
         self.input.value = value
         self.input.setAttribute("aria-expanded", "false")
         for item in self.items:
-            item.setAttribute("aria-selected", "true" if item.value == value else "false")
+            selected = item.getAttribute("data-value") == value
+            item.setAttribute("aria-selected", "true" if selected else "false")
 
     def item_clicked(self, event: Event):
         target = cast(Element, event.target)

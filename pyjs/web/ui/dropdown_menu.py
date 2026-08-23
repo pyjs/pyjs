@@ -2,10 +2,18 @@ from typing import cast
 
 from pyjs import js
 from pyjs.web.dom import Element, document
-from pyjs.web.domx import ProxyElement, button, tag, tw
+from pyjs.web.domx import ProxyElement, button, ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
+from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
+
+
+@js.inline("{element}")
+def dropdown_item_element(element: Element) -> HTMLElement:
+    if not isinstance(element, HTMLElement):
+        raise TypeError("Dropdown menu items must be HTML elements.")
+    return element
 
 
 @js
@@ -38,7 +46,6 @@ class DropdownMenuTrigger(ProxyElement):
 class DropdownMenuItem(ProxyElement):
     def __init__(self, value: str, *children):
         self.value = value
-        self.menu: DropdownMenu | None = None
         self.element = button(
             tw(
                 "block w-full rounded-sm px-2 py-1.5 text-left text-sm "
@@ -46,16 +53,12 @@ class DropdownMenuItem(ProxyElement):
             ),
             {
                 "data-slot": "dropdown-menu-item",
+                "data-value": value,
                 "role": "menuitem",
                 "tabindex": "-1",
             },
             *children,
         )
-        self.element.addEventListener("click", self.select)
-
-    def select(self, event: Event):
-        if self.menu is not None:
-            self.menu.select(self.value)
 
     def on_select(self, callback: callable):
         self.element.addEventListener("click", callback)
@@ -83,6 +86,10 @@ def DropdownMenuSeparator():
 @js
 class DropdownMenuContent(FloatingPanel):
     def __init__(self, *children):
+        self.items: list[HTMLElement] = []
+        for child in children:
+            if isinstance(child, DropdownMenuItem):
+                self.items.append(child.element)
         super().__init__(
             tw(
                 "min-w-48 rounded-md border border-slate-200 bg-white p-1 text-slate-950 shadow-md"
@@ -94,10 +101,6 @@ class DropdownMenuContent(FloatingPanel):
             *children,
         )
         self.style.width = "192px"
-        self.items: list[DropdownMenuItem] = []
-        for child in children:
-            if isinstance(child, DropdownMenuItem):
-                self.items.append(child)
 
 
 @js
@@ -105,7 +108,6 @@ class DropdownMenuClickListener:
     def __init__(self, menu: DropdownMenu):
         self.menu = menu
 
-    @js.keep
     def handleEvent(self, event: Event):
         self.menu.handle_document_click(event)
 
@@ -115,7 +117,6 @@ class DropdownMenuKeyListener:
     def __init__(self, menu: DropdownMenu):
         self.menu = menu
 
-    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         self.menu.handle_keydown(event)
 
@@ -130,37 +131,67 @@ class DropdownMenu(Widget):
         align: str = "start",
         side_offset: int = 4,
         align_offset: int = 0,
-        open_event: str = "click",
     ):
         super().__init__()
-        self.trigger = trigger
-        self.content = content
-        self.side = side
-        self.align = align
-        self.side_offset = side_offset
-        self.align_offset = align_offset
+        self.trigger = ref(trigger)
+        self.content = ref(content)
+        self.items = content.items
+        self.content.setAttribute("id", self.get_component_id() + "-content")
+        self.trigger.setAttribute(
+            "aria-controls", self.get_component_id() + "-content"
+        )
+        self.add(
+            {
+                "data-align": align,
+                "data-align-offset": str(align_offset),
+                "data-side": side,
+                "data-side-offset": str(side_offset),
+            },
+            self.trigger,
+            self.content,
+        )
+
+    def initialize(self):
+        self.items = []
+        for item in self.content.querySelectorAll("[role=menuitem][data-value]"):
+            self.items.append(dropdown_item_element(item))
         self.is_open = False
-        self.selected_value = ""
+        self.selected_value = self.get_data("value") or ""
         self.focused_index = -1
         self.click_listener = DropdownMenuClickListener(self)
         self.key_listener = DropdownMenuKeyListener(self)
-
-        content_id = self.content.get_component_id() + "-content"
-        self.content.setAttribute("id", content_id)
-        self.trigger.setAttribute("aria-controls", content_id)
+        open_event = (
+            "contextmenu"
+            if self.trigger.getAttribute("data-slot") == "context-menu-trigger"
+            else "click"
+        )
         self.trigger.element.addEventListener(open_event, self.toggle)
         self.trigger.on_keydown(self.handle_trigger_keydown)
-        for item in self.content.items:
-            item.menu = self
-        self.add(self.trigger)
+        self.content.addEventListener("click", self.item_clicked)
+
+    def item_elements(self) -> list[HTMLElement]:
+        return self.items
+
+    def item_clicked(self, event: Event):
+        target = cast(Element, event.target)
+        item = target.closest("[role=menuitem][data-value]")
+        if item is None:
+            return
+        value = item.getAttribute("data-value")
+        if value is not None:
+            self.select(value)
 
     def open(self) -> FloatingPosition:
+        side = self.get_data("side") or "bottom"
+        align = self.get_data("align") or "start"
+        side_offset = int(self.get_data("side-offset") or "4")
+        align_offset = int(self.get_data("align-offset") or "0")
         position = self.content.open(
             self.trigger.element,
-            side=self.side,
-            align=self.align,
-            side_offset=self.side_offset,
-            align_offset=self.align_offset,
+            side=side,
+            align=align,
+            side_offset=side_offset,
+            align_offset=align_offset,
         )
         self.is_open = True
         self.trigger.set_expanded(True)
@@ -203,7 +234,8 @@ class DropdownMenu(Widget):
             and event.key != "End"
         ):
             return
-        if len(self.content.items) == 0:
+        items = self.item_elements()
+        if len(items) == 0:
             return
         target = cast(Element, event.target)
         if self.contains(target):
@@ -212,19 +244,20 @@ class DropdownMenu(Widget):
         if event.key == "Home":
             next_index = 0
         elif event.key == "End":
-            next_index = len(self.content.items) - 1
+            next_index = len(items) - 1
         elif event.key == "ArrowDown":
             next_index = self.focused_index + 1
         else:
             next_index = self.focused_index - 1
-        next_index += len(self.content.items)
-        self.focused_index = next_index % len(self.content.items)
-        self.content.items[self.focused_index].element.focus()
+        next_index += len(items)
+        self.focused_index = next_index % len(items)
+        items[self.focused_index].focus()
 
     def handle_trigger_keydown(self, event: KeyboardEvent):
         if event.key != "ArrowDown" and event.key != "ArrowUp":
             return
-        if len(self.content.items) == 0:
+        items = self.item_elements()
+        if len(items) == 0:
             return
         event.preventDefault()
         if not self.is_open:
@@ -232,10 +265,11 @@ class DropdownMenu(Widget):
         if event.key == "ArrowDown":
             self.focused_index = 0
         else:
-            self.focused_index = len(self.content.items) - 1
-        self.content.items[self.focused_index].element.focus()
+            self.focused_index = len(items) - 1
+        items[self.focused_index].focus()
 
     def select(self, value: str):
         self.selected_value = value
+        self.set_data("value", value)
         self.close()
         self.trigger.element.focus()

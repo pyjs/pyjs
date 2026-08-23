@@ -1,7 +1,8 @@
-from collections.abc import Iterator
+import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from dataclasses import fields as dataclass_fields
-from graphlib import TopologicalSorter
+from graphlib import CycleError, TopologicalSorter
 
 from .diagnostics import CompilationContext, CompilationError, DiagnosticCode, Label
 from .objects import *
@@ -12,7 +13,81 @@ TYPING_TYPE_ALIASES = {
     "List": "list",
     "Set": "set",
     "Tuple": "tuple",
+    **GENERIC_TYPE_ALIASES,
 }
+
+FORMAT_SPEC = re.compile(
+    r"(?P<zero>0)?(?P<width>\d+)?(?:\.(?P<precision>\d+))?(?P<type>[df%])"
+)
+JS_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def constant_integer_value(node: ast.expr) -> int | None:
+    if isinstance(node, ast.Constant):
+        return int(node.value) if type(node.value) in (bool, int) else None
+    if isinstance(node, ast.UnaryOp):
+        value = constant_integer_value(node.operand)
+        if value is None:
+            return None
+        if isinstance(node.op, ast.UAdd):
+            return value
+        if isinstance(node.op, ast.USub):
+            return -value
+        if isinstance(node.op, ast.Invert):
+            return ~value
+        return None
+    if not isinstance(node, ast.BinOp):
+        return None
+    left = constant_integer_value(node.left)
+    right = constant_integer_value(node.right)
+    if left is None or right is None:
+        return None
+    if isinstance(node.op, ast.Add):
+        return left + right
+    if isinstance(node.op, ast.Sub):
+        return left - right
+    if isinstance(node.op, ast.Mult):
+        return left * right
+    if isinstance(node.op, ast.FloorDiv) and right:
+        return left // right
+    if isinstance(node.op, ast.Mod) and right:
+        return left % right
+    if isinstance(node.op, ast.Pow) and right >= 0:
+        if abs(left) > 1 and right > 53:
+            return JS_MAX_SAFE_INTEGER + 1
+        return left**right
+    if isinstance(node.op, ast.BitAnd):
+        return left & right
+    if isinstance(node.op, ast.BitOr):
+        return left | right
+    if isinstance(node.op, ast.BitXor):
+        return left ^ right
+    if isinstance(node.op, ast.LShift) and right >= 0:
+        if left != 0 and right > 53:
+            return JS_MAX_SAFE_INTEGER + 1
+        return left << right
+    if isinstance(node.op, ast.RShift) and right >= 0:
+        return left >> right
+    return None
+
+
+def constant_format_spec(node: ast.JoinedStr | None) -> str | None:
+    if node is None or not all(
+        isinstance(value, ast.Constant) and isinstance(value.value, str)
+        for value in node.values
+    ):
+        return None
+    return "".join(value.value for value in node.values)
+
+
+def flatten_isinstance_targets(node: ast.expr) -> list[ast.expr]:
+    if not isinstance(node, ast.Tuple):
+        return [node]
+    return [
+        target
+        for element in node.elts
+        for target in flatten_isinstance_targets(element)
+    ]
 
 
 def typing_alias_name(node: ast.expr, scope: Scope) -> str | None:
@@ -60,6 +135,12 @@ class UnionMethodResolution:
     return_type: Class | UnionType | None
 
 
+@dataclass(frozen=True)
+class IterableProtocol:
+    item_type: Class | UnionType
+    methods: tuple[Function, ...]
+
+
 def analyzed_annotation(value_type: Class | UnionType) -> ast.expr:
     if isinstance(value_type, Class) and not isinstance(
         value_type,
@@ -90,6 +171,16 @@ def callable_member(value_type):
         if isinstance(member, CallableClass)
     ]
     return members[0] if len(members) == 1 else None
+
+
+def generated_method(value_type, marker: str) -> Function | None:
+    if not isinstance(value_type, Class):
+        return None
+    method_name = getattr(value_type.py_cls, marker, None)
+    if method_name is None:
+        return None
+    method = value_type.find(method_name)
+    return method if isinstance(method, Function) else None
 
 
 def literal_member_for_value(value_type, value):
@@ -126,40 +217,95 @@ def is_return_type_compatible(expected, actual):
     )
 
 
-def is_iterable_argument_compatible(expected, actual):
-    iterable_types = {
-        "Iterable",
-        "Iterator",
-        "dict",
-        "list",
-        "set",
-        "str",
-        "tuple",
-        "typed_dict",
-    }
-    if any(
-        not isinstance(member, TypedDictClass)
-        and (member.generic_name or member.name) not in iterable_types
-        for member in get_type_members(actual)
-    ):
-        return False
-    actual_item_type = iterable_item_type(actual)
+def iterable_protocol(value_type):
+    item_type = None
+    methods = []
+    for member in get_type_members(value_type):
+        if isinstance(member, TypedDictClass):
+            member_type = BUILTINS.search("str")
+        else:
+            method = member.find_attrs("__iter__")
+            if not isinstance(method, Function):
+                return None
+            if not method.signature_analyzed:
+                raise DependencyError(method)
+            if (
+                method.is_static
+                or method.is_classmethod
+                or method.params
+                or method.vararg is not None
+                or method.kwonlyargs
+                or method.kwarg is not None
+            ):
+                return None
+            return_type = method.declared_return_type
+            if not (
+                isinstance(return_type, Class)
+                and return_type.generic_name == "Iterator"
+            ):
+                return None
+            methods.append(method)
+            if member.generic_name == "tuple":
+                member_type = None
+                for tuple_type in member.generic_types.values():
+                    member_type = merge_return_types(member_type, tuple_type)
+            else:
+                member_type = return_type.generic_types["V"]
+        item_type = merge_return_types(item_type, member_type)
+    if item_type is None:
+        return None
+    return IterableProtocol(item_type, tuple(dict.fromkeys(methods)))
+
+
+def expects_iterable(value_type):
     return any(
-        expected_type.generic_name in {"Iterable", "Iterator"}
-        and is_return_type_compatible(
-            expected_type.generic_types["V"], actual_item_type
-        )
-        for expected_type in get_type_members(expected)
+        isinstance(member, Class) and member.generic_name == "Iterable"
+        for member in get_type_members(value_type)
     )
+
+
+def uses_iterable_protocol(expected, value):
+    return expects_iterable(expected) and not is_return_type_compatible(
+        expected,
+        analyzed_value_type(value),
+    )
+
+
+def is_iterable_argument_compatible(expected, actual):
+    expected_members = get_type_members(expected)
+    expected_iterables = [
+        member
+        for member in expected_members
+        if isinstance(member, Class) and member.generic_name == "Iterable"
+    ]
+    if not expected_iterables:
+        return False
+    for actual_member in get_type_members(actual):
+        protocol = iterable_protocol(actual_member)
+        if protocol is not None:
+            if any(
+                is_return_type_compatible(
+                    expected_type.generic_types["V"],
+                    protocol.item_type,
+                )
+                for expected_type in expected_iterables
+            ):
+                continue
+            return False
+        if not any(is_subclass(actual_member, member) for member in expected_members):
+            return False
+    return True
 
 
 def is_call_argument_compatible(expected, value):
     actual = analyzed_value_type(value)
     if is_return_type_compatible(expected, actual):
         return True
+    if expects_iterable(expected):
+        if isinstance(value.obj, GenericClass):
+            return value.obj.name in {"dict", "list", "set", "tuple"}
+        return is_iterable_argument_compatible(expected, actual)
     expected_members = get_type_members(expected)
-    if is_iterable_argument_compatible(expected, actual):
-        return True
     if any(type_.name == "callable" for type_ in expected_members):
         if isinstance(value.obj, Function) or (
             isinstance(value, (Name, Attribute))
@@ -170,13 +316,22 @@ def is_call_argument_compatible(expected, value):
         return False
     if any(type_.generic_name == value.obj.name for type_ in expected_members):
         return True
-    return value.obj.name in {"dict", "list", "set", "tuple"} and any(
-        type_.generic_name == "Iterable" for type_ in expected_members
-    )
+    return False
 
 
 def is_subclass(actual, expected):
     if same_analyzer_type(actual, expected):
+        return True
+    if isinstance(actual, TypeVariableClass):
+        return actual.bound is not None and is_return_type_compatible(
+            expected,
+            actual.bound,
+        )
+    if (
+        isinstance(actual, Class)
+        and isinstance(expected, Class)
+        and expected.name == "object"
+    ):
         return True
     if (
         isinstance(actual, Class)
@@ -205,15 +360,21 @@ def is_subclass(actual, expected):
         and actual.generic_name == expected.generic_name
         and actual.generic_types
         and expected.generic_types
-        and actual.generic_types.keys() == expected.generic_types.keys()
     ):
-        return all(
-            is_return_type_compatible(
-                expected.generic_types[name],
-                actual.generic_types[name],
+        if expected.generic_name == "tuple" and len(expected.generic_types) == 1:
+            expected_item = next(iter(expected.generic_types.values()))
+            return all(
+                is_return_type_compatible(expected_item, actual_item)
+                for actual_item in actual.generic_types.values()
             )
-            for name in expected.generic_types
-        )
+        if actual.generic_types.keys() == expected.generic_types.keys():
+            return all(
+                is_return_type_compatible(
+                    expected.generic_types[name],
+                    actual.generic_types[name],
+                )
+                for name in expected.generic_types
+            )
     if isinstance(expected, CallableClass):
         if not isinstance(actual, CallableClass):
             return False
@@ -243,13 +404,11 @@ def is_subclass(actual, expected):
     if expected.name == "float" and actual.name in {"bool", "int"}:
         return True
     if getattr(expected.py_cls, "__pyjs_structural__", False):
-        methods = (
-            name
-            for name, value in expected.internal_scope.names.items()
-            if isinstance(value, Function) and not name.startswith("_")
-        )
         try:
-            if all(isinstance(actual.find(name), Function) for name in methods):
+            if all(
+                isinstance(actual.find(name), Function)
+                for name in structural_method_names(expected)
+            ):
                 return True
         except NameError:
             pass
@@ -258,6 +417,22 @@ def is_subclass(actual, expected):
             return True
         actual = actual.super
     return False
+
+
+def is_isinstance_match(actual, expected):
+    if expected.name == "float" and actual.name in {"bool", "int"}:
+        return False
+    return is_subclass(actual, expected)
+
+
+def structural_method_names(cls: Class) -> tuple[str, ...]:
+    if not getattr(cls.py_cls, "__pyjs_structural__", False):
+        return ()
+    return tuple(
+        name
+        for name, value in cls.internal_scope.names.items()
+        if isinstance(value, Function) and not name.startswith("_")
+    )
 
 
 def merge_return_types(left, right):
@@ -271,6 +446,31 @@ def merge_return_types(left, right):
     for type_ in get_type_members(right):
         merged.add(type_)
     return merged.type
+
+
+def merge_conditional_types(left, right):
+    if not isinstance(left, CallableClass) or not isinstance(right, CallableClass):
+        return merge_return_types(left, right)
+    if left.parameter_types is None:
+        parameters = right.parameter_types
+    elif right.parameter_types is None:
+        parameters = left.parameter_types
+    elif len(left.parameter_types) == len(right.parameter_types) and all(
+        same_analyzer_type(left_type, right_type)
+        for left_type, right_type in zip(
+            left.parameter_types,
+            right.parameter_types,
+            strict=True,
+        )
+    ):
+        parameters = left.parameter_types
+    else:
+        return merge_return_types(left, right)
+    return CallableClass(
+        parameters,
+        merge_return_types(left.return_type, right.return_type),
+        left.super,
+    )
 
 
 def contains_type_variable(value_type, target=None):
@@ -364,6 +564,9 @@ def infer_type_variables(pattern, actual, bindings):
             for member in pattern.types
             if contains_type_variable(member)
         ]
+        if len(candidates) == 1:
+            infer_type_variables(candidates[0], actual, bindings)
+            return
         concrete = [
             member
             for member in pattern.types
@@ -371,8 +574,6 @@ def infer_type_variables(pattern, actual, bindings):
         ]
         if any(is_return_type_compatible(member, actual) for member in concrete):
             return
-        if len(candidates) == 1:
-            infer_type_variables(candidates[0], actual, bindings)
         return
     if isinstance(pattern, CallableClass) and isinstance(actual, CallableClass):
         if pattern.parameter_types is not None and actual.parameter_types is not None:
@@ -397,7 +598,11 @@ def infer_type_variables(pattern, actual, bindings):
         pattern_item = next(iter(pattern.generic_types.values()))
         infer_type_variables(pattern_item, iterable_item_type(actual), bindings)
         return
-    if not isinstance(actual, Class) or pattern.generic_name != actual.generic_name:
+    if not isinstance(actual, Class):
+        return
+    while actual is not None and pattern.generic_name != actual.generic_name:
+        actual = actual.super
+    if actual is None:
         return
     for pattern_member, actual_member in zip(
         pattern.generic_types.values(),
@@ -408,7 +613,7 @@ def infer_type_variables(pattern, actual, bindings):
 
 
 def analyzed_value_object(value):
-    return value.value_obj if isinstance(value, (Call, Subscript)) else value.obj
+    return value.value_obj if isinstance(value, (Call, Subscript, IfExp)) else value.obj
 
 
 def analyzed_value_type(value):
@@ -443,6 +648,10 @@ def callable_value_type(value):
         return analyzed_value_type(value)
     base = BUILTINS.search("callable")
     assert isinstance(base, Class)
+    if value_obj.is_async:
+        awaitable = BUILTINS.search("Awaitable")
+        assert isinstance(awaitable, GenericClass)
+        return_type = awaitable(return_type)
     return CallableClass(
         tuple(parameter.annotation.obj for parameter in value_obj.params),
         return_type,
@@ -450,7 +659,32 @@ def callable_value_type(value):
     )
 
 
+def infer_generic_call_type(generic: GenericClass, arguments: list[ast.expr]):
+    if not generic.init_params or not generic.type_parameters:
+        return None
+    bindings = {}
+    parameters = list(generic.init_params.values())[1:]
+    for argument, parameter in zip(arguments, parameters, strict=False):
+        if parameter.annotation is parameter.empty:
+            continue
+        pattern = resolve_python_annotation(parameter.annotation, generic.scope)
+        infer_type_variables(pattern, callable_value_type(argument), bindings)
+    concrete = [
+        bindings.get(parameter)
+        for parameter in generic.type_parameters.values()
+    ]
+    if not all(isinstance(value, (Class, UnionType)) for value in concrete):
+        return None
+    return generic(*concrete)
+
+
 def conditional_value_type(value, other_type):
+    value_obj = analyzed_value_object(value)
+    if isinstance(value_obj, (CallableClass, Function)) or (
+        isinstance(value_obj, Instance)
+        and isinstance(value_obj.cls, CallableClass)
+    ):
+        return callable_value_type(value)
     value_type = value.obj
     if (
         isinstance(value_type, GenericClass)
@@ -462,22 +696,21 @@ def conditional_value_type(value, other_type):
 
 
 def iterable_item_type(value_type):
-    item_type = None
-    for member in get_type_members(value_type):
-        if isinstance(member, TypedDictClass):
-            member_type = BUILTINS.search("str")
-        elif member.generic_name == "dict":
-            member_type = member.generic_types["K"]
-        elif member.generic_name == "tuple":
-            member_type = None
-            for tuple_type in member.generic_types.values():
-                member_type = merge_return_types(member_type, tuple_type)
-        elif member.generic_types and len(member.generic_types) == 1:
-            member_type = next(iter(member.generic_types.values()))
-        else:
-            member_type = member
-        item_type = merge_return_types(item_type, member_type)
-    return item_type
+    protocol = iterable_protocol(value_type)
+    return protocol.item_type if protocol is not None else value_type
+
+
+def field_owner(field):
+    if not isinstance(field, Instance):
+        return None
+    if isinstance(field.container, Class):
+        return field.container
+    if (
+        isinstance(field.container, Instance)
+        and field.container is field.container.cls._self
+    ):
+        return field.container.cls
+    return None
 
 
 def extreme_values_type(args):
@@ -662,23 +895,6 @@ def validate_json_result_type(result_type, path, seen=None):
     )
 
 
-def apply_typed_dict_literal(value, expected_type):
-    if isinstance(expected_type, TypedDictClass) and isinstance(value, Dict):
-        value.obj = expected_type
-        for key, item in zip(value.keys, value.values, strict=True):
-            if not isinstance(key, Constant) or not isinstance(key.value, str):
-                raise TypeError("TypedDict literal keys must be strings.")
-            apply_typed_dict_literal(item, expected_type.field_type(key.value))
-    elif (
-        isinstance(expected_type, Class)
-        and expected_type.generic_name == "list"
-        and isinstance(value, List)
-    ):
-        item_type = expected_type.generic_types["V"]
-        for item in value.elts:
-            apply_typed_dict_literal(item, item_type)
-
-
 def body_can_fall_through(
     statements: list[ast.stmt],
     *,
@@ -759,7 +975,7 @@ class _CallAnalysis:
             )
         try:
             target_type = self.visitor.visit_type_annotation(self.node.args[0]).obj
-        except (AssertionError, NotImplementedError):
+        except CompilationError:
             target_type = None
         if not isinstance(target_type, (Class, UnionType)):
             self.visitor.fail(
@@ -778,6 +994,151 @@ class _CallAnalysis:
             )
         return StaticCast(value_obj, value, lineno=self.node.lineno)
 
+    def round(self, runtime):
+        result = self.standard()
+        ndigits = [*result.args, *(keyword.value for keyword in result.keywords)]
+        ndigit_members = tuple(
+            member
+            for value in ndigits
+            for member in get_type_members(analyzed_value_type(value))
+        )
+        if not ndigits or all(member.name == "NoneType" for member in ndigit_members):
+            result.args = []
+            result.keywords = []
+            return result
+
+        assert isinstance(result.func, Attribute)
+        receiver = result.func.value
+        members = get_type_members(analyzed_value_type(receiver))
+        if any(member.name not in {"bool", "float", "int"} for member in members):
+            return result
+
+        runtime_interface = resolve_imported(runtime, self.visitor.module)
+        if not isinstance(runtime_interface, Function):
+            raise TypeError("round() runtime must be a function")
+        runtime_obj = runtime_interface.container.value_implementation(
+            runtime_interface
+        )
+        if not runtime_obj.is_analyzed:
+            annotate_types(runtime_obj)
+        result_types = [
+            BUILTINS.search("float")
+            if member.name == "float"
+            else BUILTINS.search("int")
+            for member in members
+        ]
+        if any(member.name == "NoneType" for member in ndigit_members):
+            result_types.append(BUILTINS.search("int"))
+        result_type = UnionType(types=result_types).type
+        value_obj = result_type
+        if isinstance(result_type, Class):
+            value_obj = result_type(
+                "__round_result__",
+                self.visitor.scope,
+                self.visitor.func,
+            )
+        return Call(
+            result_type,
+            value_obj=value_obj,
+            func=Name(runtime_obj, runtime_dependency=runtime_obj),
+            args=[
+                receiver,
+                ndigits[0],
+                Constant(
+                    BUILTINS.search("bool"),
+                    value=any(member.name == "float" for member in members),
+                ),
+            ],
+            keywords=[],
+        )
+
+    def isinstance(self):
+        if len(self.node.args) != 2 or self.node.keywords:
+            return self.standard()
+
+        value = self.visitor.visit(self.node.args[0])
+        target_nodes = flatten_isinstance_targets(self.node.args[1])
+        if all(
+            isinstance(target, (ast.Name, ast.Attribute))
+            for target in target_nodes
+        ):
+            target_types = [
+                self.visitor.isinstance_type(target) for target in target_nodes
+            ]
+            self.validate_numeric_isinstance(
+                analyzed_value_type(value),
+                target_types,
+            )
+
+        if not isinstance(self.node.args[1], ast.Tuple):
+            return self.standard()
+
+        value_obj = analyzed_value_object(value)
+        checks = []
+        for target in target_nodes:
+            check = ast.copy_location(
+                ast.Call(
+                    func=self.node.func,
+                    args=[self.node.args[0], target],
+                    keywords=[],
+                ),
+                self.node,
+            )
+            analyzed = _CallAnalysis(
+                self.visitor,
+                check,
+                self.function,
+            ).standard()
+            assert isinstance(analyzed, Call)
+            analyzed.args[0] = Name(value_obj, id="$value")
+            checks.append(analyzed)
+
+        if checks:
+            body = (
+                checks[0]
+                if len(checks) == 1
+                else ast.BoolOp(op=ast.Or(), values=checks)
+            )
+        else:
+            body = Constant(BUILTINS.search("bool"), value=False)
+        return EvaluateOnce(
+            BUILTINS.search("bool"),
+            value,
+            body,
+            "$value",
+            lineno=self.node.lineno,
+        )
+
+    def validate_numeric_isinstance(self, value_type, target_types):
+        members = get_type_members(value_type)
+        could_be_int = any(
+            member.name in {"bool", "int", "object"} for member in members
+        )
+        could_be_float = any(
+            member.name in {"float", "object"} for member in members
+        )
+        if not (could_be_int and could_be_float):
+            return
+
+        int_type = BUILTINS.search("int")
+        float_type = BUILTINS.search("float")
+        matches_int = any(
+            is_isinstance_match(int_type, target) for target in target_types
+        )
+        matches_float = any(
+            is_isinstance_match(float_type, target) for target in target_types
+        )
+        if matches_int == matches_float:
+            return
+
+        self.visitor.fail(
+            self.node,
+            DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            "isinstance() cannot distinguish int from float after JavaScript "
+            "lowering",
+            help="Narrow the value statically before testing its numeric type.",
+        )
+
     def literal_attribute(self):
         result = self.standard()
         return self.visitor.analyze_getattr(
@@ -790,7 +1151,76 @@ class _CallAnalysis:
         result = self.standard()
         assert len(result.args) == 1 and not result.keywords
         result.is_ref = True
+        method = generated_method(
+            analyzed_value_type(result),
+            "__pyjs_reference_method__",
+        )
+        if method is not None:
+            result.generated_virtual_methods = (method,)
         return result
+
+    def receiver_metadata_type(
+        self,
+        attribute: str,
+        *,
+        runtime_method: str | None = None,
+    ):
+        result = self.standard()
+        if not isinstance(result.func, Attribute):
+            return result
+        receiver = analyzed_value_type(result.func.value)
+        if not isinstance(receiver, Class):
+            return result
+        metadata_type = getattr(receiver.py_cls, attribute, None)
+        if not isinstance(metadata_type, type):
+            return result
+        result_type = resolve_imported(metadata_type, self.visitor.module)
+        if not isinstance(result_type, Class):
+            return result
+        result = self.with_result_type(result_type)
+        if runtime_method is not None:
+            method = result_type.find(runtime_method)
+            if not isinstance(method, Function):
+                raise TypeError(
+                    f"{metadata_type.__name__}.{runtime_method} must be a method"
+                )
+            result.generated_virtual_methods = (
+                *result.generated_virtual_methods,
+                method,
+            )
+        return result
+
+    def receiver_mapped_annotation_type(
+        self,
+        attribute: str,
+        selector_argument: int,
+        *,
+        optional: bool = False,
+    ):
+        result = self.standard()
+        if not isinstance(result.func, Attribute):
+            return result
+        receiver = analyzed_value_type(result.func.value)
+        if not isinstance(receiver, Class):
+            return result
+        if selector_argument >= len(result.args):
+            return result
+        selector = result.args[selector_argument]
+        if not isinstance(selector, Attribute):
+            return result
+        annotations = getattr(receiver.py_cls, attribute, None)
+        if annotations is None:
+            return result
+        annotation = annotations.get(selector.attr)
+        if annotation is None:
+            return result
+        ensure_annotation_dependencies(annotation, self.visitor.module)
+        result_type = resolve_python_annotation(annotation, receiver.scope)
+        if optional and not any(
+            member.name == "NoneType" for member in get_type_members(result_type)
+        ):
+            result_type = UnionType(types=(result_type, get_none_type())).type
+        return self.with_result_type(result_type)
 
     def zipped(self):
         result = self.standard()
@@ -803,6 +1233,57 @@ class _CallAnalysis:
             for argument in result.args
         ]
         return self.with_result_type(iterator(tuple_type(*item_types)))
+
+    def mapped(self, *, max_iterables):
+        if len(self.node.args) > max_iterables + 1:
+            self.visitor.fail(
+                self.node.args[max_iterables + 1],
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                f"map() supports at most {max_iterables} iterables",
+                help=(
+                    "Define a typed loop when mapping more iterables in one "
+                    "operation."
+                ),
+            )
+        return self.standard()
+
+    def argument_dunders(self, *method_names):
+        result = self.standard()
+        methods = [
+            method
+            for argument in result.args
+            for method in runtime_dunder_methods(
+                analyzed_value_type(argument),
+                *method_names,
+            )
+        ]
+        result.runtime_methods = tuple(
+            dict.fromkeys((*result.runtime_methods, *methods))
+        )
+        return result
+
+    def stringify_arguments(self, *type_names):
+        result = self.standard()
+        for index, argument in enumerate(result.args):
+            argument_type = analyzed_value_type(argument)
+            if (
+                not isinstance(argument_type, Class)
+                or argument_type.generic_name not in type_names
+            ):
+                continue
+            method = argument_type.find("__str__")
+            assert isinstance(method, Function)
+            return_type = method.return_type or method.declared_return_type
+            assert isinstance(return_type, Class)
+            result.args[index] = self.visitor.call_node(
+                self.node,
+                return_type,
+                func=Attribute(method, value=argument, attr="__str__"),
+                args=[],
+                keywords=[],
+                dependency_objects=self.visitor.inline_dependencies(method, self.node),
+            )
+        return result
 
     def dataclass(self, *, replace=False):
         result = self.standard()
@@ -826,7 +1307,7 @@ class _CallAnalysis:
         key = result.args[0]
         if not isinstance(key, Constant) or not isinstance(key.value, str):
             return result
-        result_type = receiver_type.field_type(key.value)
+        result_type = self.visitor.typed_dict_field_type(receiver_type, key)
         if key.value not in receiver_type.required_keys:
             default_type = (
                 analyzed_value_type(result.args[1])
@@ -886,7 +1367,11 @@ class _CallAnalysis:
 
     def reversible(self):
         result = self.standard()
-        value_type = analyzed_value_type(result.args[0])
+        value_type = getattr(
+            result.args[0],
+            "mapping_source_type",
+            analyzed_value_type(result.args[0]),
+        )
         if supports_reversed(value_type):
             return result
         type_names = ", ".join(
@@ -1019,6 +1504,17 @@ class InferenceVisitor(ast.NodeVisitor):
         self.contextual_types: dict[ast.AST, Class | UnionType] = {}
         self.direct_call_target: ast.AST | None = None
         self.active_call_analysis: set[ast.Call] = set()
+        self.in_exception_handler = False
+
+    def visit(self, node):
+        result = super().visit(node)
+        if isinstance(result, list):
+            for replacement in result:
+                if isinstance(replacement, ast.AST):
+                    ast.copy_location(replacement, node)
+        elif isinstance(result, ast.AST):
+            ast.copy_location(result, node)
+        return result
 
     @property
     def module(self) -> Module:
@@ -1062,9 +1558,13 @@ class InferenceVisitor(ast.NodeVisitor):
         return names
 
     @staticmethod
-    def attribute_names(value: Instance) -> set[str]:
-        names = set(value.attrs)
-        cls = value.cls
+    def attribute_names(value: Instance | Class) -> set[str]:
+        if isinstance(value, Instance):
+            names = set(value.attrs)
+            cls = value.cls
+        else:
+            names = set()
+            cls = value
         while cls is not None:
             names.update(cls.internal_scope.names)
             names.update(cls._self.attrs)
@@ -1155,11 +1655,14 @@ class InferenceVisitor(ast.NodeVisitor):
                 raise DependencyError(method)
 
         first = methods[0]
+        first_inline = first.decoration("__js_inline__")
+        first_dependencies = first.decoration("__js_inline_dependencies__")
         incompatible = [
             member_type.name
             for member_type, method in zip(value_type.types, methods, strict=True)
-            if method.inline_decorator is not first.inline_decorator
+            if method.decoration("__js_inline__") is not first_inline
             or method.is_async != first.is_async
+            or method.decoration("__js_inline_dependencies__") != first_dependencies
         ]
         if incompatible:
             union_name = value_type.to_annotation_str(" | ")
@@ -1346,9 +1849,12 @@ class InferenceVisitor(ast.NodeVisitor):
         ):
             receiver = func.value
         receiver_count = int(receiver is not None)
+        forwarded_count = len(interface.params) + receiver_count
+        extra_parameters = len(target_obj.params) - forwarded_count
         compatible = (
-            len(target_obj.params) == len(interface.params) + receiver_count
-            and len(target_obj.defaults) == len(interface.defaults)
+            extra_parameters >= 0
+            and len(target_obj.defaults) - len(interface.defaults)
+            == extra_parameters
             and len(target_obj.kwonlyargs) == len(interface.kwonlyargs)
             and [default is None for default in target_obj.kw_defaults]
             == [default is None for default in interface.kw_defaults]
@@ -1372,7 +1878,7 @@ class InferenceVisitor(ast.NodeVisitor):
             interface_param.arg: target_param.arg
             for interface_param, target_param in zip(
                 interface.params,
-                target_obj.params[receiver_count:],
+                target_obj.params[receiver_count:forwarded_count],
                 strict=True,
             )
         }
@@ -1551,13 +2057,19 @@ class InferenceVisitor(ast.NodeVisitor):
         args: list[ast.expr],
         keywords: list[ast.keyword],
         type_bindings,
+        *,
+        skip_positional: int = 0,
     ):
-        parameters = {parameter.arg: parameter for parameter in function.params}
+        runtime_methods = []
+        parameters = {
+            parameter.arg: parameter
+            for parameter in function.params[function.posonly_count :]
+        }
         parameters.update(
             {parameter.arg: parameter for parameter in function.kwonlyargs}
         )
         for index, argument in enumerate(args):
-            if isinstance(argument, ast.Starred):
+            if index < skip_positional or isinstance(argument, ast.Starred):
                 continue
             if index < len(function.params):
                 parameter = function.params[index]
@@ -1580,6 +2092,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 expected_type,
                 argument,
             )
+            runtime_methods.extend(
+                self.argument_protocol_methods(expected_type, argument)
+            )
+            if uses_iterable_protocol(expected_type, argument):
+                args[index] = self.mapping_keys_iterable(argument)
 
         for source, keyword in zip(node.keywords, keywords, strict=True):
             if keyword.arg is None:
@@ -1605,6 +2122,32 @@ class InferenceVisitor(ast.NodeVisitor):
                 expected_type,
                 keyword.value,
             )
+            runtime_methods.extend(
+                self.argument_protocol_methods(expected_type, keyword.value)
+            )
+            if uses_iterable_protocol(expected_type, keyword.value):
+                keyword.value = self.mapping_keys_iterable(keyword.value)
+        return tuple(dict.fromkeys(runtime_methods))
+
+    @staticmethod
+    def argument_protocol_methods(expected_type, value):
+        methods = []
+        actual_members = get_type_members(analyzed_value_type(value))
+        if uses_iterable_protocol(expected_type, value):
+            for member in actual_members:
+                protocol = iterable_protocol(member)
+                if protocol is not None:
+                    methods.extend(protocol.methods)
+        for expected_member in get_type_members(expected_type):
+            for method_name in structural_method_names(expected_member):
+                for actual_member in actual_members:
+                    try:
+                        method = actual_member.find(method_name)
+                    except NameError:
+                        continue
+                    if isinstance(method, Function):
+                        methods.append(method)
+        return tuple(dict.fromkeys(methods))
 
     def validate_call_argument(
         self,
@@ -1660,6 +2203,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 or len(parameter_types) == len(expected.parameter_types)
             )
         elif callable_function is not None:
+            if (
+                callable_function is not self.func
+                and not callable_function.signature_analyzed
+            ):
+                raise DependencyError(callable_function)
             parameter_types = tuple(
                 argument.annotation.obj for argument in callable_function.params
             )
@@ -1875,27 +2423,78 @@ class InferenceVisitor(ast.NodeVisitor):
             runtime_methods=getattr(result, "property_getters", ()),
         )
 
-    def get_isinstance_narrowing(self, test):
+    def isinstance_type(self, node):
+        value_type = self.visit(node).obj
+        if (
+            isinstance(value_type, Instance)
+            and value_type.cls.generic_name == "type"
+        ):
+            target_type = value_type.cls.generic_types["T"]
+            if isinstance(target_type, Class):
+                return target_type
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "isinstance() requires one concrete runtime class",
+                help="Narrow the type object before using it with isinstance().",
+            )
+        if isinstance(value_type, GenericClass):
+            object_type = BUILTINS.search("object")
+            if value_type.name == "dict":
+                return BUILTINS.search("dict")(object_type, object_type)
+            if value_type.name in ("list", "set"):
+                return BUILTINS.search(value_type.name)(object_type)
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                f"isinstance() does not support unsubscripted "
+                f"{value_type.name!r}",
+                help="Test against a concrete runtime class.",
+            )
+        assert isinstance(value_type, Class)
+        return value_type
+
+    def get_isinstance_narrowing(self, test, when_true):
         if (
             not isinstance(test, ast.Call)
             or not isinstance(test.func, ast.Name)
             or test.func.id != "isinstance"
             or len(test.args) != 2
             or not isinstance(test.args[0], (ast.Name, ast.Attribute))
-            or not isinstance(test.args[1], ast.Name)
+            or not isinstance(test.args[1], (ast.Name, ast.Tuple))
         ):
             return None
-        value_type = self.visit(test.args[1]).obj
-        if isinstance(value_type, GenericClass):
-            object_type = BUILTINS.search("object")
-            if value_type.name == "dict":
-                value_type = BUILTINS.search("dict")(object_type, object_type)
-            elif value_type.name in ("list", "set"):
-                value_type = BUILTINS.search(value_type.name)(object_type)
-            else:
-                raise NotImplementedError
-        assert isinstance(value_type, Class)
-        return test.args[0], value_type
+        target_nodes = flatten_isinstance_targets(test.args[1])
+        if not target_nodes:
+            return None
+        target_types = [self.isinstance_type(node) for node in target_nodes]
+        value_node = test.args[0]
+        current_type = analyzed_value_type(self.visit(value_node))
+        matching = [
+            member
+            for member in get_type_members(current_type)
+            if any(
+                is_isinstance_match(member, target) for target in target_types
+            )
+        ]
+        nonmatching = [
+            member
+            for member in get_type_members(current_type)
+            if member not in matching
+        ]
+        if not when_true:
+            if not nonmatching:
+                return None
+            return value_node, UnionType(types=nonmatching).type
+        if matching and not any(
+            is_isinstance_match(target, member)
+            for member in nonmatching
+            for target in target_types
+        ):
+            value_type = UnionType(types=matching).type
+        else:
+            value_type = UnionType(types=target_types).type
+        return value_node, value_type
 
     def get_truthiness_narrowing(self, test):
         if not isinstance(test, (ast.Name, ast.Attribute)):
@@ -1967,9 +2566,9 @@ class InferenceVisitor(ast.NodeVisitor):
                 return [(value_node, value_type)]
             return []
 
-        narrowing = self.get_isinstance_narrowing(test)
+        narrowing = self.get_isinstance_narrowing(test, when_true)
         if narrowing is not None:
-            return [narrowing] if when_true else []
+            return [narrowing]
 
         narrowing = self.get_literal_narrowing(test, when_true)
         if narrowing is not None:
@@ -2002,6 +2601,23 @@ class InferenceVisitor(ast.NodeVisitor):
         for value_node, value_type in self.get_condition_narrowings(test, when_true):
             visitor = visitor.narrow(value_node, value_type)
         return visitor
+
+    def branch_visitor(self, test, when_true):
+        narrowed = self.narrow_for_condition(test, when_true)
+        return type(self)(self.func, LocalScope(narrowed.scope))
+
+    def merge_branch_declarations(self, *visitors):
+        names = dict.fromkeys(
+            name for visitor in visitors for name in visitor.scope.names
+        )
+        for name in names:
+            value_type = None
+            for visitor in visitors:
+                value = visitor.scope.names.get(name)
+                if isinstance(value, Instance):
+                    value_type = merge_return_types(value_type, value.cls)
+            if value_type is not None:
+                self.scope.add(value_type(name, self.scope, self.func))
 
     def narrow_after_if(self, source: ast.If, analyzed: ast.If):
         body_falls_through = body_can_fall_through(
@@ -2120,16 +2736,65 @@ class InferenceVisitor(ast.NodeVisitor):
 
     # region assignment & lookup
 
-    def analyze_assignment_value(self, value_node, annotation_node=None):
+    def typed_dict_field_type(self, typed_dict, key):
+        if key.value not in typed_dict.annotations:
+            fields = ", ".join(repr(name) for name in typed_dict.annotations)
+            help = (
+                f"Use one of: {fields}."
+                if fields
+                else f"{typed_dict.name} defines no fields."
+            )
+            self.fail(
+                key,
+                DiagnosticCode.UNDEFINED_KEY,
+                f"{typed_dict.name} has no key {key.value!r}",
+                help=help,
+            )
+        return typed_dict.field_type(key.value)
+
+    def apply_typed_dict_literal(self, value, expected_type):
+        if isinstance(expected_type, TypedDictClass) and isinstance(value, Dict):
+            value.obj = expected_type
+            for key, item in zip(value.keys, value.values, strict=True):
+                if not isinstance(key, Constant) or not isinstance(key.value, str):
+                    self.fail(
+                        key,
+                        DiagnosticCode.UNSUPPORTED_SYNTAX,
+                        "TypedDict literal keys must be string literals",
+                        help=(
+                            "Use a literal key so its field type can be "
+                            "determined statically."
+                        ),
+                    )
+                self.apply_typed_dict_literal(
+                    item,
+                    self.typed_dict_field_type(expected_type, key),
+                )
+        elif (
+            isinstance(expected_type, Class)
+            and expected_type.generic_name == "list"
+            and isinstance(value, List)
+        ):
+            item_type = expected_type.generic_types["V"]
+            for item in value.elts:
+                self.apply_typed_dict_literal(item, item_type)
+
+    def analyze_assignment_value(
+        self,
+        value_node,
+        annotation_node=None,
+        contextual_type=None,
+    ):
         declared_type = None
         if annotation_node:
             annotation = self.visit_type_annotation(annotation_node).obj
             if isinstance(annotation, (Class, UnionType)):
                 declared_type = annotation
 
-        value = self.visit_contextual_expression(value_node, declared_type)
+        expected_type = declared_type or contextual_type
+        value = self.visit_contextual_expression(value_node, expected_type)
         if declared_type is not None:
-            apply_typed_dict_literal(value, declared_type)
+            self.apply_typed_dict_literal(value, declared_type)
 
         inferred_type = None
         if isinstance(value.obj, (Class, UnionType)):
@@ -2145,7 +2810,6 @@ class InferenceVisitor(ast.NodeVisitor):
             declared_type is not None
             and inferred_type is not None
             and not builtin_class
-            and not isinstance(value_node, (ast.Name, ast.Attribute, ast.Call))
             and not is_return_type_compatible(declared_type, inferred_type)
         ):
             expected = declared_type.to_annotation_str()
@@ -2393,7 +3057,19 @@ class InferenceVisitor(ast.NodeVisitor):
             )
             return ast.Expr(value=self.visit(call))
 
-        assignment_value = self.analyze_assignment_value(node.value)
+        contextual_type = None
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                existing = self.declared_local(node.targets[0].id)
+            except NameError:
+                pass
+            else:
+                if isinstance(existing, Instance):
+                    contextual_type = existing.cls
+        assignment_value = self.analyze_assignment_value(
+            node.value,
+            contextual_type=contextual_type,
+        )
         unpacking_targets = [
             target
             for target in node.targets
@@ -2768,7 +3444,45 @@ class InferenceVisitor(ast.NodeVisitor):
         )
 
     def visit_AnnAssign(self, node: ast.AnnAssign):
+        if node.value is None:
+            if not isinstance(node.target, ast.Name):
+                self.fail(
+                    node.target,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Annotation-only declarations require a local name",
+                    help=(
+                        "Assign an initial value in __init__(), or declare the type "
+                        "on the class when initialization must happen later."
+                    ),
+                )
+            declared_type = self.visit_type_annotation(node.annotation).obj
+            assert isinstance(declared_type, (Class, UnionType))
+            target, is_new_name = self.resolve_assignment_target(
+                node.target,
+                declared_type,
+            )
+            if not is_new_name:
+                return ast.Pass(lineno=node.lineno)
+            return ast.AnnAssign(
+                target=target,
+                annotation=declared_type.annotation,
+                value=None,
+                simple=isinstance(node.target, ast.Name),
+                lineno=target.lineno,
+            )
         assignment_value = self.analyze_assignment_value(node.value, node.annotation)
+        if (
+            isinstance(node.target, ast.Attribute)
+            and isinstance(node.target.value, ast.Name)
+            and node.target.value.id == "self"
+            and assignment_value.declared_type is not None
+            and self.func.cls is not None
+        ):
+            self.record_native_attribute(
+                node.target.attr,
+                assignment_value.declared_type,
+                declared=True,
+            )
         target, is_new_name = self.resolve_assignment_target(
             node.target, assignment_value.storage_type
         )
@@ -2821,7 +3535,14 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_Delete(self, node: ast.Delete):
         statements = []
         for target in node.targets:
-            if isinstance(target, ast.Subscript):
+            if isinstance(target, ast.Name):
+                self.fail(
+                    target,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Deleting local names is not supported",
+                    help="Let local values go out of scope instead of deleting them.",
+                )
+            elif isinstance(target, ast.Subscript):
                 if isinstance(target.slice, ast.Slice):
                     method_name = "__delslice__"
                     args = self.slice_parts(target.slice)
@@ -2906,25 +3627,63 @@ class InferenceVisitor(ast.NodeVisitor):
                             attr = resolution.methods[0]
         except NameError:
             value_init = None
+            client_initializer = None
             if isinstance(value_obj, Instance):
                 value_init = value_obj.cls.init
+                client_initializer = value_obj.cls.find_attrs(
+                    "initialize",
+                    search_bases=False,
+                )
             elif isinstance(value_obj, Class):
                 value_init = value_obj.init
+                client_initializer = value_obj.find_attrs(
+                    "initialize",
+                    search_bases=False,
+                )
+            if not isinstance(client_initializer, Function):
+                client_initializer = None
+            for initializer in (value_init, client_initializer):
+                if (
+                    isinstance(initializer, Function)
+                    and initializer is not self.func
+                    and not initializer.is_analyzed
+                ):
+                    raise DependencyError(initializer) from None
+            value_init = client_initializer or value_init
             if (
-                value_init
-                and value_init is not self.func
-                and not value_init.is_analyzed
+                isinstance(value_obj, Instance)
+                and value_obj.cls.generic_name == "tuple"
+                and node.attr
+                in {"__setitem__", "__setslice__", "__delitem__", "__delslice__"}
             ):
-                raise DependencyError(value_init) from None
+                action = "assign to" if node.attr.startswith("__set") else "delete"
+                self.fail(
+                    node,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    f"Cannot {action} tuple items",
+                    help="Use a list when items need to be changed.",
+                )
             if node is self.assignment_target:
                 raise
-            if isinstance(value_obj, Instance) and value_obj.name == "self":
+            if isinstance(value_obj, (Instance, Class)):
+                cls = value_obj.cls if isinstance(value_obj, Instance) else value_obj
+                can_define = isinstance(value_obj, Instance) and not (
+                    cls.container.scope.is_builtins
+                    or getattr(cls.py_obj, "__dict__", {}).get(
+                        "__js_native__",
+                        False,
+                    )
+                )
                 self.module.context.attribute_lookup_error(
                     self.func.source_fragment,
                     node,
-                    value_obj.cls.name,
+                    cls.name,
                     self.attribute_names(value_obj),
-                    value_init.py_func if value_init is not None else None,
+                    ast.unparse(node.value),
+                    value_init.py_func
+                    if can_define and value_init is not None
+                    else None,
+                    can_define=can_define,
                 )
             raise
 
@@ -2944,6 +3703,7 @@ class InferenceVisitor(ast.NodeVisitor):
             attr,
             value=value,
             attr=node.attr,
+            ctx=node.ctx,
             lineno=node.lineno,
             union_fields=union_fields,
             union_functions=union_functions,
@@ -3046,63 +3806,88 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_Starred(self, node: ast.Starred):
         value = self.visit(node.value)
-        item_type = next(iter(value.obj.cls.generic_types.values()))
-        return Starred(item_type, value=value)
+        protocol = self.require_iterable(node.value, value)
+        result = Starred(protocol.item_type, value=value)
+        result.runtime_methods = protocol.methods
+        return result
 
     def visit_Subscript(self, node: ast.Subscript):
-        slice = self.visit(node.slice)
+        slice_node = self.visit(node.slice)
         value = self.visit(node.value)
         receiver_obj = analyzed_value_object(value)
         receiver_type = (
             receiver_obj.cls if isinstance(receiver_obj, Instance) else receiver_obj
         )
-        if isinstance(slice, ast.Slice):
+        if isinstance(slice_node, ast.Slice):
             method = receiver_obj.find("__slice__")
             if not method.is_analyzed:
                 raise DependencyError(method)
             assert isinstance(method.return_type, (Class, UnionType))
-            value_obj = method.return_type
-            if isinstance(method.return_type, Class):
-                value_obj = method.return_type(
+            result_type = method.return_type
+            if isinstance(receiver_type, Class) and receiver_type.generic_name == "tuple":
+                item_types = list(receiver_type.generic_types.values())
+                parts = (slice_node.lower, slice_node.upper, slice_node.step)
+                try:
+                    static_parts = tuple(ast.literal_eval(part) for part in parts)
+                except (TypeError, ValueError):
+                    static_parts = None
+                if static_parts is not None and static_parts[2] != 0:
+                    bounds = slice(*static_parts)
+                    item_types = item_types[bounds]
+                elif item_types:
+                    item_types = [UnionType(types=item_types).type]
+                tuple_type = BUILTINS.search("tuple")
+                assert isinstance(tuple_type, GenericClass)
+                result_type = tuple_type(*item_types)
+            value_obj = result_type
+            if isinstance(result_type, Class):
+                value_obj = result_type(
                     "__slice_result__", self.scope, self.func
                 )
             simple_step = (
-                isinstance(slice.step, Constant)
-                and slice.step.value in (None, 1)
+                isinstance(slice_node.step, Constant)
+                and slice_node.step.value in (None, 1)
             )
             if simple_step:
                 dependency_objects = {}
             else:
                 dependency_objects = self.inline_dependencies(method, node)
             return Call(
-                method.return_type,
+                result_type,
                 value_obj=value_obj,
                 func=Attribute(method, value=value, attr="__slice__"),
-                args=[slice.lower, slice.upper, slice.step],
+                args=[slice_node.lower, slice_node.upper, slice_node.step],
                 keywords=[],
                 dependency_objects=dependency_objects,
             )
         if isinstance(receiver_type, TypedDictClass):
-            if not isinstance(slice, Constant) or not isinstance(slice.value, str):
-                raise TypeError("TypedDict keys must be string literals.")
-            value_type = receiver_type.field_type(slice.value)
+            if not isinstance(slice_node, Constant) or not isinstance(
+                slice_node.value, str
+            ):
+                self.fail(
+                    slice_node,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "TypedDict keys must be string literals",
+                    help="Use a literal key so its field type can be determined statically.",
+                )
+            value_type = self.typed_dict_field_type(receiver_type, slice_node)
             value_obj = value_type
             if isinstance(value_type, Class):
                 value_obj = value_type("__subscript_result__", self.scope, self.func)
             return Subscript(
                 value_type,
                 value_obj=value_obj,
-                slice=slice,
+                slice=slice_node,
                 value=value,
             )
         if isinstance(receiver_type, Class) and receiver_type.generic_name == "tuple":
             item_types = list(receiver_type.generic_types.values())
             if (
-                isinstance(slice, Constant)
-                and isinstance(slice.value, int)
-                and -len(item_types) <= slice.value < len(item_types)
+                isinstance(slice_node, Constant)
+                and isinstance(slice_node.value, int)
+                and -len(item_types) <= slice_node.value < len(item_types)
             ):
-                value_type = item_types[slice.value]
+                value_type = item_types[slice_node.value]
             else:
                 value_type = (
                     UnionType(types=item_types).type
@@ -3116,7 +3901,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 node,
                 getitem,
                 Attribute(getitem, value=value, attr="__getitem__"),
-                [slice],
+                [slice_node],
                 [],
                 value_type,
             )
@@ -3133,23 +3918,16 @@ class InferenceVisitor(ast.NodeVisitor):
                 node,
                 getitem,
                 getitem_attribute,
-                [slice],
+                [slice_node],
                 [],
                 getitem.return_type,
             )
-        if isinstance(receiver_obj, Instance) and receiver_obj.cls.generic_name == "dict":
-            return Call(
-                getitem.return_type,
-                value_obj=value_obj,
-                func=getitem_attribute,
-                args=[slice],
-                keywords=[],
-            )
-        return Subscript(
+        return Call(
             getitem.return_type,
             value_obj=value_obj,
-            slice=slice,
-            value=value,
+            func=getitem_attribute,
+            args=[slice_node],
+            keywords=[],
         )
 
     # endregion
@@ -3157,24 +3935,33 @@ class InferenceVisitor(ast.NodeVisitor):
     # region functions
 
     def dispatch_dunder_call(self, builtin, method_name, args, keywords):
-        if not args:
-            raise TypeError(f"{builtin.name}() requires an argument")
+        assert args
         receiver_node = args[0]
         receiver_obj = receiver_node.obj
         if isinstance(receiver_obj, Class):
             receiver_obj = receiver_obj._self
         union_type = self.receiver_union(receiver_obj)
         if not isinstance(receiver_obj, Instance):
-            raise TypeError(f"Cannot dispatch {builtin.name}() on {receiver_obj}.")
+            receiver_type = analyzed_value_type(receiver_node).to_annotation_str()
+            self.fail(
+                receiver_node,
+                DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                f"{builtin.name}() is not supported for {receiver_type}",
+                help=f"Pass a value that defines {method_name}().",
+            )
         union_functions = ()
         receiver_name = receiver_obj.cls.name
         if union_type is None:
             try:
                 method = receiver_obj.find(method_name)
             except NameError:
-                raise TypeError(
-                    f"{builtin.name}() is not supported for {receiver_obj.cls.name}."
-                ) from None
+                self.fail(
+                    receiver_node,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{builtin.name}() is not supported for "
+                    f"{receiver_obj.cls.to_annotation_str()}",
+                    help=f"Pass a value that defines {method_name}().",
+                )
             assert isinstance(method, Function)
             if not method.is_analyzed:
                 raise DependencyError(method)
@@ -3208,10 +3995,16 @@ class InferenceVisitor(ast.NodeVisitor):
             assert isinstance(return_type, (Class, UnionType))
         expected_type = builtin.return_type if isinstance(builtin, Function) else builtin
         if not is_return_type_compatible(expected_type, return_type):
-            raise TypeError(
+            self.fail(
+                receiver_node,
+                DiagnosticCode.INCOMPATIBLE_RETURN,
                 f"{receiver_name}.{method_name}() returns "
                 f"{return_type.to_annotation_str()}, expected "
-                f"{expected_type.to_annotation_str()}."
+                f"{expected_type.to_annotation_str()}",
+                help=(
+                    f"Change {method_name}() to return "
+                    f"{expected_type.to_annotation_str()}."
+                ),
             )
         value_obj = return_type
         if isinstance(return_type, Class):
@@ -3243,13 +4036,19 @@ class InferenceVisitor(ast.NodeVisitor):
         if function.kwarg is None:
             accepted_keywords = {
                 parameter.arg
-                for parameter in (*function.params, *function.kwonlyargs)
+                for parameter in (
+                    *function.params[function.posonly_count :],
+                    *function.kwonlyargs,
+                )
             }
             if not keyword_names <= accepted_keywords:
                 return False
         required_count = len(function.params) - len(function.defaults)
-        for parameter in function.params[positional_count:required_count]:
-            if parameter.arg not in keyword_names:
+        for index, parameter in enumerate(
+            function.params[positional_count:required_count],
+            start=positional_count,
+        ):
+            if index < function.posonly_count or parameter.arg not in keyword_names:
                 return False
         for parameter, default in zip(
             function.kwonlyargs,
@@ -3305,6 +4104,19 @@ class InferenceVisitor(ast.NodeVisitor):
                 return False
         return True
 
+    @staticmethod
+    def lambda_needs_type_bindings(argument, expected_type):
+        expected_callable = callable_member(expected_type)
+        return (
+            isinstance(argument, ast.Lambda)
+            and expected_callable is not None
+            and expected_callable.parameter_types is not None
+            and any(
+                contains_type_variable(parameter)
+                for parameter in expected_callable.parameter_types
+            )
+        )
+
     def analyze_call_arguments(
         self,
         node,
@@ -3312,7 +4124,8 @@ class InferenceVisitor(ast.NodeVisitor):
         callable_signature,
     ):
         type_bindings = {}
-        args = []
+        args = [None] * len(node.args)
+        deferred_args = []
         for index, argument in enumerate(node.args):
             expected_type = None
             if (
@@ -3321,39 +4134,55 @@ class InferenceVisitor(ast.NodeVisitor):
                 and index < len(callable_signature.parameter_types)
             ):
                 expected_type = callable_signature.parameter_types[index]
+            pattern = self.call_argument_pattern(signature_function, index)
+            parameter_type = expected_type
+            if parameter_type is None and pattern is not None:
+                parameter_type = substitute_type_variables(pattern, type_bindings)
+            if self.lambda_needs_type_bindings(argument, parameter_type):
+                deferred_args.append(index)
+                continue
             if expected_type is None:
-                args.append(
-                    self.visit_call_argument(
-                        argument,
-                        signature_function,
-                        index,
-                        type_bindings,
-                    )
+                args[index] = self.visit_call_argument(
+                    argument,
+                    signature_function,
+                    index,
+                    type_bindings,
                 )
             else:
-                args.append(
-                    self.visit_contextual_expression(argument, expected_type)
+                args[index] = self.visit_contextual_expression(
+                    argument,
+                    expected_type,
                 )
-        keywords = []
-        for keyword in node.keywords:
+        keywords = [None] * len(node.keywords)
+        deferred_keywords = []
+        for index, keyword in enumerate(node.keywords):
             pattern = self.call_keyword_pattern(keyword, signature_function)
             expected_type = (
                 substitute_type_variables(pattern, type_bindings)
                 if pattern is not None
                 else None
             )
-            value = self.visit_contextual_expression(
-                keyword.value,
-                expected_type,
+            if self.lambda_needs_type_bindings(keyword.value, expected_type):
+                deferred_keywords.append(index)
+                continue
+            keywords[index] = self.visit_call_keyword(
+                keyword,
+                signature_function,
+                type_bindings,
             )
-            analyzed_keyword = ast.keyword(arg=keyword.arg, value=value)
-            keywords.append(analyzed_keyword)
-            if pattern is not None:
-                infer_type_variables(
-                    pattern,
-                    callable_value_type(value),
-                    type_bindings,
-                )
+        for index in deferred_args:
+            args[index] = self.visit_call_argument(
+                node.args[index],
+                signature_function,
+                index,
+                type_bindings,
+            )
+        for index in deferred_keywords:
+            keywords[index] = self.visit_call_keyword(
+                node.keywords[index],
+                signature_function,
+                type_bindings,
+            )
         contextual_type = self.contextual_types.get(node)
         return_pattern = (
             signature_function.declared_return_type
@@ -3370,6 +4199,122 @@ class InferenceVisitor(ast.NodeVisitor):
             for parameter, value_type in contextual_bindings.items():
                 type_bindings.setdefault(parameter, value_type)
         return args, keywords, type_bindings
+
+    def expand_static_call_keywords(self, node: ast.Call) -> None:
+        keywords = []
+        expanded_names = set()
+        for keyword in node.keywords:
+            if keyword.arg is not None:
+                keywords.append(keyword)
+                continue
+            if not isinstance(keyword.value, ast.Dict) or any(
+                not isinstance(key, ast.Constant) or not isinstance(key.value, str)
+                for key in keyword.value.keys
+            ):
+                self.fail(
+                    keyword.value,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "dynamic ** argument expansion is not supported",
+                    help="Pass named arguments or expand a literal string-keyed dictionary.",
+                )
+            for key, value in zip(
+                keyword.value.keys,
+                keyword.value.values,
+                strict=True,
+            ):
+                if key.value in expanded_names:
+                    self.fail(
+                        key,
+                        DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                        f"** argument contains duplicate key {key.value!r}",
+                        help="Keep each named argument only once.",
+                    )
+                expanded_names.add(key.value)
+                expanded = ast.keyword(arg=key.value, value=value)
+                ast.copy_location(expanded, key)
+                keywords.append(expanded)
+        node.keywords = keywords
+
+    def validate_call_shape(self, node: ast.Call, function: Function | None) -> None:
+        if function is None:
+            return
+        positional_names = [parameter.arg for parameter in function.params]
+        positional_only = set(positional_names[: function.posonly_count])
+        keyword_only = {parameter.arg for parameter in function.kwonlyargs}
+        accepted_keywords = set(positional_names) | keyword_only
+        assigned_parameters = set()
+        seen_keywords = set()
+        has_starred = any(isinstance(argument, ast.Starred) for argument in node.args)
+        if not has_starred:
+            if function.vararg is None and len(node.args) > len(positional_names):
+                self.fail(
+                    node.args[len(positional_names)],
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{function.name}() received too many positional arguments",
+                    help=f"Pass at most {len(positional_names)} positional arguments.",
+                )
+            assigned_parameters.update(positional_names[: len(node.args)])
+
+        for keyword in node.keywords:
+            name = keyword.arg
+            assert name is not None
+            if name in seen_keywords:
+                self.fail(
+                    keyword,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{function.name}() received multiple values for {name!r}",
+                    help=f"Pass {name!r} only once.",
+                )
+            seen_keywords.add(name)
+            if name in positional_only and function.kwarg is None:
+                self.fail(
+                    keyword,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{function.name}() parameter {name!r} is positional-only",
+                    help=f"Pass {name!r} as a positional argument.",
+                )
+            if name not in positional_only and name in assigned_parameters:
+                self.fail(
+                    keyword,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{function.name}() received multiple values for {name!r}",
+                    help=f"Pass {name!r} only once.",
+                )
+            if name not in accepted_keywords and function.kwarg is None:
+                self.fail(
+                    keyword,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{function.name}() got an unexpected keyword argument {name!r}",
+                    help="Use a parameter name from the function signature.",
+                )
+            if name not in positional_only:
+                assigned_parameters.add(name)
+
+        if has_starred:
+            return
+        required_count = len(function.params) - len(function.defaults)
+        missing = [
+            name
+            for name in positional_names[:required_count]
+            if name not in assigned_parameters
+        ]
+        missing.extend(
+            parameter.arg
+            for parameter, default in zip(
+                function.kwonlyargs,
+                function.kw_defaults,
+                strict=True,
+            )
+            if default is None and parameter.arg not in assigned_parameters
+        )
+        if missing:
+            names = ", ".join(repr(name) for name in missing)
+            self.fail(
+                node,
+                DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                f"{function.name}() is missing required argument(s): {names}",
+                help="Pass every required argument.",
+            )
 
     def validate_type_bindings(self, node, function, bindings):
         for parameter in function.type_parameters.values():
@@ -3419,6 +4364,91 @@ class InferenceVisitor(ast.NodeVisitor):
                         ),
                     )
 
+    def fail_not_callable(self, node, value_type):
+        members = get_type_members(value_type)
+        if len(members) > 1 and all(
+            isinstance(member, CallableClass) for member in members
+        ):
+            self.fail(
+                node,
+                DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                "Callable value has incompatible signatures",
+                help=(
+                    "Narrow the value or use callables with matching positional "
+                    "parameter types."
+                ),
+            )
+        self.fail(
+            node,
+            DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            f"Value of type {value_type.to_annotation_str(' | ')} is not callable",
+            help="Call a function, class, or typed Callable value.",
+        )
+
+    @staticmethod
+    def prepare_dictionary_call(
+        call_target: Class,
+        called_function: Function,
+        args: list[ast.expr],
+        keywords: list[ast.keyword],
+    ) -> tuple[str, ...] | None:
+        if not getattr(call_target.py_obj, "__js_dictionary__", False):
+            return None
+        supplied = {
+            parameter.arg for parameter in called_function.params[: len(args)]
+        } | {keyword.arg for keyword in keywords}
+        first_default = len(called_function.params) - len(called_function.defaults)
+        defaults = [
+            *zip(
+                called_function.params[first_default:],
+                called_function.defaults,
+                strict=True,
+            ),
+            *zip(
+                called_function.kwonlyargs,
+                called_function.kw_defaults,
+                strict=True,
+            ),
+        ]
+        keywords.extend(
+            ast.keyword(arg=parameter.arg, value=default)
+            for parameter, default in defaults
+            if parameter.arg not in supplied
+            and default is not None
+            and not (isinstance(default, ast.Constant) and default.value is None)
+        )
+
+        property_names = {}
+        for statement in ast.walk(called_function.original_node):
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+                value = statement.value
+            elif isinstance(statement, ast.AnnAssign):
+                targets = [statement.target]
+                value = statement.value
+            else:
+                continue
+            if not isinstance(value, ast.Name):
+                continue
+            for target in targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    property_names[value.id] = target.attr
+
+        def property_name(parameter_name: str) -> str:
+            return property_names.get(parameter_name, parameter_name)
+
+        return tuple(
+            [
+                property_name(parameter.arg)
+                for parameter in called_function.params[: len(args)]
+            ]
+            + [property_name(keyword.arg) for keyword in keywords]
+        )
+
     def visit_Call(self, node: ast.Call):
         """
         Instantiating a class in Python is an ast.Call, for generic class instantiation
@@ -3449,15 +4479,53 @@ class InferenceVisitor(ast.NodeVisitor):
         call_target = analyzed_value_object(func)
         called_function = None
         callable_signature = None
-        if isinstance(call_target, Instance):
-            called_function = call_target.find("__call__")
+        if (
+            isinstance(call_target, GenericClass)
+            and call_target.name == "type"
+        ) or (
+            isinstance(call_target, Class)
+            and call_target.generic_name == "type"
+        ):
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "runtime type() introspection is not supported",
+                help=(
+                    "Use static annotations or a supported isinstance() check "
+                    "instead."
+                ),
+            )
+        if isinstance(call_target, CallableClass):
+            callable_signature = call_target
+        elif isinstance(call_target, Instance):
+            if isinstance(call_target.cls, UnionType):
+                self.fail_not_callable(node.func, call_target.cls)
+            try:
+                called_function = call_target.find("__call__")
+            except NameError:
+                self.fail_not_callable(node.func, call_target.cls)
             assert isinstance(called_function, Function)
             if isinstance(call_target.cls, CallableClass):
                 callable_signature = call_target.cls
+        elif (
+            isinstance(call_target, Class)
+            and analyzed_value_type(func) is call_target
+        ):
+            self.fail_not_callable(node.func, call_target)
         else:
             assert isinstance(call_target, (GenericClass, Class, Function))
             if isinstance(call_target, Function):
                 called_function = call_target
+            elif (
+                isinstance(call_target, Class)
+                and not getattr(call_target.py_obj, "__builtin__", False)
+                and not is_client_model_type(call_target)
+                and not (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id == "super"
+                )
+            ):
+                called_function = call_target.find("__init__")
         if (
             called_function is not None
             and not called_function.signature_analyzed
@@ -3468,11 +4536,20 @@ class InferenceVisitor(ast.NodeVisitor):
             and not called_function.is_analyzed
             and called_function.declared_return_type is None
         ):
+            if called_function is self.func:
+                self.fail(
+                    node,
+                    DiagnosticCode.TYPE_ANNOTATION_REQUIRED,
+                    f"Return type of recursive function {self.func.name!r} "
+                    "cannot be inferred",
+                    help="Add an explicit return annotation.",
+                )
             raise DependencyError(called_function)
         if called_function is not None:
             for overload in called_function.overloads:
                 if not overload.signature_analyzed:
                     raise DependencyError(overload)
+        self.expand_static_call_keywords(node)
         if (
             called_function is not None
             and called_function.analysis is not None
@@ -3489,6 +4566,20 @@ class InferenceVisitor(ast.NodeVisitor):
         signature_function = (
             overloads[0] if len(overloads) == 1 else called_function
         )
+        is_super_method_call = (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Call)
+            and isinstance(node.func.value.func, ast.Name)
+            and node.func.value.func.id == "super"
+        )
+        generated_dataclass_init = (
+            self.func.name == "__init__"
+            and self.func.cls is not None
+            and self.func.cls.is_dataclass
+            and self.func.py_func.__code__.co_filename == "<string>"
+        )
+        if not (is_super_method_call and generated_dataclass_init):
+            self.validate_call_shape(node, signature_function)
 
         args, keywords, type_bindings = self.analyze_call_arguments(
             node,
@@ -3524,11 +4615,27 @@ class InferenceVisitor(ast.NodeVisitor):
                 dunder_builtin.py_obj, "__js_dispatch__", None
             )
         ):
-            return self.dispatch_dunder_call(
+            runtime_methods = ()
+            if signature_function is not None:
+                runtime_methods = self.validate_call_argument_types(
+                    node,
+                    signature_function,
+                    args,
+                    keywords,
+                    type_bindings,
+                    skip_positional=1,
+                )
+            result = self.dispatch_dunder_call(
                 dunder_builtin, method_name, args, keywords
             )
+            result.runtime_methods = tuple(
+                dict.fromkeys((*result.runtime_methods, *runtime_methods))
+            )
+            return result
 
-        if isinstance(call_target, Instance):
+        if isinstance(call_target, CallableClass):
+            return_type = call_target.return_type
+        elif isinstance(call_target, Instance):
             result_function = signature_function or called_function
             return_type = (
                 callable_signature.return_type
@@ -3560,21 +4667,66 @@ class InferenceVisitor(ast.NodeVisitor):
             ):
                 return_type = collection_type
             else:
-                return_type = call_target.from_call([a.obj for a in args])
+                return_type = infer_generic_call_type(call_target, args)
+                if return_type is None:
+                    try:
+                        return_type = call_target.from_call([a.obj for a in args])
+                    except TypeError:
+                        self.fail(
+                            node,
+                            DiagnosticCode.TYPE_ANNOTATION_REQUIRED,
+                            f"Type arguments for {call_target.name}() cannot "
+                            "be inferred",
+                            help=(
+                                "Add an explicit specialized annotation that "
+                                "provides the missing types."
+                            ),
+                        )
             func = Name(return_type)
         else:
             raise NotImplementedError(f"Don't know how to handle {call_target} call.")
         if called_function is not None:
             return_type = substitute_type_variables(return_type, type_bindings)
+        argument_runtime_methods = ()
         if callable_signature is not None:
-            self.validate_callable_call(node, callable_signature, args, keywords)
+            argument_runtime_methods = self.validate_callable_call(
+                node,
+                callable_signature,
+                args,
+                keywords,
+            )
         elif called_function is not None:
-            self.validate_call_argument_types(
+            argument_runtime_methods = self.validate_call_argument_types(
                 node,
                 signature_function,
                 args,
                 keywords,
                 type_bindings,
+            )
+        elif (
+            args
+            and isinstance(return_type, Class)
+            and return_type.generic_name in {"dict", "list", "set", "tuple"}
+        ):
+            protocol = iterable_protocol(analyzed_value_type(args[0]))
+            if protocol is not None:
+                argument_runtime_methods = protocol.methods
+        contract_methods = (
+            self.runtime_contract_methods(func, called_function, args)
+            if called_function is not None
+            else ()
+        )
+        runtime_methods = tuple(
+            dict.fromkeys((*argument_runtime_methods, *contract_methods))
+        )
+        if (
+            isinstance(call_target, Instance)
+            and not isinstance(call_target.cls, CallableClass)
+            and not getattr(call_target.cls.py_obj, "__builtin__", False)
+            and called_function is not None
+        ):
+            runtime_methods = tuple(
+                dict.fromkeys((*runtime_methods, called_function))
             )
         if called_function is not None and called_function.inline_call is not None:
             call = self.lower_inline_call(
@@ -3585,11 +4737,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 keywords,
                 return_type,
             )
-            call.runtime_methods = self.runtime_contract_methods(
-                func,
-                called_function,
-                args,
-            )
+            call.runtime_methods = runtime_methods
             return call
         if called_function is not None and called_function.returns_self:
             assert isinstance(func, Attribute)
@@ -3605,16 +4753,37 @@ class InferenceVisitor(ast.NodeVisitor):
             return_type = awaitable(return_type)
 
         dependency_objects = {}
-        if called_function is not None:
-            dependency_objects = self.inline_dependencies(called_function, node)
-        runtime_methods = (
-            self.runtime_contract_methods(func, called_function, args)
-            if called_function is not None
-            else ()
-        )
+        inline_function = called_function
+        if inline_function is None and isinstance(func.obj, Class):
+            constructor = func.obj.find_attrs("__init__")
+            if isinstance(constructor, Function) and constructor.inline_decorator:
+                inline_function = constructor
+        if inline_function is not None:
+            dependency_objects = self.inline_dependencies(inline_function, node)
         value_obj = return_type
         if isinstance(return_type, Class):
             value_obj = return_type("__call_result__", self.scope, self.func)
+        dictionary_keys = None
+        if isinstance(call_target, Class) and called_function is not None:
+            dictionary_keys = self.prepare_dictionary_call(
+                call_target,
+                called_function,
+                args,
+                keywords,
+            )
+        generated_method_owner = None
+        if isinstance(call_target, Class):
+            generated_method_owner = call_target
+        elif (
+            is_super_method_call
+            and called_function is not None
+            and called_function.name == "__init__"
+        ):
+            generated_method_owner = called_function.cls
+        method = generated_method(
+            generated_method_owner,
+            "__pyjs_constructor_method__",
+        )
         return Call(
             return_type,
             value_obj=value_obj,
@@ -3623,6 +4792,8 @@ class InferenceVisitor(ast.NodeVisitor):
             keywords=keywords,
             dependency_objects=dependency_objects,
             runtime_methods=runtime_methods,
+            generated_methods=(method,) if method is not None else (),
+            dictionary_keys=dictionary_keys,
         )
 
     def call_argument_pattern(self, function, index):
@@ -3654,7 +4825,14 @@ class InferenceVisitor(ast.NodeVisitor):
             and contains_type_variable(expected_type)
             and not callable_parameters_are_known
         ):
-            expected_type = None
+            concrete_types = [
+                member
+                for member in get_type_members(expected_type)
+                if not contains_type_variable(member)
+            ]
+            expected_type = (
+                UnionType(types=concrete_types).type if concrete_types else None
+            )
         value = self.visit_contextual_expression(argument, expected_type)
         if pattern is not None:
             infer_type_variables(
@@ -3663,6 +4841,22 @@ class InferenceVisitor(ast.NodeVisitor):
                 type_bindings,
             )
         return value
+
+    def visit_call_keyword(self, keyword, function, type_bindings):
+        pattern = self.call_keyword_pattern(keyword, function)
+        expected_type = (
+            substitute_type_variables(pattern, type_bindings)
+            if pattern is not None
+            else None
+        )
+        value = self.visit_contextual_expression(keyword.value, expected_type)
+        if pattern is not None:
+            infer_type_variables(
+                pattern,
+                callable_value_type(value),
+                type_bindings,
+            )
+        return ast.keyword(arg=keyword.arg, value=value)
 
     def validate_callable_call(self, node, signature, args, keywords):
         if keywords:
@@ -3673,7 +4867,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 help="Pass callable arguments positionally.",
             )
         if signature.parameter_types is None:
-            return
+            return ()
         if len(args) != len(signature.parameter_types):
             self.fail(
                 node,
@@ -3681,12 +4875,13 @@ class InferenceVisitor(ast.NodeVisitor):
                 f"Callable expects {len(signature.parameter_types)} arguments, "
                 f"got {len(args)}",
             )
+        runtime_methods = []
         for index, (argument, expected_type) in enumerate(
             zip(args, signature.parameter_types, strict=True),
             start=1,
         ):
-            actual_type = analyzed_value_type(argument)
-            if not is_return_type_compatible(expected_type, actual_type):
+            if not is_call_argument_compatible(expected_type, argument):
+                actual_type = analyzed_value_type(argument)
                 self.fail(
                     node.args[index - 1],
                     DiagnosticCode.INCOMPATIBLE_ARGUMENT,
@@ -3695,13 +4890,22 @@ class InferenceVisitor(ast.NodeVisitor):
                     f"{actual_type.to_annotation_str()}",
                     help=f"Pass a value compatible with {expected_type.to_annotation_str()}.",
                 )
+            runtime_methods.extend(
+                self.argument_protocol_methods(expected_type, argument)
+            )
+            if uses_iterable_protocol(expected_type, argument):
+                args[index - 1] = self.mapping_keys_iterable(argument)
+        return tuple(dict.fromkeys(runtime_methods))
 
     def call_keyword_pattern(self, keyword, function):
         if function is None or keyword.arg is None:
             return None
         parameters = {
             parameter.arg: parameter
-            for parameter in (*function.params, *function.kwonlyargs)
+            for parameter in (
+                *function.params[function.posonly_count :],
+                *function.kwonlyargs,
+            )
         }
         parameter = parameters.get(keyword.arg)
         if parameter is None:
@@ -3781,7 +4985,7 @@ class InferenceVisitor(ast.NodeVisitor):
     def infer_parameter_type(self, param, default=None, fallback=None):
         default_type = None
         if default is not None:
-            default_type = default.obj
+            default_type = analyzed_value_type(default)
             assert isinstance(default_type, Class)
         annotation_type = None
         if param.annotation is not None:
@@ -3799,6 +5003,13 @@ class InferenceVisitor(ast.NodeVisitor):
                 ),
             )
         return arg_type
+
+    def record_native_attribute(self, name, value_type, *, declared=False):
+        assert self.func.cls is not None
+        attribute = value_type(name, self.func.cls.scope, self.func.cls._self)
+        attribute.has_declared_type = declared
+        self.func.cls._self.add(attribute)
+        return attribute
 
     def collect_native_attributes(self, statements: list[ast.stmt]):
         assert self.func.cls is not None
@@ -3820,20 +5031,38 @@ class InferenceVisitor(ast.NodeVisitor):
                 and value is not None
             ):
                 continue
+            existing = self.func.cls._self.find_attrs(target.attr)
+            if (
+                annotation is None
+                and isinstance(existing, Instance)
+                and existing.has_declared_type
+            ):
+                continue
             try:
                 value_type = self.analyze_assignment_value(
                     value, annotation
                 ).storage_type
-            except (CompilationError, DependencyError, NameError):
+            except DependencyError:
+                raise
+            except (CompilationError, NameError):
                 if annotation is not None:
                     raise
                 continue
             assert value_type is not None
-            self.func.cls._self.add(
-                value_type(target.attr, self.func.cls.scope, self.func.cls._self)
+            self.record_native_attribute(
+                target.attr,
+                value_type,
+                declared=annotation is not None,
             )
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
+        if self.func.is_async and self.func.name == "__init__":
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "constructors cannot be async",
+                help="Move asynchronous setup to a separate method.",
+            )
         if self.func.is_generator and self.func.is_async:
             self.fail(
                 node,
@@ -3856,6 +5085,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 help="Move the yielded values to a separate method.",
             )
         self.func.params = []
+        self.func.posonly_count = 0
         self.func.vararg = None
         self.func.kwonlyargs = []
         self.func.kwarg = None
@@ -3885,7 +5115,12 @@ class InferenceVisitor(ast.NodeVisitor):
         )
         if self_annotation:
             if not self.func.is_method:
-                raise TypeError("Self return annotations are only valid on methods.")
+                self.fail(
+                    node.returns,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Self return annotations are only valid on methods",
+                    help="Return a concrete type or move this function onto a class.",
+                )
             self.func.returns_self = True
             declared_return_type = self.func.cls
         elif node.returns is None:
@@ -3894,6 +5129,16 @@ class InferenceVisitor(ast.NodeVisitor):
             declared_return_type = get_none_type()
         else:
             declared_return_type = self.visit_type_annotation(node.returns).obj
+        if isinstance(declared_return_type, GenericClass):
+            self.fail(
+                node.returns,
+                DiagnosticCode.TYPE_ANNOTATION_REQUIRED,
+                f"Return type {declared_return_type.name!r} requires type arguments",
+                help=(
+                    f"Use {declared_return_type.name}[...] to describe the returned "
+                    "values."
+                ),
+            )
         assert declared_return_type is None or isinstance(
             declared_return_type, (Class, UnionType)
         )
@@ -3901,7 +5146,7 @@ class InferenceVisitor(ast.NodeVisitor):
         self.func.inferred_return_type = None
         self.func.return_type = None
 
-        pos_params = node.args.args
+        pos_params = [*node.args.posonlyargs, *node.args.args]
         no_defaults = len(pos_params) - len(defaults)
         pos_defaults = [None] * no_defaults + defaults
 
@@ -3929,6 +5174,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 ast.arg(arg=param.arg, annotation=analyzed_annotation(arg_type))
             )
             self.func.scope.add(arg_type(param.arg, self.func.scope, self.func))
+
+        positional_only = {parameter.arg for parameter in node.args.posonlyargs}
+        self.func.posonly_count = sum(
+            parameter.arg in positional_only for parameter in self.func.params
+        )
 
         if node.args.vararg is not None:
             item_type = self.infer_parameter_type(
@@ -3966,9 +5216,9 @@ class InferenceVisitor(ast.NodeVisitor):
         if should_analyze_func_body(self.func):
             self.func.body = self.visit_body(node.body)
             if self.func.is_generator:
-                iterable = BUILTINS.search("Iterable")
-                assert isinstance(iterable, GenericClass)
-                final_return_type = iterable(
+                iterator = BUILTINS.search("Iterator")
+                assert isinstance(iterator, GenericClass)
+                final_return_type = iterator(
                     self.func.yield_type or get_none_type()
                 )
             else:
@@ -4036,7 +5286,13 @@ class InferenceVisitor(ast.NodeVisitor):
             not isinstance(awaitable_type, Class)
             or awaitable_type.generic_name != "Awaitable"
         ):
-            raise TypeError("await requires an async function call")
+            actual_type = analyzed_value_type(value).to_annotation_str()
+            self.fail(
+                node.value,
+                DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                f"Cannot await value of type {actual_type}",
+                help="Await an Awaitable value, usually by calling an async function.",
+            )
         awaited_type = awaitable_type.generic_types["T"]
         value_obj = awaited_type
         if isinstance(awaited_type, Class):
@@ -4045,6 +5301,14 @@ class InferenceVisitor(ast.NodeVisitor):
             awaited_type,
             value_obj=value_obj,
             value=value,
+        )
+
+    def fail_invalid_type_annotation(self, node):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            f"{ast.unparse(node)!r} is not a supported type annotation",
+            help="Use a class, union, or supported generic type annotation.",
         )
 
     def visit_type_annotation(self, node):
@@ -4130,11 +5394,20 @@ class InferenceVisitor(ast.NodeVisitor):
                 value = Name(BUILTINS.search(TYPING_TYPE_ALIASES[alias_name]))
             else:
                 value = self.visit(node.value)
+            if not isinstance(value.obj, GenericClass):
+                value_name = ast.unparse(node.value)
+                self.fail(
+                    node.value,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    f"Type {value_name!r} does not accept type arguments",
+                    help=f"Use {value_name!r} without square brackets.",
+                )
             if isinstance(node.slice, ast.Tuple):
                 elements = node.slice.elts
                 if (
                     isinstance(value.obj, GenericClass)
                     and value.obj.name == "tuple"
+                    and elements
                     and isinstance(elements[-1], ast.Constant)
                     and elements[-1].value is Ellipsis
                 ):
@@ -4143,18 +5416,31 @@ class InferenceVisitor(ast.NodeVisitor):
                     self.visit_type_annotation(elt).obj for elt in elements
                 ]
             elif isinstance(
-                node.slice, (ast.Name, ast.BinOp, ast.Subscript, ast.Constant)
+                node.slice,
+                (ast.Name, ast.Attribute, ast.BinOp, ast.Subscript, ast.Constant),
             ):
                 item_types = [self.visit_type_annotation(node.slice).obj]
             else:
-                raise NotImplementedError()
-            assert isinstance(value.obj, GenericClass)
+                self.fail_invalid_type_annotation(node.slice)
+            expected_count = len(value.obj.generic_params)
+            if value.obj.name != "tuple" and len(item_types) != expected_count:
+                argument = "argument" if expected_count == 1 else "arguments"
+                self.fail(
+                    node.slice,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"{value.obj.name} expects {expected_count} type {argument}, "
+                    f"got {len(item_types)}",
+                    help=(
+                        f"Parameterize {value.obj.name} with "
+                        f"{expected_count} type {argument}."
+                    ),
+                )
             return Name(value.obj(*item_types))  # generic class -> concrete class
         elif isinstance(node, ast.BinOp):
+            if not isinstance(node.op, ast.BitOr):
+                self.fail_invalid_type_annotation(node)
             left = self.visit_type_annotation(node.left).obj
             right = self.visit_type_annotation(node.right).obj
-            assert isinstance(left, (Class, UnionType))
-            assert isinstance(right, (Class, UnionType))
             return BinOp(
                 UnionType(types=(left, right)).type,
                 left=node.left,
@@ -4163,11 +5449,22 @@ class InferenceVisitor(ast.NodeVisitor):
             )
         elif isinstance(node, ast.Constant) and node.value is None:
             return self.visit(node)
+        elif isinstance(node, ast.Attribute):
+            alias_name = typing_alias_name(node, self.scope)
+            if alias_name in TYPING_TYPE_ALIASES:
+                return Name(BUILTINS.search(TYPING_TYPE_ALIASES[alias_name]))
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "Qualified type annotations are not supported",
+                help=f"Import {node.attr!r} directly and use it as the annotation.",
+            )
         else:
             alias_name = typing_alias_name(node, self.scope)
             if alias_name in TYPING_TYPE_ALIASES:
                 return Name(BUILTINS.search(TYPING_TYPE_ALIASES[alias_name]))
-            assert isinstance(node, ast.Name)
+            if not isinstance(node, ast.Name):
+                self.fail_invalid_type_annotation(node)
             value = self.scope.search(node.id)
             if isinstance(value, TypeAliasValue):
                 try:
@@ -4190,7 +5487,10 @@ class InferenceVisitor(ast.NodeVisitor):
                 object_type = BUILTINS.search("object")
                 assert isinstance(object_type, Class)
                 return Name(value(object_type))
-            return self.visit(node)
+            annotation = self.visit(node)
+            if not isinstance(annotation.obj, (Class, GenericClass, UnionType)):
+                self.fail_invalid_type_annotation(node)
+            return annotation
 
     def visit_Pass(self, node: ast.Pass):
         return node
@@ -4303,6 +5603,97 @@ class InferenceVisitor(ast.NodeVisitor):
             return ast.Pass(lineno=node.lineno)
         return ast.Expr(value=self.visit(node.value))
 
+    def visit_NamedExpr(self, node: ast.NamedExpr):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "assignment expressions are not supported",
+            help="Assign the value in a separate statement before using it.",
+        )
+
+    def visit_Import(self, node: ast.Import):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "function-local imports are not supported",
+            help="Move the import to module scope.",
+        )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        self.visit_Import(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "function-local class definitions are not supported",
+            help="Move the class to module scope and decorate it with @js.",
+        )
+
+    def visit_Global(self, node: ast.Global):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "global declarations are not supported",
+            help="Pass the value explicitly or store it on a client-side object.",
+        )
+
+    def visit_Nonlocal(self, node: ast.Nonlocal):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "nonlocal declarations are not supported",
+            help="Pass the value explicitly or store it on a client-side object.",
+        )
+
+    def visit_AsyncFor(self, node: ast.AsyncFor):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "async for statements are not supported",
+            help="Await values explicitly inside a supported loop.",
+        )
+
+    def visit_AsyncWith(self, node: ast.AsyncWith):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "async with statements are not supported",
+            help="Call and await the resource lifecycle explicitly.",
+        )
+
+    def visit_TryStar(self, node: ast.TryStar):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "except* handlers are not supported",
+            help="Use ordinary try/except with supported exception types.",
+        )
+
+    def visit_TypeAlias(self, node: ast.TypeAlias):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "type statements inside client functions are not supported",
+            help="Define the type alias at module scope.",
+        )
+
+    def visit_Match(self, node: ast.Match):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "match statements are not supported",
+            help="Use typed if/elif branches instead.",
+        )
+
+    def visit_TemplateStr(self, node: ast.TemplateStr):
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "template string literals are not supported",
+            help="Use an f-string when interpolation is sufficient.",
+        )
+
     def visit_JoinedStr(self, node: ast.JoinedStr):
         return JoinedStr(
             BUILTINS.search("str"),
@@ -4312,6 +5703,55 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_FormattedValue(self, node: ast.FormattedValue):
         value = self.visit(node.value)
         conversion = node.conversion
+        if node.format_spec is not None:
+            spec = constant_format_spec(node.format_spec)
+            if spec is None:
+                self.fail(
+                    node.format_spec,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "dynamic f-string format specifications are not supported",
+                    help="Use a constant d, f, or % format specification.",
+                )
+            match = FORMAT_SPEC.fullmatch(spec)
+            if match is None:
+                self.fail(
+                    node.format_spec,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    f"f-string format specification {spec!r} is not supported",
+                    help=(
+                        "Use d, f, or % with optional zero padding, width, "
+                        "and precision."
+                    ),
+                )
+            if (
+                match.group("type") == "d"
+                and match.group("precision") is not None
+            ):
+                self.fail(
+                    node.format_spec,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "precision is not allowed with integer f-string formatting",
+                    help="Remove the precision from the d format specification.",
+                )
+            if conversion != -1:
+                self.fail(
+                    node,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "f-string conversions cannot be combined with numeric formatting",
+                    help="Apply !s or !r without a numeric format specification.",
+                )
+            value_type = analyzed_value_type(value)
+            allowed = {"bool", "int"}
+            if match.group("type") != "d":
+                allowed.add("float")
+            if any(member.name not in allowed for member in get_type_members(value_type)):
+                self.fail(
+                    node.value,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    f"Format code {match.group('type')!r} does not support "
+                    f"{value_type.to_annotation_str()}",
+                    help="Format a compatible numeric value.",
+                )
         if node.format_spec is None and conversion in {-1, ord("r"), ord("s")}:
             method_name = "__repr__" if conversion == ord("r") else "__str__"
             value = self.dispatch_dunder_call(
@@ -4336,17 +5776,98 @@ class InferenceVisitor(ast.NodeVisitor):
         ast.In: ("__contains__", None),
         ast.NotIn: ("__contains__", None),
     }
+    COMPARE_OP_SYMBOLS = {
+        ast.Is: "is",
+        ast.IsNot: "is not",
+        ast.Lt: "<",
+        ast.LtE: "<=",
+        ast.Gt: ">",
+        ast.GtE: ">=",
+        ast.Eq: "==",
+        ast.NotEq: "!=",
+        ast.In: "in",
+        ast.NotIn: "not in",
+    }
+    EMPTY_COLLECTION_NAMES = {
+        ast.Dict: "dict",
+        ast.List: "list",
+        ast.Tuple: "tuple",
+    }
+
+    def visit_comparison_value(self, node, previous=None):
+        collection_name = self.EMPTY_COLLECTION_NAMES.get(type(node))
+        if collection_name is None:
+            return self.visit(node)
+        items = node.keys if isinstance(node, ast.Dict) else node.elts
+        if items:
+            return self.visit(node)
+        expected_type = (
+            contextual_collection_type(analyzed_value_type(previous), collection_name)
+            if previous is not None
+            else None
+        )
+        if expected_type is None:
+            generic = BUILTINS.search(collection_name)
+            object_type = BUILTINS.search("object")
+            assert isinstance(generic, GenericClass)
+            assert isinstance(object_type, Class)
+            expected_type = (
+                generic(object_type, object_type)
+                if collection_name == "dict"
+                else generic(object_type)
+            )
+        return self.visit_contextual_expression(node, expected_type)
 
     def visit_Compare(self, node: ast.Compare):
-        assert len(node.ops) == len(node.comparators) == 1
+        assert len(node.ops) == len(node.comparators)
+        operands = []
+        for source in (node.left, *node.comparators):
+            operands.append(
+                self.visit_comparison_value(
+                    source,
+                    operands[-1] if operands else None,
+                )
+            )
+        if len(node.ops) > 1:
+            temporaries = []
+            for index, operand in enumerate(operands):
+                value_type = analyzed_value_type(operand)
+                temporary = value_type(
+                    f"$compare{index}",
+                    self.scope,
+                    self.func,
+                )
+                temporaries.append(Name(temporary, ctx=ast.Load()))
+            comparisons = [
+                self.analyze_comparison(
+                    node,
+                    temporaries[index],
+                    operator,
+                    temporaries[index + 1],
+                )
+                for index, operator in enumerate(node.ops)
+            ]
+            bool_type = BUILTINS.search("bool")
+            assert isinstance(bool_type, Class)
+            return ChainedCompare(
+                bool_type,
+                operands=operands,
+                comparisons=comparisons,
+                temporaries=temporaries,
+                lineno=node.lineno,
+            )
+
+        left, right = operands
+        return self.analyze_comparison(node, left, node.ops[0], right)
+
+    def analyze_comparison(self, node, left, operator, right):
         # TODO: needs cleanup and refactoring
-        left = self.visit(node.left)
-        right = self.visit(node.comparators[0])
         left_type = analyzed_value_type(left)
         right_type = analyzed_value_type(right)
-        operation = node.ops[0]
-        comparison_method = "__ne__" if isinstance(operation, ast.NotEq) else "__eq__"
-        if isinstance(operation, (ast.Eq, ast.NotEq)) and (
+        comparison_method = (
+            "__ne__" if isinstance(operator, ast.NotEq) else "__eq__"
+        )
+        if isinstance(operator, (ast.Eq, ast.NotEq)) and (
             isinstance(left_type, UnionType) or isinstance(right_type, UnionType)
         ) and not (
             inherits_object_comparison(left_type, comparison_method)
@@ -4358,6 +5879,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 right,
                 left_type,
                 right_type,
+                operator,
             )
 
         if isinstance(left.obj, Instance):
@@ -4378,49 +5900,93 @@ class InferenceVisitor(ast.NodeVisitor):
             right_self = right.obj.first._self
         else:
             right_self = right.obj._self
-        if isinstance(node.ops[0], (ast.In, ast.NotIn)):
+        if isinstance(operator, (ast.In, ast.NotIn)):
             left_self, right_self = right_self, left_self
             left, right = right, left
 
-        left_op_method, right_op_method = self.COMPARE_OPS[type(node.ops[0])]
-        negate_dataclass_equality = isinstance(node.ops[0], ast.NotEq) and getattr(
+        left_op_method, right_op_method = self.COMPARE_OPS[type(operator)]
+        negate_dataclass_equality = isinstance(operator, ast.NotEq) and getattr(
             left_self.cls, "is_dataclass", False
         )
         if negate_dataclass_equality:
             left_op_method = right_op_method = "__eq__"
 
-        try:
-            func = left_self.find(left_op_method)
-            assert isinstance(func, Function)
-            if func.cls.name == "object":
-                # for __eq__, __ne__, etc, Python checks the
-                # right side before falling back to object
-                raise NameError
-        except NameError as e:
-            if isinstance(node.ops[0], (ast.In, ast.NotIn)):
-                raise e
-            func = right_self.find(right_op_method)
-            if func.cls.name != "object":
+        use_typed_dispatch = not (
+            isinstance(left_type, UnionType)
+            or isinstance(right_type, UnionType)
+            or isinstance(operator, (ast.Is, ast.IsNot, ast.In, ast.NotIn))
+        )
+        func = None
+        if use_typed_dispatch:
+            try:
+                func, reverse = self.resolve_binary_operator(
+                    left_type,
+                    right_type,
+                    left_op_method,
+                    right_op_method,
+                    reject_object=isinstance(operator, (ast.Eq, ast.NotEq)),
+                )
+            except NameError:
+                pass
+            if func is not None and reverse:
                 left, right = right, left
+        else:
+            try:
+                func = left_self.find(left_op_method)
+                assert isinstance(func, Function)
+                if func.cls.name == "object":
+                    # Python tries reflected equality before object identity.
+                    raise NameError
+            except NameError:
+                if not isinstance(operator, (ast.In, ast.NotIn)):
+                    try:
+                        func = right_self.find(right_op_method)
+                    except NameError:
+                        pass
+                    else:
+                        if func.cls.name != "object":
+                            left, right = right, left
+        if func is None:
+            self.fail_unsupported_operator(
+                node,
+                self.COMPARE_OP_SYMBOLS[type(operator)],
+                left_type,
+                right_type,
+                left_op_method,
+            )
         if func is not self.func and not func.is_analyzed:
             raise DependencyError(func)
         return_type = func.return_type or func.declared_return_type
         assert isinstance(return_type, (Class, UnionType))
+        function = Attribute(func, value=left, attr=func.name)
         comparison = self.call_node(
             node,
             return_type,
-            func=Attribute(func, value=left, attr=func.name),
+            func=function,
             args=[right],
             keywords=[],
-            operator=node.ops[0],
+            operator=operator,
             dependency_objects=self.inline_dependencies(func, node),
         )
-        if isinstance(node.ops[0], ast.NotIn) or negate_dataclass_equality:
+        comparison.runtime_methods = self.runtime_contract_methods(
+            function,
+            func,
+            [right],
+        )
+        if isinstance(operator, ast.NotIn) or negate_dataclass_equality:
             return UnaryOp(return_type, op=ast.Not(), operand=comparison)
         return comparison
 
-    def dynamic_union_equality(self, node, left, right, left_type, right_type):
-        is_not_equal = isinstance(node.ops[0], ast.NotEq)
+    def dynamic_union_equality(
+        self,
+        node,
+        left,
+        right,
+        left_type,
+        right_type,
+        operator,
+    ):
+        is_not_equal = isinstance(operator, ast.NotEq)
         method_name = "__dynamic_ne__" if is_not_equal else "__dynamic_eq__"
         dynamic_method = BUILTINS.search("object").find(method_name)
         assert isinstance(dynamic_method, Function)
@@ -4436,7 +6002,7 @@ class InferenceVisitor(ast.NodeVisitor):
             ),
             args=[right],
             keywords=[],
-            operator=node.ops[0],
+            operator=operator,
         )
         runtime_methods = inequality_methods if is_not_equal else equality_methods
         comparison.runtime_methods = tuple(
@@ -4455,29 +6021,217 @@ class InferenceVisitor(ast.NodeVisitor):
         ast.BitAnd: ("__and__", "__rand__"),
         ast.BitOr: ("__or__", "__ror__"),
         ast.BitXor: ("__xor__", "__rxor__"),
+        ast.LShift: ("__lshift__", "__rlshift__"),
+        ast.RShift: ("__rshift__", "__rrshift__"),
+    }
+    BIN_OP_SYMBOLS = {
+        ast.Add: "+",
+        ast.Sub: "-",
+        ast.Mult: "*",
+        ast.Div: "/",
+        ast.FloorDiv: "//",
+        ast.Mod: "%",
+        ast.Pow: "**",
+        ast.BitAnd: "&",
+        ast.BitOr: "|",
+        ast.BitXor: "^",
+        ast.LShift: "<<",
+        ast.RShift: ">>",
     }
 
-    def visit_BinOp(self, node: ast.BinOp):
-        left = self.visit(node.left)
-        left_self = left.obj if isinstance(left.obj, Instance) else left.obj._self
-        right = self.visit(node.right)
-        right_self = right.obj if isinstance(right.obj, Instance) else right.obj._self
-        left_op_method, right_op_method = self.BIN_OPS[type(node.op)]
+    def fail_unsupported_operator(
+        self,
+        node,
+        symbol,
+        left_type,
+        right_type,
+        method_name,
+    ):
+        self.fail(
+            node,
+            DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            f"Operator {symbol!r} is not supported for "
+            f"{left_type.to_annotation_str()} and "
+            f"{right_type.to_annotation_str()}",
+            help=(
+                "Use operands with compatible types or define the "
+                f"corresponding {method_name}() method."
+            ),
+        )
+
+    def reject_unsafe_constant_integer(self, node: ast.expr):
+        value = constant_integer_value(node)
+        if value is None or abs(value) <= JS_MAX_SAFE_INTEGER:
+            return
+        self.fail(
+            node,
+            DiagnosticCode.UNSUPPORTED_SYNTAX,
+            "constant integer expression exceeds JavaScript's safe integer range",
+            help=(
+                "Keep statically known integers between "
+                f"{-JS_MAX_SAFE_INTEGER} and {JS_MAX_SAFE_INTEGER}."
+            ),
+        )
+
+    def resolve_binary_operator(
+        self,
+        left_type,
+        right_type,
+        left_method,
+        right_method,
+        *,
+        reject_object=False,
+    ):
+        left_self = left_type._self
+        right_self = right_type._self
+        right_override = right_self.cls.find_attrs(
+            right_method,
+            search_bases=False,
+        )
+        right_is_subclass = not same_analyzer_type(
+            right_type,
+            left_type,
+        ) and is_subclass(right_type, left_type)
+        method = None
         reverse = False
+        if isinstance(right_override, Function) and right_is_subclass:
+            if not right_override.signature_analyzed:
+                raise DependencyError(right_override)
+            if is_return_type_compatible(
+                right_override.params[0].annotation.obj,
+                left_type,
+            ):
+                method = right_override
+                reverse = True
+        if method is None:
+            try:
+                method = left_self.find(left_method)
+                assert isinstance(method, Function)
+                if not method.signature_analyzed:
+                    raise DependencyError(method)
+                if reject_object and method.cls.name == "object":
+                    raise NameError
+                if not is_return_type_compatible(
+                    method.params[0].annotation.obj,
+                    right_type,
+                ):
+                    raise NameError
+                reverse = False
+            except NameError:
+                method = right_self.find(right_method)
+                assert isinstance(method, Function)
+                if not method.signature_analyzed:
+                    raise DependencyError(method) from None
+                if not is_return_type_compatible(
+                    method.params[0].annotation.obj,
+                    left_type,
+                ):
+                    raise NameError from None
+                reverse = not reject_object or method.cls.name != "object"
+        if not method.is_analyzed:
+            raise DependencyError(method)
+        return method, reverse
+
+    def visit_union_binop(self, node, left, right, left_type, right_type):
+        left_method, right_method = self.BIN_OPS[type(node.op)]
+        symbol = self.BIN_OP_SYMBOLS[type(node.op)]
         try:
-            func = left_self.find(left_op_method)
-            assert isinstance(func, Function)
-            if not func.is_analyzed:
-                raise DependencyError(func)
-            if right_self.cls not in get_type_members(func.params[0].annotation.obj):
-                # this is the equivalent of the op function returning NotImplemented
-                raise NameError
+            resolutions = [
+                self.resolve_binary_operator(
+                    left_member,
+                    right_member,
+                    left_method,
+                    right_method,
+                )
+                for left_member in get_type_members(left_type)
+                for right_member in get_type_members(right_type)
+            ]
         except NameError:
-            func = right_self.find(right_op_method)
+            self.fail(
+                node,
+                DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                f"Operator {symbol!r} is not supported for every combination "
+                f"of {left_type.to_annotation_str()} and "
+                f"{right_type.to_annotation_str()}",
+                help="Narrow either operand before applying the operator.",
+            )
+
+        first_method, first_reverse = resolutions[0]
+        first_inline = first_method.decoration("__js_inline__")
+        first_dependencies = first_method.decoration("__js_inline_dependencies__")
+        incompatible = any(
+            reverse != first_reverse
+            or method.decoration("__js_inline__") is not first_inline
+            or method.is_async != first_method.is_async
+            or method.decoration("__js_inline_dependencies__") != first_dependencies
+            for method, reverse in resolutions[1:]
+        )
+        if incompatible:
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                f"Operator {symbol!r} has incompatible client lowering across "
+                f"{left_type.to_annotation_str()} and "
+                f"{right_type.to_annotation_str()}",
+                help="Narrow either operand before applying the operator.",
+            )
+
+        return_type = None
+        for method, _ in resolutions:
+            return_type = merge_return_types(return_type, method.return_type)
+        assert isinstance(return_type, (Class, UnionType))
+        receiver, argument = (right, left) if first_reverse else (left, right)
+        methods = tuple(dict.fromkeys(method for method, _ in resolutions))
+        function = Attribute(
+            first_method,
+            value=receiver,
+            attr=first_method.name,
+            union_functions=methods,
+            union_return_type=return_type,
+        )
+        return self.call_node(
+            node,
+            return_type,
+            func=function,
+            args=[argument],
+            keywords=[],
+            operator=node.op,
+            reverse=first_reverse,
+            dependency_objects=self.inline_dependencies(first_method, node),
+        )
+
+    def visit_BinOp(self, node: ast.BinOp):
+        self.reject_unsafe_constant_integer(node)
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        left_type = analyzed_value_type(left)
+        right_type = analyzed_value_type(right)
+        if isinstance(left_type, UnionType) or isinstance(right_type, UnionType):
+            return self.visit_union_binop(
+                node,
+                left,
+                right,
+                left_type,
+                right_type,
+            )
+        left_op_method, right_op_method = self.BIN_OPS[type(node.op)]
+        try:
+            func, reverse = self.resolve_binary_operator(
+                left_type,
+                right_type,
+                left_op_method,
+                right_op_method,
+            )
+        except NameError:
+            self.fail_unsupported_operator(
+                node,
+                self.BIN_OP_SYMBOLS[type(node.op)],
+                left_type,
+                right_type,
+                left_op_method,
+            )
+        if reverse:
             left, right = right, left
-            reverse = True
-        if not func.is_analyzed:
-            raise DependencyError(func)
         return self.call_node(
             node,
             func.return_type,
@@ -4495,13 +6249,14 @@ class InferenceVisitor(ast.NodeVisitor):
         ast.Invert: "__invert__",
         ast.Not: "__bool__",
     }
+    UNARY_SYMBOLS = {ast.UAdd: "+", ast.USub: "-", ast.Invert: "~", ast.Not: "not"}
 
     def visit_UnaryOp(self, node: ast.UnaryOp):
+        self.reject_unsafe_constant_integer(node)
         operand = self.visit(node.operand)
         op_method = self.UNARY_OPS[type(node.op)]
-        operand_type = (
-            operand.obj.cls if isinstance(operand.obj, Instance) else operand.obj
-        )
+        operand_obj = analyzed_value_object(operand)
+        operand_type = analyzed_value_type(operand)
         if isinstance(node.op, (ast.UAdd, ast.USub)) and operand_type.name in (
             "int",
             "float",
@@ -4520,29 +6275,36 @@ class InferenceVisitor(ast.NodeVisitor):
                     op=node.op,
                     operand=operand,
                 )
-            else:
-                func = operand.obj.find(op_method)
-                if not func.is_analyzed:
-                    raise DependencyError(func)
-                assert func.return_type.name == "bool"
-                return UnaryOp(
-                    func.return_type,
-                    op=node.op,
-                    operand=Call(
-                        func.return_type,
-                        func=Attribute(func, value=operand, attr=func.name),
-                        args=[],
-                        keywords=[],
-                    ),
-                )
-        raise NotImplementedError
+        try:
+            func = operand_obj.find(op_method)
+        except NameError:
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                f"Unary operator {self.UNARY_SYMBOLS[type(node.op)]!r} is not supported "
+                f"for {operand_type.to_annotation_str()}",
+                help=f"Define {op_method}(self) for this client-side type.",
+            )
+        if not func.is_analyzed:
+            raise DependencyError(func)
+        call = Call(
+            func.return_type,
+            func=Attribute(func, value=operand, attr=func.name),
+            args=[],
+            keywords=[],
+            dependency_objects=self.inline_dependencies(func, node),
+        )
+        if isinstance(node.op, ast.Not):
+            assert func.return_type.name == "bool"
+            return UnaryOp(func.return_type, op=node.op, operand=call)
+        return call
 
     def visit_BoolOp(self, node: ast.BoolOp):
         values = []
         visitor = self
         evaluate_next_when_true = isinstance(node.op, ast.And)
         for value in node.values:
-            values.append(visitor.visit(value))
+            values.append(visitor.visit_comparison_value(value))
             visitor = visitor.narrow_for_condition(value, evaluate_next_when_true)
         value_types = UnionType()
         for index, value in enumerate(values):
@@ -4557,13 +6319,78 @@ class InferenceVisitor(ast.NodeVisitor):
                 ):
                     continue
                 value_types.add(type_)
-        return BoolOp(value_types.type, op=node.op, values=values)
+        result_type = value_types.type
+
+        native_truth_types = {"bool", "int", "NoneType", "str"}
+        if all(
+            {
+                member.name
+                for member in get_type_members(analyzed_value_type(value))
+            }
+            <= native_truth_types
+            for value in values[:-1]
+        ):
+            return BoolOp(result_type, op=node.op, values=values)
+
+        result = values[-1]
+        for index in range(len(values) - 2, -1, -1):
+            value = values[index]
+            value_type = analyzed_value_type(value)
+            temporary_obj = value_type(
+                f"$boolop{index}",
+                self.scope,
+                self.func,
+            )
+            temporary = Name(temporary_obj, ctx=ast.Load())
+            test = self.truth_test(node.values[index], temporary)
+            if isinstance(node.op, ast.And):
+                body, orelse = result, temporary
+            else:
+                body, orelse = temporary, result
+            conditional = IfExp(
+                result_type,
+                result_type,
+                test=test,
+                body=body,
+                orelse=orelse,
+            )
+            result = EvaluateOnce(
+                result_type,
+                value,
+                conditional,
+                temporary.id,
+                lineno=node.lineno,
+            )
+        return result
 
     # endregion
 
     # region constants
 
     def visit_Constant(self, node: ast.Constant):
+        unsupported = {
+            bytes: (
+                "bytes literals are not supported",
+                "Use str for text or a supported typed-array API for binary data.",
+            ),
+            complex: (
+                "complex number literals are not supported",
+                "Represent the real and imaginary components explicitly.",
+            ),
+            type(Ellipsis): (
+                "ellipsis values are not supported",
+                "Use None or an explicit client-side sentinel value.",
+            ),
+        }
+        if diagnostic := unsupported.get(type(node.value)):
+            message, help_text = diagnostic
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                message,
+                help=help_text,
+            )
+        self.reject_unsafe_constant_integer(node)
         type_name = type(node.value).__name__
         type_cls = literal_member_for_value(
             self.contextual_types.get(node),
@@ -4659,6 +6486,7 @@ class InferenceVisitor(ast.NodeVisitor):
         if not node.keys and contextual_type is not None:
             return Dict(contextual_type, keys=[], values=[])
         K, keys, V, values = UnionType(), [], UnionType(), []
+        item_types = []
         contextual_key_type = None
         contextual_value_type = None
         if (
@@ -4668,29 +6496,62 @@ class InferenceVisitor(ast.NodeVisitor):
             contextual_key_type = contextual_type.generic_types["K"]
             contextual_value_type = contextual_type.generic_types["V"]
         for key, value in zip(node.keys, node.values, strict=True):
-            keys.append(
-                self.visit_contextual_expression(key, contextual_key_type)
+            if key is None:
+                mapping = self.visit_contextual_expression(value, contextual_type)
+                mapping_type = analyzed_value_object(mapping)
+                if isinstance(mapping_type, Instance):
+                    mapping_type = mapping_type.cls
+                is_generic_dict = (
+                    isinstance(mapping_type, GenericClass)
+                    and mapping_type.name == "dict"
+                )
+                is_concrete_dict = (
+                    isinstance(mapping_type, Class)
+                    and mapping_type.generic_name == "dict"
+                )
+                if not (is_generic_dict or is_concrete_dict):
+                    self.fail(
+                        value,
+                        DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                        "dictionary unpacking requires a dict value",
+                        help=(
+                            "Unpack a dict with known key and value types or "
+                            "construct the result explicitly."
+                        ),
+                )
+                keys.append(None)
+                values.append(mapping)
+                if isinstance(mapping_type, Class):
+                    key_type = mapping_type.generic_types["K"]
+                    value_type = mapping_type.generic_types["V"]
+                    K.add(key_type)
+                    V.add(value_type)
+                    item_types.append((key_type, value_type))
+                continue
+            analyzed_key = self.visit_contextual_expression(
+                key,
+                contextual_key_type,
             )
-            K.add(analyzed_value_type(keys[-1]))
-            values.append(
-                self.visit_contextual_expression(value, contextual_value_type)
+            analyzed_value = self.visit_contextual_expression(
+                value,
+                contextual_value_type,
             )
-            V.add(analyzed_value_type(values[-1]))
+            key_type = analyzed_value_type(analyzed_key)
+            value_type = analyzed_value_type(analyzed_value)
+            keys.append(analyzed_key)
+            values.append(analyzed_value)
+            K.add(key_type)
+            V.add(value_type)
+            item_types.append((key_type, value_type))
         if (
             contextual_key_type is not None
             and all(
-                is_return_type_compatible(
-                    contextual_key_type,
-                    analyzed_value_type(key),
-                )
-                for key in keys
-            )
-            and all(
-                is_return_type_compatible(
+                is_return_type_compatible(contextual_key_type, key_type)
+                and is_return_type_compatible(
                     contextual_value_type,
-                    analyzed_value_type(value),
+                    value_type,
                 )
-                for value in values
+                for key_type, value_type in item_types
             )
         ):
             dict_type = contextual_type
@@ -4729,17 +6590,34 @@ class InferenceVisitor(ast.NodeVisitor):
         ):
             return iterable
         keys = iterable_obj.find("keys")
-        return Call(
+        result = Call(
             keys.return_type,
             func=Attribute(keys, value=iterable, attr="keys"),
             args=[],
             keywords=[],
         )
+        result.mapping_source_type = iterable_type
+        return result
+
+    def require_iterable(self, node, iterable):
+        value_type = analyzed_value_type(iterable)
+        protocol = iterable_protocol(value_type)
+        if protocol is not None:
+            return protocol
+        self.fail(
+            node,
+            DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            f"Type {value_type.to_annotation_str()!r} is not iterable",
+            help=(
+                "Define a client-side __iter__(self) -> Iterator[T] method "
+                "or iterate over a supported collection."
+            ),
+        )
 
     def visit_While(self, node: ast.While):
         test = self.visit(node.test)
         body = self.visit_body(node.body)
-        orelse = self.visit(node.orelse) if node.orelse else node.orelse
+        orelse = self.visit_body(node.orelse) if node.orelse else node.orelse
         return ast.While(
             test=test,
             body=body,
@@ -4749,19 +6627,20 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_For(self, node: ast.For):
         node_iter = self.mapping_keys_iterable(self.visit(node.iter))
-
-        item_type = iterable_item_type(analyzed_value_type(node_iter))
-        target = self.bind_loop_target(node.target, item_type)
+        protocol = self.require_iterable(node.iter, node_iter)
+        target = self.bind_loop_target(node.target, protocol.item_type)
 
         body = self.visit_body(node.body)
-        orelse = self.visit(node.orelse) if node.orelse else node.orelse
-        return ast.For(
+        orelse = self.visit_body(node.orelse) if node.orelse else node.orelse
+        result = ast.For(
             target=target,
             iter=node_iter,
             body=body,
             orelse=orelse,
             lineno=node.lineno,
         )
+        result.runtime_methods = protocol.methods
+        return result
 
     def bind_loop_target(self, target, value_type):
         if isinstance(target, ast.Name):
@@ -4813,6 +6692,7 @@ class InferenceVisitor(ast.NodeVisitor):
         for handler in node.handlers:
             handler_type, exception_type = self.analyze_exception_handler_type(handler)
             handler_visitor = type(self)(self.func, LocalScope(self.scope))
+            handler_visitor.in_exception_handler = True
             if handler.name is not None:
                 handler_visitor.scope.add(
                     exception_type(
@@ -4953,7 +6833,7 @@ class InferenceVisitor(ast.NodeVisitor):
         for generator_node in node.generators:
             if generator_node.is_async:
                 self.fail(
-                    generator_node,
+                    generator_node.target,
                     DiagnosticCode.UNSUPPORTED_SYNTAX,
                     "asynchronous comprehensions are not supported",
                     help=(
@@ -4963,20 +6843,20 @@ class InferenceVisitor(ast.NodeVisitor):
             iter_node = visitor.mapping_keys_iterable(
                 visitor.visit(generator_node.iter)
             )
-            item_type = iterable_item_type(analyzed_value_type(iter_node))
+            protocol = visitor.require_iterable(generator_node.iter, iter_node)
             self.bind_comprehension_target(
                 visitor,
                 generator_node.target,
-                item_type,
+                protocol.item_type,
             )
-            generators.append(
-                ast.comprehension(
-                    target=visitor.visit(generator_node.target),
-                    iter=iter_node,
-                    ifs=[visitor.visit(condition) for condition in generator_node.ifs],
-                    is_async=0,
-                )
+            generator = ast.comprehension(
+                target=visitor.visit(generator_node.target),
+                iter=iter_node,
+                ifs=[visitor.visit(condition) for condition in generator_node.ifs],
+                is_async=0,
             )
+            generator.runtime_methods = protocol.methods
+            generators.append(generator)
         return visitor, generators
 
     def bind_comprehension_target(self, visitor, target, value_type):
@@ -5022,13 +6902,38 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_DictComp(self, node: ast.DictComp):
         visitor, generators = self.analyze_comprehension_generators(node)
-        key = visitor.visit(node.key)
-        value = visitor.visit(node.value)
+        contextual_type = contextual_collection_type(
+            self.contextual_types.get(node),
+            "dict",
+        )
+        if isinstance(contextual_type, TypedDictClass):
+            contextual_type = None
+        expected_key_type = (
+            contextual_type.generic_types["K"]
+            if contextual_type is not None
+            else None
+        )
+        expected_value_type = (
+            contextual_type.generic_types["V"]
+            if contextual_type is not None
+            else None
+        )
+        key = visitor.visit_contextual_expression(node.key, expected_key_type)
+        value = visitor.visit_contextual_expression(
+            node.value,
+            expected_value_type,
+        )
+        key_type = analyzed_value_type(key)
+        value_type = analyzed_value_type(value)
+        dict_type = BUILTINS.search("dict")(key_type, value_type)
+        if (
+            contextual_type is not None
+            and is_return_type_compatible(expected_key_type, key_type)
+            and is_return_type_compatible(expected_value_type, value_type)
+        ):
+            dict_type = contextual_type
         return DictComp(
-            BUILTINS.search("dict")(
-                analyzed_value_type(key),
-                analyzed_value_type(value),
-            ),
+            dict_type,
             key=key,
             value=value,
             generators=generators,
@@ -5046,10 +6951,10 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_GeneratorExp(self, node: ast.GeneratorExp):
         visitor, generators = self.analyze_comprehension_generators(node)
         elt = visitor.visit(node.elt)
-        iterable = BUILTINS.search("Iterable")
-        assert isinstance(iterable, GenericClass)
+        iterator = BUILTINS.search("Iterator")
+        assert isinstance(iterator, GenericClass)
         return GeneratorExp(
-            iterable(analyzed_value_type(elt)),
+            iterator(analyzed_value_type(elt)),
             elt=elt,
             generators=generators,
         )
@@ -5084,7 +6989,10 @@ class InferenceVisitor(ast.NodeVisitor):
         try:
             func = test_type.find("__bool__")
         except NameError:
-            return test
+            try:
+                func = test_type.find("__len__")
+            except NameError:
+                return test
         if not func.is_analyzed:
             raise DependencyError(func)
         return Call(
@@ -5097,10 +7005,11 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_If(self, node: ast.If):
         test = self.visit(node.test)
         test = self.truth_test(node.test, test)
-        body_visitor = self.narrow_for_condition(node.test, True)
-        orelse_visitor = self.narrow_for_condition(node.test, False)
+        body_visitor = self.branch_visitor(node.test, True)
+        orelse_visitor = self.branch_visitor(node.test, False)
         body = body_visitor.visit_body(node.body)
         orelse = orelse_visitor.visit_body(node.orelse)
+        self.merge_branch_declarations(body_visitor, orelse_visitor)
         return ast.If(
             test=test,
             body=body,
@@ -5117,9 +7026,15 @@ class InferenceVisitor(ast.NodeVisitor):
         body_type = analyzed_value_type(body)
         orelse_type = conditional_value_type(orelse, body_type)
         body_type = conditional_value_type(body, orelse_type)
-        result_type = merge_return_types(body_type, orelse_type)
+        result_type = merge_conditional_types(body_type, orelse_type)
+        value_obj = result_type(
+            "__conditional_result__",
+            self.scope,
+            self.func,
+        )
         return IfExp(
             result_type,
+            value_obj=value_obj,
             test=test,
             body=body,
             orelse=orelse,
@@ -5139,8 +7054,36 @@ class InferenceVisitor(ast.NodeVisitor):
         return assertion
 
     def visit_Raise(self, node: ast.Raise):
+        if node.exc is None and not self.in_exception_handler:
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "bare raise requires an active exception handler",
+                help="Raise an explicit exception in this context.",
+            )
+        if node.cause is not None:
+            self.fail(
+                node.cause,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "exception chaining with 'raise ... from ...' is not supported",
+                help="Raise the exception without an explicit cause.",
+            )
         exc = self.visit(node.exc) if node.exc is not None else None
-        return ast.Raise(exc=exc, cause=node.cause)
+        if exc is not None:
+            exception_type = BUILTINS.search("Exception")
+            assert isinstance(exception_type, Class)
+            value_type = analyzed_value_type(exc)
+            if not all(
+                isinstance(member, Class) and is_subclass(member, exception_type)
+                for member in get_type_members(value_type)
+            ):
+                self.fail(
+                    node.exc,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    "raise requires an exception instance",
+                    help="Raise Exception or an instance of one of its subclasses.",
+                )
+        return ast.Raise(exc=exc, cause=None)
 
     # endregion
 
@@ -5163,9 +7106,9 @@ class CallGraphVisitor(ast.NodeVisitor):
         value.visited.add(self.entry_point)
         self.entry_point.compilation_objects.add(value)
 
-    def mark_virtual_visited(self, func: Function) -> None:
-        func.virtual_visited.add(self.entry_point)
-        self.entry_point.compilation_objects.add(func)
+    def mark_virtual_visited(self, value: Function | Instance) -> None:
+        value.virtual_visited.add(self.entry_point)
+        self.entry_point.compilation_objects.add(value)
 
     def retain_runtime_dunder(self, function: Function) -> None:
         method_name = getattr(
@@ -5202,15 +7145,163 @@ class CallGraphVisitor(ast.NodeVisitor):
             return None
         return override
 
-    def enter_overrides(self, func: Function, cls: Class):
+    def enter_overrides(self, func: Function, cls: Class) -> bool:
+        visited = False
+        for subclass in cls.subclasses:
+            override = self.property_override(func, subclass)
+            if isinstance(override, Function):
+                inherited = self.enter_overrides(override, subclass)
+                if self.entry_point in subclass.visited or inherited:
+                    self.enter_virtual(override)
+                    visited = True
+            elif self.enter_overrides(func, subclass):
+                visited = True
+            elif self.entry_point in subclass.visited:
+                visited = True
+        return visited
+
+    def enter_virtual_field(self, field: Instance):
+        owner = field_owner(field)
+        assert owner is not None
+        self.enter_field(field)
+        if self.entry_point in field.virtual_visited:
+            return
+        self.mark_virtual_visited(field)
+        self.enter_field_overrides(field, owner)
+
+    def enter_field(self, field: Instance):
+        if self.entry_point in field.visited:
+            return
+        self.mark_visited(field)
+        if field.static_value is not None:
+            self.visit(field.static_value)
+
+    def enter_field_overrides(self, field: Instance, cls: Class):
         for subclass in cls.subclasses:
             if self.entry_point not in subclass.visited:
                 continue
-            override = self.property_override(func, subclass)
-            if isinstance(override, Function):
-                self.enter_virtual(override)
+            override = subclass.find_attrs(field.name, search_bases=False)
+            if isinstance(override, Instance) and override.static_value is not None:
+                self.enter_virtual_field(override)
             else:
-                self.enter_overrides(func, subclass)
+                self.enter_field_overrides(field, subclass)
+
+    @staticmethod
+    def inherited_field_declaration(
+        cls: Class,
+        name: str,
+    ) -> tuple[Class, Class | UnionType] | None:
+        parent = cls.super
+        while parent is not None:
+            declarations = getattr(parent, "field_declarations", {})
+            if declared_type := declarations.get(name):
+                return parent, declared_type
+            parent = parent.super
+        return None
+
+    @staticmethod
+    def class_display_name(cls: Class) -> str:
+        return cls.to_annotation_str() if cls.generic_types else cls.name
+
+    def field_declaration_label(
+        self,
+        cls: Class,
+        name: str,
+        declared_type: Class | UnionType,
+    ) -> tuple[Label, ...]:
+        node = cls.field_declaration_nodes.get(name)
+        fragment = cls.container.source_fragment
+        if node is None or fragment is None:
+            return ()
+        return (
+            Label(
+                fragment.span(node),
+                f"{self.class_display_name(cls)}.{name} is declared as "
+                f"{declared_type.to_annotation_str()} here",
+            ),
+        )
+
+    def validate_class_fields(self, cls: Class) -> None:
+        fragment = cls.container.source_fragment
+        if fragment is None or not hasattr(cls, "field_declarations"):
+            return
+        names = cls.field_declarations.keys() | cls.field_value_nodes.keys()
+        for name in names:
+            field_name = f"{self.class_display_name(cls)}.{name}"
+            declared_type = cls.field_declarations.get(name)
+            inherited = self.inherited_field_declaration(cls, name)
+            if declared_type is not None and inherited is not None:
+                parent, parent_type = inherited
+                if not is_return_type_compatible(parent_type, declared_type):
+                    node = cls.field_declaration_nodes[name]
+                    actual = declared_type.to_annotation_str()
+                    expected = parent_type.to_annotation_str()
+                    cls.container.context.error(
+                        fragment,
+                        node,
+                        DiagnosticCode.INCOMPATIBLE_ASSIGNMENT,
+                        f"Cannot override inherited field {field_name!r} "
+                        f"of type {expected} with {actual}",
+                        secondary=self.field_declaration_label(
+                            parent,
+                            name,
+                            parent_type,
+                        ),
+                        help=(
+                            f"Use a type compatible with {expected} or change "
+                            "the declaration of "
+                            f"{self.class_display_name(parent)}.{name}."
+                        ),
+                    )
+
+            field = cls.find_attrs(name, search_bases=False)
+            if not (
+                isinstance(field, Instance)
+                and field.static_value is not None
+                and name in cls.field_value_nodes
+            ):
+                continue
+            expected_type = declared_type
+            parent = None
+            if expected_type is None and inherited is not None:
+                parent, expected_type = inherited
+            if expected_type is None or is_return_type_compatible(
+                expected_type,
+                field.cls,
+            ):
+                continue
+            actual = field.cls.to_annotation_str()
+            expected = expected_type.to_annotation_str()
+            if parent is None:
+                message = (
+                    f"Cannot assign {actual} to class field "
+                    f"{field_name!r} of type {expected}"
+                )
+                secondary = ()
+                declaration_owner = cls
+            else:
+                message = (
+                    f"Cannot assign {actual} to inherited field "
+                    f"{field_name!r} of type {expected}"
+                )
+                secondary = self.field_declaration_label(
+                    parent,
+                    name,
+                    expected_type,
+                )
+                declaration_owner = parent
+            cls.container.context.error(
+                fragment,
+                cls.field_value_nodes[name],
+                DiagnosticCode.INCOMPATIBLE_ASSIGNMENT,
+                message,
+                secondary=secondary,
+                help=(
+                    f"Assign a value compatible with {expected} or change "
+                    "the declaration of "
+                    f"{self.class_display_name(declaration_owner)}.{name}."
+                ),
+            )
 
     def enter_class(self, cls: Class):
         if cls.super is not None:
@@ -5218,27 +7309,24 @@ class CallGraphVisitor(ast.NodeVisitor):
             if runtime_dependency is not None:
                 cls.runtime_super_dependency = runtime_dependency
                 cls.runtime_super_alias = cls.container.register_inline_dependency(
-                    runtime_dependency
+                    runtime_dependency,
+                    self.entry_point,
                 )
                 self.enter_class(runtime_dependency)
-        generic = cls.container.scope.names.get(cls.generic_name)
-        if isinstance(generic, GenericClass):
-            self.mark_visited(generic)
         while cls is not None:
+            generic = cls.container.scope.names.get(cls.generic_name)
+            if isinstance(generic, GenericClass):
+                self.mark_visited(generic)
             if self.entry_point not in cls.visited:
+                self.validate_class_fields(cls)
                 self.mark_visited(cls)
                 for dependency in sorted(
                     getattr(cls, "client_model_dependencies", ()),
                     key=lambda item: (item.container.name, item.name),
                 ):
-                    if dependency is cls:
-                        cls.client_model_aliases[dependency] = cls.name
-                        continue
-                    if dependency.container is cls.container:
-                        alias = dependency.name
-                    else:
-                        alias = cls.container.register_inline_dependency(dependency)
-                    cls.client_model_aliases[dependency] = alias
+                    dependency.client_model_registry_required = True
+                    if dependency.container is not cls.container:
+                        cls.container.side_effect_dependencies.add(dependency)
                     self.enter_class(dependency)
                     self.enter(dependency.find("__init__"))
                 for method_name in tuple(
@@ -5263,6 +7351,10 @@ class CallGraphVisitor(ast.NodeVisitor):
                     self.enter_class(dependency_obj)
                     self.enter(dependency_obj.find("__init__"))
                 for attr in cls.children:
+                    if isinstance(attr, Instance):
+                        if self.parent_field_is_virtual(attr):
+                            self.enter_virtual_field(attr)
+                        continue
                     if not isinstance(attr, Function):
                         continue
                     if has_keep_decorator(attr.py_obj) or self.parent_has_keep(
@@ -5271,6 +7363,14 @@ class CallGraphVisitor(ast.NodeVisitor):
                         self.isolated_visit(attr)
                     elif self.parent_is_virtual(attr):
                         self.enter_virtual(attr)
+                method_names = (
+                    *getattr(cls.py_cls, "__pyjs_external_methods__", ()),
+                    *getattr(cls.py_cls, "__pyjs_generated_methods__", ()),
+                )
+                for method_name in dict.fromkeys(method_names):
+                    method = cls.find_attrs(method_name)
+                    if isinstance(method, Function):
+                        self.enter_virtual(method)
             cls = cls.super
 
     def parent_has_keep(self, obj):
@@ -5281,6 +7381,22 @@ class CallGraphVisitor(ast.NodeVisitor):
                 if parent_func and has_keep_decorator(parent_func.py_obj):
                     return True
                 parent = parent.super
+        return False
+
+    def parent_field_is_virtual(self, field: Instance):
+        if field.static_value is None or not isinstance(field.container, Class):
+            return False
+        parent = field.container.super
+        while parent is not None:
+            parent_field = parent.find_attrs(field.name, search_bases=False)
+            if parent_field is None:
+                parent_field = parent._self.attrs.get(field.name)
+            if (
+                isinstance(parent_field, Instance)
+                and self.entry_point in parent_field.virtual_visited
+            ):
+                return True
+            parent = parent.super
         return False
 
     def parent_is_virtual(self, obj):
@@ -5310,11 +7426,53 @@ class CallGraphVisitor(ast.NodeVisitor):
                 return False
         return True
 
+    @staticmethod
+    def is_virtual_field_reference(node):
+        if not (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.obj, Instance)
+            and field_owner(node.obj) is not None
+        ):
+            return False
+        receiver = node.value
+        if isinstance(receiver, Name) and isinstance(receiver.obj, Class):
+            return False
+        if isinstance(receiver, Call) and isinstance(receiver.func.obj, Class):
+            return False
+        return True
+
     def isolated_visit(self, func: Function):
         assert isinstance(func, Function)
         if func.has_source_decorator:
             self.mark_visited(func)
             module = func.cls.container if func.is_method else func.container
+            remote_operation = getattr(func.py_func, "__pyjs_operation__", None)
+            if remote_operation is not None and not is_supported_client_result_type(
+                func.return_type
+            ):
+                module.context.definition_error(
+                    func.py_func,
+                    DiagnosticCode.UNSUPPORTED_CLIENT_RESULT,
+                    f"Operation {func.name!r} has unsupported client result type "
+                    f"{func.return_type.to_annotation_str()!r}.",
+                    help=(
+                        "Return a supported primitive, Pydantic model, optional, "
+                        "list, dictionary, tuple, set, or Page value."
+                    ),
+                )
+            if (
+                remote_operation is not None
+                and not remote_operation.jsonapi
+                and client_result_requires_decoding(func.return_type)
+            ):
+                decoder = func.cls.find("_decode_result")
+                assert isinstance(decoder, Function)
+                self.enter_virtual(decoder)
+            for dependency_obj in client_model_types(func.return_type):
+                if remote_operation is not None and not remote_operation.jsonapi:
+                    dependency_obj.client_model_registry_required = True
+                self.enter_class(dependency_obj)
+                self.enter(dependency_obj.find("__init__"))
             for name, dependency in getattr(
                 func.py_func,
                 "__js_source_imports__",
@@ -5344,15 +7502,20 @@ class CallGraphVisitor(ast.NodeVisitor):
                 self.enter_class(dependency_obj)
                 self.enter(dependency_obj.find("__init__"))
             return
-        if (
-            self.entry_point not in func.visited
-        ):
+        if self.entry_point not in func.visited:
+            if not func.is_analyzed:
+                annotate_types(func)
             type(self)(func, self.entry_point).visit(func.node)
 
     def visit_FunctionDef(self, node: FunctionDef):
         self.mark_visited(node.obj)
-        for arg in node.args.args:
+        for arg in (*node.args.posonlyargs, *node.args.args):
             self.visit(arg)
+        for default in node.args.defaults:
+            self.visit(default)
+        for default in node.args.kw_defaults:
+            if default is not None:
+                self.visit(default)
         for stmt in node.body:
             self.visit(stmt)
 
@@ -5364,13 +7527,31 @@ class CallGraphVisitor(ast.NodeVisitor):
     def visit_Assert(self, node: ast.Assert):
         module = self.func.cls.container if self.func.is_method else self.func.container
         dependency = node.runtime_dependency
-        node.runtime_alias = module.register_inline_dependency(dependency)
+        node.runtime_alias = module.register_inline_dependency(
+            dependency,
+            self.entry_point,
+        )
         self.enter_class(dependency)
         self.enter(dependency.find("__init__"))
         self.generic_visit(node)
 
     def visit_AsyncFunctionDef(self, node: AsyncFunctionDef):
         self.visit_FunctionDef(node)
+
+    def visit_For(self, node: ast.For):
+        for method in getattr(node, "runtime_methods", ()):
+            self.enter_virtual(method)
+        self.generic_visit(node)
+
+    def visit_comprehension(self, node: ast.comprehension):
+        for method in getattr(node, "runtime_methods", ()):
+            self.enter_virtual(method)
+        self.generic_visit(node)
+
+    def visit_Starred(self, node: Starred):
+        for method in getattr(node, "runtime_methods", ()):
+            self.enter_virtual(method)
+        self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call):
         if isinstance(node.func, Name) and node.func.id == "tw":
@@ -5381,11 +7562,22 @@ class CallGraphVisitor(ast.NodeVisitor):
         module = self.func.cls.container if self.func.is_method else self.func.container
         for name, dependency in getattr(node, "dependency_objects", {}).items():
             node.inline_dependencies[name] = module.register_inline_dependency(
-                dependency
+                dependency,
+                self.entry_point,
             )
             self.enter(dependency)
         for method in getattr(node, "runtime_methods", ()):
             self.enter_virtual(method)
+        for method in node.generated_methods:
+            self.enter(method)
+        for method in node.generated_virtual_methods:
+            self.enter_virtual(method)
+        if node.dictionary_keys is not None:
+            for argument in node.args:
+                self.visit(argument)
+            for keyword in node.keywords:
+                self.visit(keyword.value)
+            return
         if forwarded_func := getattr(node, "forwarded_func", None):
             if isinstance(forwarded_func, Attribute):
                 if self.is_virtual_method_reference(forwarded_func):
@@ -5427,7 +7619,21 @@ class CallGraphVisitor(ast.NodeVisitor):
             else:
                 self.enter(node.obj)
         elif isinstance(node.obj, Instance):
-            self.mark_visited(node.obj)
+            if self.is_virtual_field_reference(node):
+                self.enter_virtual_field(node.obj)
+            else:
+                field = node.obj
+                if (
+                    isinstance(node.value, Call)
+                    and isinstance(node.value.func.obj, Class)
+                ):
+                    override = node.value.func.obj.find_attrs(
+                        node.attr,
+                        search_bases=False,
+                    )
+                    if isinstance(override, Instance):
+                        field = override
+                self.enter_field(field)
             if node.obj.member_dependency is not None:
                 self.enter_class(node.obj.member_dependency)
                 self.enter(node.obj.member_dependency.find("__init__"))
@@ -5435,7 +7641,10 @@ class CallGraphVisitor(ast.NodeVisitor):
 
     def visit_RuntimeFunctionReference(self, node: RuntimeFunctionReference):
         module = self.func.cls.container if self.func.is_method else self.func.container
-        node.alias = module.register_inline_dependency(node.runtime_dependency)
+        node.alias = module.register_inline_dependency(
+            node.runtime_dependency,
+            self.entry_point,
+        )
         self.enter(node.runtime_dependency)
         self.retain_runtime_dunder(node.obj)
         if node.receiver is not None:
@@ -5456,13 +7665,15 @@ class CallGraphVisitor(ast.NodeVisitor):
                 )
                 if isinstance(node.runtime_dependency, Class):
                     node.runtime_alias = module.register_inline_dependency(
-                        node.runtime_dependency
+                        node.runtime_dependency,
+                        self.entry_point,
                     )
                     self.enter_class(node.runtime_dependency)
                     self.enter(node.runtime_dependency.find("__init__"))
                 else:
                     node.id = module.register_inline_dependency(
-                        node.runtime_dependency
+                        node.runtime_dependency,
+                        self.entry_point,
                     )
                     self.enter(node.runtime_dependency)
                 if isinstance(node.obj, Function):
@@ -5477,8 +7688,11 @@ class CallGraphVisitor(ast.NodeVisitor):
                 Module,
             ):
                 self.mark_visited(node.obj)
-                self.enter_class(node.obj.cls)
-                self.enter(node.obj.cls.find("__init__"))
+                if node.obj.static_value is None:
+                    self.enter_class(node.obj.cls)
+                    self.enter(node.obj.cls.find("__init__"))
+                else:
+                    self.visit(node.obj.static_value)
             elif isinstance(node.obj, UnionType):
                 for obj_type in node.obj.types:
                     self.enter_class(obj_type)
@@ -5487,25 +7701,189 @@ class CallGraphVisitor(ast.NodeVisitor):
                 self.mark_visited(node.obj)
 
 
+class RenderGraphVisitor(CallGraphVisitor):
+    """Discover server-render dependencies without retaining creation code."""
+
+    def mark_visited(self, value: Object) -> None:
+        self.entry_point.compilation_objects.add(value)
+
+    def enter(self, func: Function):
+        if self.entry_point in func.render_visited:
+            return
+        func.render_visited.add(self.entry_point)
+        self.entry_point.compilation_objects.add(func)
+        if has_inline_decorator(func.py_obj) or func.has_source_decorator:
+            return
+        type(self)(func, self.entry_point).visit(func.node)
+
+    def enter_class(self, cls: Class):
+        if getattr(cls.py_cls, "__pyjs_constructor_method__", None) != "_create":
+            return
+        client = CallGraphVisitor(self.func, self.entry_point)
+        client.enter_class(cls)
+        initialize = cls.find_attrs("initialize", search_bases=False)
+        if isinstance(initialize, Function):
+            client.enter(initialize)
+        reference_method_name = getattr(
+            cls.py_cls,
+            "__pyjs_reference_method__",
+            None,
+        )
+        if reference_method_name is not None:
+            reference_method = cls.find(reference_method_name)
+            client.enter(reference_method)
+        init = cls.find("__init__")
+        hydration = HydrationGraphVisitor(init, self.entry_point)
+        hydration.visit(init.node)
+        if hydration.has_bindings:
+            init.hydrate_visited.add(self.entry_point)
+            self.entry_point.compilation_objects.add(init)
+
+    def visit_FunctionDef(self, node: FunctionDef):
+        for arg in (*node.args.posonlyargs, *node.args.args):
+            self.visit(arg)
+        for default in node.args.defaults:
+            self.visit(default)
+        for default in node.args.kw_defaults:
+            if default is not None:
+                self.visit(default)
+        for stmt in node.body:
+            self.visit(stmt)
+
+    def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, Name) and node.func.id == "tw":
+            self.entry_point.tailwind_classes.update(node.args[0].value.split(" "))
+        func = node.func.obj
+        if isinstance(func, Function):
+            self.enter(func)
+        elif isinstance(func, Class):
+            self.enter_class(func)
+            init = func.find("__init__")
+            self.enter(init)
+        for argument in node.args:
+            self.visit(argument)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        self.generic_visit(node)
+
+    def visit_Name(self, node: Name):
+        if isinstance(getattr(node, "obj", None), Class):
+            self.enter_class(node.obj)
+            self.enter(node.obj.find("__init__"))
+
+
+def hydration_ref_call(value: ast.expr) -> Call | None:
+    """Return a ref call through compile-time-only type casts."""
+    while isinstance(value, StaticCast):
+        value = value.value
+    if isinstance(value, Call) and getattr(value, "is_ref", False):
+        return value
+    return None
+
+
+class HydrationGraphVisitor(ast.NodeVisitor):
+    def __init__(self, func: Function, entry_point: Function):
+        self.func = func
+        self.entry_point = entry_point
+        self.client = CallGraphVisitor(func, entry_point)
+        self.elements = set()
+        self.has_bindings = False
+
+    def visit_Assign(self, node: ast.Assign):
+        if hydration_ref_call(node.value) is None:
+            return
+        for target in node.targets:
+            if isinstance(target, ast.Attribute):
+                self.elements.add(target.obj)
+                self.has_bindings = True
+
+    def visit_Expr(self, node: ast.Expr):
+        if not isinstance(node.value, ast.Call):
+            return
+        func = node.value.func
+        if not isinstance(func, Attribute):
+            return
+        if (
+            func.attr == "__init__"
+            and isinstance(func.value, Call)
+            and isinstance(func.value.func, Name)
+            and func.value.func.id == "super"
+        ):
+            parent = self.func.cls.super
+            if parent is not None:
+                init = parent.find("__init__")
+                parent_hydration = type(self)(init, self.entry_point)
+                parent_hydration.visit(init.node)
+                if parent_hydration.has_bindings:
+                    init.hydrate_visited.add(self.entry_point)
+                    self.entry_point.compilation_objects.add(init)
+            return
+        if func.attr == "addEventListener":
+            receiver = func.value
+            while isinstance(receiver, ast.Attribute):
+                receiver = receiver.value
+            if (
+                isinstance(receiver, Name)
+                and receiver.id != "self"
+                and receiver.id in self.func.scope.names
+            ):
+                module = (
+                    self.func.cls.container
+                    if self.func.is_method
+                    else self.func.container
+                )
+                module.context.error(
+                    self.func.source_fragment,
+                    func.value,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Hydrated event targets cannot be constructor-local values",
+                    help=(
+                        "Store the target as a ref() attribute on self before "
+                        "registering the event listener."
+                    ),
+                )
+        if func.value.obj in self.elements or func.attr == "addEventListener":
+            self.has_bindings = True
+            if func.attr == "addEventListener":
+                self.client.visit(func.value)
+            if isinstance(func.obj, Function):
+                if self.client.is_virtual_method_reference(func):
+                    self.client.enter_virtual(func.obj)
+                else:
+                    self.client.enter(func.obj)
+            for argument in node.value.args:
+                self.client.visit(argument)
+            for keyword in node.value.keywords:
+                self.client.visit(keyword.value)
+
+
 def from_entry_point(
     entry_point: callable,
     extensions: tuple[CompilationExtension, ...] = (),
     additional_entry_points: tuple[callable, ...] = (),
+    render_entry_points: tuple[callable, ...] = (),
+    render_primary: bool = False,
 ):
     entry_point.__js__ = True
     for additional_entry_point in additional_entry_points:
         additional_entry_point.__js__ = True
+    for render_entry_point in render_entry_points:
+        render_entry_point.__js__ = True
     py_module = inspect.getmodule(entry_point)
     return analyze_module(
         py_module,
         entry_point,
         extensions=extensions,
         additional_entry_points=additional_entry_points,
+        render_entry_points=render_entry_points,
+        render_primary=render_primary,
     )
 
 
-def _reachable_analyzer_objects(root: Object) -> Iterator[Object]:
-    pending = [root]
+def _reachable_analyzer_objects_from(roots: Iterable[Object]) -> Iterator[Object]:
+    pending = list(roots)
     seen = set()
     while pending:
         value = pending.pop()
@@ -5532,47 +7910,68 @@ def _reachable_analyzer_objects(root: Object) -> Iterator[Object]:
                 pending.extend(item for item in child if isinstance(item, Object))
 
 
-def _type_uses_package(value: Object, package: dict, seen: set[int]) -> bool:
-    if id(value) in seen:
-        return False
-    seen.add(id(value))
-    if isinstance(value, UnionType):
-        return any(_type_uses_package(item, package, seen) for item in value.types)
-    if not isinstance(value, Class):
-        return False
-    if value.container.container is package:
-        return True
-    return any(
-        _type_uses_package(item, package, seen)
-        for item in (value.generic_types or {}).values()
-    )
+def _reachable_analyzer_objects(root: Object) -> Iterator[Object]:
+    yield from _reachable_analyzer_objects_from((root,))
+
+
+@dataclass
+class _SharedAnalyzerState:
+    type_dependencies: dict[Module, tuple[Class, ...]]
+    concrete_classes: dict[GenericClass, set[tuple]]
+    closed: bool = False
+
+    @classmethod
+    def capture(cls) -> _SharedAnalyzerState:
+        values = tuple(_reachable_analyzer_objects(BUILTINS))
+        state = cls(
+            {
+                value: tuple(value.type_dependencies)
+                for value in values
+                if isinstance(value, Module)
+            },
+            {
+                value: set(value.concrete_classes)
+                for value in values
+                if isinstance(value, GenericClass)
+            },
+        )
+        _SHARED_ANALYZER_STATES.append(state)
+        return state
+
+    def restore(self) -> None:
+        for module, dependencies in self.type_dependencies.items():
+            module.type_dependencies[:] = dependencies
+        for generic, retained_keys in self.concrete_classes.items():
+            for key in set(generic.concrete_classes) - retained_keys:
+                del generic.concrete_classes[key]
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        while _SHARED_ANALYZER_STATES and _SHARED_ANALYZER_STATES[-1].closed:
+            _SHARED_ANALYZER_STATES.pop().restore()
+
+
+_SHARED_ANALYZER_STATES: list[_SharedAnalyzerState] = []
 
 
 def release_compilation(entry_point: Function) -> None:
     roots = entry_point.compilation_entry_points or (entry_point,)
-    package = entry_point.container.container
     for root in roots:
         for value in root.compilation_objects:
             value.visited.discard(root)
-            if isinstance(value, Function):
+            if isinstance(value, (Function, Instance)):
                 value.virtual_visited.discard(root)
+            if isinstance(value, Function):
+                value.hydrate_visited.discard(root)
+                value.render_visited.discard(root)
         root.compilation_objects.clear()
         root.compilation_entry_points = ()
         root.runtime_dunder_dependencies.clear()
-    for value in _reachable_analyzer_objects(BUILTINS):
-        if isinstance(value, Module) and value.container is not package:
-            value.type_dependencies = [
-                dependency
-                for dependency in value.type_dependencies
-                if not _type_uses_package(dependency, package, set())
-            ]
-        if isinstance(value, GenericClass) and value.container.container is not package:
-            for key, concrete in list(value.concrete_classes.items()):
-                if any(
-                    _type_uses_package(item, package, set())
-                    for item in (concrete.generic_types or {}).values()
-                ):
-                    del value.concrete_classes[key]
+    if entry_point.compilation_cleanup is not None:
+        entry_point.compilation_cleanup()
+        entry_point.compilation_cleanup = None
 
 
 def analyze_module(
@@ -5580,6 +7979,8 @@ def analyze_module(
     entry_point=None,
     extensions: tuple[CompilationExtension, ...] = (),
     additional_entry_points: tuple[callable, ...] = (),
+    render_entry_points: tuple[callable, ...] = (),
+    render_primary: bool = False,
 ):
     if entry_point is None:
         assert hasattr(py_module, "main"), (
@@ -5587,50 +7988,115 @@ def analyze_module(
         )
         py_module.main.__js__ = True
         entry_point = py_module.main
-    package = {}
-    context = CompilationContext()
-    module = Module(
-        py_module,
-        package,
-        extensions=extensions,
-        context=context,
-    ).build()
-    package[module.name] = module
-    entry_point_function = module.search(entry_point.__name__)
-    assert isinstance(entry_point_function, Function)
-    entry_point_function.compilation_entry_points = (entry_point_function,)
+    shared_state = _SharedAnalyzerState.capture()
+    entry_point_function = None
     try:
-        annotated = set()
-        while pending := [value for value in package.values() if value not in annotated]:
+        package = {}
+        context = CompilationContext()
+        module = Module(
+            py_module,
+            package,
+            extensions=extensions,
+            context=context,
+        ).build()
+        package[module.name] = module
+        entry_points = (
+            entry_point,
+            *additional_entry_points,
+            *render_entry_points,
+        )
+        entry_point_functions = [
+            resolve_entry_point(module, py_func) for py_func in entry_points
+        ]
+        entry_point_function = entry_point_functions[0]
+        assert isinstance(entry_point_function, Function)
+        entry_point_function.compilation_entry_points = (entry_point_function,)
+        entry_point_function.compilation_cleanup = shared_state.close
+        prepared = set()
+        while pending := [value for value in package.values() if value not in prepared]:
             for imported in pending:
                 annotate_types(imported)
-                annotated.add(imported)
-        entry_point_function, tailwind_classes = visit_entry_point(module, entry_point)
+                analyze_static_initializers(imported)
+                prepared.add(imported)
+        if render_primary:
+            entry_point_function.tailwind_classes = set()
+            entry_point_function.compilation_objects = set()
+            entry_point_function.runtime_dunder_dependencies = set()
+            RenderGraphVisitor(
+                entry_point_function,
+                entry_point_function,
+            ).enter(entry_point_function)
+            tailwind_classes = entry_point_function.tailwind_classes
+        else:
+            entry_point_function, tailwind_classes = visit_entry_point(
+                entry_point_functions[0]
+            )
         compilation_entry_points = [entry_point_function]
-        for additional_entry_point in additional_entry_points:
+        additional_end = 1 + len(additional_entry_points)
+        for additional_function in entry_point_functions[1:additional_end]:
             additional_function, additional_tailwind_classes = visit_entry_point(
-                module,
-                additional_entry_point,
+                additional_function,
             )
             additional_function.visited.discard(additional_function)
             compilation_entry_points.append(additional_function)
             tailwind_classes.update(additional_tailwind_classes)
+        for render_function in entry_point_functions[additional_end:]:
+            render_function.tailwind_classes = set()
+            render_function.compilation_objects = set()
+            render_function.runtime_dunder_dependencies = set()
+            RenderGraphVisitor(render_function, render_function).enter(render_function)
+            compilation_entry_points.append(render_function)
+            tailwind_classes.update(render_function.tailwind_classes)
         entry_point_function.compilation_entry_points = tuple(compilation_entry_points)
         entry_point_function.visited.discard(entry_point_function)
         return entry_point_function, tailwind_classes
     except BaseException:
-        release_compilation(entry_point_function)
+        if entry_point_function is None:
+            shared_state.close()
+        else:
+            release_compilation(entry_point_function)
         raise
 
 
-def visit_entry_point(module: Module, py_func):
-    entry_point_func = module.search(py_func.__name__)
+def resolve_entry_point(module: Module, py_func) -> Function:
+    if inspect.getmodule(py_func) is module.py_module:
+        entry_point_func = module.search(py_func.__name__)
+    else:
+        entry_point_func = resolve_imported(py_func, module)
     assert isinstance(entry_point_func, Function)
+    return entry_point_func
+
+
+def visit_entry_point(entry_point_func: Function):
     entry_point_func.tailwind_classes = set()
     entry_point_func.compilation_objects = set()
     entry_point_func.runtime_dunder_dependencies = set()
     CallGraphVisitor.start(entry_point_func)
     return entry_point_func, entry_point_func.tailwind_classes
+
+
+def promote_atomic_class_reachability(entry_point: Function) -> None:
+    """Keep every reached method dependency with its emitted class."""
+    package = entry_point.container.container
+    changed = True
+    while changed:
+        changed = False
+        values = tuple(_reachable_analyzer_objects_from(package.values()))
+        for value in values:
+            if not isinstance(value, Class) or not value.visited:
+                continue
+            roots = tuple(value.visited)
+            methods = [
+                method
+                for method in value.children
+                if isinstance(method, Function) and method.visited
+            ]
+            for method in methods:
+                for root in roots:
+                    if root in method.visited:
+                        continue
+                    CallGraphVisitor(method, root).enter(method)
+                    changed = True
 
 
 def flatten_objects(parent: Object) -> Iterator[Function]:
@@ -5672,7 +8138,68 @@ def annotate_types(parent: Object):
                 added = True
         if not added:
             break
-        functions = dependencies.static_order()
+        try:
+            functions = tuple(dependencies.static_order())
+        except CycleError as error:
+            cycle = error.args[1]
+            func = next(value for value in cycle if isinstance(value, Function))
+            module = func.cls.container if func.is_method else func.container
+            names = " -> ".join(
+                value.name for value in cycle if isinstance(value, Function)
+            )
+            module.context.definition_error(
+                func.py_func,
+                DiagnosticCode.TYPE_ANNOTATION_REQUIRED,
+                f"Types in dependency cycle {names} cannot be inferred",
+                help=(
+                    "Add explicit annotations to values shared by the functions "
+                    "in the cycle."
+                ),
+            )
+
+
+def analyze_static_initializers(module: Module) -> None:
+    def module_initializer():
+        pass
+
+    initializers = [
+        (module, name, module.scope.names[name], initializer)
+        for name, initializer in module.static_initializers.items()
+        if name in module.preserved_static_initializers
+    ]
+    for value in module.scope.names.values():
+        classes = (
+            tuple(value.concrete_classes.values())
+            if isinstance(value, GenericClass)
+            else (value,)
+        )
+        for cls in classes:
+            if not isinstance(cls, Class) or cls.container is not module:
+                continue
+            initializers.extend(
+                (cls, name, cls.find_attrs(name, search_bases=False), initializer)
+                for name, initializer in getattr(
+                    cls,
+                    "static_initializers",
+                    {},
+                ).items()
+            )
+
+    for container, name, value, initializer in initializers:
+        assert isinstance(value, Instance)
+        context = Function(module_initializer, container)
+        context.name = name
+        context.source_fragment = module.source_fragment
+        while True:
+            try:
+                analyzed = InferenceVisitor(context).analyze_assignment_value(
+                    initializer,
+                    value.cls.annotation,
+                )
+                value.static_value = ast.fix_missing_locations(analyzed.node)
+                break
+            except DependencyError as dependency:
+                annotate_types(dependency.class_or_func)
 
 
 def load_builtins():

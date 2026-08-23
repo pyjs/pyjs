@@ -1,14 +1,23 @@
 from pyjs import js
-from pyjs.web.domx import span, tw
+from pyjs.web.domx import div, span, tw
 
 
 @js
 def Marker(*children, variant: str = "default"):
-    return span(
+    return div(
         tw(
-            "inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-1 text-xs "
-            "font-medium text-slate-700 data-[variant=outline]:border "
-            "data-[variant=outline]:border-slate-300 data-[variant=outline]:bg-white"
+            "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-sm "
+            "text-slate-500 data-[variant=separator]:before:mr-1 "
+            "data-[variant=separator]:before:h-px "
+            "data-[variant=separator]:before:min-w-0 "
+            "data-[variant=separator]:before:flex-1 "
+            "data-[variant=separator]:before:bg-slate-200 "
+            "data-[variant=separator]:after:ml-1 data-[variant=separator]:after:h-px "
+            "data-[variant=separator]:after:min-w-0 "
+            "data-[variant=separator]:after:flex-1 "
+            "data-[variant=separator]:after:bg-slate-200 "
+            "data-[variant=border]:border-b data-[variant=border]:border-slate-200 "
+            "data-[variant=border]:pb-2"
         ),
         {"data-slot": "marker", "data-variant": variant},
         *children,
@@ -18,12 +27,19 @@ def Marker(*children, variant: str = "default"):
 @js
 def MarkerIcon(*children):
     return span(
-        tw("inline-flex size-3 items-center justify-center"),
-        {"data-slot": "marker-icon"},
+        tw("inline-flex size-4 shrink-0 items-center justify-center"),
+        {"aria-hidden": "true", "data-slot": "marker-icon"},
         *children,
     )
 
 
 @js
 def MarkerContent(*children):
-    return span({"data-slot": "marker-content"}, *children)
+    return span(
+        tw(
+            "min-w-0 break-words group-data-[variant=separator]/marker:flex-none "
+            "group-data-[variant=separator]/marker:text-center"
+        ),
+        {"data-slot": "marker-content"},
+        *children,
+    )

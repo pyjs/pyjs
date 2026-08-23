@@ -85,7 +85,38 @@ def repr_string(value: str) -> str:
 
 
 @js
-def repr_value(value: object) -> str:
+def float_string(value: float) -> str: ...
+
+
+float_string.source(
+    r"""if (Number.isNaN(value)) return 'nan';
+if (value === Infinity) return 'inf';
+if (value === -Infinity) return '-inf';
+if (Object.is(value, -0)) return '-0.0';
+const magnitude = Math.abs(value);
+let text = magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e16)
+    ? value.toExponential()
+    : String(value);
+if (!text.includes('e') && Number.isInteger(value)) return text + '.0';
+return text.replace(/e([+-]?)(\d+)$/, (_, sign, exponent) =>
+    `e${sign || '+'}${exponent.padStart(2, '0')}`
+);
+"""
+)
+
+
+@js
+def contains_identity(values: list[object], target: object) -> bool:
+    for value in values:
+        if value is target:
+            return True
+    return False
+
+
+@js
+def repr_value(value: object, active: list[object] | None = None) -> str:
+    if active is None:
+        active = []
     if value is None:
         return "None"
     if isinstance(value, bool):
@@ -94,15 +125,25 @@ def repr_value(value: object) -> str:
         return repr_string(value)
 
     if isinstance(value, list):
+        if contains_identity(active, value):
+            return "[...]"
+        active.append(value)
         parts: list[str] = []
         for item in value:
-            parts.append(repr_value(item))
+            parts.append(repr_value(item, active))
+        active.pop()
         return "[" + ", ".join(parts) + "]"
 
     if isinstance(value, dict):
+        if contains_identity(active, value):
+            return "{...}"
+        active.append(value)
         entries: list[str] = []
         for key, item in value.items():
-            entries.append(repr_value(key) + ": " + repr_value(item))
+            entries.append(
+                repr_value(key, active) + ": " + repr_value(item, active)
+            )
+        active.pop()
         return "{" + ", ".join(entries) + "}"
 
     if isinstance(value, set):
@@ -110,7 +151,7 @@ def repr_value(value: object) -> str:
             return "set()"
         set_parts: list[str] = []
         for item in value:
-            set_parts.append(repr_value(item))
+            set_parts.append(repr_value(item, active))
         return "{" + ", ".join(set_parts) + "}"
 
     custom = custom_repr_or_none(value)
@@ -120,10 +161,19 @@ def repr_value(value: object) -> str:
 
 
 @js
-def repr_tuple(values: tuple[object]) -> str:
+def repr_tuple(
+    values: tuple[object],
+    active: list[object] | None = None,
+) -> str:
+    if active is None:
+        active = []
+    if contains_identity(active, values):
+        return "(...)"
+    active.append(values)
     parts: list[str] = []
     for value in values:
-        parts.append(repr_value(value))
+        parts.append(repr_value(value, active))
+    active.pop()
     suffix = "," if len(parts) == 1 else ""
     return "(" + ", ".join(parts) + suffix + ")"
 
@@ -228,6 +278,42 @@ def find_equal_sequence_item(
         if equal_value(values[index], item):
             return index
     return -1
+
+
+@js
+def contains_equal_sequence_item(
+    values: list[object],
+    item: object,
+) -> bool:
+    for value in values:
+        if equal_value(value, item):
+            return True
+    return False
+
+
+@js
+def count_equal_sequence_items(
+    values: list[object],
+    item: object,
+) -> int:
+    count = 0
+    for value in values:
+        if equal_value(value, item):
+            count += 1
+    return count
+
+
+@js
+def title_string(value: str) -> str: ...
+
+
+title_string.source(
+    r"""return value.replace(/\p{L}+/gu, (word) => {
+    const chars = Array.from(word);
+    return chars[0].toUpperCase() + chars.slice(1).join('').toLowerCase();
+});
+"""
+)
 
 
 @js
@@ -347,6 +433,194 @@ def string_characters(value: str) -> list[str]:
 
 
 @js
+def strip_string(
+    value: str,
+    chars: str | None,
+    left: bool,
+    right: bool,
+) -> str: ...
+
+
+strip_string.source(
+    r"""const values = Array.from(value);
+const selected = chars === null ? null : new Set(chars);
+const whitespace = /[\p{White_Space}\u001c-\u001f]/u;
+const shouldStrip = character => selected === null ?
+    whitespace.test(character) : selected.has(character);
+let start = 0;
+let end = values.length;
+if (left) while (start < end && shouldStrip(values[start])) start++;
+if (right) while (end > start && shouldStrip(values[end - 1])) end--;
+return values.slice(start, end).join('');
+"""
+)
+
+
+@js
+def search_string(
+    value: str,
+    needle: str,
+    start: int | None,
+    end: int | None,
+    mode: str,
+) -> int: ...
+
+
+search_string.source(
+    """\
+const values = Array.from(value);
+const selected = Array.from(needle);
+const length = values.length;
+let first = start === null ? 0 : start;
+if (first < 0) first = Math.max(length + first, 0);
+else if (first > length) return mode === 'count' ? 0 : -1;
+let last = end === null ? length : end;
+if (last < 0) last = Math.max(length + last, 0);
+else last = Math.min(last, length);
+if (last < first) return mode === 'count' ? 0 : -1;
+if (selected.length === 0) {
+    return mode === 'count' ? last - first + 1 :
+        mode === 'reverse' ? last : first;
+}
+const matchesAt = index => {
+    for (let offset = 0; offset < selected.length; offset++) {
+        if (values[index + offset] !== selected[offset]) return false;
+    }
+    return true;
+};
+if (mode === 'count') {
+    let count = 0;
+    for (let index = first; index + selected.length <= last;) {
+        if (matchesAt(index)) {
+            count++;
+            index += selected.length;
+        } else {
+            index++;
+        }
+    }
+    return count;
+}
+if (mode === 'reverse') {
+    for (let index = last - selected.length; index >= first; index--) {
+        if (matchesAt(index)) return index;
+    }
+} else {
+    for (let index = first; index + selected.length <= last; index++) {
+        if (matchesAt(index)) return index;
+    }
+}
+return -1;
+"""
+)
+
+
+def search_inline(
+    self,
+    sub,
+    search_string,
+    start="0",
+    end="null",
+    mode="forward",
+    raising=False,
+    **kwargs,
+):
+    found = f"{search_string}({self},{sub},{start},{end},'{mode}')"
+    if not raising:
+        return found
+    return (
+        "((index)=>{if(index<0)throw new RangeError('substring not found');"
+        f"return index;}})({found})"
+    )
+
+
+@js
+def justify_string(
+    value: str,
+    width: int,
+    fill: str,
+    mode: str,
+) -> str: ...
+
+
+justify_string.source(
+    """\
+if (Array.from(fill).length !== 1) {
+    throw new TypeError('The fill character must be exactly one character long');
+}
+const padding = width - Array.from(value).length;
+if (padding <= 0) return value;
+const left = mode === 'left' ? 0 :
+    mode === 'right' ? padding : Math.floor(padding / 2);
+return fill.repeat(left) + value + fill.repeat(padding - left);
+"""
+)
+
+
+def justify_inline(
+    self,
+    width,
+    justify_string,
+    fillchar="' '",
+    mode="left",
+    **kwargs,
+):
+    return f"{justify_string}({self},{width},{fillchar},'{mode}')"
+
+
+@js
+def partition_string(
+    value: str,
+    separator: str,
+    reverse: bool,
+) -> tuple[str, str, str]: ...
+
+
+partition_string.source(
+    """\
+if (separator === '') throw new RangeError('empty separator');
+const index = reverse ? value.lastIndexOf(separator) : value.indexOf(separator);
+if (index < 0) return reverse ? ['', '', value] : [value, '', ''];
+return [
+    value.slice(0, index),
+    separator,
+    value.slice(index + separator.length),
+];
+"""
+)
+
+
+def affix_inline(
+    self,
+    _arg_strs,
+    _arg_types,
+    prefix=None,
+    suffix=None,
+    start="0",
+    end="null",
+    **kwargs,
+):
+    is_suffix = suffix is not None
+    affix = suffix if is_suffix else prefix
+    if len(_arg_strs) == 1 and type_name(_arg_types[0]) == "str":
+        method = "endsWith" if is_suffix else "startsWith"
+        return f"{self}.{method}({affix})"
+    return (
+        "((value,affix,start,end,suffix)=>{const values=Array.from(value);"
+        "const length=values.length;let first=start;"
+        "if(first<0)first=Math.max(length+first,0);"
+        "else if(first>length)return false;"
+        "let last=end===null?length:end;"
+        "if(last<0)last=Math.max(length+last,0);"
+        "else last=Math.min(last,length);if(last<first)return false;"
+        "const selected=values.slice(first,last).join('');"
+        "const choices=Array.isArray(affix)?affix:[affix];"
+        "return choices.some(choice=>suffix?selected.endsWith(choice):"
+        "selected.startsWith(choice));})"
+        f"({self},{affix},{start},{end},{str(is_suffix).lower()})"
+    )
+
+
+@js
 def replace_string(
     value: str,
     old: str,
@@ -372,6 +646,117 @@ def replace_string(
     return result
 
 
+@js
+def split_string(
+    value: str,
+    separator: str | None = None,
+    maxsplit: int = -1,
+    reverse: bool = False,
+) -> list[str]:
+    ...
+
+
+split_string.source(
+    """\
+if (separator === '') throw new RangeError('empty separator');
+if (separator !== null) {
+    if (maxsplit < 0) return value.split(separator);
+    const parts = [];
+    if (reverse) {
+        let end = value.length;
+        for (let count = 0; count < maxsplit; count++) {
+            const position = end - separator.length;
+            if (position < 0) break;
+            const index = value.lastIndexOf(separator, position);
+            if (index < 0) break;
+            parts.push(value.slice(index + separator.length, end));
+            end = index;
+        }
+        parts.push(value.slice(0, end));
+        parts.reverse();
+        return parts;
+    }
+    let start = 0;
+    for (let count = 0; count < maxsplit; count++) {
+        const index = value.indexOf(separator, start);
+        if (index < 0) break;
+        parts.push(value.slice(start, index));
+        start = index + separator.length;
+    }
+    parts.push(value.slice(start));
+    return parts;
+}
+const whitespace = /[\\p{White_Space}\\u001c-\\u001f]/u;
+const parts = [];
+if (reverse) {
+    let end = value.length;
+    while (end > 0 && whitespace.test(value[end - 1])) end--;
+    while (end > 0) {
+        if (maxsplit >= 0 && parts.length >= maxsplit) {
+            parts.push(value.slice(0, end));
+            break;
+        }
+        let start = end;
+        while (start > 0 && !whitespace.test(value[start - 1])) start--;
+        parts.push(value.slice(start, end));
+        end = start;
+        while (end > 0 && whitespace.test(value[end - 1])) end--;
+    }
+    parts.reverse();
+    return parts;
+}
+let start = 0;
+while (start < value.length && whitespace.test(value[start])) start++;
+while (start < value.length) {
+    if (maxsplit >= 0 && parts.length >= maxsplit) {
+        parts.push(value.slice(start));
+        break;
+    }
+    let end = start;
+    while (end < value.length && !whitespace.test(value[end])) end++;
+    parts.push(value.slice(start, end));
+    start = end;
+    while (start < value.length && whitespace.test(value[start])) start++;
+}
+return parts;
+"""
+)
+
+
+@js
+def split_lines(value: str, keepends: bool) -> list[str]: ...
+
+
+split_lines.source(
+    r"""const parts = [];
+let start = 0;
+let index = 0;
+while (index < value.length) {
+    const character = value[index];
+    let lineBreak = 0;
+    if (character === '\r') {
+        lineBreak = value[index + 1] === '\n' ? 2 : 1;
+    } else if (
+        character === '\n' || character === '\v' || character === '\f' ||
+        character === '\x1c' || character === '\x1d' || character === '\x1e' ||
+        character === '\x85' || character === '\u2028' || character === '\u2029'
+    ) {
+        lineBreak = 1;
+    }
+    if (lineBreak === 0) {
+        index++;
+        continue;
+    }
+    parts.push(value.slice(start, keepends ? index + lineBreak : index));
+    index += lineBreak;
+    start = index;
+}
+if (start < value.length) parts.push(value.slice(start));
+return parts;
+"""
+)
+
+
 @js.inline(
     "new Set({values} instanceof Map ? {values}.keys() : "
     "({values} != null && typeof {values} === 'object' && "
@@ -382,34 +767,46 @@ def copy_set(values: Iterable[object]) -> set[object]:
 
 
 @js
-def update_set(target: set[object], values: Iterable[object]) -> None:
-    for value in copy_set(values):
-        target.add(value)
+def update_set(target: set[object], *iterables: Iterable[object]) -> None:
+    for values in iterables:
+        for value in copy_set(values):
+            target.add(value)
     return None
 
 
 @js
-def union_set(left: set[object], right: Iterable[object]) -> set[object]:
+def union_set(
+    left: set[object],
+    *iterables: Iterable[object],
+) -> set[object]:
     result = left.copy()
-    update_set(result, right)
+    update_set(result, *iterables)
     return result
 
 
 @js
-def intersection_set(left: set[object], right: Iterable[object]) -> set[object]:
-    right_set = copy_set(right)
-    result = set[object]()
-    for value in left:
-        if value in right_set:
-            result.add(value)
+def intersection_set(
+    left: set[object],
+    *iterables: Iterable[object],
+) -> set[object]:
+    result = left.copy()
+    for values in iterables:
+        selected = copy_set(values)
+        for value in result.copy():
+            if value not in selected:
+                result.discard(value)
     return result
 
 
 @js
-def difference_set(left: set[object], right: Iterable[object]) -> set[object]:
+def difference_set(
+    left: set[object],
+    *iterables: Iterable[object],
+) -> set[object]:
     result = left.copy()
-    for value in copy_set(right):
-        result.discard(value)
+    for values in iterables:
+        for value in copy_set(values):
+            result.discard(value)
     return result
 
 
@@ -422,6 +819,40 @@ def symmetric_difference_set(left: set[object], right: Iterable[object]) -> set[
         else:
             result.add(value)
     return result
+
+
+@js
+def intersection_update_set(
+    target: set[object],
+    *iterables: Iterable[object],
+) -> None:
+    for values in iterables:
+        selected = copy_set(values)
+        for value in target.copy():
+            if value not in selected:
+                target.discard(value)
+
+
+@js
+def difference_update_set(
+    target: set[object],
+    *iterables: Iterable[object],
+) -> None:
+    for values in iterables:
+        for value in copy_set(values):
+            target.discard(value)
+
+
+@js
+def symmetric_difference_update_set(
+    target: set[object],
+    other: Iterable[object],
+) -> None:
+    for value in copy_set(other):
+        if value in target:
+            target.discard(value)
+        else:
+            target.add(value)
 
 
 @js
@@ -625,10 +1056,32 @@ def pop_dict_item(
 @js
 def update_dict(
     target: dict[object, object],
-    values: dict[object, object],
+    values: dict[object, object] | Iterable[tuple[object, object]],
 ) -> None:
-    for key, value in values.items():
-        target[key] = value
+    if isinstance(values, dict):
+        for key, value in values.items():
+            target[key] = value
+    else:
+        for key, value in values:
+            target[key] = value
+
+
+@js
+def pop_dict_pair(mapping: dict[object, object]) -> tuple[object, object]: ...
+
+
+pop_dict_pair.source(
+    """\
+let pair;
+for (const entry of mapping) pair = entry;
+if (pair === undefined) {
+    throw new KeyError("'popitem(): dictionary is empty'");
+}
+mapping.delete(pair[0]);
+return pair;
+"""
+)
+pop_dict_pair.__js_source_imports__ = {"KeyError": KeyError}
 
 
 @js
@@ -687,6 +1140,14 @@ def sequence_repeat(self, times, **kwargs):
     )
 
 
+def string_repeat(self, times, **kwargs):
+    try:
+        count = int(times)
+    except ValueError:
+        return f"({times} <= 0 ? '' : {self}.repeat({times}))"
+    return f"{self}.repeat({times})" if count > 0 else "''"
+
+
 def sequence_equality(self, other, _arg_types, sequence_type, negate=False, **kwargs):
     other_type = type_name(_arg_types[0])
     if other_type in {"list", "tuple"} and other_type != sequence_type:
@@ -702,22 +1163,36 @@ def sequence_equality(self, other, _arg_types, sequence_type, negate=False, **kw
 
 
 @js
+def compare_strings(left: str, right: str) -> int: ...
+
+
+compare_strings.source(
+    r"""if (left === right) return 0;
+if (!/[\uD800-\uDFFF]/.test(left) && !/[\uD800-\uDFFF]/.test(right)) {
+    return left < right ? -1 : 1;
+}
+const leftChars = Array.from(left);
+const rightChars = Array.from(right);
+const length = Math.min(leftChars.length, rightChars.length);
+for (let index = 0; index < length; index++) {
+    const leftCode = leftChars[index].codePointAt(0);
+    const rightCode = rightChars[index].codePointAt(0);
+    if (leftCode !== rightCode) return leftCode < rightCode ? -1 : 1;
+}
+return leftChars.length < rightChars.length ? -1 :
+    leftChars.length > rightChars.length ? 1 : 0;
+"""
+)
+
+
+@js
 def compare_values(left: object, right: object) -> int: ...
 
 
 compare_values.source(
     """\
 if (typeof left === 'string' && typeof right === 'string') {
-    const leftChars = Array.from(left);
-    const rightChars = Array.from(right);
-    const length = Math.min(leftChars.length, rightChars.length);
-    for (let index = 0; index < length; index++) {
-        const leftCode = leftChars[index].codePointAt(0);
-        const rightCode = rightChars[index].codePointAt(0);
-        if (leftCode !== rightCode) return leftCode < rightCode ? -1 : 1;
-    }
-    return leftChars.length < rightChars.length ? -1 :
-        leftChars.length > rightChars.length ? 1 : 0;
+    return compare_strings(left, right);
 }
 if (Array.isArray(left) && Array.isArray(right)) {
     const length = Math.min(left.length, right.length);
@@ -739,6 +1214,7 @@ if ((typeof left === 'number' || typeof left === 'boolean') &&
 throw new TypeError('values do not define a portable ordering');
 """
 )
+compare_values.__js_source_imports__ = {"compare_strings": compare_strings}
 
 
 @js
@@ -811,6 +1287,18 @@ def _dataclass_missing() -> object: ...
 def _same_dataclass_type(left: object, right: object) -> bool: ...
 
 
+def slice_value(self, slice=None, start="null", stop="null", step="null", **kwargs):
+    if step in {"null", "1"}:
+        if start == "null" and stop == "null":
+            return f"{self}.slice()"
+        if start == "null":
+            start = "0"
+        if stop == "null":
+            return f"{self}.slice({start})"
+        return f"{self}.slice({start},{stop})"
+    return f"{slice}({self},{start},{stop},{step})"
+
+
 class _type[T](_object): ...
 
 
@@ -827,8 +1315,19 @@ class _tuple[T](_object):
     @js.inline("{self}.length")
     def __len__(self) -> int: ...
 
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[object]: ...
+
     @js.inline(call=get_tuple_item)
     def __getitem__(self, idx: int) -> object: ...
+
+    @js.inline(slice_value, dependencies={"slice": slice_list})
+    def __slice__(
+        self,
+        start: int | None = None,
+        stop: int | None = None,
+        step: int | None = None,
+    ) -> Self: ...
 
     @js.inline(sequence_repeat)
     def __mul__(self, times: int) -> Self: ...
@@ -844,6 +1343,14 @@ class _tuple[T](_object):
         start: int = 0,
         stop: int | None = None,
     ) -> int: ...
+
+    @js.inline(call=count_equal_sequence_items)
+    @js.runtime_dunders("__eq__", item_of="self")
+    def count(self, item: object) -> int: ...
+
+    @js.inline(call=contains_equal_sequence_item)
+    @js.runtime_dunders("__eq__", item_of="self")
+    def __contains__(self, item: object) -> bool: ...
 
     @js.inline(partial(sequence_equality, sequence_type="tuple"))
     def __eq__(self, other: object) -> bool: ...
@@ -861,7 +1368,9 @@ class _tuple[T](_object):
 class _Generic(_object): ...
 
 
-class _Iterable[V](_object): ...
+class _Iterable[V](_object):
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[V]: ...
 
 
 class _Iterator[V](_Iterable[V]): ...
@@ -901,6 +1410,11 @@ class RuntimeError(Exception):
 
 
 @js
+class NotImplementedError(RuntimeError):
+    pass
+
+
+@js
 class LookupError(Exception):
     pass
 
@@ -927,6 +1441,10 @@ class StopIteration(Exception):
 
 class _RuntimeError(_Exception):
     __js_runtime__ = RuntimeError
+
+
+class _NotImplementedError(_RuntimeError):
+    __js_runtime__ = NotImplementedError
 
 
 class _LookupError(_Exception):
@@ -973,13 +1491,46 @@ def int_op(op, r=False, wrap=""):
     return inline
 
 
-def float_op(op, r=False):
+def bitwise_op(self, other, operator, reverse=False, **kwargs):
+    left, right = (other, self) if reverse else (self, other)
+    return f"Number(BigInt({left}) {operator} BigInt({right}))"
+
+
+def shift_op(self, other, reverse=False, left=False, **kwargs):
+    value, count = (other, self) if reverse else (self, other)
+    direction = "left" if left else "right"
+    operation = "<<" if left else ">>"
+    large_count = (
+        "if(value===0)return 0;throw new RangeError("
+        "'integer result exceeds JavaScript safe integer range');"
+        if left
+        else "return value<0?-1:0;"
+    )
+    return (
+        f"((value,count)=>{{if(count<0)throw new RangeError('negative shift count');"
+        f"if(count>52){{{large_count}}}"
+        f"const result=Number(BigInt(value){operation}BigInt(count));"
+        "if(!Number.isSafeInteger(result))throw new RangeError("
+        f"'integer {direction} shift exceeds JavaScript safe integer range');"
+        f"return result;}})({value},{count})"
+    )
+
+
+def number_op(op, r=False):
     def inline(self, other, _arg_types, **kwargs):
         if _arg_types[0].name not in ("int", "float", "bool"):
             return NotImplemented
         return f"{other} {op} {self}" if r else f"{self} {op} {other}"
 
     return inline
+
+
+number_add_inline = number_op("+")
+number_reverse_add_inline = number_op("+", True)
+number_subtract_inline = number_op("-")
+number_reverse_subtract_inline = number_op("-", True)
+number_multiply_inline = number_op("*")
+number_reverse_multiply_inline = number_op("*", True)
 
 
 def modulo_op(self, other, reverse=False, **kwargs):
@@ -999,37 +1550,244 @@ def division_op(self, other, reverse=False, floor=False, **kwargs):
     )
 
 
-def slice_value(self, slice=None, start="null", stop="null", step="null", **kwargs):
-    if step in {"null", "1"}:
-        if start == "null" and stop == "null":
-            return f"{self}.slice()"
-        if start == "null":
-            start = "0"
-        if stop == "null":
-            return f"{self}.slice({start})"
-        return f"{self}.slice({start},{stop})"
-    return f"{slice}({self},{start},{stop},{step})"
+reverse_division_inline = partial(division_op, reverse=True)
+floor_division_inline = partial(division_op, floor=True)
+reverse_floor_division_inline = partial(division_op, reverse=True, floor=True)
+reverse_modulo_inline = partial(modulo_op, reverse=True)
+
+
+@js
+def float_divmod(left: float, right: float) -> tuple[float, float]: ...
+
+
+float_divmod.source(
+    """\
+if (right === 0) throw new Error('division by zero');
+let remainder = left % right;
+let quotient = (left - remainder) / right;
+if (remainder !== 0) {
+    if ((right < 0) !== (remainder < 0)) {
+        remainder += right;
+        quotient -= 1;
+    }
+} else {
+    remainder = right < 0 || Object.is(right, -0) ? -0 : 0;
+}
+let floor;
+if (quotient !== 0) {
+    floor = Math.floor(quotient);
+    if (quotient - floor > 0.5) floor += 1;
+} else {
+    const divided = left / right;
+    floor = divided < 0 || Object.is(divided, -0) ? -0 : 0;
+}
+return [floor, remainder];
+"""
+)
+
+
+def float_divmod_inline(
+    self,
+    other,
+    float_divmod,
+    result,
+    reverse=False,
+    **kwargs,
+):
+    left, right = (other, self) if reverse else (self, other)
+    return f"{float_divmod}({left},{right})[{result}]"
+
+
+float_floor_division_inline = partial(float_divmod_inline, result=0)
+reverse_float_floor_division_inline = partial(
+    float_divmod_inline,
+    result=0,
+    reverse=True,
+)
+float_modulo_inline = partial(float_divmod_inline, result=1)
+reverse_float_modulo_inline = partial(
+    float_divmod_inline,
+    result=1,
+    reverse=True,
+)
+
+
+@overload
+def _divmod(
+    left: int | bool,
+    right: int | bool,
+) -> tuple[int, int]: ...
+
+
+@overload
+def _divmod(
+    left: int | float | bool,
+    right: int | float | bool,
+) -> tuple[float, float]: ...
+
+
+@js.inline(
+    "{float_divmod}({left},{right})",
+    dependencies={"float_divmod": float_divmod},
+)
+def _divmod(
+    left: int | float | bool,
+    right: int | float | bool,
+) -> tuple[int | float, int | float]: ...
+
+
+@js
+def round_ndigits(
+    value: int | float | bool,
+    ndigits: int,
+    preserve_negative_zero: bool,
+) -> int | float: ...
+
+
+round_ndigits.value.source(
+    """\
+if (ndigits === null) {
+    if (!Number.isFinite(value)) {
+        throw new RangeError(Number.isNaN(value)
+            ? 'cannot convert float NaN to integer'
+            : 'cannot convert float infinity to integer');
+    }
+    const floor = Math.floor(value);
+    return value - floor === 0.5
+        ? (floor % 2 === 0 ? floor : floor + 1)
+        : Math.round(value);
+}
+if (!Number.isFinite(value)) return value;
+if (ndigits > 324) return value;
+if (ndigits < -324) {
+    const negative = value < 0 || Object.is(value, -0);
+    return negative && preserve_negative_zero ? -0 : 0;
+}
+const view = round_ndigits.view
+    ?? (round_ndigits.view = new DataView(new ArrayBuffer(8)));
+view.setFloat64(0, value, false);
+const high = view.getUint32(0, false);
+const low = view.getUint32(4, false);
+const negative = (high >>> 31) !== 0;
+const encoded_exponent = (high >>> 20) & 0x7ff;
+let numerator = (BigInt(high & 0xfffff) << 32n) | BigInt(low);
+let exponent;
+if (encoded_exponent === 0) {
+    exponent = -1074;
+} else {
+    numerator |= 1n << 52n;
+    exponent = encoded_exponent - 1075;
+}
+let denominator = 1n;
+if (exponent >= 0) numerator <<= BigInt(exponent);
+else denominator <<= BigInt(-exponent);
+if (ndigits >= 0) numerator *= 10n ** BigInt(ndigits);
+else denominator *= 10n ** BigInt(-ndigits);
+let rounded = numerator / denominator;
+const remainder = numerator % denominator;
+const doubled = remainder * 2n;
+if (doubled > denominator ||
+    (doubled === denominator && rounded % 2n === 1n)) rounded += 1n;
+let text = rounded.toString();
+if (ndigits > 0) {
+    if (text.length <= ndigits) {
+        text = '0.' + '0'.repeat(ndigits - text.length) + text;
+    } else {
+        text = text.slice(0, -ndigits) + '.' + text.slice(-ndigits);
+    }
+} else if (ndigits < 0) {
+    text += '0'.repeat(-ndigits);
+}
+let result = Number(text);
+if (negative) result = -result;
+if (!preserve_negative_zero && result === 0) return 0;
+return result;
+"""
+)
+
+
+@js
+def parse_integer(value: object, base: int | None) -> int: ...
+
+
+parse_integer.source(
+    """\
+const explicitBase = base !== null;
+if (typeof value !== 'string') {
+    if (explicitBase) {
+        throw new TypeError("int() can't convert non-string with explicit base");
+    }
+    if (typeof value !== 'number' && typeof value !== 'boolean') {
+        throw new TypeError('int() argument must be a string or a number');
+    }
+    const number = Math.trunc(Number(value));
+    if (!Number.isSafeInteger(number)) {
+        throw new RangeError('integer result exceeds JavaScript safe integer range');
+    }
+    return number === 0 ? 0 : number;
+}
+const original = value;
+base = explicitBase ? base : 10;
+const requestedBase = base;
+let text = value.trim();
+if (!Number.isInteger(base) || (base !== 0 && (base < 2 || base > 36))) {
+    throw new RangeError('int() base must be >= 2 and <= 36, or 0');
+}
+let sign = 1;
+if (text[0] === '+' || text[0] === '-') {
+    if (text[0] === '-') sign = -1;
+    text = text.slice(1);
+}
+let prefix = 0;
+if (/^0[bB]/.test(text)) prefix = 2;
+else if (/^0[oO]/.test(text)) prefix = 8;
+else if (/^0[xX]/.test(text)) prefix = 16;
+if (prefix && (base === 0 || base === prefix)) {
+    base = prefix;
+    text = text.slice(2);
+    if (text[0] === '_') text = text.slice(1);
+} else if (base === 0) {
+    base = 10;
+}
+const compact = text.replaceAll('_', '');
+const valid = text.length > 0 &&
+    !text.startsWith('_') &&
+    !text.endsWith('_') &&
+    !text.includes('__') &&
+    compact.length > 0 &&
+    [...compact].every(char => {
+        const code = char.codePointAt(0);
+        const digit = code >= 48 && code <= 57 ? code - 48 :
+            code >= 65 && code <= 90 ? code - 55 :
+            code >= 97 && code <= 122 ? code - 87 : -1;
+        return digit >= 0 && digit < base;
+    });
+const leadingZero = requestedBase === 0 &&
+    prefix === 0 &&
+    compact.length > 1 &&
+    compact[0] === '0' &&
+    [...compact].some(char => char !== '0');
+if (!valid || leadingZero) {
+    throw new RangeError(
+        `invalid literal for int() with base ${requestedBase}: '${original}'`
+    );
+}
+const number = sign * Number.parseInt(compact, base);
+if (!Number.isSafeInteger(number)) {
+    throw new RangeError('integer result exceeds JavaScript safe integer range');
+}
+return number === 0 ? 0 : number;
+"""
+)
 
 
 class _int(_object):
     @js
-    def __init__(self, other: object = 0): ...
+    def __init__(self, other: object = 0, base: int = 10): ...
 
-    @__init__.inline
-    def __init__(other="0", _arg_types=(), **kwargs):
-        if not _arg_types:
-            return "0"
-        if _arg_types[0].name == "str":
-            return (
-                "((value)=>{const text=value.trim();"
-                "if(!/^[+-]?\\d(?:_?\\d)*$/.test(text))"
-                "throw new Error(`invalid literal for int() with base 10: "
-                "'${value}'`);"
-                "const number=Number.parseInt(text.replaceAll('_',''),10);"
-                "return number===0?0:number;})"
-                f"({other})"
-            )
-        return f"Math.trunc(Number({other}))"
+    @__init__.inline(dependencies={"parse_integer": parse_integer})
+    def __init__(parse_integer, other="0", base="null", **kwargs):
+        return f"{parse_integer}({other},{base})"
 
     @js.inline("{self}")
     def __bool__(self) -> bool: ...
@@ -1045,6 +1803,9 @@ class _int(_object):
 
     @js.inline("Math.round({self})")
     def __round__(self) -> int: ...
+
+    @js.inline("(-({self})-1)")
+    def __invert__(self) -> int: ...
 
     # ast.Compare
 
@@ -1068,34 +1829,34 @@ class _int(_object):
 
     # ast.BinOp
 
-    @js.inline(int_op("+"))
+    @js.inline(number_add_inline)
     def __add__(self, other: int) -> int: ...
-    @js.inline(int_op("+", True))
+    @js.inline(number_reverse_add_inline)
     def __radd__(self, other: int) -> int: ...
 
-    @js.inline(int_op("-"))
+    @js.inline(number_subtract_inline)
     def __sub__(self, other: int) -> int: ...
-    @js.inline(int_op("-", True))
+    @js.inline(number_reverse_subtract_inline)
     def __rsub__(self, other: int) -> int: ...
 
-    @js.inline(int_op("*"))
+    @js.inline(number_multiply_inline)
     def __mul__(self, other: int) -> int: ...
-    @js.inline(int_op("*", True))
+    @js.inline(number_reverse_multiply_inline)
     def __rmul__(self, other: int) -> int: ...
 
     @js.inline(division_op)
     def __truediv__(self, other: int) -> float: ...
-    @js.inline(partial(division_op, reverse=True))
+    @js.inline(reverse_division_inline)
     def __rtruediv__(self, other: int) -> float: ...
 
-    @js.inline(partial(division_op, floor=True))
+    @js.inline(floor_division_inline)
     def __floordiv__(self, other: int) -> int: ...
-    @js.inline(partial(division_op, reverse=True, floor=True))
+    @js.inline(reverse_floor_division_inline)
     def __rfloordiv__(self, other: int) -> int: ...
 
     @js.inline(modulo_op)
     def __mod__(self, other: int) -> int: ...
-    @js.inline(partial(modulo_op, reverse=True))
+    @js.inline(reverse_modulo_inline)
     def __rmod__(self, other: int) -> int: ...
 
     @js.inline(int_op("**"))
@@ -1103,11 +1864,35 @@ class _int(_object):
     @js.inline(int_op("**", True))
     def __rpow__(self, other: int) -> int: ...
 
-    @js.inline(int_op("|"))
+    @js.inline(partial(bitwise_op, operator="|"))
     def __or__(self, other: int) -> int: ...
 
-    @js.inline(int_op("|", True))
+    @js.inline(partial(bitwise_op, operator="|", reverse=True))
     def __ror__(self, other: int) -> int: ...
+
+    @js.inline(partial(bitwise_op, operator="&"))
+    def __and__(self, other: int) -> int: ...
+
+    @js.inline(partial(bitwise_op, operator="&", reverse=True))
+    def __rand__(self, other: int) -> int: ...
+
+    @js.inline(partial(bitwise_op, operator="^"))
+    def __xor__(self, other: int) -> int: ...
+
+    @js.inline(partial(bitwise_op, operator="^", reverse=True))
+    def __rxor__(self, other: int) -> int: ...
+
+    @js.inline(partial(shift_op, left=True))
+    def __lshift__(self, other: int) -> int: ...
+
+    @js.inline(partial(shift_op, left=True, reverse=True))
+    def __rlshift__(self, other: int) -> int: ...
+
+    @js.inline(shift_op)
+    def __rshift__(self, other: int) -> int: ...
+
+    @js.inline(partial(shift_op, reverse=True))
+    def __rrshift__(self, other: int) -> int: ...
 
 
 class _bool(_int):
@@ -1124,6 +1909,8 @@ class _bool(_int):
             return f"{arg}.length!==0"
         if arg_type_name in {"dict", "set"}:
             return f"{arg}.size!==0"
+        if arg_type_name == "float":
+            return f"{arg}!==0"
         if inherits_type(arg_type, "typed_dict"):
             return f"Object.keys({arg}).length!==0"
         return f"Boolean({arg})"
@@ -1139,6 +1926,18 @@ class _bool(_int):
 
     @js.inline("Boolean({other} | {self})")
     def __ror__(self, other: bool) -> bool: ...
+
+    @js.inline("Boolean({self} & {other})")
+    def __and__(self, other: bool) -> bool: ...
+
+    @js.inline("Boolean({other} & {self})")
+    def __rand__(self, other: bool) -> bool: ...
+
+    @js.inline("Boolean({self} ^ {other})")
+    def __xor__(self, other: bool) -> bool: ...
+
+    @js.inline("Boolean({other} ^ {self})")
+    def __rxor__(self, other: bool) -> bool: ...
 
 
 class _float(_object):
@@ -1156,20 +1955,20 @@ class _float(_object):
                 "if(/^[+-]?inf(?:inity)?$/i.test(text))"
                 "return text[0]==='-'?-Infinity:Infinity;"
                 "if(!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?$/i"
-                ".test(text))throw new Error(`could not convert string to float: "
+                ".test(text))throw new RangeError(`could not convert string to float: "
                 "'${value}'`);"
                 "return Number(text);})"
                 f"({other})"
             )
         return f"Number({other})"
 
-    @js.inline("{self}")
+    @js.inline("{self} !== 0")
     def __bool__(self) -> bool: ...
 
-    @js.inline("String({self})")
+    @js.inline(call=float_string)
     def __str__(self) -> str: ...
 
-    @js.inline("String({self})")
+    @js.inline(call=float_string)
     def __repr__(self) -> str: ...
 
     @js.inline("Math.abs({self})")
@@ -1181,52 +1980,80 @@ class _float(_object):
     @__round__.inline
     def __round__(self, **kwargs):
         return (
-            "((value)=>{const floor=Math.floor(value);return value-floor===0.5"
+            "((value)=>{if(!Number.isFinite(value))"
+            "throw new RangeError(Number.isNaN(value)"
+            "?'cannot convert float NaN to integer'"
+            ":'cannot convert float infinity to integer');"
+            "const floor=Math.floor(value);return value-floor===0.5"
             "?(floor%2===0?floor:floor+1):Math.round(value);})"
             f"({self})"
         )
 
-    @js.inline(float_op("<"))
+    @js.inline(number_op("<"))
     def __lt__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op("<="))
+    @js.inline(number_op("<="))
     def __le__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op(">"))
+    @js.inline(number_op(">"))
     def __gt__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op(">="))
+    @js.inline(number_op(">="))
     def __ge__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op("==="))
+    @js.inline(number_op("=="))
     def __eq__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op("!=="))
+    @js.inline(number_op("!="))
     def __ne__(self, other: int | float | bool) -> bool: ...
 
-    @js.inline(float_op("+"))
+    @js.inline(number_add_inline)
     def __add__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(float_op("+", True))
+    @js.inline(number_reverse_add_inline)
     def __radd__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(float_op("-"))
+    @js.inline(number_subtract_inline)
     def __sub__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(float_op("-", True))
+    @js.inline(number_reverse_subtract_inline)
     def __rsub__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(float_op("*"))
+    @js.inline(number_multiply_inline)
     def __mul__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(float_op("*", True))
+    @js.inline(number_reverse_multiply_inline)
     def __rmul__(self, other: int | float | bool) -> float: ...
 
     @js.inline(division_op)
     def __truediv__(self, other: int | float | bool) -> float: ...
 
-    @js.inline(partial(division_op, reverse=True))
+    @js.inline(reverse_division_inline)
     def __rtruediv__(self, other: int | float | bool) -> float: ...
+
+    @js.inline(
+        float_floor_division_inline,
+        dependencies={"float_divmod": float_divmod},
+    )
+    def __floordiv__(self, other: int | float | bool) -> float: ...
+
+    @js.inline(
+        reverse_float_floor_division_inline,
+        dependencies={"float_divmod": float_divmod},
+    )
+    def __rfloordiv__(self, other: int | float | bool) -> float: ...
+
+    @js.inline(
+        float_modulo_inline,
+        dependencies={"float_divmod": float_divmod},
+    )
+    def __mod__(self, other: int | float | bool) -> float: ...
+
+    @js.inline(
+        reverse_float_modulo_inline,
+        dependencies={"float_divmod": float_divmod},
+    )
+    def __rmod__(self, other: int | float | bool) -> float: ...
 
 
 @js.dispatch("__str__")
@@ -1243,20 +2070,65 @@ class _str(_object):
     @runtime_repr(repr_value)
     def __repr__(self) -> str: ...
 
-    @js.inline("{self}.length")
+    @js.inline(
+        "{compare_strings}({self},{other}) < 0",
+        dependencies={"compare_strings": compare_strings},
+    )
+    def __lt__(self, other: str) -> bool: ...
+
+    @js.inline(
+        "{compare_strings}({self},{other}) <= 0",
+        dependencies={"compare_strings": compare_strings},
+    )
+    def __le__(self, other: str) -> bool: ...
+
+    @js.inline(
+        "{compare_strings}({self},{other}) > 0",
+        dependencies={"compare_strings": compare_strings},
+    )
+    def __gt__(self, other: str) -> bool: ...
+
+    @js.inline(
+        "{compare_strings}({self},{other}) >= 0",
+        dependencies={"compare_strings": compare_strings},
+    )
+    def __ge__(self, other: str) -> bool: ...
+
+    @js.inline("[...{self}].length")
     def __len__(self) -> int: ...
+
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[str]: ...
 
     @js.inline("{self} + {other}")
     def __add__(self, other: str) -> str: ...
 
-    @js.inline("{self}.repeat({times})")
+    @js.inline(string_repeat)
     def __mul__(self, times: int) -> str: ...
 
-    @js.inline("{self}.repeat({times})")
+    @js.inline(string_repeat)
     def __rmul__(self, times: int) -> str: ...
 
-    @js.inline("{self}.trim()")
-    def strip(self) -> str: ...
+    @js
+    def strip(self, chars: str | None = None) -> str: ...
+
+    @strip.inline(dependencies={"strip_string": strip_string})
+    def strip(self, strip_string, chars="null", **kwargs):
+        return f"{strip_string}({self},{chars},true,true)"
+
+    @js
+    def lstrip(self, chars: str | None = None) -> str: ...
+
+    @lstrip.inline(dependencies={"strip_string": strip_string})
+    def lstrip(self, strip_string, chars="null", **kwargs):
+        return f"{strip_string}({self},{chars},true,false)"
+
+    @js
+    def rstrip(self, chars: str | None = None) -> str: ...
+
+    @rstrip.inline(dependencies={"strip_string": strip_string})
+    def rstrip(self, strip_string, chars="null", **kwargs):
+        return f"{strip_string}({self},{chars},false,true)"
 
     @js.inline("{self}.toLowerCase()")
     def lower(self) -> str: ...
@@ -1270,45 +2142,178 @@ class _str(_object):
     )
     def capitalize(self) -> str: ...
 
-    @js.inline("{self}.startsWith({prefix})")
-    def startswith(self, prefix: str) -> bool: ...
+    @js.inline(call=title_string)
+    def title(self) -> str: ...
 
-    @js.inline("{self}.endsWith({suffix})")
-    def endswith(self, suffix: str) -> bool: ...
+    @js.inline(
+        "((value,width)=>{{const padding=width-Array.from(value).length;"
+        "if(padding<=0)return value;const sign=/^[+-]/.test(value)?value[0]:'';"
+        "const digits=sign?value.slice(1):value;"
+        "return sign+'0'.repeat(padding)+digits;}})({self},{width})"
+    )
+    def zfill(self, width: int, /) -> str: ...
+
+    @js.inline(
+        justify_inline,
+        dependencies={"justify_string": justify_string},
+    )
+    def ljust(self, width: int, fillchar: str = " ", /) -> str: ...
+
+    @js.inline(
+        partial(justify_inline, mode="right"),
+        dependencies={"justify_string": justify_string},
+    )
+    def rjust(self, width: int, fillchar: str = " ", /) -> str: ...
+
+    @js.inline(
+        partial(justify_inline, mode="center"),
+        dependencies={"justify_string": justify_string},
+    )
+    def center(self, width: int, fillchar: str = " ", /) -> str: ...
+
+    @js.inline(affix_inline)
+    def startswith(
+        self,
+        prefix: str | tuple[str, ...],
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> bool: ...
+
+    @js.inline(affix_inline)
+    def endswith(
+        self,
+        suffix: str | tuple[str, ...],
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> bool: ...
+
+    @js.inline(r"/^\p{{L}}+$/u.test({self})")
+    def isalpha(self) -> bool: ...
+
+    @js.inline(r"/^[\p{{L}}\p{{N}}]+$/u.test({self})")
+    def isalnum(self) -> bool: ...
+
+    @js.inline(r"/^[\x00-\x7f]*$/.test({self})")
+    def isascii(self) -> bool: ...
+
+    @js.inline(r"/^[\p{{White_Space}}\u001c-\u001f]+$/u.test({self})")
+    def isspace(self) -> bool: ...
+
+    @js.inline(
+        "((value,prefix)=>value.startsWith(prefix)?"
+        "value.slice(prefix.length):value)({self},{prefix})"
+    )
+    def removeprefix(self, prefix: str) -> str: ...
+
+    @js.inline(
+        "((value,suffix)=>suffix.length&&value.endsWith(suffix)?"
+        "value.slice(0,-suffix.length):value)({self},{suffix})"
+    )
+    def removesuffix(self, suffix: str) -> str: ...
 
     @js.inline(call=replace_string)
     def replace(self, old: str, new: str, count: int = -1) -> str: ...
 
-    @js.inline("{self}.substring({start}, {end})")
-    def substring(self, start: int, end: int) -> str: ...
-
-    @js
+    @js.inline(call=split_string)
     def split(self, sep: str | None = None, maxsplit: int = -1) -> list[str]: ...
 
-    @split.inline
-    def split(self, _arg_strs, **kwargs):
-        if _arg_strs:
-            sep = _arg_strs[0]
-            if not _arg_strs[1:]:
-                return f"{self}.split({sep})"
-            maxsplit = _arg_strs[1]
-            return (
-                "((value,sep,maxsplit)=>{if(maxsplit<0)return value.split(sep);"
-                "const parts=[];let start=0;for(let count=0;count<maxsplit;"
-                "count++){const index=value.indexOf(sep,start);"
-                "if(index<0)break;parts.push(value.slice(start,index));"
-                "start=index+sep.length;}parts.push(value.slice(start));"
-                "return parts;})"
-                f"({self},{sep},{maxsplit})"
-            )
+    @js
+    def rsplit(self, sep: str | None = None, maxsplit: int = -1) -> list[str]: ...
+
+    @rsplit.inline(dependencies={"split_string": split_string})
+    def rsplit(self, split_string, sep="null", maxsplit="-1", **kwargs):
         return (
-            "((value)=>{const trimmed=value.trim();"
-            "return trimmed?trimmed.split(/\\s+/):[];})"
-            f"({self})"
+            f"{split_string}({self},{{separator:{sep},maxsplit:{maxsplit},"
+            "reverse:true})"
         )
 
-    @js.inline("{values}.join({self})")
+    @js
+    def splitlines(self, /, keepends: bool = False) -> list[str]: ...
+
+    @splitlines.inline(dependencies={"split_lines": split_lines})
+    def splitlines(self, split_lines, keepends="false", **kwargs):
+        return f"{split_lines}({self},{keepends})"
+
+    @js.inline(
+        partial(search_inline, mode="count"),
+        dependencies={"search_string": search_string},
+    )
+    def count(
+        self,
+        sub: str,
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> int: ...
+
+    @js.inline(search_inline, dependencies={"search_string": search_string})
+    def find(
+        self,
+        sub: str,
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> int: ...
+
+    @js.inline(
+        partial(search_inline, mode="reverse"),
+        dependencies={"search_string": search_string},
+    )
+    def rfind(
+        self,
+        sub: str,
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> int: ...
+
+    @js.inline(
+        partial(search_inline, raising=True),
+        dependencies={"search_string": search_string},
+    )
+    def index(
+        self,
+        sub: str,
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> int: ...
+
+    @js.inline(
+        partial(search_inline, mode="reverse", raising=True),
+        dependencies={"search_string": search_string},
+    )
+    def rindex(
+        self,
+        sub: str,
+        start: int = 0,
+        end: int | None = None,
+        /,
+    ) -> int: ...
+
+    @js.inline(
+        "{partition_string}({self},{sep},false)",
+        dependencies={"partition_string": partition_string},
+    )
+    def partition(self, sep: str, /) -> tuple[str, str, str]: ...
+
+    @js.inline(
+        "{partition_string}({self},{sep},true)",
+        dependencies={"partition_string": partition_string},
+    )
+    def rpartition(self, sep: str, /) -> tuple[str, str, str]: ...
+
+    @js
     def join(self, values: Iterable[str]) -> str: ...
+
+    @join.inline
+    def join(self, values, _arg_types, **kwargs):
+        source = iterable_source(values, _arg_types[0])
+        if type_name(_arg_types[0]) in {"list", "tuple"}:
+            return f"{source}.join({self})"
+        return f"Array.from({source}).join({self})"
 
     @js.inline("{self}.includes({item})")
     def __contains__(self, item: str) -> bool: ...
@@ -1338,13 +2343,21 @@ class _list[V](_object):
     @js.inline("{self}.length")
     def __len__(self) -> int: ...
 
-    @js.inline("{self}.push({item})")
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[V]: ...
+
+    @js.inline("({self}.push({item}), null)")
     def append(self, item: V) -> None: ...
 
-    @js.inline("{self}.push(...{item})")
-    def extend(self, item: list[V]) -> None: ...
+    @js
+    def extend(self, item: Iterable[V]) -> None: ...
 
-    @js.inline("{self}.splice({index}, 0, {item})")
+    @extend.inline
+    def extend(self, item, _arg_types, **kwargs):
+        source = iterable_source(item, _arg_types[0])
+        return f"({self}.push(...{source}), null)"
+
+    @js.inline("({self}.splice({index}, 0, {item}), null)")
     def insert(self, index: int, item: V) -> None: ...
 
     @js.inline(call=remove_list_item)
@@ -1360,11 +2373,18 @@ class _list[V](_object):
         stop: int | None = None,
     ) -> int: ...
 
+    @js.inline(call=count_equal_sequence_items)
+    @js.runtime_dunders("__eq__", item_of="self")
+    def count(self, item: object) -> int: ...
+
     @js.inline(call=pop_list_item)
     def pop(self, index: int = -1) -> V: ...
 
     @js.inline("({self}.length = 0, null)")
     def clear(self) -> None: ...
+
+    @js.inline("({self}.reverse(), null)")
+    def reverse(self) -> None: ...
 
     @js.inline("[...{self}]")
     def copy(self) -> list[V]: ...
@@ -1450,7 +2470,8 @@ class _list[V](_object):
         step: int | None = None,
     ) -> None: ...
 
-    @js.inline("{self}.includes({item})")
+    @js.inline(call=contains_equal_sequence_item)
+    @js.runtime_dunders("__eq__", item_of="self")
     def __contains__(self, item: V) -> bool: ...
 
 
@@ -1473,15 +2494,15 @@ class _dict[K, V](_object):
     @js.inline("{self}.size")
     def __len__(self) -> int: ...
 
+    @js.inline("{self}.keys()")
+    def __iter__(self) -> Iterator[K]: ...
+
     def keys(self) -> Iterable[K]: ...
 
     def values(self) -> Iterable[V]: ...
 
     @js.inline("{self}.entries()")
     def items(self) -> Iterable[tuple[K, V]]: ...
-
-    # @js.inline("{self}.push({item})")
-    def set(self, key: K, value: V): ...
 
     @js.inline("{self}.size")
     def __bool__(self) -> bool: ...
@@ -1492,6 +2513,12 @@ class _dict[K, V](_object):
     @runtime_repr(repr_value)
     def __repr__(self) -> str: ...
 
+    @js.inline(call=equal_value)
+    def __eq__(self, other: object) -> bool: ...
+
+    @js.inline(call=not_equal_value)
+    def __ne__(self, other: object) -> bool: ...
+
     @js.inline(call=get_dict_item)
     def __getitem__(self, key: K) -> V: ...
 
@@ -1499,7 +2526,7 @@ class _dict[K, V](_object):
     def get(self, key: K) -> V | None: ...
 
     @overload
-    def get[D](self, key: K, default: D) -> V | D: ...
+    def get[D](self, key: K, default: V | D) -> V | D: ...
 
     @js
     def get(self, key: K, default: object = None) -> V | object: ...
@@ -1511,17 +2538,28 @@ class _dict[K, V](_object):
             f"?mapping.get(key):fallback)({self},{key},{default})"
         )
 
-    @js.inline(
-        "((mapping,key,value)=>{{if(!mapping.has(key))"
-        "mapping.set(key,value);return mapping.get(key);}})({self},{key},{default})"
-    )
-    def setdefault(self, key: K, default: V) -> V: ...
+    @overload
+    def setdefault(self, key: K) -> V | None: ...
+
+    @overload
+    def setdefault[D](self, key: K, default: V | D) -> V | D: ...
+
+    @js
+    def setdefault(self, key: K, default: object = None) -> V | object: ...
+
+    @setdefault.inline
+    def setdefault(self, key, default="null", **kwargs):
+        return (
+            "((mapping,key,value)=>{if(!mapping.has(key))"
+            "mapping.set(key,value);return mapping.get(key);})"
+            f"({self},{key},{default})"
+        )
 
     @overload
     def pop(self, key: K) -> V: ...
 
     @overload
-    def pop[D](self, key: K, default: D) -> V | D: ...
+    def pop[D](self, key: K, default: V | D) -> V | D: ...
 
     @js
     def pop(self, key: K, default: object = None) -> V | object: ...
@@ -1532,17 +2570,47 @@ class _dict[K, V](_object):
             return f"{pop_dict_item}({self},{key},true,{_arg_strs[1]})"
         return f"{pop_dict_item}({self},{key},false,null)"
 
+    @js.inline(call=pop_dict_pair)
+    def popitem(self) -> tuple[K, V]: ...
+
     @js.inline("({self}.clear(), null)")
     def clear(self) -> None: ...
 
     @js.inline("new Map({self})")
     def copy(self) -> dict[K, V]: ...
 
-    @js.inline(call=update_dict)
-    def update(self, values: dict[K, V]) -> None: ...
+    @overload
+    def update(self, /, **fields: V) -> None: ...
 
-    @js.inline("{self}.set({key}, {value})")
-    def __setitem__(self, key: K, value: V) -> V: ...
+    @overload
+    def update(
+        self,
+        values: dict[K, V] | Iterable[tuple[K, V]],
+        /,
+        **fields: V,
+    ) -> None: ...
+
+    @js
+    def update(
+        self,
+        values: object = None,
+        /,
+        **fields: V,
+    ) -> None: ...
+
+    @update.inline(dependencies={"update_dict": update_dict})
+    def update(self, update_dict, _arg_strs, _keyword_strs, **kwargs):
+        operations = []
+        if _arg_strs:
+            operations.append(f"{update_dict}({self},{_arg_strs[0]})")
+        operations.extend(
+            f"{self}.set({key!r},{value})"
+            for key, value in _keyword_strs.items()
+        )
+        return "(" + ",".join((*operations, "null")) + ")"
+
+    @js.inline("({self}.set({key}, {value}), null)")
+    def __setitem__(self, key: K, value: V) -> None: ...
 
     @js.inline(call=delete_dict_item)
     def __delitem__(self, key: K) -> None: ...
@@ -1568,6 +2636,9 @@ class _set[V](_object):
 
     @js.inline("{self}.size")
     def __len__(self) -> int: ...
+
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[V]: ...
 
     @js.inline("{self}.size")
     def __bool__(self) -> bool: ...
@@ -1600,19 +2671,28 @@ class _set[V](_object):
     def copy(self) -> set[V]: ...
 
     @js.inline(call=update_set)
-    def update(self, values: Iterable[V]) -> None: ...
+    def update(self, *iterables: Iterable[V]) -> None: ...
 
     @js.inline(call=union_set)
-    def union(self, other: Iterable[V]) -> set[V]: ...
+    def union(self, *iterables: Iterable[V]) -> set[V]: ...
 
     @js.inline(call=intersection_set)
-    def intersection(self, other: Iterable[V]) -> set[V]: ...
+    def intersection(self, *iterables: Iterable[V]) -> set[V]: ...
 
     @js.inline(call=difference_set)
-    def difference(self, other: Iterable[V]) -> set[V]: ...
+    def difference(self, *iterables: Iterable[V]) -> set[V]: ...
+
+    @js.inline(call=intersection_update_set)
+    def intersection_update(self, *iterables: Iterable[V]) -> None: ...
+
+    @js.inline(call=difference_update_set)
+    def difference_update(self, *iterables: Iterable[V]) -> None: ...
 
     @js.inline(call=symmetric_difference_set)
     def symmetric_difference(self, other: Iterable[V]) -> set[V]: ...
+
+    @js.inline(call=symmetric_difference_update_set)
+    def symmetric_difference_update(self, other: Iterable[V]) -> None: ...
 
     @js.inline(call=disjoint_set)
     def isdisjoint(self, other: Iterable[V]) -> bool: ...
@@ -1656,13 +2736,22 @@ class _set[V](_object):
     )
     def __gt__(self, other: set[V]) -> bool: ...
 
-    @js.inline(call=union_set)
+    @js.inline(
+        "{union_set}({self}, {other})",
+        dependencies={"union_set": union_set},
+    )
     def __or__(self, other: set[V]) -> set[V]: ...
 
-    @js.inline(call=intersection_set)
+    @js.inline(
+        "{intersection_set}({self}, {other})",
+        dependencies={"intersection_set": intersection_set},
+    )
     def __and__(self, other: set[V]) -> set[V]: ...
 
-    @js.inline(call=difference_set)
+    @js.inline(
+        "{difference_set}({self}, {other})",
+        dependencies={"difference_set": difference_set},
+    )
     def __sub__(self, other: set[V]) -> set[V]: ...
 
     @js.inline(call=symmetric_difference_set)
@@ -1695,7 +2784,7 @@ class _typed_dict(_object):
     @js.inline("{self}[{key}]")
     def __getitem__(self, key: str) -> object: ...
 
-    @js.inline("{self}[{key}] = {value}")
+    @js.inline("({self}[{key}] = {value}, null)")
     def __setitem__(self, key: str, value: object) -> None: ...
 
     @js
@@ -1737,7 +2826,8 @@ def _len(value: object) -> int: ...
 
 _len.value.source(
     """\
-if (typeof value === 'string' || Array.isArray(value)) return value.length;
+if (typeof value === 'string') return Array.from(value).length;
+if (Array.isArray(value)) return value.length;
 if (value instanceof Map || value instanceof Set) return value.size;
 if (value !== null && typeof value === 'object') {
     if (Object.getPrototypeOf(value) === Object.prototype) {
@@ -1776,10 +2866,129 @@ def _range(_arg_strs, **kwargs):
         start, stop, step = _arg_strs[0], _arg_strs[1], "1"
     else:
         start, stop, step = _arg_strs
-    return (
+    generated = (
         "(function*(start,stop,step){for(let i=start;"
         "step>0?i<stop:i>stop;i+=step)yield i})"
         f"({start},{stop},{step})"
+    )
+    try:
+        known_step = int(step)
+    except ValueError:
+        known_step = None
+    if known_step is not None and known_step != 0:
+        return generated
+    return (
+        "((start,stop,step)=>{if(step===0)throw new RangeError("
+        "'range() arg 3 must not be zero');return "
+        "(function*(){for(let i=start;step>0?i<stop:i>stop;i+=step)"
+        f"yield i}})()}})({start},{stop},{step})"
+    )
+
+
+@overload
+def _map[T, R](
+    function: Callable[[T], R],
+    iterable: Iterable[T],
+    /,
+) -> Iterator[R]: ...
+
+
+@overload
+def _map[T1, T2, R](
+    function: Callable[[T1, T2], R],
+    first: Iterable[T1],
+    second: Iterable[T2],
+    /,
+) -> Iterator[R]: ...
+
+
+@overload
+def _map[T1, T2, T3, R](
+    function: Callable[[T1, T2, T3], R],
+    first: Iterable[T1],
+    second: Iterable[T2],
+    third: Iterable[T3],
+    /,
+) -> Iterator[R]: ...
+
+
+@overload
+def _map[T1, T2, T3, T4, R](
+    function: Callable[[T1, T2, T3, T4], R],
+    first: Iterable[T1],
+    second: Iterable[T2],
+    third: Iterable[T3],
+    fourth: Iterable[T4],
+    /,
+) -> Iterator[R]: ...
+
+
+@overload
+def _map[T1, T2, T3, T4, T5, R](
+    function: Callable[[T1, T2, T3, T4, T5], R],
+    first: Iterable[T1],
+    second: Iterable[T2],
+    third: Iterable[T3],
+    fourth: Iterable[T4],
+    fifth: Iterable[T5],
+    /,
+) -> Iterator[R]: ...
+
+
+@js
+def _map(
+    function: Callable[..., object],
+    *iterables: Iterable[object],
+) -> Iterator[object]: ...
+
+
+@_map.analyze
+def _map(call):
+    return call.mapped(max_iterables=5)
+
+
+@_map.inline
+def _map(function, _arg_strs, _arg_types, **kwargs):
+    if len(_arg_strs) == 2:
+        values = iterable_source(_arg_strs[1], _arg_types[1])
+        return (
+            "(function*($function,values){for(const value of values)"
+            f"yield $function(value)}})({function},{values})"
+        )
+    iterables = ",".join(
+        iterable_source(value, value_type)
+        for value, value_type in zip(
+            _arg_strs[1:],
+            _arg_types[1:],
+            strict=True,
+        )
+    )
+    return (
+        "(function*($function,iterables){const iterators=iterables.map("
+        "value=>value[Symbol.iterator]());while(true){const values=[];"
+        "for(const iterator of iterators){const result=iterator.next();"
+        "if(result.done)return;values.push(result.value);}yield "
+        "$function(...values);}})"
+        f"({function},[{iterables}])"
+    )
+
+
+@js.runtime_dunders("__bool__", "__len__", item_of=1)
+@js
+def _filter[T](
+    function: Callable[[T], bool] | None,
+    iterable: Iterable[T],
+    /,
+) -> Iterator[T]: ...
+
+
+@_filter.inline(dependencies={"truthy": truthy})
+def _filter(function, iterable, truthy, _arg_types, **kwargs):
+    values = iterable_source(iterable, _arg_types[1])
+    return (
+        "(function*($function,values){for(const value of values)if("
+        f"$function===null?{truthy}(value):$function(value))yield value;}})"
+        f"({function},{values})"
     )
 
 
@@ -1799,7 +3008,10 @@ def _enumerate(values, _arg_types, start="0", **kwargs):
 
 
 @js
-def _zip(*iterables: Iterable[object]) -> Iterator[tuple[object]]: ...
+def _zip(
+    *iterables: Iterable[object],
+    strict: bool = False,
+) -> Iterator[tuple[object]]: ...
 
 
 @_zip.analyze
@@ -1808,11 +3020,30 @@ def _zip(call):
 
 
 @_zip.inline
-def _zip(_arg_strs, _arg_types, **kwargs):
+def _zip(_arg_strs, _arg_types, _keyword_strs, **kwargs):
     iterables = ", ".join(
         iterable_source(value, value_type)
         for value, value_type in zip(_arg_strs, _arg_types, strict=True)
     )
+    strict = _keyword_strs.get("strict", "false")
+    if strict != "false":
+        return (
+            "(function*(iterables,strict){const iterators=iterables.map("
+            "value=>value[Symbol.iterator]());while(iterators.length){"
+            "const values=[];const first=iterators[0].next();"
+            "if(first.done){if(!strict)return;for(let index=1;"
+            "index<iterators.length;index++){if(!iterators[index].next().done){"
+            "const previous=index===1?'argument 1':`arguments 1-${index}`;"
+            "throw new RangeError(`zip() argument ${index+1} is longer than "
+            "${previous}`);}}return;}values.push(first.value);"
+            "for(let index=1;index<iterators.length;index++){"
+            "const result=iterators[index].next();if(result.done){if(!strict)"
+            "return;const previous=index===1?'argument 1':"
+            "`arguments 1-${index}`;throw new RangeError(`zip() argument "
+            "${index+1} is shorter than ${previous}`);}"
+            "values.push(result.value);}yield values;}})(["
+            f"{iterables}],{strict})"
+        )
     return (
         "(function*(iterables){const iterators=iterables.map("
         "value=>value[Symbol.iterator]());while(iterators.length){"
@@ -1857,8 +3088,22 @@ def _next(iterator, raise_stop_iteration, _arg_strs, **kwargs):
     )
 
 
-@js
+@overload
 def _sum(values: Iterable[int], start: int = 0) -> int: ...
+
+
+@overload
+def _sum(
+    values: Iterable[int | float],
+    start: int | float = 0,
+) -> float: ...
+
+
+@js
+def _sum(
+    values: Iterable[int | float],
+    start: int | float = 0,
+) -> int | float: ...
 
 
 @_sum.inline
@@ -1983,11 +3228,11 @@ def extreme_inline(
     default = _keyword_strs.get("default", "null")
     if not values:
         return (
-            f"(()=>{{throw new Error('{name} expected at least 1 argument, got 0');}})()"
+            f"(()=>{{throw new TypeError('{name} expected at least 1 argument, got 0');}})()"
         )
     if values[1:] and has_default:
         return (
-            "(()=>{throw new Error('Cannot specify a default for "
+            "(()=>{throw new TypeError('Cannot specify a default for "
             f"{name}() with multiple positional arguments');}})()"
         )
     if not values[1:]:
@@ -2003,7 +3248,7 @@ def extreme_inline(
         f"if(!found||{compare_values}(valueKey,bestKey){comparison}0){{"
         "found=true;best=value;bestKey=valueKey;}}"
         f"if(!found){{if(hasDefault)return defaultValue;"
-        f"throw new Error('{name}() iterable argument is empty');}}"
+        f"throw new RangeError('{name}() iterable argument is empty');}}"
         "return best;})"
         f"({source},{key},{has_default_literal},{default})"
     )
@@ -2093,8 +3338,32 @@ def _max(call):
     return call.extreme()
 
 
+@overload
+def _round(number: int | bool, ndigits: int | None = None) -> int: ...
+
+
+@overload
+def _round(number: float) -> int: ...
+
+
+@overload
+def _round(number: float, ndigits: None) -> int: ...
+
+
+@overload
+def _round(number: float, ndigits: int) -> float: ...
+
+
 @js.dispatch("__round__")
-def _round(number: int | float | bool) -> int: ...
+def _round(
+    number: int | float | bool,
+    ndigits: int | None = None,
+) -> int | float: ...
+
+
+@_round.analyze
+def _round(call):
+    return call.round(round_ndigits)
 
 
 @js.dispatch("__repr__")
@@ -2104,20 +3373,33 @@ def _repr(obj: object) -> str: ...
 
 @js
 def _isinstance(obj: object, obj_type: type[object]) -> bool: ...
+
+
 @_isinstance.inline
-def _isinstance(obj, obj_type, **kwargs):
+def _isinstance(obj, obj_type, _arg_types, **kwargs):
+    actual_types = tuple(getattr(_arg_types[0], "types", (_arg_types[0],)))
+    has_int = any(inherits_type(actual, "int") for actual in actual_types)
+    has_float = any(inherits_type(actual, "float") for actual in actual_types)
     if obj_type == "list":
         return f"Array.isArray({obj})"
+    elif obj_type == "tuple":
+        return NotImplemented
     elif obj_type == "dict":
         return f"({obj} instanceof Map)"
     elif obj_type == "set":
         return f"({obj} instanceof Set)"
     elif obj_type == "int":
+        if has_float and not has_int:
+            return f"({obj},false)"
         return (
             "((value)=>typeof value==='boolean'||Number.isInteger(value))"
             f"({obj})"
         )
     elif obj_type == "float":
+        if has_int and not has_float:
+            return f"({obj},false)"
+        if has_float:
+            return f"(typeof {obj} === 'number')"
         return (
             "((value)=>typeof value==='number'&&!Number.isInteger(value))"
             f"({obj})"
@@ -2130,6 +3412,11 @@ def _isinstance(obj, obj_type, **kwargs):
         return f"({obj} instanceof Error)"
     else:
         return f"({obj} instanceof {obj_type})"
+
+
+@_isinstance.analyze
+def _isinstance(call):
+    return call.isinstance()
 
 
 @js.inline("{attr} in {obj}")
@@ -2169,16 +3456,39 @@ def _print(*objects: object, sep: str = " ", end: str = "\n") -> None:
     pass
 
 
+@_print.analyze
+def _print(call):
+    call.stringify_arguments("float")
+    if any(keyword.arg in {"sep", "end"} for keyword in call.node.keywords):
+        call.stringify_arguments("list", "tuple", "dict", "set")
+    return call.argument_dunders("__str__")
+
+
 @_print.inline
 def _print(_arg_strs, _arg_types, _keyword_strs, **kwargs):
     objects = []
     for obj, arg_type in zip(_arg_strs, _arg_types, strict=True):
+        member_names = {
+            member.name
+            for member in getattr(arg_type, "types", (arg_type,))
+        }
         if arg_type.name == "iter":
             obj = f"...{obj}"
         elif arg_type.name == "NoneType":
-            obj = "'None'"
+            obj = "'None'" if obj == "null" else f"({obj}, 'None')"
+        elif "NoneType" in member_names:
+            obj = f"((value)=>value===null?'None':value)({obj})"
         elif arg_type.name == "bool":
             obj = f"({obj} ? 'True' : 'False')"
+        elif all(
+            not getattr(member.py_obj, "__builtin__", False)
+            and (
+                method := member.find_attrs("__str__")
+            ) is not None
+            and not getattr(method.cls.py_obj, "__builtin__", False)
+            for member in getattr(arg_type, "types", (arg_type,))
+        ):
+            obj = f"{obj}.__str__()"
         objects.append(obj)
 
     sep = _keyword_strs.get("sep", "' '")
@@ -2216,6 +3526,22 @@ def _oct(num: int) -> str: ...
 
 @js.inline(partial(base_string, prefix="0x", base=16))
 def _hex(num: int) -> str: ...
+
+
+@js.inline(
+    "((characters)=>{{if(characters.length!==1)throw new TypeError("
+    "`ord() expected a character, but string of length ${{characters.length}} "
+    "found`);return characters[0].codePointAt(0);}})(Array.from({value}))"
+)
+def _ord(value: str, /) -> int: ...
+
+
+@js.inline(
+    "((value)=>{{if(value<0||value>0x10ffff)throw new RangeError("
+    "'chr() arg not in range(0x110000)');return String.fromCodePoint(value);}})"
+    "({value})"
+)
+def _chr(value: int, /) -> str: ...
 
 
 # pre-generate tuple[object] and dict[object,object] concrete

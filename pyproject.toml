@@ -42,23 +42,27 @@ pyjs = "pyjs.cli:main"
 pyjs = "pyjs.testing.pytest_plugin"
 
 [project.optional-dependencies]
-examples = ["pyjs-examples==0.3.0"]
+examples = ["pyjs-examples==0.4.0"]
+extras = ["pyjs-extras==0.4.0"]
+stripe = ["pyjs-extras[stripe]==0.4.0"]
 django = ["django>=6.0,<6.2"]
 
 [dependency-groups]
 dev = [
     "django>=6.0,<6.2",
-    "pyjs-examples==0.3.0",
+    "pyjs-examples==0.4.0",
+    "pyjs-extras[stripe]==0.4.0",
     "ruff==0.15.22",
     "uvicorn>=0.52,<1",
 ]
 
 [project.urls]
-Homepage = "https://pyjs.org"
-Documentation = "https://pyjs.org/docs/"
+Homepage = "https://github.com/pyjs/pyjs"
 "Release notes" = "https://github.com/pyjs/pyjs/releases"
 Source = "https://github.com/pyjs/pyjs"
 Tracker = "https://github.com/pyjs/pyjs/issues"
+Discord = "https://discord.gg/YktKpQPG7"
+X = "https://x.com/pyjsdev"
 
 [tool.ruff]
 target-version = "py314"
@@ -71,13 +75,14 @@ ignore = ["F403", "F405"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["external"]
+norecursedirs = ["build", "dist", "external"]
 
 [tool.uv.sources]
 pyjs-examples = {workspace = true}
+pyjs-extras = {workspace = true}
 
 [tool.uv.workspace]
-members = ["examples"]
+members = ["examples", "extras"]
 
 [tool.setuptools.dynamic]
 version = {attr = "pyjs.__version__"}

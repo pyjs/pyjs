@@ -205,7 +205,7 @@ class SVGAnimatedTransformList:
         self.baseVal: SVGTransformList = None
 
 
-@js
+@js.dictionary
 class SVGBoundingBoxOptions:
     """WebIDL source: @webref/idl/SVG.idl"""
 
@@ -342,7 +342,7 @@ class SVGNumberList:
     def replaceItem(self, newItem: SVGNumber, index: int) -> SVGNumber: ...
 
 
-@js
+@js.dictionary
 class SVGPathDataSettings:
     """WebIDL source: @webref/idl/svg-paths.idl"""
 

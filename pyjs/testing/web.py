@@ -1,12 +1,16 @@
 """Small helpers for browser-compiled UI tests."""
 
+from typing import cast
+
 from pyjs import js
 from pyjs.testing.client.runtime import window
 from pyjs.testing.client.state import RenderArtifact
-from pyjs.ui.gesture import GestureScript, InteractionClock
 from pyjs.ui.interaction import InteractionSample
 from pyjs.web.dom import Element, Node, document
+from pyjs.web.dragdrop import DataTransfer, DragEvent
 from pyjs.web.events import Event, EventTarget, KeyboardEvent, PointerEvent
+
+from .interaction.gesture import GestureScript, InteractionClock
 
 
 @js
@@ -67,6 +71,85 @@ def dispatch_pointer_script(
         if clock is not None:
             clock.seek(start + sample.elapsed_ms)
         dispatch_pointer_sample(target, sample)
+
+
+@js
+def _dispatch_drag_event(
+    target: EventTarget,
+    name: str,
+    sample: InteractionSample,
+    transfer: DataTransfer,
+    cancelable: bool = False,
+) -> None:
+    target.dispatchEvent(
+        DragEvent(
+            name,
+            bubbles=True,
+            cancelable=cancelable,
+            clientX=int(sample.x),
+            clientY=int(sample.y),
+            dataTransfer=transfer,
+        )
+    )
+
+
+@js
+def dispatch_drag_script(
+    source: Element,
+    script: GestureScript,
+    target_at: callable | None = None,
+) -> DataTransfer:
+    """Dispatch an HTML drag lifecycle from a target-neutral gesture script.
+
+    Browsers intentionally do not promote synthetic pointer events to trusted
+    native drags. This test adapter emits the corresponding HTML drag events;
+    callers may override hit testing for shadow DOM or virtualized layouts.
+    """
+
+    transfer = DataTransfer()
+    current_target: Element | None = None
+    active = False
+    for sample in script.samples:
+        if sample.phase == "down":
+            _dispatch_drag_event(source, "dragstart", sample, transfer, True)
+            current_target = source
+            active = True
+        elif active and sample.phase == "move":
+            target: Element | None = None
+            if target_at is not None:
+                target = cast(Element | None, target_at(sample))
+            else:
+                target = document.elementFromPoint(sample.x, sample.y)
+            if target is None:
+                target = current_target
+            if target is not current_target:
+                if current_target is not None:
+                    _dispatch_drag_event(
+                        current_target,
+                        "dragleave",
+                        sample,
+                        transfer,
+                    )
+                if target is not None:
+                    _dispatch_drag_event(target, "dragenter", sample, transfer, True)
+                current_target = target
+            if current_target is not None:
+                _dispatch_drag_event(
+                    current_target,
+                    "dragover",
+                    sample,
+                    transfer,
+                    True,
+                )
+        elif active and sample.phase == "up":
+            if current_target is not None:
+                _dispatch_drag_event(current_target, "drop", sample, transfer, True)
+            _dispatch_drag_event(source, "dragend", sample, transfer)
+            active = False
+        elif active and sample.phase == "cancel":
+            _dispatch_drag_event(source, "dragend", sample, transfer)
+            active = False
+    return transfer
 
 
 @js

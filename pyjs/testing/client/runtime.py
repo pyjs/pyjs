@@ -1,5 +1,5 @@
 from pyjs import js
-from pyjs.testing.client.state import RenderArtifact, TestResult
+from pyjs.testing.client.state import RenderArtifact, RuntimeException, TestResult
 from pyjs.web.dom import Window
 
 
@@ -12,7 +12,7 @@ class TestingWindow(Window):
         self.__pyjsReportResults__: callable | None = None
         self.__pyjsRunId = ""
         self.__pyjsRunSelectedTests__: callable = object()
-        self.__pyjsSelectedTests: list[object] = []
+        self.__pyjsSelectedTests: list[BrowserTest] = []
         self.__pyjsTestResults__: object | None = None
         self.__pyjsRenderArtifacts__: list[RenderArtifact] = []
 
@@ -52,6 +52,26 @@ def exception_text(error: Exception) -> str:
     if message:
         return message
     return str(error)
+
+
+@js.inline("{error}.name || 'Error'")
+def exception_name(error: Exception) -> str:
+    return type(error).__name__
+
+
+@js
+def exception_details(error: Exception) -> RuntimeException:
+    stack = error.stack
+    return RuntimeException(
+        exception_name(error),
+        error.message or str(error),
+        stack if stack is not None else "",
+    )
+
+
+@js
+def runtime_exception_text(error: RuntimeException) -> str:
+    return error.stack or error.message
 
 
 @js.inline("{call}()")
@@ -94,7 +114,7 @@ async def run_selected_tests(selected_tests: list[BrowserTest]) -> list[TestResu
                     test.nodeid,
                     "failed",
                     window.__pyjsRenderArtifacts__,
-                    error=exception_text(error),
+                    exception=exception_details(error),
                 )
             )
         finally:
@@ -116,7 +136,7 @@ async def report_automatic_results(run_id: str, selected_tests: list[BrowserTest
 @js
 def initialize_test_runtime(run_id: str, selected_tests: list[BrowserTest]):
     window.__pyjsRunId = run_id
-    window.__pyjsSelectedTests: list[object] = selected_tests
+    window.__pyjsSelectedTests: list[BrowserTest] = selected_tests
     window.__pyjsRunSelectedTests__: callable = run_selected_tests
 
     if window.__pyjsAutoRun__ is not False:

@@ -1,1 +1,1 @@
-"""A tested calculator with reactive DOM state and HTTP session persistence."""
+"""A tested universal calculator for the Web, PWA, and Android targets."""

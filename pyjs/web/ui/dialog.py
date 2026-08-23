@@ -2,7 +2,7 @@ from typing import cast
 
 from pyjs import js
 from pyjs.web.dom import Element, document
-from pyjs.web.domx import ProxyElement, button, div, p, ref, tag, tw
+from pyjs.web.domx import ProxyElement, button, div, p, ref, require_element, tag, tw
 from pyjs.web.domx import dialog as dialog_element
 from pyjs.web.events import CustomEvent, Event
 from pyjs.web.ui import Widget
@@ -164,7 +164,7 @@ class DialogContent(Widget):
             )
         surface = div(
             tw(
-                "relative grid gap-4 p-6 "
+                "relative flex flex-col gap-4 p-6 "
                 "data-[placement=left]:h-full data-[placement=right]:h-full"
             ),
             {"data-placement": placement},
@@ -240,7 +240,9 @@ class Dialog(Widget):
 
         self.trigger.on_click(self.toggle)
         self.content.addEventListener(DialogCloseRequest.event_name, self.close_requested)
-        self.content.dialog_element.addEventListener("close", self.native_closed)
+        require_element(self.content, "dialog").addEventListener(
+            "close", self.native_closed
+        )
         self.add(
             tw("inline-block"),
             {"data-slot": component, "data-state": "closed"},
@@ -287,7 +289,6 @@ class Dialog(Widget):
         self.trigger.set_expanded(False)
         self.trigger.element.focus()
 
-    @js.keep
-    def disconnectedCallback(self):
+    def disconnected(self):
         if self.is_open:
             self.close()

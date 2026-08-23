@@ -13,6 +13,17 @@ from pyjs.web.ui import Widget
 
 
 @js
+def calculate_result(left: float, right: float, operator: str) -> float:
+    if operator == "+":
+        return left + right
+    if operator == "-":
+        return left - right
+    if operator == "*":
+        return left * right
+    return left / right
+
+
+@js
 async def install_app_shell(cache_name: str, assets: list[str]):
     cache = await caches.open(cache_name)
     await cache.addAll(assets)
@@ -41,14 +52,12 @@ class InstallHandler:
         self.cache_name = cache_name
         self.assets = assets
 
-    @js.keep
     def handleEvent(self, event: ExtendableEvent):
         event.waitUntil(install_app_shell(self.cache_name, self.assets))
 
 
 @js
 class ActivateHandler:
-    @js.keep
     def handleEvent(self, event: ExtendableEvent):
         event.waitUntil(activate_app_shell())
 
@@ -58,7 +67,6 @@ class FetchHandler:
     def __init__(self, cache_name: str):
         self.cache_name = cache_name
 
-    @js.keep
     def handleEvent(self, event: FetchEvent):
         if event.request.method == "GET":
             event.respondWith(cache_first(event.request, self.cache_name))
@@ -75,11 +83,11 @@ def service_worker_main():
 
 @nojs
 def service_worker_javascript(request):
-    from pyjs.server import ServerResponse
+    from pyjs.server.dev import Response
     from pyjs.transpiler import bundle
 
     source, _ = bundle(service_worker_main, include_main=True, include_css=False)
-    return ServerResponse(
+    return Response(
         source,
         content_type="application/javascript",
         headers={
@@ -96,7 +104,6 @@ class CalculatorKeyListener:
         self.kind = kind
         self.value = value
 
-    @js.keep
     async def handleEvent(self, event: Event):
         self.app.press(self.kind, self.value)
         if self.kind == "equals" and not self.app.error:
@@ -334,15 +341,6 @@ class CalculatorApp(Widget):
         self.pending_operator = operator
         self.replace_display = True
 
-    def calculate_result(self, left: float, right: float, operator: str) -> float:
-        if operator == "+":
-            return left + right
-        if operator == "-":
-            return left - right
-        if operator == "*":
-            return left * right
-        return left / right
-
     def calculate(self) -> float:
         operator = self.pending_operator
         if self.error or operator == "":
@@ -354,7 +352,7 @@ class CalculatorApp(Widget):
             self.replace_display = True
             self.error = True
             return 0.0
-        result = self.calculate_result(self.stored_value, right, operator)
+        result = calculate_result(self.stored_value, right, operator)
         self.display_value = str(result)
         self.stored_value = result
         self.pending_operator = ""
@@ -427,7 +425,7 @@ def save_result(request):
 if __name__ == "__main__":
     import os
 
-    from pyjs.server import serve
+    from pyjs.server.dev import serve
 
     serve(
         "calculator",

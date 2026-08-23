@@ -90,7 +90,7 @@ class DragEvent(MouseEvent):
         self.dataTransfer: DataTransfer | None = dataTransfer
 
 
-@js
+@js.dictionary
 class DragEventInit:
     """WebIDL source: @webref/idl/html.idl"""
 

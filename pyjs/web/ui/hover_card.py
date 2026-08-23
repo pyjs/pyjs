@@ -1,3 +1,5 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, a, ref, tw
@@ -39,7 +41,6 @@ class HoverCardKeyListener:
     def __init__(self, card: HoverCard):
         self.card = card
 
-    @js.keep
     def handleEvent(self, event: KeyboardEvent):
         if event.key == "Escape":
             self.card.close()
@@ -117,12 +118,11 @@ class HoverCard(Widget):
             self.open()
 
     def maybe_hide(self, event: MouseEvent):
-        related: Element | None = event.relatedTarget
+        related = cast(Element | None, event.relatedTarget)
         if related is not None:
             if self.contains(related) or self.content.contains(related):
                 return
         self.close()
 
-    @js.keep
-    def disconnectedCallback(self):
+    def disconnected(self):
         self.close()

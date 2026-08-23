@@ -35,16 +35,14 @@ def _analyze(line):
     return analyze_source(source)
 
 
-def analyze_line(line):
-    analysis = _analyze(line)
+def _analysis_types(analysis):
     type_info = analysis.types
     if not analysis.wrapped:
         return type_info
     return "\n".join(line.strip() for line in type_info.splitlines()[1:])
 
 
-def transpile_line(line):
-    analysis = _analyze(line)
+def _analysis_javascript(analysis):
     if not analysis.wrapped:
         return analysis.javascript
     lines = analysis.javascript.splitlines()
@@ -53,15 +51,25 @@ def transpile_line(line):
     return "\n".join(line.strip() for line in lines)
 
 
+def analyze_line(line):
+    with _analyze(line) as analysis:
+        return _analysis_types(analysis)
+
+
+def transpile_line(line):
+    with _analyze(line) as analysis:
+        return _analysis_javascript(analysis)
+
+
 def analyze_file(module_name, write=False, no_assert=False):
     __tracebackhide__ = True
     source_file = TESTS_DIR / "cases" / f"{module_name}.py"
-    analysis = analyze_source(
+    with analyze_source(
         source_file.read_text(),
         filename=str(source_file),
         module_name=f"tests.cases.{module_name}",
-    )
-    actual = analysis.types.splitlines()
+    ) as analysis:
+        actual = analysis.types.splitlines()
 
     if no_assert:
         print(f"Transpiled {module_name}.run:")
@@ -91,12 +99,12 @@ def analyze_file(module_name, write=False, no_assert=False):
 def transpile_file(module_name, write=False, no_assert=False):
     __tracebackhide__ = True
     source_file = TESTS_DIR / "cases" / f"{module_name}.py"
-    analysis = analyze_source(
+    with analyze_source(
         source_file.read_text(),
         filename=str(source_file),
         module_name=f"tests.cases.{module_name}",
-    )
-    actual = analysis.javascript.splitlines()
+    ) as analysis:
+        actual = analysis.javascript.splitlines()
 
     if no_assert:
         print(f"Transpiled {module_name}.run:")
@@ -147,15 +155,18 @@ def assert_transpile(py, expected):
 def assert_analysis_transpile(py, expected_py, expected_js):
     """assert analysis and transpile"""
     __tracebackhide__ = True
-    assert_analysis(py, expected_py)
-    assert_transpile(py, expected_js)
+    with _analyze(py) as analysis:
+        actual_py = _analysis_types(analysis)
+        actual_js = _analysis_javascript(analysis)
+    assert textwrap.dedent(expected_py).strip() == actual_py
+    assert textwrap.dedent(expected_js).strip() == actual_js
 
 
 def assert_analysis2x_transpile(py, expected_py, expected_js):
     """assert analysis, round trip analysis and transpile"""
     __tracebackhide__ = True
-    assert_analysis_round_trip(py, expected_py)
-    assert_transpile(py, expected_js)
+    assert_analysis_transpile(py, expected_py, expected_js)
+    assert_analysis(expected_py, expected_py)
 
 
 def analyze_module_source(py, **kwargs):
@@ -164,31 +175,33 @@ def analyze_module_source(py, **kwargs):
 
 def assert_module_transpile(py, expected_js, **kwargs):
     __tracebackhide__ = True
-    actual = analyze_module_source(py, **kwargs).javascript
+    with analyze_module_source(py, **kwargs) as analysis:
+        actual = analysis.javascript
     assert textwrap.dedent(expected_js).strip() == actual
 
 
 def assert_module_analysis_transpile(py, expected_py, expected_js, **kwargs):
     __tracebackhide__ = True
-    analysis = analyze_module_source(py, **kwargs)
-    assert textwrap.dedent(expected_py).strip() == analysis.types
-    assert textwrap.dedent(expected_js).strip() == analysis.javascript
+    with analyze_module_source(py, **kwargs) as analysis:
+        assert textwrap.dedent(expected_py).strip() == analysis.types
+        assert textwrap.dedent(expected_js).strip() == analysis.javascript
 
 
 def assert_bundle_module_transpile(py, expected_js, **kwargs):
     __tracebackhide__ = True
-    analysis = analyze_module_source(py, **kwargs)
-    actual = Transpiler(
-        analysis.entry_point,
-        bundle_import,
-        lambda name: f"__export_js__.{name} = {name};",
-    ).visit(analysis.entry_point.container.node)
+    with analyze_module_source(py, **kwargs) as analysis:
+        actual = Transpiler(
+            analysis.entry_point,
+            bundle_import,
+            lambda name: f"__export_js__.{name} = {name};",
+        ).visit(analysis.entry_point.container.node)
     assert textwrap.dedent(expected_js).strip() == actual
 
 
 def assert_compiled_sources(py, expected_sources, **kwargs):
     __tracebackhide__ = True
-    actual = compile_source(textwrap.dedent(py), **kwargs).sources
+    with compile_source(textwrap.dedent(py), **kwargs) as compilation:
+        actual = compilation.sources
     expected = {
         name: textwrap.dedent(source).strip()
         for name, source in expected_sources.items()
@@ -200,6 +213,16 @@ def assert_diagnostic(py, expected, **kwargs):
     __tracebackhide__ = True
     with pytest.raises(CompilationError) as caught:
         analyze_module_source(py, **kwargs)
+    actual = format_compilation_error(caught.value)
+    expected = textwrap.dedent(expected).strip("\n") + "\n"
+    assert expected == actual
+    return caught.value.diagnostic
+
+
+def assert_compilation_diagnostic(py, expected, **kwargs):
+    __tracebackhide__ = True
+    with pytest.raises(CompilationError) as caught:
+        compile_source(textwrap.dedent(py), **kwargs)
     actual = format_compilation_error(caught.value)
     expected = textwrap.dedent(expected).strip("\n") + "\n"
     assert expected == actual

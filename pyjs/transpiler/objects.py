@@ -21,7 +21,22 @@ from .libraries import (
 )
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
-JS_MODULE_VALUE_TYPES = (bool, int, float, str, list, dict, type(None))
+JS_MODULE_VALUE_TYPES = (bool, int, float, str, list, tuple, dict, type(None))
+GENERIC_TYPE_ALIASES = {
+    "Mapping": "dict",
+    "MutableMapping": "dict",
+}
+_FUNCTION_SOURCES = weakref.WeakKeyDictionary()
+
+
+def _function_source(function: callable) -> tuple[str, int]:
+    function = getattr(function, "__func__", function)
+    if cached := _FUNCTION_SOURCES.get(function):
+        return cached
+    lines, lineno = inspect.getsourcelines(function)
+    result = "".join(lines), lineno
+    _FUNCTION_SOURCES[function] = result
+    return result
 
 
 def _contains_yield(node: FunctionNode) -> bool:
@@ -55,6 +70,45 @@ def py_to_ast(value):
         raise TypeError(f"Unsupported type: {type(value)}")
 
 
+def _module_assignment_values(body: list[ast.stmt]) -> dict[str, ast.expr]:
+    values = {}
+    for node in body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            values[node.targets[0].id] = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            values[node.target.id] = node.value
+    return values
+
+
+def _class_field_nodes(
+    node: ast.ClassDef | None,
+) -> tuple[dict[str, ast.expr], dict[str, ast.expr]]:
+    declarations = {}
+    values = {}
+    if node is None:
+        return declarations, values
+    for statement in node.body:
+        if isinstance(statement, ast.AnnAssign) and isinstance(
+            statement.target, ast.Name
+        ):
+            declarations[statement.target.id] = statement.annotation
+            if statement.value is not None:
+                values[statement.target.id] = statement.value
+        elif isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Name):
+                    values[target.id] = statement.value
+    return declarations, values
+
+
 def _annotation_source(annotation) -> str:
     if isinstance(annotation, str):
         return annotation
@@ -72,6 +126,15 @@ def _annotation_source(annotation) -> str:
     if origin is typing.Literal:
         values = ", ".join(repr(arg) for arg in typing.get_args(annotation))
         return f"Literal[{values}]"
+    if origin is Callable:
+        parameters, result = typing.get_args(annotation)
+        if parameters is Ellipsis:
+            parameter_source = "..."
+        else:
+            parameter_source = "[" + ", ".join(
+                _annotation_source(parameter) for parameter in parameters
+            ) + "]"
+        return f"Callable[{parameter_source}, {_annotation_source(result)}]"
     if origin is not None:
         name = getattr(origin, "__name__", str(origin))
         args = ", ".join(
@@ -262,6 +325,13 @@ def infer_js_annotation(value):
                 "use JS[list[T]]."
             )
         return list[union_annotations(infer_js_annotation(item) for item in value)]
+    if isinstance(value, tuple):
+        if not value:
+            raise TypeError(
+                "Cannot infer the item types of an empty JS module tuple; "
+                "use JS[tuple[T, ...]]."
+            )
+        return tuple[tuple(infer_js_annotation(item) for item in value)]
     if isinstance(value, dict):
         if not value:
             raise TypeError(
@@ -573,13 +643,30 @@ class Object:
                 )
             elif js_module_binding is not None:
                 if not isinstance(py_obj, JS_MODULE_VALUE_TYPES):
-                    raise TypeError(
+                    container.binding_error(
+                        name,
+                        DiagnosticCode.UNSUPPORTED_SYNTAX,
                         f"JS module binding `{name}` has unsupported value type "
-                        f"`{type(py_obj).__name__}`."
+                        f"`{type(py_obj).__name__}`",
+                        help=(
+                            "Use a literal bool, int, float, str, list, tuple, "
+                            "dict, or None value."
+                        ),
                     )
                 annotation, is_final = js_module_binding
                 if annotation is None:
-                    annotation = infer_js_annotation(py_obj)
+                    try:
+                        annotation = infer_js_annotation(py_obj)
+                    except TypeError as error:
+                        container.binding_error(
+                            name,
+                            DiagnosticCode.TYPE_ANNOTATION_REQUIRED,
+                            str(error),
+                            help=(
+                                "Specialize JS with the complete client type, "
+                                "such as JS[list[str]]."
+                            ),
+                        )
                 while True:
                     try:
                         value_type = resolve_python_annotation(
@@ -644,19 +731,36 @@ class Module(Object):
         self.py_module = module
         self.imported: dict[str, list[tuple[Object, str]]] = {}
         self.inline_dependencies: dict[Object, str] = {}
+        self.inline_dependency_roots: dict[Object, weakref.WeakSet[Function]] = {}
+        self.side_effect_dependencies: set[Object] = set()
         self.runtime_implementations: dict[callable, Function] = {}
         self.extensions = extensions
         self.context = context or CompilationContext()
         self.type_dependencies: list[Class] = []
         filename = getattr(module, "__file__", None)
         if filename is not None:
-            self.context.sources.register(
+            source_file = self.context.sources.register(
                 filename,
                 getattr(module, "__pyjs_source__", None),
             )
+            self.source_fragment = SourceFragment(source_file)
+        else:
+            self.source_fragment = None
         self.js_annotations = module_js_annotations(module)
+        self.static_initializers: dict[str, ast.expr] = {}
+        self.class_definitions: dict[str, ast.ClassDef] = {}
+        self.preserved_static_initializers: set[str] = set()
 
-    def register_inline_dependency(self, dependency_obj: Object) -> str:
+    def register_inline_dependency(
+        self,
+        dependency_obj: Object,
+        entry_point: Function,
+    ) -> str:
+        roots = self.inline_dependency_roots.setdefault(
+            dependency_obj,
+            weakref.WeakSet(),
+        )
+        roots.add(entry_point)
         if alias := self.inline_dependencies.get(dependency_obj):
             return alias
 
@@ -675,6 +779,25 @@ class Module(Object):
             if binding not in imported:
                 imported.append(binding)
         return alias
+
+    def binding_error(
+        self,
+        name: str,
+        code: DiagnosticCode,
+        message: str,
+        *,
+        help: str,
+    ) -> typing.Never:
+        initializer = self.static_initializers.get(name)
+        if self.source_fragment is None or initializer is None:
+            raise TypeError(message)
+        self.context.error(
+            self.source_fragment,
+            initializer,
+            code,
+            message,
+            help=help,
+        )
 
     @property
     def py_obj(self):
@@ -727,13 +850,19 @@ class Module(Object):
         return implementation
 
     def build(self, *args, **kwargs):
-        self.build_imported_js_bindings()
+        module_node = ast.parse(inspect.getsource(self.py_module))
+        self.static_initializers = _module_assignment_values(module_node.body)
+        self.class_definitions = {
+            node.name: node
+            for node in module_node.body
+            if isinstance(node, ast.ClassDef)
+        }
+        self.build_imported_js_bindings(module_node.body)
         super().build(self.py_module, self)
         return self
 
-    def build_imported_js_bindings(self):
-        source = inspect.getsource(self.py_module)
-        for node in ast.parse(source).body:
+    def build_imported_js_bindings(self, body: list[ast.stmt]):
+        for node in body:
             if not isinstance(node, ast.ImportFrom) or node.module is None:
                 continue
             module_name = node.module
@@ -763,6 +892,13 @@ class Module(Object):
                         alias.name,
                         alias.asname or alias.name,
                     )
+
+    def resolve_static_initializer(self, name: str) -> ast.expr | None:
+        initializer = self.static_initializers.get(name)
+        if initializer is None:
+            return None
+        self.preserved_static_initializers.add(name)
+        return initializer
 
     def add_imported_js_binding(self, module, source_name: str, local_name: str):
         if module.__name__ not in self.container:
@@ -914,14 +1050,18 @@ class Class(Object):
         self.client_required: tuple[str, ...] = ()
         self.client_fields: dict[str, Class | UnionType] = {}
         self.client_model_dependencies: set[Class] = set()
-        self.client_model_aliases: dict[Class, str] = {}
+        self.client_model_registry_required = False
+        self.field_declarations: dict[str, Class | UnionType] = {}
+        self.field_declaration_nodes: dict[str, ast.expr] = {}
+        self.field_value_nodes: dict[str, ast.expr] = {}
+        self.static_initializers: dict[str, ast.expr] = {}
         self.subclasses = []
         self.runtime_super_dependency: Class | None = None
         self.runtime_super_alias: str | None = None
         if self.name == "object" and getattr(cls, "__builtin__", False):
             self.super = None
         elif cls.__base__ is Generic:
-            self.super = None
+            self.super = self.search("object")
         else:
             base_name = cls.__base__.__name__
             if container.scope.is_builtins:
@@ -984,6 +1124,8 @@ class Class(Object):
                 runtime_dependency=self.runtime_super_dependency,
             )
             base.runtime_alias = self.runtime_super_alias
+        elif self.super is not None and self.super.generic_types:
+            base = Name(self.super)
         else:
             base = self.super.annotation if self.super is not None else None
         return ClassDef(
@@ -1004,7 +1146,7 @@ class Class(Object):
             return ast.Name(id=self.name)
 
     def to_annotation_str(self, *args, **kwargs):
-        return self.name
+        return ast.unparse(self.annotation)
 
     @staticmethod
     def is_generic(py_cls):
@@ -1037,6 +1179,21 @@ class Class(Object):
         return cls_
 
     def build(self, *args, **kwargs):
+        class_node = self.container.class_definitions.get(self.py_cls.__name__)
+        (
+            self.field_declaration_nodes,
+            self.field_value_nodes,
+        ) = _class_field_nodes(class_node)
+        local_annotations = annotationlib.get_annotations(
+            self.py_cls,
+            format=annotationlib.Format.FORWARDREF,
+        )
+        for name, annotation in local_annotations.items():
+            annotation = _evaluate_class_annotation(annotation, self.py_cls)
+            if typing.get_origin(annotation) is typing.ClassVar:
+                annotation = typing.get_args(annotation)[0]
+            self.field_declarations[name] = self.resolve_field_annotation(annotation)
+
         annotations = dict(
             getattr(self.py_cls, "__pyjs_instance_annotations__", {})
         )
@@ -1080,28 +1237,20 @@ class Class(Object):
             source_overrides=source_overrides,
             skip_names=skip_names,
         )
+        for name, initializer in self.field_value_nodes.items():
+            field = self.find_attrs(name, search_bases=False)
+            if not isinstance(field, Instance) or field.static_value is None:
+                continue
+            try:
+                py_to_ast(field.py_value)
+            except TypeError:
+                field.static_value = initializer
+                self.static_initializers[name] = initializer
         info = library_class_info(self.py_cls)
         if info is not None:
             annotations.update(info.annotations)
         for name, annotation in annotations.items():
-            ensure_annotation_dependencies(annotation, self.container)
-            while True:
-                try:
-                    value_type = resolve_python_annotation(annotation, self.scope)
-                    break
-                except DependencyError as dependency:
-                    if dependency.class_or_func not in self.container.type_dependencies:
-                        self.container.type_dependencies.append(dependency.class_or_func)
-                except UnsupportedLiteralError as error:
-                    self.container.context.definition_error(
-                        self.py_cls,
-                        DiagnosticCode.UNSUPPORTED_SYNTAX,
-                        str(error),
-                        help=(
-                            "Use one or more string values, such as "
-                            "Literal['open', 'closed']."
-                        ),
-                    )
+            value_type = self.resolve_field_annotation(annotation)
             if (
                 info is not None
                 and name in info.annotations
@@ -1130,6 +1279,27 @@ class Class(Object):
                 name: py_to_ast(value) for name, value in info.defaults.items()
             }
             self.client_required = info.required
+
+    def resolve_field_annotation(self, annotation) -> Class | UnionType:
+        ensure_annotation_dependencies(annotation, self.container)
+        while True:
+            try:
+                value_type = resolve_python_annotation(annotation, self.scope)
+                assert isinstance(value_type, (Class, UnionType))
+                return value_type
+            except DependencyError as dependency:
+                if dependency.class_or_func not in self.container.type_dependencies:
+                    self.container.type_dependencies.append(dependency.class_or_func)
+            except UnsupportedLiteralError as error:
+                self.container.context.definition_error(
+                    self.py_cls,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    str(error),
+                    help=(
+                        "Use one or more string values, such as "
+                        "Literal['open', 'closed']."
+                    ),
+                )
 
     @property
     def children(self):
@@ -1318,6 +1488,10 @@ def specialization_cache_key(value_type: Class | UnionType):
 
 
 def specialization_type_name(value_type: Class | UnionType) -> str:
+    if isinstance(value_type, UnionType):
+        return "U".join(
+            specialization_type_name(member) for member in value_type.types
+        )
     if isinstance(value_type, LiteralClass):
         values = "_".join(
             value.encode().hex() or "empty" for value in value_type.values
@@ -1334,10 +1508,18 @@ def specialization_type_name(value_type: Class | UnionType) -> str:
         return f"Callable__{parameters}__{result}"
     if isinstance(value_type, TypeVariableClass):
         return value_type.name
-    return value_type.to_annotation_str("U")
+    return value_type.name
 
 
 def ensure_annotation_dependencies(annotation, module: Module):
+    if annotation is typing.Any:
+        return
+    pydantic_generic = getattr(annotation, "__pydantic_generic_metadata__", None)
+    if pydantic_generic and pydantic_generic.get("origin") is not None:
+        ensure_annotation_dependencies(pydantic_generic["origin"], module)
+        for value in pydantic_generic["args"]:
+            ensure_annotation_dependencies(value, module)
+        return
     origin = typing.get_origin(annotation)
     if origin is not None:
         if origin is Callable:
@@ -1347,7 +1529,10 @@ def ensure_annotation_dependencies(annotation, module: Module):
                     ensure_annotation_dependencies(parameter, module)
             ensure_annotation_dependencies(return_annotation, module)
             return
-        if origin not in (types.UnionType, typing.Union):
+        if (
+            origin not in (types.UnionType, typing.Union)
+            and origin.__name__ not in GENERIC_TYPE_ALIASES
+        ):
             ensure_annotation_dependencies(origin, module)
         for value in typing.get_args(annotation):
             ensure_annotation_dependencies(value, module)
@@ -1361,6 +1546,10 @@ def ensure_annotation_dependencies(annotation, module: Module):
 
 
 def resolve_python_annotation(annotation, scope: Scope):
+    if annotation is None or annotation is type(None):
+        return scope.search("NoneType")
+    if annotation is typing.Any:
+        return scope.search("object")
     if isinstance(annotation, str):
         resolved = scope.search(annotation)
         if isinstance(resolved, TypeAliasValue):
@@ -1368,6 +1557,16 @@ def resolve_python_annotation(annotation, scope: Scope):
         return resolved
     if isinstance(annotation, annotationlib.ForwardRef):
         return resolve_python_annotation(annotation.__forward_arg__, scope)
+    pydantic_generic = getattr(annotation, "__pydantic_generic_metadata__", None)
+    if pydantic_generic and pydantic_generic.get("origin") is not None:
+        generic = scope.search(pydantic_generic["origin"].__name__)
+        assert isinstance(generic, GenericClass)
+        return generic(
+            *[
+                resolve_python_annotation(value, scope)
+                for value in pydantic_generic["args"]
+            ]
+        )
     origin = typing.get_origin(annotation)
     if origin is typing.Literal:
         return literal_type(typing.get_args(annotation), scope)
@@ -1399,7 +1598,8 @@ def resolve_python_annotation(annotation, scope: Scope):
             base,
         )
     if origin is not None:
-        generic = scope.search(origin.__name__)
+        generic_name = GENERIC_TYPE_ALIASES.get(origin.__name__, origin.__name__)
+        generic = scope.search(generic_name)
         assert isinstance(generic, GenericClass)
         args = typing.get_args(annotation)
         if origin is tuple and args[-1:] == (Ellipsis,):
@@ -1517,12 +1717,36 @@ def client_model_types(value_type: Class | UnionType) -> set[Class]:
     return dependencies
 
 
+def client_type_descriptor(value_type: Class | UnionType):
+    if isinstance(value_type, UnionType):
+        return [
+            "union",
+            *(client_type_descriptor(member) for member in value_type.types),
+        ]
+    if isinstance(value_type, LiteralClass):
+        return ["literal", *value_type.values]
+    if is_client_model_type(value_type):
+        return ["model", f"{value_type.container.name}.{value_type.name}"]
+    type_name = value_type.generic_name or value_type.name
+    if type_name in {"dict", "list", "set", "tuple"}:
+        return [
+            type_name,
+            *(
+                client_type_descriptor(member)
+                for member in value_type.generic_types.values()
+            ),
+        ]
+    return type_name
+
+
 def is_supported_client_field_type(value_type: Class | UnionType) -> bool:
     if isinstance(value_type, UnionType):
         return all(
             is_supported_client_field_type(member)
             for member in value_type.types
         )
+    if isinstance(value_type, TypeVariableClass):
+        return True
     if is_client_model_type(value_type):
         return True
     if isinstance(value_type, LiteralClass):
@@ -1546,6 +1770,70 @@ def is_supported_client_field_type(value_type: Class | UnionType) -> bool:
     )
 
 
+def client_result_requires_decoding(value_type: Class | UnionType) -> bool:
+    if isinstance(value_type, UnionType):
+        return any(
+            client_result_requires_decoding(member) for member in value_type.types
+        )
+    if is_client_model_type(value_type):
+        return True
+    type_name = value_type.generic_name or value_type.name
+    if type_name in {"Date", "dict", "set"}:
+        return True
+    if type_name not in {"list", "tuple"}:
+        return False
+    return any(
+        client_result_requires_decoding(member)
+        for member in value_type.generic_types.values()
+    )
+
+
+def is_supported_client_dict_key_type(value_type: Class | UnionType) -> bool:
+    if isinstance(value_type, LiteralClass):
+        return all(isinstance(value, str) for value in value_type.values)
+    if isinstance(value_type, UnionType):
+        return False
+    if isinstance(value_type, TypeVariableClass):
+        return False
+    type_name = value_type.generic_name or value_type.name
+    return type_name in {"bool", "float", "int", "str"}
+
+
+def is_supported_client_result_type(value_type: Class | UnionType) -> bool:
+    if isinstance(value_type, UnionType):
+        if not all(
+            is_supported_client_result_type(member) for member in value_type.types
+        ):
+            return False
+        decoded = [
+            member
+            for member in value_type.types
+            if client_result_requires_decoding(member)
+        ]
+        if not decoded:
+            return True
+        non_null = [
+            member for member in value_type.types if member.name != "NoneType"
+        ]
+        return len(non_null) == 1 and len(non_null) < len(value_type.types)
+    if not is_supported_client_field_type(value_type):
+        return False
+    if isinstance(value_type, TypeVariableClass):
+        return False
+    if is_client_model_type(value_type) or isinstance(value_type, LiteralClass):
+        return True
+    type_name = value_type.generic_name or value_type.name
+    if type_name not in {"dict", "list", "set", "tuple"}:
+        return True
+    members = tuple(value_type.generic_types.values())
+    if type_name == "dict":
+        if len(members) != 2 or not is_supported_client_dict_key_type(members[0]):
+            return False
+    elif not members:
+        return False
+    return all(is_supported_client_result_type(member) for member in members)
+
+
 class GenericClass(Object):
     def __init__(
         self,
@@ -1559,6 +1847,14 @@ class GenericClass(Object):
         if cls_init := getattr(cls, "__init__", None):
             self.init_params = inspect.signature(cls_init).parameters
         self.generic_params = [type_param.__name__ for type_param in cls.__type_params__]
+        object_type = self.scope.search("object")
+        assert isinstance(object_type, Class)
+        self.type_parameters = {
+            parameter.__name__: TypeVariableClass(parameter, object_type)
+            for parameter in cls.__type_params__
+        }
+        for parameter in self.type_parameters.values():
+            self.scope.add(parameter)
         # Built-in generic classes outlive individual compilations. Concrete
         # specializations are also referenced by the compilation that uses
         # them, so this cache must not keep discarded package graphs alive.
@@ -1725,6 +2021,7 @@ class Function(Object):
 
         self.is_analyzed = False
         self.params = []
+        self.posonly_count = 0
         self.defaults = []
         self.vararg = None
         self.kwonlyargs = []
@@ -1739,8 +2036,11 @@ class Function(Object):
         self.yield_type: Class | UnionType | None = None
         self.is_partial_client = False
         self.virtual_visited = weakref.WeakSet()
+        self.render_visited = weakref.WeakSet()
+        self.hydrate_visited = weakref.WeakSet()
         self.compilation_entry_points: tuple[Function, ...] = ()
         self.compilation_objects: set[Object] = set()
+        self.compilation_cleanup: Callable[[], None] | None = None
         self.runtime_dunder_dependencies: set[str] = set()
         self.is_runtime_implementation = False
         self.runtime_source: str | None = None
@@ -1758,6 +2058,7 @@ class Function(Object):
         for parameter in self.type_parameters.values():
             self.scope.add(parameter)
         self.params = []
+        self.posonly_count = 0
         self.defaults = []
         self.vararg = None
         self.kwonlyargs = []
@@ -1809,8 +2110,7 @@ class Function(Object):
             py_func if client_partial is not None else client_implementation or py_func
         )
         if source_override is None:
-            lines, lineno = inspect.getsourcelines(source_func)
-            source = "".join(lines)
+            source, lineno = _function_source(source_func)
         else:
             source = source_override
             owner = container.py_cls if isinstance(container, Class) else source_func
@@ -1841,7 +2141,8 @@ class Function(Object):
             )
             for import_name, imported in imports.items():
                 traverse_imported(import_name, imported, module_obj)
-        ast.fix_missing_locations(func_def)
+        if client_partial is not None or module_obj.extensions:
+            ast.fix_missing_locations(func_def)
 
         func = cls(py_func if client_partial is not None else source_func, container)
         func.name = emitted_name or py_func.__name__
@@ -1863,7 +2164,17 @@ class Function(Object):
             -4 if simple_wrapper else 0,
         )
         func.is_async = isinstance(func_def, ast.AsyncFunctionDef)
-        func.is_generator = _contains_yield(func_def)
+        if (
+            source_override is None
+            and client_partial is None
+            and not module_obj.extensions
+        ):
+            inspected_func = getattr(source_func, "__func__", source_func)
+            func.is_generator = inspect.isgeneratorfunction(
+                inspected_func
+            ) or inspect.isasyncgenfunction(inspected_func)
+        else:
+            func.is_generator = _contains_yield(func_def)
         if load_overloads:
             overloads = []
             for overloaded in typing.get_overloads(source_func):
@@ -1884,16 +2195,17 @@ class Function(Object):
     @property
     def node(self) -> FunctionNode:
         assert self.is_analyzed, (
-            "Attempting to create function AST but haven't analyzed yet."
+            f"Attempting to create function AST for {self.name!r} before it "
+            "has been analyzed."
         )
         node_type = AsyncFunctionDef if self.is_async else FunctionDef
         return node_type(
             self,
             args=ast.arguments(
-                args=self.params,
+                posonlyargs=self.params[: self.posonly_count],
+                args=self.params[self.posonly_count :],
                 vararg=self.vararg,
                 kwarg=self.kwarg,
-                posonlyargs=[],
                 kwonlyargs=self.kwonlyargs,
                 defaults=self.defaults,
                 kw_defaults=self.kw_defaults,
@@ -1965,7 +2277,7 @@ class Function(Object):
         if self.runtime_source is not None:
             return self.runtime_source
         source = self.py_func.__js_source__
-        return source() if callable(source) else source
+        return source(self) if callable(source) else source
 
     def rewrite_call(
         self,
@@ -2032,7 +2344,9 @@ class Instance(Object):
         self.static_value: ast.expr = static_value
         self.py_value = py_obj
         self.is_const = is_const
+        self.has_declared_type = False
         self.member_dependency: Class | None = None
+        self.virtual_visited = weakref.WeakSet()
 
     def find(self, name):
         if value := self.find_attrs(name):
@@ -2067,6 +2381,7 @@ class Instance(Object):
             is_const=is_const,
         )
         new.attrs = self.attrs
+        new.has_declared_type = self.has_declared_type
         return new
 
     def add(self, obj: Object, name: str = None):
@@ -2103,15 +2418,18 @@ class Instance(Object):
         assert isinstance(value_type, Class), "Can't determine type."
         value_ast = None
         if not getattr(value, "__builtin__", False):
-            try:
-                value_ast = py_to_ast(value)
-            except TypeError:
-                args = []
-                for arg in getattr(value, "__static_args__", []):
-                    args.append(py_to_ast(arg))
-                value_ast = Call(
-                    value_type, func=Name(value_type), args=args, keywords=[]
-                )
+            if isinstance(container, Module):
+                prepare = getattr(value_type.py_cls, "__pyjs_prepare_client__", None)
+                if prepare is not None:
+                    prepare()
+                value_ast = container.resolve_static_initializer(name)
+            if value_ast is None:
+                try:
+                    value_ast = py_to_ast(value)
+                except TypeError:
+                    value_ast = Call(
+                        value_type, func=Name(value_type), args=[], keywords=[]
+                    )
         return value_type(
             name,
             container.scope,
@@ -2160,6 +2478,9 @@ class Call(ast.Call):
         inline_dependencies: dict[str, str] | None = None,
         dependency_objects: dict[str, Function] | None = None,
         runtime_methods: tuple[Function, ...] = (),
+        generated_methods: tuple[Function, ...] = (),
+        generated_virtual_methods: tuple[Function, ...] = (),
+        dictionary_keys: tuple[str, ...] | None = None,
         **kwargs,
     ):
         self.obj = obj
@@ -2175,6 +2496,9 @@ class Call(ast.Call):
         self.inline_dependencies = inline_dependencies or {}
         self.dependency_objects = dependency_objects or {}
         self.runtime_methods = runtime_methods
+        self.generated_methods = generated_methods
+        self.generated_virtual_methods = generated_virtual_methods
+        self.dictionary_keys = dictionary_keys
         super().__init__(**kwargs)
 
 
@@ -2199,11 +2523,12 @@ class UnpackAssignment(ast.stmt):
 class Name(ast.Name):
     def __init__(
         self,
-        obj: Object,
+        obj: Object | UnionType,
         runtime_dependency: Function | Class | None = None,
         **kwargs,
     ):
         self.obj = obj
+        assert isinstance(obj, (Object, UnionType))
         self.runtime_dependency = runtime_dependency
         assert isinstance(self.obj, (Object, UnionType)), f"{self.obj} is not an Object"
         super().__init__(**{"id": obj.name, **kwargs})
@@ -2248,6 +2573,24 @@ class StaticCast(ast.expr):
     def __init__(self, obj: Object | UnionType, value: ast.expr, **kwargs):
         self.obj = obj
         self.value = value
+        super().__init__(**kwargs)
+
+
+class EvaluateOnce(ast.expr):
+    _fields = ("value", "body")
+
+    def __init__(
+        self,
+        obj: Object,
+        value: ast.expr,
+        body: ast.expr,
+        parameter: str,
+        **kwargs,
+    ):
+        self.obj = obj
+        self.value = value
+        self.body = body
+        self.parameter = parameter
         super().__init__(**kwargs)
 
 
@@ -2330,6 +2673,25 @@ class BoolOp(ast.BoolOp):
         super().__init__(**kwargs)
 
 
+class ChainedCompare(ast.expr):
+    _fields = ("operands", "comparisons", "temporaries")
+
+    def __init__(
+        self,
+        obj: Class,
+        operands: list[ast.expr],
+        comparisons: list[ast.expr],
+        temporaries: list[Name],
+        **kwargs,
+    ):
+        self.obj = obj
+        self.operands = operands
+        self.comparisons = comparisons
+        self.temporaries = temporaries
+        assert self.obj.name == "bool"
+        super().__init__(**kwargs)
+
+
 class JoinedStr(ast.JoinedStr):
     def __init__(self, obj: Class, **kwargs):
         self.obj = obj
@@ -2351,9 +2713,9 @@ class Subscript(ast.Subscript):
 
 
 class Starred(ast.Starred):
-    def __init__(self, obj: Class, **kwargs):
+    def __init__(self, obj: Class | UnionType, **kwargs):
         self.obj = obj
-        assert isinstance(self.obj, Class)
+        assert isinstance(self.obj, (Class, UnionType))
         super().__init__(**kwargs)
 
 
@@ -2369,9 +2731,16 @@ class Await(ast.Await):
 
 
 class IfExp(ast.IfExp):
-    def __init__(self, obj: Class | UnionType, **kwargs):
+    def __init__(
+        self,
+        obj: Class | UnionType,
+        value_obj: Object | UnionType,
+        **kwargs,
+    ):
         self.obj = obj
         assert isinstance(self.obj, (Class, UnionType))
+        self.value_obj = value_obj
+        assert isinstance(self.value_obj, (Object, UnionType))
         super().__init__(**kwargs)
 
 
