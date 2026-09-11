@@ -6,12 +6,12 @@ const { spawnSync } = require("node:child_process");
 
 function runtimePackage() {
   const target = `${process.platform}-${process.arch}`;
-  if (target === "linux-x64") {
+  if (target === "linux-x64" || target === "linux-arm64") {
     const glibc = process.report?.getReport().header.glibcVersionRuntime;
     if (!glibc) {
       throw new Error("The PyJS npm prototype does not support Linux musl yet.");
     }
-    return "@pyjsdev/cli-linux-x64";
+    return `@pyjsdev/cli-${target}`;
   }
   const packages = {
     "darwin-x64": "@pyjsdev/cli-darwin-x64",

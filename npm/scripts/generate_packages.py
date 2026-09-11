@@ -44,6 +44,21 @@ TARGETS = {
         # npm does not preserve the python3 symlink when packing the runtime.
         python_executable="python/bin/python3.14",
     ),
+    "linux-arm64": RuntimeTarget(
+        name="linux-arm64",
+        package_name="@pyjsdev/cli-linux-arm64",
+        os="linux",
+        cpu="arm64",
+        libc="glibc",
+        python_version="3.14.7",
+        python_build="20260805",
+        asset=(
+            "cpython-3.14.7+20260805-aarch64-unknown-linux-gnu-"
+            "install_only_stripped.tar.gz"
+        ),
+        sha256="f278d66c15e81f6c77719892e3eb32ff4bca5fc4ab424e171d14bc12bb88b4ee",
+        python_executable="python/bin/python3.14",
+    ),
     "darwin-x64": RuntimeTarget(
         name="darwin-x64",
         package_name="@pyjsdev/cli-darwin-x64",

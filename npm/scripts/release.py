@@ -4,6 +4,7 @@ import argparse
 import ast
 import hashlib
 import json
+import re
 import shutil
 import tarfile
 import tomllib
@@ -38,14 +39,20 @@ def project_version(path: Path) -> str:
     return project["version"]
 
 
+def launcher_version() -> str:
+    return json.loads((NPM_ROOT / "cli" / "package.json").read_text())["version"]
+
+
 def validate_versions(tag: str | None = None) -> str:
     version = pyjs_version()
     cli = json.loads((NPM_ROOT / "cli" / "package.json").read_text())
+    expected_packages = {target.package_name for target in TARGETS.values()}
+    if set(cli["optionalDependencies"]) != expected_packages:
+        raise RuntimeError("Launcher optional dependencies must match runtime targets")
     versions = {
         "pyjs": version,
         "pyjs-examples": project_version(PROJECT_ROOT / "examples" / "pyproject.toml"),
         "pyjs-extras": project_version(PROJECT_ROOT / "extras" / "pyproject.toml"),
-        "@pyjsdev/cli": cli["version"],
     }
     versions.update(
         {
@@ -63,6 +70,20 @@ def validate_versions(tag: str | None = None) -> str:
             f"{package}={candidate}" for package, candidate in mismatches.items()
         )
         raise RuntimeError(f"Release versions do not agree with {version}: {details}")
+    if cli["version"] != version:
+        runtime_parts = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+        launcher_parts = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", cli["version"])
+        if (
+            tag is not None
+            or runtime_parts is None
+            or launcher_parts is None
+            or runtime_parts.group(1, 2) != launcher_parts.group(1, 2)
+            or int(launcher_parts[3]) <= int(runtime_parts[3])
+        ):
+            raise RuntimeError(
+                "A launcher-only revision must increase the patch version of "
+                f"{version} and cannot use a full release tag"
+            )
     repository = cli.get("repository", {}).get("url")
     if repository != PUBLIC_REPOSITORY:
         raise RuntimeError(f"Unexpected npm repository URL: {repository!r}")
@@ -91,17 +112,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def prepare_artifact(target_name: str, packages: Path, destination: Path) -> None:
+def prepare_artifact(
+    target_name: str, packages: Path, destination: Path, *, include_launcher=False,
+) -> None:
     version = validate_versions()
-    expected = {TARGETS[target_name].package_name}
-    if target_name == "linux-x64":
-        expected.add("@pyjsdev/cli")
+    expected = {TARGETS[target_name].package_name: version}
+    if target_name == "linux-x64" or include_launcher:
+        expected["@pyjsdev/cli"] = launcher_version()
     archives = {}
     for archive in packages.glob("*.tgz"):
         package = package_manifest(archive)
-        if package["name"] in expected and package["version"] == version:
+        if expected.get(package["name"]) == package["version"]:
             archives[package["name"]] = (archive, package)
-    missing = expected - archives.keys()
+    missing = expected.keys() - archives.keys()
     if missing:
         raise RuntimeError(f"Missing npm archives: {', '.join(sorted(missing))}")
 
@@ -123,7 +146,7 @@ def prepare_artifact(target_name: str, packages: Path, destination: Path) -> Non
                 "os": package.get("os"),
                 "pyjsRuntime": package.get("pyjsRuntime"),
                 "sha256": digest,
-                "version": version,
+                "version": package["version"],
             }
         )
         checksums.append(f"{digest}  {copied.name}")
@@ -139,6 +162,12 @@ def verified_archive(directory: Path, package_name: str) -> Path:
         raise RuntimeError("Artifact and source versions do not agree")
     selected = None
     for package in manifest["packages"]:
+        expected_version = (
+            launcher_version() if package["name"] == "@pyjsdev/cli"
+            else manifest["version"]
+        )
+        if package["version"] != expected_version:
+            raise RuntimeError("Artifact package and source versions do not agree")
         archive = directory / package["file"]
         if sha256(archive) != package["sha256"]:
             raise RuntimeError(f"Checksum failed for {archive.name}")
@@ -157,19 +186,25 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     version = commands.add_parser("version", help="validate and print the release version")
     version.add_argument("--tag")
+    version.add_argument("--launcher", action="store_true")
     prepare = commands.add_parser("prepare", help="prepare one platform artifact")
     prepare.add_argument("target", choices=TARGETS)
     prepare.add_argument("packages", type=Path)
     prepare.add_argument("destination", type=Path)
+    prepare.add_argument("--include-launcher", action="store_true")
     archive = commands.add_parser("archive", help="verify and locate one npm archive")
     archive.add_argument("directory", type=Path)
     archive.add_argument("package")
     arguments = parser.parse_args()
 
     if arguments.command == "version":
-        print(validate_versions(arguments.tag))
+        runtime_version = validate_versions(arguments.tag)
+        print(launcher_version() if arguments.launcher else runtime_version)
     elif arguments.command == "prepare":
-        prepare_artifact(arguments.target, arguments.packages, arguments.destination)
+        prepare_artifact(
+            arguments.target, arguments.packages, arguments.destination,
+            include_launcher=arguments.include_launcher,
+        )
     else:
         print(verified_archive(arguments.directory, arguments.package))
 

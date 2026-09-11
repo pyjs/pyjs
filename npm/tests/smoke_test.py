@@ -47,7 +47,6 @@ def main():
     args = parser.parse_args()
 
     runtime = NPM_ROOT / "dist" / f"cli-{args.target}"
-    cli_manifest = json.loads((NPM_ROOT / "cli" / "package.json").read_text())
     if not args.skip_build:
         run(
             ["python", str(NPM_ROOT / "scripts" / "build_runtime.py"), args.target],
@@ -77,7 +76,7 @@ def main():
         executable = project / "node_modules" / ".bin" / executable_name
         assert_output(
             [str(executable), "--version"],
-            "pyjs " + cli_manifest["version"],
+            "pyjs " + runtime_manifest["version"],
             project,
         )
         serve_help = run(

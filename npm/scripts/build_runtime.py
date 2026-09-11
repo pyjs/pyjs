@@ -1,6 +1,5 @@
 import argparse
 import hashlib
-import json
 import shutil
 import subprocess
 import tarfile
@@ -8,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from generate_packages import NPM_ROOT, TARGETS, write_runtime_package
+from release import validate_versions
 
 PROJECT_ROOT = NPM_ROOT.parent
 
@@ -32,17 +32,13 @@ def download(target) -> Path:
     return archive
 
 
-def package_version() -> str:
-    package = json.loads((NPM_ROOT / "cli" / "package.json").read_text())
-    return package["version"]
-
-
 def run(command: list[str]):
     print("+", " ".join(command))
     subprocess.run(command, check=True)
 
 
 def build(target_name: str) -> Path:
+    version = validate_versions()
     target = TARGETS[target_name]
     archive = download(target)
     destination = NPM_ROOT / "dist" / target.package_name.rpartition("/")[2]
@@ -75,7 +71,7 @@ def build(target_name: str) -> Path:
         ]
     )
     shutil.copy2(PROJECT_ROOT / "LICENSE", destination / "LICENSE")
-    write_runtime_package(target, destination, package_version())
+    write_runtime_package(target, destination, version)
     print(f"Built {target.package_name} in {destination}")
     return destination
 

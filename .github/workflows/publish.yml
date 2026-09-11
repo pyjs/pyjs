@@ -5,6 +5,18 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      target:
+        description: Build all runtimes or one runtime plus the launcher (no publishing)
+        default: all
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - linux-arm64
+          - win32-x64
+          - darwin-arm64
+          - darwin-x64
 
 permissions:
   contents: read
@@ -39,6 +51,7 @@ jobs:
 
   build-linux:
     name: Build linux-x64
+    if: github.event_name == 'push' || inputs.target == 'all'
     needs: preflight
     uses: ./.github/workflows/build-runtime.yml
     with:
@@ -47,9 +60,31 @@ jobs:
       runner: ubuntu-latest
       target: linux-x64
 
+  build-single:
+    name: Build selected runtime and launcher
+    if: github.event_name == 'workflow_dispatch' && inputs.target != 'all'
+    needs: preflight
+    uses: ./.github/workflows/build-runtime.yml
+    with:
+      artifact: npm-${{ inputs.target }}
+      platform: ${{ inputs.target }}
+      runner: ${{ fromJSON('{"linux-x64":"ubuntu-latest","linux-arm64":"ubuntu-24.04-arm","win32-x64":"windows-latest","darwin-arm64":"macos-15","darwin-x64":"macos-15-intel"}')[inputs.target] }}
+      target: ${{ inputs.target }}
+      include-launcher: true
+
+  build-linux-arm64:
+    name: Build linux-arm64
+    needs: build-linux
+    uses: ./.github/workflows/build-runtime.yml
+    with:
+      artifact: npm-linux-arm64
+      platform: Linux arm64
+      runner: ubuntu-24.04-arm
+      target: linux-arm64
+
   build-windows:
     name: Build win32-x64
-    needs: build-linux
+    needs: build-linux-arm64
     uses: ./.github/workflows/build-runtime.yml
     with:
       artifact: npm-win32-x64
@@ -82,6 +117,7 @@ jobs:
     if: github.event_name == 'push'
     needs:
       - build-linux
+      - build-linux-arm64
       - build-macos-arm64
       - build-macos-x64
       - build-windows
@@ -91,6 +127,8 @@ jobs:
         include:
           - artifact: npm-linux-x64
             package: "@pyjsdev/cli-linux-x64"
+          - artifact: npm-linux-arm64
+            package: "@pyjsdev/cli-linux-arm64"
           - artifact: npm-win32-x64
             package: "@pyjsdev/cli-win32-x64"
           - artifact: npm-darwin-arm64
