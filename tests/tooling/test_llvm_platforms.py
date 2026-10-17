@@ -58,6 +58,8 @@ def test_windows_exports_follow_tokens_not_lines_or_comments():
         define ; headers and definitions need not occupy a single line
             dso_local i32 @"visible.entry"() { ret i32 1 } define internal i32 @hidden() { ret i32 2 }
         define available_externally i32 @not_emitted() { ret i32 3 }
+        define hidden i32 @hidden_function() { ret i32 7 }
+        @hidden_data = hidden global i32 8
         @other = dllexport global i32 4
         define dllexport i32 @exported() { ret i32 5 }
         define external i32 @explicit() { ret i32 6 }
@@ -86,10 +88,17 @@ def test_shared_library_exports_public_functions_and_data(tmp_path):
 
     path = LLVM().compile('''
         @"quoted.counter" = global i64 7
+        @hidden_state = hidden global i64 0
         @not_defined_here = external global i64
+        define hidden i64 @hidden_helper() {
+            %value = load i64, ptr @hidden_state
+            ret i64 %value
+        }
         define i64 @"quoted\\2Eentry"() {
             %value = load i64, ptr @"quoted.counter"
-            ret i64 %value
+            %hidden = call i64 @hidden_helper()
+            %result = add i64 %value, %hidden
+            ret i64 %result
         }
         define internal i64 @hidden() { ret i64 99 }
     ''', tmp_path / "build, directory", shared=True)
@@ -103,6 +112,10 @@ def test_shared_library_exports_public_functions_and_data(tmp_path):
         assert function() == 11
         with pytest.raises(AttributeError):
             _ = library.hidden
+        with pytest.raises(AttributeError):
+            _ = library.hidden_helper
+        with pytest.raises(ValueError):
+            ctypes.c_int64.in_dll(library, "hidden_state")
     finally:
         unload = _ctypes.FreeLibrary if sys.platform == "win32" else _ctypes.dlclose
         unload(library._handle)
@@ -116,6 +129,15 @@ def test_readme_native_example(tmp_path, capsys):
     exec(compile(source, "README.md native example", "exec"), {})
     assert capsys.readouterr().out == "Squares: [0, 1, 4, 9, 16, 25]\n"
     assert (tmp_path / ("program" + binary_suffix())).is_file()
+
+
+def test_python_comparison_preserves_unencodable_exception_diagnostics(tmp_path):
+    result = LLVM()._run_python(
+        'def main() -> int:\n    raise ValueError("bad \\udc80")\n', tmp_path, timeout=10)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr.endswith("ValueError: bad \\udc80\n")
+    assert "lost sys.stderr" not in result.stderr
 
 
 @pytest.mark.parametrize("capacity", [0, 1, 4, 8])

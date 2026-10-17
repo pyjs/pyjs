@@ -43,7 +43,8 @@ def _windows_exported_ir(source: str) -> str:
     prefixes = {"external", "available_externally", "linkonce", "weak", "common",
                 "appending", "internal", "private", "extern_weak", "linkonce_odr",
                 "weak_odr", "dso_local", "dso_preemptable", "default", "hidden", "protected"}
-    excluded = {"internal", "private", "available_externally", "extern_weak", "appending"}
+    # LLVM forbids dllexport on hidden visibility, even with external linkage.
+    excluded = {"internal", "private", "hidden", "available_externally", "extern_weak", "appending"}
     for match in _LLVM_TOKENS.finditer(source):
         token = match.group()
         if token.startswith(";"):
@@ -532,7 +533,12 @@ _LLVMErrorCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ct
 
 
 class LLVMLibrary:
-    """A loaded native renderer with typed copy-in inputs."""
+    """A loaded native renderer with typed copy-in inputs.
+
+    Close every handle to a path before recompiling there. Windows locks loaded
+    DLL files; POSIX loaders reuse the old image while any handle remains open.
+    Use distinct output directories for simultaneously loaded revisions.
+    """
 
     def __init__(
         self,
@@ -1103,7 +1109,7 @@ class LLVM:
                 # Match native UTF-8 output, independent of console encoding
                 # and Windows text-stream newline translation.
                 sys.stdout.reconfigure(encoding="utf-8", newline="")
-                sys.stderr.reconfigure(encoding="utf-8", newline="")
+                sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace", newline="")
 
                 # Analysis resolves imports in the caller's Python environment.
                 # Give the comparison process the same source roots even though

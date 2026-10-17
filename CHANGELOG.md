@@ -18,8 +18,9 @@
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
 - Native output preserves UTF-8 and newline bytes across platforms; NaN
   formatting follows Python's sign and percentage rules on macOS too.
-- Closing a native library unloads its code, allowing safe file replacement
-  and recompilation without accidentally executing an earlier version.
+- Closing all handles to a native library unloads its code, allowing safe file
+  replacement and recompilation without executing an earlier version. Use
+  separate output directories for simultaneously loaded revisions.
 - Browser test compilation no longer blocks control-connection keepalives;
   disconnected requests release pending results without overlapping builds.
   The runner page is prepared before readiness so cold compilation cannot
