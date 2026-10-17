@@ -69,7 +69,14 @@ def report(run):
         lines.append(f"First job start to last job completion: {minutes(span)} minutes.")
         if created := timestamp(run.get("createdAt")):
             queue = (min(timestamp(job["startedAt"]) for job in jobs) - created).total_seconds()
-            lines.append(f"Initial queue delay: {minutes(queue)} minutes.")
+            if queue < 0:
+                # Partial reruns carry successful jobs from earlier attempts,
+                # while gh reports the retry's creation time. Zero is not a
+                # measured queue delay, and old failed attempts are not listed.
+                lines.append("Initial queue delay: unavailable (jobs predate this attempt).")
+                lines.append("Runner minutes cover the listed jobs only, not cumulative retry-inclusive use.")
+            else:
+                lines.append(f"Initial queue delay: {minutes(queue)} minutes.")
     else:
         lines.append("Partial evidence: unfinished/unstarted jobs have no duration; do not compare this total to a full run.")
     return "\n".join(lines) + "\n"

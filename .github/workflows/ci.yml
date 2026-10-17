@@ -18,7 +18,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # Reusable calls inherit the caller's workflow name. Keep manual release
+  # validation separate from ordinary CI on the same ref and from its caller.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -2,6 +2,7 @@ import asyncio
 import json
 import threading
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -10,6 +11,7 @@ from pyjs.analysis.diagnostics import SourceFile
 from pyjs.javascript.sourcemap import SourceMap, SourceMapping
 from pyjs.testing.builder import BrowserBundle
 from pyjs.testing.daemon import PrototypeDaemon
+from pyjs.testing.protocol import RunFailureStage
 from pyjs.tooling.node import Node
 from pyjs.tooling.npm import NpmImport, NpmPackage
 
@@ -68,6 +70,7 @@ def test_compilation_keeps_control_pings_and_runner_builds_responsive(tmp_path, 
                 await client.send(json.dumps({"type": "run_tests", "tests": []}))
                 busy = json.loads(await asyncio.wait_for(client.recv(), 2))
                 assert busy["stage"] == "busy"
+                assert busy["stage"] in get_args(RunFailureStage.__value__)
                 if disconnect:
                     await client.close()
                     await asyncio.wait_for(daemon.run_lock.acquire(), 2)

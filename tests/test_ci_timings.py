@@ -31,6 +31,17 @@ def test_device_step_is_counted_without_skipped_host_step():
     assert "| device | success | 3.00 | 2.00 |" in report(run)
 
 
+def test_partial_rerun_has_no_measurable_queue_delay_or_cumulative_cost():
+    run = {"headSha": "a" * 40, "status": "completed", "createdAt": "2026-01-01T00:10:00Z",
+           "jobs": [job("carried", "00:10", "02:10"), job("retried", "10:10", "11:10")]}
+    text = report(run)
+    assert "Initial queue delay: unavailable (jobs predate this attempt)." in text
+    assert "Initial queue delay: -" not in text
+    assert "Completed-job runner minutes: 3.00" in text
+    assert "not cumulative retry-inclusive use" in text
+    assert "last job completion: 11.00 minutes" in text
+
+
 def test_live_and_skipped_jobs_never_get_fake_or_negative_durations():
     pending = job("waiting", "00:00", "01:00")
     pending.update(status="in_progress", conclusion="", completedAt="0001-01-01T00:00:00Z")

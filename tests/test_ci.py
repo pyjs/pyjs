@@ -101,3 +101,18 @@ def test_workflow_runs_every_target_without_privileged_pr_execution():
     packages = workflow["jobs"]["package"]
     assert job["strategy"]["max-parallel"] + packages["strategy"]["max-parallel"] == 15
     assert packages["with"]["retain-artifact"] == "${{ inputs.retain-packages || false }}"
+
+
+def test_ci_concurrency_isolates_release_validation_on_the_same_ref():
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    release = yaml.safe_load((ROOT / ".github/workflows/publish.yml").read_text())
+
+    def group(workflow, caller):
+        return (workflow["concurrency"]["group"]
+                .replace("${{ github.workflow }}", caller["name"])
+                .replace("${{ github.ref }}", "refs/heads/main"))
+
+    # GitHub supplies the caller context inside reusable workflows. Neither
+    # ordinary CI nor the release parent may cancel its validation child.
+    assert len({group(ci, ci), group(ci, release), group(release, release)}) == 3
+    assert ci["concurrency"]["cancel-in-progress"] is True
