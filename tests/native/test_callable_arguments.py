@@ -1,5 +1,6 @@
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
 from tests.backend_semantics import CALLABLE_INPUT_CONTRACT
@@ -346,7 +347,9 @@ def test_reassigned_input_view_checks_captured_arguments(tmp_path, optimize, arg
             gc_set_threshold(1)
             view: Callable[[{argument}], str] = broad
             view = broad
-            original: Callable[[object], str] = view
+            # Keep the broad descriptor explicitly: assigning it to a narrow
+            # view does not make that view accept arbitrary objects again.
+            original: Callable[[object], str] = broad
             deferred = lambda: view({value})
             before = deferred()
             view = narrow
@@ -378,7 +381,6 @@ def test_captured_input_view_checks_tag_and_presence(tmp_path, optimize, accepte
     assert comparison.native.stderr == ""
 
 
-@pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("accepted,expected,value,definitions", [
     ("object", "int", "'wrong'", ""),
     ("int | str", "int", "'wrong'", ""),
@@ -390,8 +392,12 @@ def test_captured_input_view_checks_tag_and_presence(tmp_path, optimize, accepte
             pass
     '''),
 ])
-def test_stale_input_proof_rejects_before_callback_entry(tmp_path, optimize, accepted, expected, value, definitions):
-    comparison = LLVM().compare_with_python(f'''
+def test_declared_input_view_rejects_incompatible_captured_call(accepted, expected, value, definitions):
+    # Reassignment now preserves the declared input signature. This formerly
+    # reached a native runtime guard through an incorrectly widened proof;
+    # the shared analyzer must reject it before generating any native code.
+    with pytest.raises(CompilationError, match="Callable argument 1 expects"):
+        transpile_llvm(f'''
         from collections.abc import Callable
         {definitions}
         def broad(value: {accepted}, events: list[int]) -> str:
@@ -411,13 +417,7 @@ def test_stale_input_proof_rejects_before_callback_entry(tmp_path, optimize, acc
             except TypeError:
                 result = 'rejected'
             return result + ':' + str(len(events))
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
-    # CPython ignores annotations; a stale proof cannot bypass a native input
-    # ABI. Check the deliberate exception before any user body effects.
-    assert comparison.python.returncode == comparison.native.returncode == 0
-    assert comparison.python.stderr == comparison.native.stderr == ""
-    assert comparison.python.stdout == "entered:1"
-    assert comparison.native.stdout == "rejected:0"
+    ''')
 
 
 @pytest.mark.parametrize("accepted,expected,message", [
@@ -455,7 +455,7 @@ def test_input_views_preserve_portable_parameters_and_nested_captures(tmp_path, 
         def narrow(left: Callable[[object], str], right: Callable[[object], str]) -> str:
             gc_collect()
             return left(7) + right(8)
-        def scalar(value: int) -> object:
+        def other(value: object) -> str:
             gc_collect()
             return str(value)
         def portable(value: int8, other: object) -> int8:
@@ -470,20 +470,21 @@ def test_input_views_preserve_portable_parameters_and_nested_captures(tmp_path, 
             deferred = lambda: view(show, show)
             # These descriptors have no prior inverse view to cancel: both
             # nested argument projections must actually allocate and survive GC.
-            fresh = lambda: view(scalar, scalar)
+            fresh = lambda: view(show, other)
             before = deferred()
             view = narrow
             middle = deferred()
-            allocated = fresh()
             view = broad
+            allocated = fresh()
             return before + middle + allocated + deferred() + str(factory()(int8(127), 'value'))
     ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
     assert comparison.native.stderr == ""
 
 
-def test_narrowed_input_view_cannot_recover_an_opaque_dom_wrapper():
-    with pytest.raises(LLVMUnsupported, match="stored DOM views require matching wrapper and opaque representations"):
-        transpile_llvm('''
+def test_stored_input_view_preserves_dom_wrapper_conversion(tmp_path):
+    # The declared Panel input survives reassignment, so its adapter can still
+    # unwrap Panel for broad(). No reverse opaque-to-wrapper proof is needed.
+    LLVM().assert_matches_python('''
             from collections.abc import Callable
             from pyjs.web.dom import Element
             from pyjs.web.domx import CustomElement
@@ -496,11 +497,11 @@ def test_narrowed_input_view_cannot_recover_an_opaque_dom_wrapper():
                 view: Callable[[Panel], int] = broad
                 view = broad
                 return view(Panel())
-        ''')
+        ''', directory=tmp_path, sanitizers=("address", "undefined"))
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-def test_input_roundtrips_have_bounded_retained_heap(tmp_path, optimize):
+def test_repeated_input_adapters_have_bounded_retained_heap(tmp_path, optimize):
     from pyjs.native.runtime import collector, heap
     from pyjs.native.runtime.pointers import Pointer
     from tests.native.runtime_support import runtime_functions
@@ -519,7 +520,7 @@ def test_input_roundtrips_have_bounded_retained_heap(tmp_path, optimize):
             view: Callable[[int], str] = callback
             view = callback
             for index in range(count):
-                original: Callable[[object], str] = view
+                original: Callable[[object], str] = callback
                 view = original
                 gc_collect()
             assert view is callback
@@ -531,7 +532,7 @@ def test_input_roundtrips_have_bounded_retained_heap(tmp_path, optimize):
         collect = runtime_functions({"pyjs.gc.try.collect": collector.try_collect}, library._library)
         assert collect("pyjs.gc.try.collect", Pointer(library._heap))
         # Only the pinned view, its original bound descriptor and receiver
-        # remain. A wrapper per roundtrip would retain over 100 allocations.
+        # remain. Retaining every replaced adapter would exceed 100 allocations.
         assert heap._Heap.from_address(library._heap).count <= 4
     finally:
         library.close()

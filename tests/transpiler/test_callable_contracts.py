@@ -74,6 +74,30 @@ def test_callable_identity_retains_optional_and_keyword_requirements():
         assert substitute_type_variables(optional, {}).minimum_arguments == 1
 
 
+@pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
+                         ids=["javascript", "native", "java", "webassembly"])
+@pytest.mark.parametrize("use,message", [
+    ("wide: Callable[[object], str] = callback", "Cannot assign Callable"),
+    ("deferred = lambda: callback('wrong')", "Callable argument 1 expects int, got str"),
+])
+def test_reassignment_does_not_widen_declared_callable_inputs(environment, use, message):
+    source = f'''
+        from collections.abc import Callable
+        from pyjs import js
+        @js
+        def broad(value: object) -> str:
+            return repr(value)
+        @js
+        def main() -> None:
+            callback: Callable[[int], str] = broad
+            callback = broad
+            {use}
+    '''
+    with pytest.raises(CompilationError, match=message):
+        with analyze_module_source(source, environment=environment, wrap=False):
+            pass
+
+
 def test_javascript_indirect_optional_argument_boundary_and_direct_positive():
     source = '''
         from pyjs import js
