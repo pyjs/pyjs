@@ -112,13 +112,23 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  package:
+    name: Package
+    uses: ./.github/workflows/build-runtime.yml
+    with:
+      artifact: ci-linux-x64
+      platform: Linux
+      runner: ubuntu-24.04
+      target: linux-x64
+
   complete:
     name: CI complete
     if: always()
-    needs: tests
+    needs: [tests, package]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every target
         env:
           RESULT: ${{ needs.tests.result }}
-        run: test "$RESULT" = success
+          PACKAGE_RESULT: ${{ needs.package.result }}
+        run: test "$RESULT" = success && test "$PACKAGE_RESULT" = success

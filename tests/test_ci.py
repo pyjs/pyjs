@@ -69,7 +69,8 @@ def test_workflow_runs_every_target_without_privileged_pr_execution():
     assert sorted(item["shard"] for item in native) == list(range(1, 5))
     assert all(item["shards"] == 4 for item in native)
     assert len({item["name"] for item in matrix}) == len(matrix)
-    assert workflow["jobs"]["complete"]["needs"] == "tests"
+    assert workflow["jobs"]["complete"]["needs"] == ["tests", "package"]
+    assert workflow["jobs"]["package"]["uses"] == "./.github/workflows/build-runtime.yml"
     assert workflow["jobs"]["complete"]["if"] == "always()"
     checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@"))
     assert checkout["with"]["persist-credentials"] is False

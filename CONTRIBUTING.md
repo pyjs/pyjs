@@ -38,7 +38,8 @@ the checks you ran, and any platform coverage you could not exercise.
 Every PR runs the Linux suite on parallel GitHub-hosted runners: core/server,
 JS/WGSL, LLVM (four module shards), JVM, WebAssembly, browser, Android
 Robolectric, and Android emulator. Browser tests include WebGPU, examples and
-extras; managed-tool download tests also run. Core and Store Django settings
+extras; managed-tool download tests and a Linux portable npm package build/install
+smoke test also run. Core and Store Django settings
 are isolated in separate processes. A failure does not cancel sibling targets.
 
 Reproduce a target with `uv run python scripts/ci.py js` (replace `js` with
