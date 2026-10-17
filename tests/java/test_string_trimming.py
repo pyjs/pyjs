@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -94,7 +95,9 @@ def test_trimming_calls_only_legacy_string_methods(tmp_path):
 
 
 def test_trimming_string_methods_exist_at_android_minimum_sdk():
-    platform = Path.home() / "Android/Sdk/platforms/android-35"
+    root = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+                or Path.home() / "Android/Sdk")
+    platform = root / "platforms/android-35"
     if not (platform / "data/api-versions.xml").is_file():
         pytest.skip("Android API 35 availability metadata is not installed")
     with AndroidAPI(platform, 35) as api:
