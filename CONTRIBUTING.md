@@ -66,6 +66,11 @@ gh run view RUN_ID --repo pyjs/pyjs --json jobs,status,headSha,createdAt | pytho
 The report labels incomplete runs and separates runner-minutes from the elapsed
 job span. Runner-minutes are a resource measure, not a billing estimate.
 
+`uv run python scripts/check_distributions.py` builds all workspace source
+archives and wheels, installs them into an isolated environment, and exercises
+the installed CLI, SSR and example resources. The shared runtime build uses
+this check on each release platform before its npm package smoke test.
+
 All external contributors require a maintainer's approval before fork PR
 workflows run. Review the proposed code and workflow changes before approving.
 PR tests use read-only tokens, no repository secrets, and no self-hosted

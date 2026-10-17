@@ -190,6 +190,17 @@ def test_public_workflow_builds_and_gates_every_runtime():
     assert jobs["publish-launcher"]["if"] == "github.event_name == 'push'"
 
 
+def test_shared_runtime_build_checks_python_packages_and_can_avoid_pr_archives():
+    workflow = yaml.safe_load((NPM_ROOT.parent / ".github/workflows/build-runtime.yml").read_text())
+    assert workflow[True]["workflow_call"]["inputs"]["retain-artifact"]["default"] is True
+    steps = workflow["jobs"]["build"]["steps"]
+    assert any(step.get("run") == "python scripts/check_distributions.py" for step in steps)
+    for name in ("Prepare release artifact", "Upload release artifact"):
+        assert next(step for step in steps if step.get("name") == name)["if"] == "inputs.retain-artifact"
+    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["persist-credentials"] is False
+
+
 @pytest.mark.parametrize("include_launcher", [False, True])
 def test_arm64_artifact_verifies_checksum(tmp_path, include_launcher):
     packages = tmp_path / "packages"

@@ -18,6 +18,10 @@ on:
       include-launcher:
         default: false
         type: boolean
+      retain-artifact:
+        description: Retain release archives; PR smoke tests need only job logs
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -30,12 +34,17 @@ jobs:
     steps:
       - name: Check out public source
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -43,12 +52,15 @@ jobs:
           package-manager-cache: false
       - name: Validate release metadata
         run: python npm/scripts/release.py version
+      - name: Build and install Python distributions
+        run: python scripts/check_distributions.py
       - name: Build portable runtime
         run: python npm/scripts/build_runtime.py ${{ inputs.target }}
       - name: Smoke-test portable runtime
         run: >-
           python npm/tests/smoke_test.py ${{ inputs.target }} --skip-build
       - name: Prepare release artifact
+        if: inputs.retain-artifact
         shell: bash
         env:
           INCLUDE_LAUNCHER: ${{ inputs.include-launcher }}
@@ -60,6 +72,7 @@ jobs:
           python npm/scripts/release.py prepare ${{ inputs.target }} \
             npm/dist/packages release-artifacts/${{ inputs.target }} "${args[@]}"
       - name: Upload release artifact
+        if: inputs.retain-artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact }}
