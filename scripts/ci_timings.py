@@ -1,8 +1,30 @@
 """Summarize `gh run view --json jobs,status,headSha` from stdin, without API writes."""
 
+import argparse
 import json
+import math
 import sys
+import xml.etree.ElementTree as ET
+from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
+
+
+def native_weights(directory):
+    """Aggregate one run's JUnit files into whole-module scheduling estimates."""
+    weights = {}
+    for path in sorted(directory.rglob("*.xml")):
+        modules = defaultdict(float)
+        for case in ET.parse(path).getroot().iter("testcase"):
+            name = case.get("classname", "")
+            if name.startswith("tests.native."):
+                modules[name.replace(".", "/") + ".py"] += float(case.get("time", "0"))
+        if duplicate := weights.keys() & modules.keys():
+            raise ValueError(f"Repeated native modules; supply artifacts from one run: {sorted(duplicate)}")
+        weights.update({name: max(1, math.ceil(seconds)) for name, seconds in modules.items()})
+    if not weights:
+        raise ValueError("No native JUnit results found")
+    return dict(sorted(weights.items()))
 
 
 def timestamp(value):
@@ -54,4 +76,11 @@ def report(run):
 
 
 if __name__ == "__main__":
-    print(report(json.load(sys.stdin)), end="")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--native-weights", type=Path,
+                        help="Print module costs from one run's downloaded JUnit artifacts instead")
+    args = parser.parse_args()
+    if args.native_weights:
+        print(json.dumps(native_weights(args.native_weights), indent=2))
+    else:
+        print(report(json.load(sys.stdin)), end="")

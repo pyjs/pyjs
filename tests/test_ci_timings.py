@@ -1,6 +1,8 @@
 from copy import deepcopy
 
-from scripts.ci_timings import report
+import pytest
+
+from scripts.ci_timings import native_weights, report
 
 
 def job(name, start, end, *, steps=()):
@@ -42,3 +44,24 @@ def test_live_and_skipped_jobs_never_get_fake_or_negative_durations():
     assert "Completed-job runner minutes: 1.00" in text
     assert "Partial evidence" in text
     assert "last job completion" not in text
+
+
+def test_native_weights_aggregate_cases_not_unrelated_suites(tmp_path):
+    (tmp_path / "1.xml").write_text('''<testsuite>
+      <testcase classname="tests.native.test_one" name="a" time="1.5"/>
+      <testcase classname="tests.native.test_one" name="b" time="2.1"/>
+      <testcase classname="tests.native.test_two" name="a" time="0"/>
+      <testcase classname="tests.other" name="a" time="50"/>
+    </testsuite>''')
+    assert native_weights(tmp_path) == {"tests/native/test_one.py": 4,
+                                        "tests/native/test_two.py": 1}
+
+
+def test_native_weights_reject_mixed_runs_and_empty_evidence(tmp_path):
+    with pytest.raises(ValueError, match="No native"):
+        native_weights(tmp_path)
+    xml = '<testsuite><testcase classname="tests.native.test_one" time="1"/></testsuite>'
+    for name in ("first.xml", "second.xml"):
+        (tmp_path / name).write_text(xml)
+    with pytest.raises(ValueError, match="Repeated native modules"):
+        native_weights(tmp_path)
