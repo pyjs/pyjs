@@ -8,6 +8,7 @@ from pyjs.native import math as native_math
 from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
+from tests.native.runtime_support import MEMORY_SANITIZERS
 
 
 @pytest.mark.parametrize("operation", ["isqrt", "factorial", "perm"])
@@ -79,7 +80,7 @@ def main() -> str:
                                       9223372036854775807])))
     gc_collect()
     return output + str(events)
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -127,7 +128,7 @@ def test_permutation_nullable_count_and_errors(optimize):
             except ValueError as error:
                 result += str(error)
             return result
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -143,7 +144,7 @@ def test_first_class_math_module_aliases(optimize):
             third = perm
             fourth = m.sqrt
             return str(first(5, 2)) + str(second(5, 2)) + str(third(4, None)) + str(fourth(9.0))
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("expression", ["math.perm(21)", "math.perm(9223372036854775807, 2)",
@@ -159,7 +160,7 @@ def test_permutation_overflow_is_catchable(expression):
                 return 0
             return 1
     '''
-    result = LLVM().run_source(source, optimize=2, sanitizers=("address", "undefined"))
+    result = LLVM().run_source(source, optimize=2, sanitizers=MEMORY_SANITIZERS)
     assert result.returncode == 0 and result.stderr == ""
 
 

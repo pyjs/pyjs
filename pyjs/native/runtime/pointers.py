@@ -4,8 +4,8 @@ Pointers carry no automatic ownership or GC roots. Callers establish alignment,
 bounds, lifetimes, and failure recovery. CPython uses the same process allocator
 so the algorithms can be exercised without compiling them.
 
-Runtime layout constants use host ctypes sizes/offsets: this is the existing
-Linux-native ABI, not cross-target code generation. Tests compare every layout
+Runtime layout constants use host ctypes sizes/offsets: this is a 64-bit
+host-native ABI, not cross-target code generation. Tests compare every layout
 against LLVM GEP offsets, including padding; a new target must supply its own
 layout before reusing these algorithms.
 """
@@ -15,6 +15,7 @@ from functools import cache
 
 from pyjs import int8, int32, llvm
 from pyjs.decorators import native_operation
+from pyjs.native.platform import libc
 
 
 @native_operation("memory.pointer")
@@ -45,7 +46,7 @@ def bytes_data(value: bytes) -> Pointer:
 
 @cache
 def _allocator():
-    library = ctypes.CDLL(None)
+    library = libc()
     library.malloc.argtypes = [ctypes.c_size_t]
     library.malloc.restype = ctypes.c_void_p
     library.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]

@@ -1,6 +1,7 @@
 """Generate, compile, execute, and compare direct LLVM programs."""
 
 import ctypes
+import errno
 import operator
 import os
 import re
@@ -23,11 +24,46 @@ from pyjs.native.llvm import (
     transpile_llvm,
     transpile_llvm_module,
 )
+from pyjs.native.platform import binary_suffix
 from pyjs.native.runtime.mappings import _Dict as _LLVMDictionary
 from pyjs.native.tagged import TAGS
 from pyjs.numeric import NumericFormat
 
 from .command import CommandRunner
+
+# LLVM comments/quoted identifiers can contain keywords and punctuation. Share
+# tokenization between the two tooling-only scans instead of matching lines.
+_LLVM_TOKENS = re.compile(r';[^\n]*|[@%!$]?"[^"]*":?|[@%!]\d+|[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|i\d+|[@%!$]?[-\w.$]+:?|[^\s]')
+
+
+def _windows_exported_ir(source: str) -> str:
+    """Mark public definitions for export; LLVM owns COFF names/directives."""
+    fragments, copied, insertion = [], 0, None
+    previous, qualifiers, function = "", set(), False
+    prefixes = {"external", "available_externally", "linkonce", "weak", "common",
+                "appending", "internal", "private", "extern_weak", "linkonce_odr",
+                "weak_odr", "dso_local", "dso_preemptable", "default", "hidden", "protected"}
+    excluded = {"internal", "private", "available_externally", "extern_weak", "appending"}
+    for match in _LLVM_TOKENS.finditer(source):
+        token = match.group()
+        if token.startswith(";"):
+            continue
+        if insertion is not None:
+            if token in prefixes:
+                qualifiers.add(token)
+                insertion = match.end()
+            else:
+                declaration = not function and "external" in qualifiers
+                if not declaration and not qualifiers & excluded and token not in {"dllimport", "dllexport"}:
+                    fragments.extend((source[copied:insertion], " dllexport "))
+                    copied = insertion
+                insertion = None
+        if token == "define" or token == "=" and previous.startswith("@"):
+            insertion, qualifiers = match.end(), set()
+            function = token == "define"
+        previous = token
+    fragments.append(source[copied:])
+    return "".join(fragments)
 
 
 def _address_sanitized_ir(source: str) -> str:
@@ -44,7 +80,7 @@ def _address_sanitized_ir(source: str) -> str:
     # not Python/C backslash-quote. Numerals and iN integer types end at
     # their last digit and can directly precede a keyword (e.g. i32define).
     # Sigils are prefixes, not identifier characters: void@f is two tokens.
-    tokens = re.finditer(r';[^\n]*|[@%!$]?"[^"]*":?|[@%!]\d+|[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?|i\d+|[@%!$]?[-\w.$]+:?|[^\s]', source)
+    tokens = _LLVM_TOKENS.finditer(source)
     header, parameters, depth = False, False, 0
     insertion, qualifier = None, 0
     for match in tokens:
@@ -612,12 +648,22 @@ class LLVMLibrary:
                 self._errors.clear()
 
     def close(self) -> None:
-        """Prevent further calls and release this library's persistent heap."""
+        """Prevent further calls, release the heap, and unload the library."""
         with self._lock:
             self._closed = True
             if self._heap is not None and self._delete_heap is not None:
                 self._delete_heap(self._heap)
                 self._heap = None
+            if self._library is not None:
+                # ctypes does not unload CDLLs automatically. Unlike POSIX,
+                # Windows forbids replacing/deleting a loaded library file.
+                # POSIX loaders also reuse old code at the same pathname while
+                # any handle remains open, even after the file is replaced.
+                # No native call can overlap close() under this same lock.
+                import _ctypes
+                unload = _ctypes.FreeLibrary if sys.platform == "win32" else _ctypes.dlclose
+                unload(self._library._handle)
+                self._library = self._render = self._delete_heap = None
 
     def __del__(self) -> None:
         try:
@@ -635,10 +681,29 @@ class LLVMLibrary:
             return output.read().decode("utf-8")
 
     def render_to_socket(self, destination, *arguments) -> int:
-        """Write directly to a connected socket without a Python HTML value."""
+        """Render to a socket without constructing a Python HTML string.
+
+        POSIX requires a blocking, unwrapped socket and writes directly.
+        Windows SOCKET handles are not CRT descriptors; spool to a temporary
+        binary file and send bounded chunks there.
+        """
         if self._closed:
             raise RuntimeError("native LLVM library is closed")
-        return self.render_to_fd(destination.fileno(), *arguments)
+        descriptor = destination.fileno()
+        if sys.platform != "win32":
+            return self.render_to_fd(descriptor, *arguments)
+        with tempfile.TemporaryFile() as output:
+            status = self.render_to_fd(output.fileno(), *arguments)
+            if status:
+                return status
+            output.seek(0)
+            try:
+                while chunk := output.read(65536):
+                    destination.sendall(chunk)
+            except OSError as error:
+                return (errno.ETIMEDOUT if isinstance(error, TimeoutError)
+                        else error.errno or errno.EIO)
+        return 0
 
 
 class LLVM:
@@ -687,26 +752,42 @@ class LLVM:
         compiler = self.ensure()
         directory.mkdir(parents=True, exist_ok=True)
         source = directory / f"{name}.ll"
-        executable = directory / (f"{name}.so" if shared else name)
+        executable = directory / (name + binary_suffix(shared=shared))
         if "address" in sanitizers:
             llvm_ir = _address_sanitized_ir(llvm_ir)
+        if shared and sys.platform == "win32":
+            llvm_ir = _windows_exported_ir(llvm_ir)
         source.write_text(llvm_ir, encoding="utf-8")
         command: list[str | Path] = [compiler, f"-O{optimize}"]
+        if sys.platform == "win32":
+            # Share UCRT file descriptors with the Python host. LLVM IR input
+            # bypasses Clang's C frontend, which normally emits CRT directives.
+            command.extend(("-fms-runtime-lib=dll", "--rtlib=compiler-rt",
+                            "-Wl,/NODEFAULTLIB:libcmt,/DEFAULTLIB:msvcrt",
+                            "-llegacy_stdio_definitions"))
         if sanitizers:
             command.append(f"-fsanitize={','.join(sanitizers)}")
             command.append("-fno-sanitize-recover=all")
         if shared:
-            command.extend(("-shared", "-fPIC"))
-        command.extend((source, "-o", executable, "-lm"))
+            command.append("-dynamiclib" if sys.platform == "darwin" else "-shared")
+            if sys.platform != "win32":
+                command.append("-fPIC")
+        command.extend((source, "-o", executable))
+        if sys.platform != "win32":
+            command.append("-lm")
         try:
             self.runner.run(command, capture_output=True)
         except subprocess.CalledProcessError as error:
             # CalledProcessError's string omits captured diagnostics. Keep the
             # generated IR and show a bounded tail in ordinary test tracebacks.
-            detail = error.stderr or "(compiler produced no stderr)"
-            if isinstance(detail, bytes):
-                detail = detail.decode("utf-8", errors="replace")
-            error.add_note(f"LLVM source: {source}\nCompiler stderr (last 8000 characters):\n{detail[-8000:]}")
+            diagnostics = []
+            for stream, content in (("stdout", error.stdout), ("stderr", error.stderr)):
+                if content:
+                    if isinstance(content, bytes):
+                        content = content.decode("utf-8", errors="replace")
+                    diagnostics.append(f"Compiler {stream} (last 8000 characters):\n{content[-8000:]}")
+            detail = "\n".join(diagnostics) or "(compiler produced no diagnostics)"
+            error.add_note(f"LLVM source: {source}\n{detail}")
             raise
         return executable
 
@@ -993,12 +1074,13 @@ class LLVM:
             pass_fds=pass_fds,
             timeout=timeout,
             environment=environment,
+            text=False,
         )
         return LLVMExecution(
             llvm_ir,
             result.returncode,
-            result.stdout,
-            result.stderr,
+            result.stdout.decode("utf-8"),
+            result.stderr.decode("utf-8"),
             artifacts,
         )
 
@@ -1017,6 +1099,11 @@ class LLVM:
                 f"""
                 import runpy
                 import sys
+
+                # Match native UTF-8 output, independent of console encoding
+                # and Windows text-stream newline translation.
+                sys.stdout.reconfigure(encoding="utf-8", newline="")
+                sys.stderr.reconfigure(encoding="utf-8", newline="")
 
                 # Analysis resolves imports in the caller's Python environment.
                 # Give the comparison process the same source roots even though
@@ -1042,12 +1129,13 @@ class LLVM:
             capture_output=True,
             check=False,
             timeout=timeout,
+            text=False,
         )
         return LLVMExecution(
             "",
             result.returncode,
-            result.stdout,
-            result.stderr,
+            result.stdout.decode("utf-8"),
+            result.stderr.decode("utf-8"),
             directory,
         )
 

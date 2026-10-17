@@ -2,10 +2,22 @@
 
 import ctypes
 import inspect
+import signal
+import sys
 
 from pyjs import int8, int32
 from pyjs.native.runtime.pointers import Pointer
 from pyjs.tooling.llvm import LLVM
+
+# The standard Windows toolchains do not ship a complete UBSan/ASan runtime
+# (including no ARM64 ASan libraries). Still execute every memory scenario;
+# Linux and macOS additionally check it with instrumentation. Tooling tests
+# that specifically require sanitizer diagnostics declare their own skips.
+MEMORY_SANITIZERS = () if sys.platform == "win32" else ("address", "undefined")
+# llvm.trap(): Windows NTSTATUS (x64 illegal instruction / ARM64 breakpoint)
+# versus POSIX signal termination. Do not accept just any unsuccessful exit.
+TRAP_RETURN_CODES = ((0xC000001D, 0x80000003) if sys.platform == "win32"
+                     else (-signal.SIGILL, -signal.SIGTRAP))
 
 
 class String(ctypes.Structure):

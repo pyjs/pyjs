@@ -65,7 +65,7 @@ def test_integer_radices(runtime, owner):
 
 def test_floating_conversion(runtime, owner):
     null = Pointer(0)
-    for value in [0.0, -0.0, 1.25, -2.675, 1e-307, 1e308, float("inf"), float("-nan")]:
+    for value in [0.0, -0.0, 1.25, 2.5, -2.5, 1.125, -2.675, 1e-307, 1e308, float("inf"), float("-nan")]:
         for code in ["e", "E", "f", "F", "g", "G"]:
             for precision in [0, 2, 9]:
                 for sign in ["", "+", " "]:
@@ -73,6 +73,9 @@ def test_floating_conversion(runtime, owner):
                     result = runtime("pyjs.format.float", owner, null, null, value,
                                      ptr(specification), int32(precision))
                     assert read(result) == format(value, sign + f".{precision}" + code)
+    specification = ctypes.create_string_buffer(b"%+.*f%%")
+    result = runtime("pyjs.format.float", owner, null, null, float("-nan"), ptr(specification), int32(2))
+    assert read(result) == "+nan%"
 
 
 def test_unicode_padding_and_truncation(runtime, owner):

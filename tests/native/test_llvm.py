@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from tests.backend_semantics import (
     BACKEND_CONTRACTS,
     PORTABLE_FAILURE_SOURCES,
 )
+from tests.native.runtime_support import MEMORY_SANITIZERS
 
 CONTROL_FLOW_SOURCE = """
 def choose(flag: bool, left: int, right: int) -> int:
@@ -174,7 +176,13 @@ def main() -> str:
 
 
 def test_llvm_transpiler_matches_complete_control_flow_golden():
-    assert transpile_llvm(CONTROL_FLOW_SOURCE) == EXPECTED_LLVM.read_text()
+    expected = EXPECTED_LLVM.read_text()
+    if sys.platform == "win32":
+        expected = expected.replace("declare ptr @signal(i32, ptr)\n", "")
+        expected = expected.replace(
+            "  %sigpipe.previous = call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n", "",
+        )
+    assert transpile_llvm(CONTROL_FLOW_SOURCE) == expected
 
 
 def test_llvm_transpiler_compiles_and_executes_control_flow(tmp_path):
@@ -541,6 +549,7 @@ def test_llvm_transpiler_renders_native_dom_and_starred_calls(tmp_path):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="pass_fds is a POSIX subprocess contract; Windows shares CRT descriptors in loaded libraries")
 def test_llvm_native_dom_writes_to_an_inherited_descriptor(tmp_path):
     reader, writer = os.pipe()
     try:
@@ -618,7 +627,7 @@ def test_native_document_composes_with_gc_and_preserves_arena_text(optimize):
             assert local.write(roots[0], -1) == 9
             assert escaped.render(nested) == output
             return output
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -754,7 +763,7 @@ def test_llvm_transpiler_matches_representative_pyjs_ssr(
     tmp_path,
     settings_html,
 ):
-    source = SETTINGS_SOURCE.read_text()
+    source = SETTINGS_SOURCE.read_text(encoding="utf-8")
     comparison = LLVM().assert_matches_python(
         source,
         filename=str(SETTINGS_SOURCE),
@@ -1218,7 +1227,7 @@ def test_llvm_gc_marks_deep_graphs_without_native_recursion():
                 root = next_link
             gc_pin(root)
             gc_collect()
-            result = root.value
+            result = root.value % 256
             gc_unpin(root)
             return result
         """

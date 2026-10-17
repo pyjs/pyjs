@@ -6,6 +6,7 @@ import pytest
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM, LLVMRuntimeError
 from tests.native.allocation_support import _fail_allocations, run_allocation_case
+from tests.native.runtime_support import MEMORY_SANITIZERS
 from tests.semantics.helpers import run_python
 
 
@@ -33,7 +34,7 @@ def test_exception_formatting_does_not_reach_the_unused_protocol(exception, meth
             except {other} as error:
                 output.append(str(error))
             return repr(output)
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -62,7 +63,7 @@ def test_generator_completion_does_not_reach_other_key_payload_str(optimize):
             except KeyError as error:
                 output.append(str(error))
             return repr(output)
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -130,7 +131,7 @@ def test_assertion_payload_evaluation_is_lazy_and_keeps_original_failures(optimi
                 except ValueError as error:
                     output.append(str(error))
             return repr(events) + repr(output)
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    ''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -197,7 +198,7 @@ def test_exception_messages_are_lazy_mutable_and_repeatable(statement, optimize,
                 gc_collect()
                 output.append(str(error))
             return repr(output) + repr(events)
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    ''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -249,7 +250,7 @@ def test_message_payloads_survive_unwinding_and_generator_injection(optimize, tm
                 gc_collect()
                 output.append(str(error))
             return repr(output)
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    ''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -282,7 +283,7 @@ def test_stop_iteration_subclass_union_keeps_payload_identity(optimize):
         def main() -> str:
             gc_set_threshold(1)
             return read(True, [5]) + read(False, [7])
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -361,7 +362,7 @@ def test_numeric_payloads_preserve_values_and_nested_container_layouts(optimize)
                 gc_collect()
                 result += str(error) + repr(error.value)
             return result
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -418,7 +419,7 @@ def test_payload_text_is_lazy_repeatable_and_formatter_failure_preserves_the_val
                 except StopIteration as error:
                     result.append(str(error))
             return repr(result) + repr(events)
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("exception", ["StopIteration", "RuntimeError", "KeyError"])
@@ -596,7 +597,7 @@ def test_stop_iteration_value_repeated_attribute_reads_preserve_narrowed_layout(
             gc_set_threshold(1)
             values: list[object] = ['done', b'bytes', True, 7, 1.5, Box('box'), None]
             return '|'.join(read(value) for value in values)
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    ''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
@@ -689,7 +690,7 @@ def main() -> str:
                         # Read''', 1)
     expected = run_python(oracle + "\nprint(main(), end='')\n")
     actual = LLVM().run_source(source, directory=tmp_path, optimize=optimize,
-                               sanitizers=("address", "undefined"))
+                               sanitizers=MEMORY_SANITIZERS)
     assert expected.returncode == actual.returncode == 0, (expected.stderr, actual.stderr)
     assert actual.stdout == expected.stdout
     assert not actual.stderr and not expected.stderr

@@ -2,6 +2,7 @@ import pytest
 
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
+from tests.native.runtime_support import TRAP_RETURN_CODES
 
 
 @pytest.mark.parametrize("expression", ["Error()", "Error('message')"])
@@ -34,7 +35,7 @@ def test_llvm_traps_on_reached_value_errors():
         filename="native_failure.py",
     )
 
-    assert execution.returncode < 0
+    assert execution.returncode in TRAP_RETURN_CODES
     assert execution.stderr == (
         "Traceback (native PyJS):\n"
         '  File "native_failure.py", line 8, in main\n'
@@ -53,7 +54,7 @@ def test_llvm_reports_dynamic_exception_messages_from_string_programs():
         filename="service.py",
     )
 
-    assert execution.returncode < 0
+    assert execution.returncode in TRAP_RETURN_CODES
     assert execution.stderr == (
         "Traceback (native PyJS):\n"
         '  File "service.py", line 4, in main\n'
@@ -160,7 +161,7 @@ def test_llvm_reraised_dynamic_message_survives_gc_unwind():
         filename="gc_exception.py",
     )
 
-    assert execution.returncode < 0
+    assert execution.returncode in TRAP_RETURN_CODES
     assert execution.stderr == (
         "Traceback (native PyJS):\n"
         '  File "gc_exception.py", line 10, in main\n'
@@ -201,7 +202,7 @@ def test_llvm_unhandled_assertion_formats_non_string_message():
         filename="assertion.py",
     )
 
-    assert execution.returncode < 0
+    assert execution.returncode in TRAP_RETURN_CODES
     assert execution.stderr == (
         "Traceback (native PyJS):\n"
         '  File "assertion.py", line 4, in main\n'
@@ -224,7 +225,7 @@ def test_llvm_unhandled_exception_reports_each_generated_call_frame():
         filename="nested_failure.py",
     )
 
-    assert execution.returncode < 0
+    assert execution.returncode in TRAP_RETURN_CODES
     assert execution.stderr == (
         "Traceback (native PyJS):\n"
         '  File "nested_failure.py", line 9, in main\n'

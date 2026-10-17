@@ -33,7 +33,8 @@ from .wide import WideInt, add, less, multiply, narrow, subtract, widen
 
 @native_operation("system.strtod")
 def parse_ascii_float(value: Pointer, end: Pointer) -> float:
-    function = ctypes.CDLL(None).strtod
+    from pyjs.native.platform import libc
+    function = libc().strtod
     function.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     function.restype = ctypes.c_double
     return function(value.address, end.address)

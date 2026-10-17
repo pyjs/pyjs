@@ -4,6 +4,7 @@ import pytest
 
 from pyjs.native.runtime.heap import _Heap
 from pyjs.tooling.llvm import LLVM
+from tests.native.runtime_support import MEMORY_SANITIZERS
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -185,7 +186,7 @@ def main() -> str:
     return repr(([(index, value.value) for index, value in first],
                  [(left.value, right.value) for left, right in second], third,
                  [[item.value for item in row] for row in fourth]))
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert comparison.matches
     assert not comparison.native.stderr
 
@@ -242,7 +243,7 @@ def main() -> str:
         assert isinstance(other, Base)
         assert other.value == 30
     return "retained"
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert result.native.stderr == ""
 
 
@@ -263,7 +264,7 @@ def main() -> str:
         create(str(index))
         gc_collect()
     return repr(saved)
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert result.native.stderr == ""
 
 
@@ -297,7 +298,7 @@ def main() -> str:
     return repr((pair, values, same, range(10, 20)[Index()], range(10, 20)[::2][Index()],
                  read(range(10, 20), collect()), read(range(10, 20)[::2], collect()),
                  range(10, 20)[Index():Index()], range(10, 20).__getitem__(Index())))
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert result.native.stderr == ""
 
 
@@ -337,7 +338,7 @@ def main() -> str:
                 total += item
         assert total == 980
     return "retained"
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert result.native.stderr == ""
 
 
@@ -381,5 +382,5 @@ def main() -> str:
             total += value.number if isinstance(value, Box) else value
         assert total == 490
     return "retained"
-''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert result.native.stderr == ""

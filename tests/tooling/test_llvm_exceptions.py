@@ -122,7 +122,7 @@ def render(fail: bool, descriptor: int) -> int:
 
 @pytest.mark.parametrize("reject", [False, True])
 def test_settings_page_recovers_per_row_with_collection_in_cleanup(tmp_path, reject):
-    source = (Path(__file__).parents[1] / "native/settings_source.py").read_text() + '''
+    source = (Path(__file__).parents[1] / "native/settings_source.py").read_text(encoding="utf-8") + '''
 from pyjs.native import gc_collect, gc_set_threshold
 
 def render_checked(values: list[Setting], reject: bool) -> str:

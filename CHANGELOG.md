@@ -9,10 +9,17 @@
 - Pull-request CI covers Linux, Windows and macOS, including parallel LLVM,
   browser/WebGPU and Android tests, cross-platform package installation, and
   retained failure artifacts. Releases reuse the same validation workflow.
+- Experimental native LLVM compilation and execution on Linux, macOS and
+  Windows, on x64 and arm64. Shared tests cover executables and Python-loaded
+  libraries; the README includes a runnable Python-to-native example.
 
 ### Fixed
 
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
+- Native output preserves UTF-8 and newline bytes across platforms; NaN
+  formatting follows Python's sign and percentage rules on macOS too.
+- Closing a native library unloads its code, allowing safe file replacement
+  and recompilation without accidentally executing an earlier version.
 - Browser test compilation no longer blocks control-connection keepalives;
   disconnected requests release pending results without overlapping builds.
   The runner page is prepared before readiness so cold compilation cannot

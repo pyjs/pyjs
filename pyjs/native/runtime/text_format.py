@@ -1,7 +1,6 @@
 """Formatting policy in Python; raw pointers only at the text-storage boundary."""
 
 from functools import cache
-from math import nan
 
 from pyjs import int8, int32
 
@@ -13,6 +12,7 @@ from .pointers import (
     Pointer,
     borrow_bytes,
     byte_offset,
+    bytes_data,
     copy,
     is_null,
     load_int8,
@@ -156,8 +156,35 @@ def floating(arena: Pointer, allocator: Pointer, context: Pointer,
     # snprintf's variadic ABI is the only C boundary; sizing, checked
     # allocation and the native string header remain ordinary runtime Python.
     if value != value:
-        # Python does not expose a NaN's sign bit through string formatting.
-        value = nan
+        # libc differs on whether '+'/' ' applies to NaN (Darwin ignores it).
+        # Python ignores the NaN sign bit but honors the requested sign and
+        # letter case. Handle that policy here, identically on every host.
+        sign = int8(0)
+        uppercase = False
+        percentage = False
+        index = 0
+        code = load_int8(specification)
+        while code != int8(0):
+            if code == int8(43) or code == int8(32):
+                sign = code
+            if code == int8(69) or code == int8(70) or code == int8(71):
+                uppercase = True
+            # Generated percent formats append the C literal escape '%%'.
+            if index > 0 and code == int8(37):
+                percentage = True
+            index += 1
+            code = load_int8(byte_offset(specification, index))
+        prefix = 1 if sign != int8(0) else 0
+        result = new_owned(arena, allocator, context, 3 + prefix + int(percentage))
+        if is_null(result):
+            return null()
+        data = load_pointer(byte_offset(result, STRING_DATA_OFFSET))
+        if prefix:
+            store_int8(data, sign)
+        copy(byte_offset(data, prefix), bytes_data(b"NAN" if uppercase else b"nan"), 3)
+        if percentage:
+            store_int8(byte_offset(data, prefix + 3), int8(37))
+        return result
     count = int(format_buffer(null(), 0, specification, precision, value))
     # The owned-string ABI has one failure sentinel: C formatter failures,
     # like allocation failures, become catchable MemoryError at the caller.
