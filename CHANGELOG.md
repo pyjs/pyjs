@@ -6,6 +6,8 @@
 
 - Introduced this changelog. Future releases will record notable features,
   compatibility changes and fixes here.
+- Pull-request CI runs parallel target suites, including LLVM, browser/WebGPU
+  and Android execution, with retained failure artifacts.
 
 ### Feature overview
 

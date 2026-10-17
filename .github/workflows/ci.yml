@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Fork approvals are configured in repository Actions settings. Never use
+# pull_request_target or a self-hosted runner to execute candidate code.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: core, target: core, shard: 1, shards: 1}
+          - {name: js, target: js, shard: 1, shards: 1}
+          - {name: native-1, target: native, shard: 1, shards: 4}
+          - {name: native-2, target: native, shard: 2, shards: 4}
+          - {name: native-3, target: native, shard: 3, shards: 4}
+          - {name: native-4, target: native, shard: 4, shards: 4}
+          - {name: jvm, target: jvm, shard: 1, shards: 1}
+          - {name: wasm, target: wasm, shard: 1, shards: 1}
+          - {name: browser, target: browser, shard: 1, shards: 1}
+          - {name: android-robolectric, target: android-robolectric, shard: 1, shards: 1}
+          - {name: android-device, target: android-device, shard: 1, shards: 1}
+    env:
+      PYTHONUTF8: "1"
+      PYJS_CLANG: /usr/bin/clang-21
+    steps:
+      - name: Use runner-local temporary storage
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Clang and software Vulkan
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-21 main' | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 libclang-rt-21-dev lld-21 libvulkan1 mesa-vulkan-drivers
+          "$PYJS_CLANG" --version
+      - name: Install locked workspace
+        run: uv sync --locked --extra webgpu
+      - name: Check source and software GPU
+        if: matrix.target == 'core'
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync python -c "import wgpu; assert wgpu.gpu.request_adapter_sync() is not None"
+      - uses: android-actions/setup-android@v3
+        if: matrix.target == 'core' || matrix.target == 'jvm' || startsWith(matrix.target, 'android-')
+      - name: Install Android compilation tools and debug key
+        if: matrix.target == 'core' || matrix.target == 'jvm' || startsWith(matrix.target, 'android-')
+        run: |
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -validity 10000
+          fi
+      - name: Run target tests
+        if: matrix.target != 'android-device'
+        run: uv run --no-sync python scripts/ci.py ${{ matrix.target }} --shard ${{ matrix.shard }} --shards ${{ matrix.shards }}
+      - name: Enable emulator acceleration
+        if: matrix.target == 'android-device'
+        run: |
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+      - name: Run Android device tests
+        if: matrix.target == 'android-device'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: uv run --no-sync python scripts/ci.py android-device
+      - name: Upload results and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tests-${{ matrix.name }}
+          path: test-artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+  complete:
+    name: CI complete
+    if: always()
+    needs: tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every target
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: test "$RESULT" = success
