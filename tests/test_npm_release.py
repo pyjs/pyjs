@@ -172,6 +172,10 @@ def test_public_workflow_builds_and_gates_every_runtime():
         and name != "build-single"
     }
     assert builds.keys() == TARGETS.keys()
+    # Platforms share preflight but never serialize behind another OS build.
+    for _, job in builds.values():
+        assert job["needs"] == "preflight"
+        assert job["if"] == "github.event_name == 'push' || inputs.target == 'all'"
     assert builds["linux-arm64"][1]["with"]["runner"] == "ubuntu-24.04-arm"
     publication = jobs["publish-runtimes"]
     assert {name for name, job in builds.values()} == set(publication["needs"])
