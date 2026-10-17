@@ -55,6 +55,17 @@ failures. Skips are visible in the report; a green run is not a claim of
 Windows/macOS coverage or support for every Python/browser/Android API.
 Empty test selections fail. `CI complete` requires every matrix job to pass.
 
+Compare wall time and total runner use before changing shards. Download the
+JUnit artifacts for per-test durations; summarize job and test-step durations
+without a GitHub write using:
+
+```bash
+gh run view RUN_ID --repo pyjs/pyjs --json jobs,status,headSha,createdAt | python scripts/ci_timings.py
+```
+
+The report labels incomplete runs and separates runner-minutes from the elapsed
+job span. Runner-minutes are a resource measure, not a billing estimate.
+
 All external contributors require a maintainer's approval before fork PR
 workflows run. Review the proposed code and workflow changes before approving.
 PR tests use read-only tokens, no repository secrets, and no self-hosted
