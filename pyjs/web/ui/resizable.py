@@ -77,18 +77,33 @@ class ResizablePanelGroup(Widget):
         self,
         *children: ProxyElement,
         direction: str = "horizontal",
+        framed: bool = True,
+        min_size: int = 10,
     ):
         super().__init__()
+        self.drag_index = -1
+        self.drag_start = 0
+        self.before_start = 0.0
+        self.after_start = 0.0
+        self.move_listener = ResizableMoveListener(self)
+        self.up_listener = ResizableUpListener(self)
         for child in children:
             if isinstance(child, ResizableHandle):
                 child.setAttribute("data-direction", direction)
-        self.add(
-            tw(
+        if framed:
+            classes = tw(
                 "flex min-h-48 w-full overflow-hidden rounded-lg border border-slate-200 "
                 "data-[direction=vertical]:flex-col"
-            ),
+            )
+        else:
+            classes = tw(
+                "flex min-h-0 w-full overflow-hidden data-[direction=vertical]:flex-col"
+            )
+        self.add(
+            classes,
             {
                 "data-direction": direction,
+                "data-min-size": str(min_size),
                 "data-slot": "resizable-panel-group",
             },
             *children,
@@ -104,6 +119,15 @@ class ResizablePanelGroup(Widget):
         self.after_start = 0.0
         self.move_listener = ResizableMoveListener(self)
         self.up_listener = ResizableUpListener(self)
+
+    def min_panel_size(self) -> float:
+        value = self.getAttribute("data-min-size")
+        if value is None:
+            return 10.0
+        size = float(value)
+        if size < 1:
+            return 1.0
+        return size
 
     def is_vertical(self) -> bool:
         return self.getAttribute("data-direction") == "vertical"
@@ -131,12 +155,15 @@ class ResizablePanelGroup(Widget):
         panel.setAttribute("style", "flex-basis: " + str(size) + "%")
 
     def resize_pair(self, index: int, before_size: float, after_size: float):
-        if before_size < 10:
-            before_size = 10
-            after_size = 90
-        elif after_size < 10:
-            before_size = 90
-            after_size = 10
+        floor = self.min_panel_size()
+        pair_total = before_size + after_size
+        ceiling = pair_total - floor
+        if before_size < floor:
+            before_size = floor
+            after_size = ceiling
+        elif after_size < floor:
+            before_size = ceiling
+            after_size = floor
         panels = self.panel_elements()
         self.set_size(panels[index], before_size)
         self.set_size(panels[index + 1], after_size)

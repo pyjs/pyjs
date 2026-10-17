@@ -1,169 +1,91 @@
-from pyjs import js
-from pyjs.nativescript import (
-    Application,
+"""Native Android Calculator implementation."""
+
+from pyjs.android import (
+    Activity,
+    Bundle,
     Button,
-    EventData,
-    GridLayout,
-    Label,
-    Page,
-    StackLayout,
+    Context,
+    Gravity,
+    LayoutParams,
+    LinearLayout,
+    LinearLayoutParams,
+    OnClickListener,
+    TextView,
+    View,
+    parse_color,
 )
-from pyjs.tooling.nativescript import NativeScriptProject
+from pyjs.android.controls import ScrollView
+from pyjs.java import f32, i32
 
-from .calculator import calculate_result
+from .model import Calculator
 
 
-@js
-class CalculatorButtonListener:
-    def __init__(self, calculator: AndroidCalculator, kind: str, value: str):
+class CalculatorClickListener(OnClickListener):
+    def __init__(
+        self,
+        calculator: AndroidCalculator,
+        kind: str,
+        value: str,
+    ) -> None:
         self.calculator = calculator
         self.kind = kind
         self.value = value
 
-    def handleEvent(self, event: EventData):
+    def onClick(self, view: View) -> None:
         self.calculator.press(self.kind, self.value)
 
 
-@js
 class AndroidCalculator:
-    def __init__(self):
-        self.display_value = "0"
-        self.stored_value = 0.0
-        self.pending_operator = ""
-        self.replace_display = True
-        self.error = False
+    def __init__(self, context: Context) -> None:
+        self.context = context
+        self.calculator = Calculator()
 
-        self.display = Label()
-        self.display.id = "calculator-display"
-        self.display.testID = "calculator-display"
-        self.display.text = self.display_value
-        self.display.className = (
-            "mb-4 rounded-2xl bg-slate-950 p-5 text-right text-5xl "
-            "font-bold text-white"
-        )
+        self.display = TextView(context)
+        self.display.setText(self.calculator.display_value)
+        self.display.setTextSize(f32(40.0))
+        self.display.setGravity(Gravity.END)
+        self.display.setPadding(i32(24), i32(32), i32(24), i32(32))
+        self.display.setBackgroundColor(parse_color("#020617"))
 
-    def update_display(self):
-        self.display.text = self.display_value
+    def press(self, kind: str, value: str) -> None:
+        self.calculator.press(kind, value)
+        self.display.setText(self.calculator.display_value)
 
-    def clear(self):
-        self.display_value = "0"
-        self.stored_value = 0.0
-        self.pending_operator = ""
-        self.replace_display = True
-        self.error = False
-        self.update_display()
-
-    def value(self) -> float:
-        if self.error:
-            return 0.0
-        return float(self.display_value)
-
-    def input_digit(self, digit: str):
-        if self.error:
-            self.clear()
-        if self.replace_display or self.display_value == "0":
-            self.display_value = digit
-            self.replace_display = False
-        else:
-            self.display_value += digit
-        self.update_display()
-
-    def input_decimal(self):
-        if self.error:
-            self.clear()
-        if self.replace_display:
-            self.display_value = "0."
-            self.replace_display = False
-        elif len(self.display_value.split(".")) == 1:
-            self.display_value += "."
-        self.update_display()
-
-    def choose_operator(self, operator: str):
-        if self.error:
-            return
-        if self.pending_operator != "" and not self.replace_display:
-            self.calculate()
-            if self.error:
-                return
-        self.stored_value = float(self.display_value)
-        self.pending_operator = operator
-        self.replace_display = True
-
-    def toggle_sign(self):
-        if self.error or self.display_value == "0" or self.display_value == "0.0":
-            return
-        self.display_value = str(0.0 - float(self.display_value))
-        self.update_display()
-
-    def percent(self):
-        if self.error:
-            return
-        self.display_value = str(float(self.display_value) / 100.0)
-        self.replace_display = True
-        self.update_display()
-
-    def calculate(self) -> float:
-        operator = self.pending_operator
-        if self.error or operator == "":
-            return self.value()
-        right = float(self.display_value)
-        if operator == "/" and right == 0.0:
-            self.display_value = "Error"
-            self.pending_operator = ""
-            self.replace_display = True
-            self.error = True
-            self.update_display()
-            return 0.0
-        result = calculate_result(self.stored_value, right, operator)
-        self.display_value = str(result)
-        self.stored_value = result
-        self.pending_operator = ""
-        self.replace_display = True
-        self.update_display()
-        return result
-
-    def press(self, kind: str, value: str):
-        if kind == "digit":
-            self.input_digit(value)
-        elif kind == "decimal":
-            self.input_decimal()
-        elif kind == "operator":
-            self.choose_operator(value)
-        elif kind == "equals":
-            self.calculate()
-        elif value == "clear":
-            self.clear()
-        elif value == "sign":
-            self.toggle_sign()
-        else:
-            self.percent()
-
-    def key(self, label: str, value: str, kind: str, row: int, column: int) -> Button:
-        key = Button()
-        key.id = "key-" + value
-        key.testID = "key-" + value
-        key.text = label
-        key.row = row
-        key.column = column
-        if kind == "operator" or kind == "equals":
-            key.className = (
-                "m-1 h-14 rounded-xl bg-amber-500 text-2xl font-bold text-white"
-            )
-        else:
-            key.className = (
-                "m-1 h-14 rounded-xl bg-slate-100 text-2xl font-semibold "
-                "text-slate-950"
-            )
-        listener = CalculatorButtonListener(self, kind, value)
-        key.on(Button.tapEvent, listener.handleEvent)
+    def key(self, label: str, value: str, kind: str) -> Button:
+        key = Button(self.context)
+        key.setText(label)
+        key.setTextSize(f32(22.0))
+        key.setContentDescription(label)
+        key.setPadding(i32(12), i32(16), i32(12), i32(16))
+        key.setOnClickListener(CalculatorClickListener(self, kind, value))
         return key
 
-    def page(self) -> Page:
-        keypad = GridLayout()
-        keypad.rows = "auto,auto,auto,auto,auto"
-        keypad.columns = "*,*,*,*"
+    def page(self) -> ScrollView:
+        root = LinearLayout(self.context)
+        root.setOrientation(LinearLayout.VERTICAL)
+        root.setGravity(Gravity.CENTER)
+        root.setPadding(i32(20), i32(20), i32(20), i32(20))
+        root.setBackgroundColor(parse_color("#0f172a"))
+        root.setLayoutParams(
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        )
+
+        title = TextView(self.context)
+        title.setText("PyJS Calculator")
+        title.setTextSize(f32(24.0))
+        title.setGravity(Gravity.CENTER_HORIZONTAL)
+        root.addView(title)
+        root.addView(self.display)
+
+        keypad = LinearLayout(self.context)
+        keypad.setOrientation(LinearLayout.VERTICAL)
+        keypad.setLayoutParams(
+            LinearLayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, f32(0.0)
+            )
+        )
         labels = [
-            ("AC", "clear", "clear"),
+            ("AC", "clear", "action"),
             ("±", "sign", "action"),
             ("%", "percent", "action"),
             ("÷", "/", "operator"),
@@ -183,43 +105,59 @@ class AndroidCalculator:
             (".", ".", "decimal"),
             ("=", "=", "equals"),
         ]
+        row = LinearLayout(self.context)
         index = 0
         for label, value, kind in labels:
-            keypad.addChild(self.key(label, value, kind, index // 4, index % 4))
+            if index % 4 == 0:
+                row = LinearLayout(self.context)
+                row.setOrientation(LinearLayout.HORIZONTAL)
+                row.setLayoutParams(
+                    LinearLayoutParams(
+                        LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, f32(0.0)
+                    )
+                )
+                keypad.addView(row)
+            key = self.key(label, value, kind)
+            key.setId(i32(100 + index))
+            key.setLayoutParams(
+                LinearLayoutParams(i32(0), LayoutParams.WRAP_CONTENT, f32(1.0))
+            )
+            row.addView(key)
             index += 1
-
-        content = StackLayout()
-        content.className = "bg-slate-900 p-5"
-        content.verticalAlignment = "middle"
-        title = Label()
-        title.text = "PyJS Calculator"
-        title.className = "mb-4 text-center text-2xl font-bold text-sky-300"
-        content.addChild(title)
-        content.addChild(self.display)
-        content.addChild(keypad)
-
-        page = Page()
-        page.actionBarHidden = True
-        page.className = "bg-slate-900"
-        page.content = content
-        return page
+        root.addView(keypad)
+        scroll = ScrollView(self.context)
+        scroll.setFitsSystemWindows(True)
+        scroll.set_fill_viewport(True)
+        scroll.addView(root)
+        return scroll
 
 
-@js
-def create_android_page() -> Page:
-    return AndroidCalculator().page()
+class CalculatorActivity(Activity):
+    def onCreate(self, state: Bundle | None) -> None:
+        super().onCreate(state)
+        self.setTitle("PyJS Calculator")
+        self.view = AndroidCalculator(self)
+        calculator = self.view.calculator
+        if state is not None:
+            calculator.display_value = state.get_string("display") or "0"
+            calculator.stored_value = state.get_double("stored", 0.0)
+            calculator.pending_operator = state.get_string("operator") or ""
+            calculator.replace_display = state.get_boolean("replace", True)
+            calculator.error = state.get_boolean("error", False)
+        self.view.display.setText(calculator.display_value)
+        self.setContentView(self.view.page())
+
+    def onSaveInstanceState(self, state: Bundle) -> None:
+        calculator = self.view.calculator
+        state.put_string("display", calculator.display_value)
+        state.put_double("stored", calculator.stored_value)
+        state.put_string("operator", calculator.pending_operator)
+        state.put_boolean("replace", calculator.replace_display)
+        state.put_boolean("error", calculator.error)
+        super().onSaveInstanceState(state)
 
 
-@js
-def android_main():
-    Application.run(create_android_page)
-
-
-def run_android():
-    project = NativeScriptProject(
-        android_main,
-        name="PyJS Calculator",
-        app_id="org.pyjs.calculator",
-    )
-    device = project.run_android()
-    print(f"PyJS Calculator is running on {device.identifier}.")
+def main() -> int:
+    activity = CalculatorActivity()
+    activity.onCreate(Bundle())
+    return 0

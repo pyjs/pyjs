@@ -1,5 +1,8 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.domx import ProxyElement, textarea, tw
+from pyjs.web.html import HTMLTextAreaElement
 
 
 @js
@@ -16,10 +19,10 @@ class Textarea(ProxyElement):
         )
 
     def get_value(self) -> str:
-        return self.element.value
+        return cast(HTMLTextAreaElement, self.element).value
 
     def set_value(self, value: str):
-        self.element.value = value
+        cast(HTMLTextAreaElement, self.element).value = value
 
     def set_invalid(self, invalid: bool):
         self.element.setAttribute("aria-invalid", "true" if invalid else "false")

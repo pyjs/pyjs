@@ -1,6 +1,7 @@
 # Local dependencies and environments
 /.venv/
 /external/
+/.pyjs/
 
 # Python and test caches
 __pycache__/
@@ -24,7 +25,4 @@ dist/
 /test-artifacts/
 /testing-daemon.log
 
-# Local external review artifacts
-/pyjs-shakedown/
-/pyjsshakedown.txt
-/pyjsshakedown.zip
+*.swp

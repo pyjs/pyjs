@@ -1,3 +1,5 @@
+"""Reusable interaction scenarios for reorderable interfaces."""
+
 from pyjs import js
 from pyjs.ui.reorderable import (
     HierarchicalReorder,

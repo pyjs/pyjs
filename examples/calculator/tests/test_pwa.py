@@ -2,7 +2,6 @@ import asyncio
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 from pyjs.tooling import stop_process
@@ -18,9 +17,8 @@ def test_calculator_registers_python_service_worker_and_runs_offline():
         environment = os.environ.copy()
         environment["PYJS_PORT"] = str(port)
         environment["PYTHONUNBUFFERED"] = "1"
-        application = Path(__file__).parents[1] / "calculator.py"
         server = subprocess.Popen(
-            [sys.executable, str(application)],
+            [sys.executable, "-m", "pyjs_examples.calculator"],
             env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

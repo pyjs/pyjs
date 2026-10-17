@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,6 +67,24 @@ class AndroidSDK:
     def sdkmanager(self) -> Path:
         return self.root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
 
+    def build_tool(self, name: str) -> Path:
+        candidates = [
+            path
+            for path in (self.root / "build-tools").glob(f"*/{name}")
+            if path.is_file()
+        ]
+        if not candidates:
+            raise RuntimeError(f"Android SDK build tool {name!r} is not installed.")
+        return max(candidates, key=self._build_tools_version)
+
+    @staticmethod
+    def _build_tools_version(
+        path: Path,
+    ) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
+        version = path.parent.name
+        numbers = tuple(int(value) for value in re.findall(r"\d+", version))
+        return numbers[:3], int("-" not in version), numbers[3:]
+
     def environment(self) -> dict[str, str]:
         paths = [
             self.java_home / "bin",
@@ -102,11 +121,21 @@ class AndroidSDK:
         )
         return [line for line in result.stdout.splitlines() if line]
 
-    def start_emulator(self, name: str):
+    def start_emulator(self, name: str, *, headless: bool = False):
         if name not in self.avds():
             raise ValueError(f"Android virtual device {name!r} does not exist.")
+        arguments = [self.emulator, f"@{name}", "-no-snapshot-save"]
+        if headless:
+            arguments.extend(
+                [
+                    "-no-snapshot-load",
+                    "-no-window",
+                    "-no-audio",
+                    "-no-boot-anim",
+                ]
+            )
         return self.runner.start(
-            [self.emulator, f"@{name}", "-no-snapshot-save"],
+            arguments,
             environment=self.environment(),
             detached=True,
         )
@@ -127,12 +156,98 @@ class AndroidSDK:
             time.sleep(1)
         raise TimeoutError("Android emulator did not finish booting.")
 
-    def ensure_emulator(self, name: str | None = None) -> AndroidDevice:
+    def ensure_emulator(
+        self,
+        name: str | None = None,
+        *,
+        headless: bool = False,
+    ) -> AndroidDevice:
         for device in self.devices():
             if device.state == "device" and device.identifier.startswith("emulator-"):
                 return device
         avd = name or next(iter(self.avds()), None)
         if avd is None:
             raise RuntimeError("No Android virtual devices are configured.")
-        self.start_emulator(avd)
+        self.start_emulator(avd, headless=headless)
         return self.wait_for_emulator()
+
+    def install(self, device: AndroidDevice, package: Path) -> None:
+        self.runner.run(
+            [self.adb, "-s", device.identifier, "install", "-r", package],
+            environment=self.environment(),
+        )
+
+    def prepare_for_tests(
+        self,
+        device: AndroidDevice,
+        timeout: float = 30,
+    ) -> None:
+        prefix = [self.adb, "-s", device.identifier, "shell"]
+        environment = self.environment()
+        for command in (
+            ("input", "keyevent", "KEYCODE_WAKEUP"),
+            ("wm", "dismiss-keyguard"),
+            ("settings", "put", "global", "window_animation_scale", "0"),
+            ("settings", "put", "global", "transition_animation_scale", "0"),
+            ("settings", "put", "global", "animator_duration_scale", "0"),
+            ("input", "keyevent", "KEYCODE_HOME"),
+        ):
+            self.runner.run([*prefix, *command], environment=environment)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            result = self.runner.run(
+                [*prefix, "dumpsys", "window"],
+                environment=environment,
+                capture_output=True,
+            )
+            focus = next(
+                (
+                    line
+                    for line in result.stdout.splitlines()
+                    if "mCurrentFocus=" in line
+                ),
+                "",
+            )
+            if "Application Not Responding" in focus:
+                self.runner.run(
+                    [*prefix, "input", "keyevent", "KEYCODE_ENTER"],
+                    environment=environment,
+                )
+            elif focus and "=null" not in focus:
+                return
+            time.sleep(0.25)
+        raise TimeoutError("Android emulator did not acquire a focused window")
+
+    @staticmethod
+    def launch_arguments(app_id: str, activity: str) -> tuple[str, ...]:
+        # adb joins shell arguments into a command interpreted by the device's
+        # shell. Escape the JVM inner-class marker used by generated activities.
+        activity = activity.replace("$", r"\$")
+        return (
+            "shell",
+            "am",
+            "start",
+            "-W",
+            "-n",
+            f"{app_id}/{activity}",
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "-a",
+            "android.intent.action.MAIN",
+        )
+
+    def launch(
+        self,
+        device: AndroidDevice,
+        app_id: str,
+        activity: str,
+    ) -> None:
+        self.runner.run(
+            [
+                self.adb,
+                "-s",
+                device.identifier,
+                *self.launch_arguments(app_id, activity),
+            ],
+            environment=self.environment(),
+        )

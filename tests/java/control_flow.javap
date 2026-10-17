@@ -1,0 +1,58 @@
+Compiled from "_pyjs_java_.py"
+public final class PyjsProgram {
+  public static long choose(boolean, long, long);
+    Code:
+       0: iload         0
+       2: ifne          8
+       5: goto          15
+       8: lload         1
+      10: lstore        5
+      12: goto          22
+      15: lload         3
+      17: lstore        5
+      19: goto          22
+      22: lload         5
+      24: lstore        7
+      26: lload         7
+      28: lconst_1
+      29: ladd
+      30: lreturn
+
+  public static long pyjs_main();
+    Code:
+       0: lconst_0
+       1: lstore        0
+       3: goto          6
+       6: lload         0
+       8: ldc2_w        #4                  // long 4l
+      11: lcmp
+      12: iflt          19
+      15: iconst_0
+      16: goto          20
+      19: iconst_1
+      20: ifne          26
+      23: goto          35
+      26: lload         0
+      28: lconst_1
+      29: ladd
+      30: lstore        0
+      32: goto          6
+      35: lload         0
+      37: ldc2_w        #4                  // long 4l
+      40: lcmp
+      41: ifeq          48
+      44: iconst_0
+      45: goto          49
+      48: iconst_1
+      49: lload         0
+      51: lconst_0
+      52: invokestatic  #9                  // Method choose:(ZJJ)J
+      55: lreturn
+
+  public static void main(java.lang.String[]);
+    Code:
+       0: invokestatic  #13                 // Method pyjs_main:()J
+       3: l2i
+       4: invokestatic  #19                 // Method java/lang/System.exit:(I)V
+       7: return
+}

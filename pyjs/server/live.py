@@ -9,6 +9,8 @@ from pyjs.server.protocol import InvalidationPayload
 
 @dataclass(frozen=True)
 class Invalidation:
+    """One ordered notification that a set of resource topics changed."""
+
     sequence: int
     topics: tuple[str, ...]
 
@@ -21,12 +23,16 @@ class Invalidation:
 
 
 class InvalidationSubscription(Protocol):
+    """Receive invalidations from a backend until the subscription closes."""
+
     async def receive(self) -> Invalidation: ...
 
     def close(self) -> None: ...
 
 
 class InvalidationBackend(Protocol):
+    """Publish ordered invalidations and create topic subscriptions."""
+
     @property
     def sequence(self) -> int: ...
 
@@ -36,6 +42,8 @@ class InvalidationBackend(Protocol):
 
 
 class ReplayInvalidationBackend(InvalidationBackend, Protocol):
+    """Backend that can replay retained invalidations after a sequence."""
+
     def replay(
         self,
         after: int,
@@ -132,6 +140,12 @@ class _InMemorySubscription:
 
 
 class InvalidationHub:
+    """Thread-safe in-memory invalidation backend with bounded replay.
+
+    Args:
+        replay_limit: Maximum number of recent invalidations to retain.
+    """
+
     def __init__(self, replay_limit: int = 256):
         if replay_limit < 0:
             raise ValueError("The invalidation replay limit cannot be negative.")
@@ -207,11 +221,13 @@ class InvalidationHub:
 
 
 def api_topic(root: type | object) -> str:
+    """Return the stable invalidation topic for an API root."""
     root_type = root if isinstance(root, type) else type(root)
     return f"{root_type.__module__}.{root_type.__qualname__}"
 
 
 def resource_topic(root: type | object, path: tuple[str, ...]) -> str:
+    """Return the invalidation topic for a resource path below an API root."""
     return api_topic(root) + ":" + ".".join(path)
 
 

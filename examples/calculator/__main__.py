@@ -1,15 +1,18 @@
+import argparse
 import os
-import sys
 
-from pyjs.server.dev import serve
+parser = argparse.ArgumentParser(description="Run the Calculator example.")
+parser.add_argument("--android", action="store_true", help="Build and run the Android APK")
 
-from .calculator import render, save_result, service_worker_javascript
-
-if "--android" in sys.argv:
-    from .android import run_android
+if parser.parse_args().android:
+    from .android_build import run_android
 
     run_android()
 else:
+    from pyjs.server.dev import serve
+
+    from .calculator import render, save_result, service_worker_javascript
+
     serve(
         "pyjs_examples.calculator.calculator",
         render=render,

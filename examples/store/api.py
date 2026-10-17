@@ -10,14 +10,21 @@ from pyjs.server import (
     Page,
     Relationship,
     Resource,
+    Stream,
+    StreamFeed,
+    StreamHub,
+    StreamSnapshot,
     include_paths,
     mutation,
     operation_error,
     query,
+    stream,
 )
 from pyjs.server.django import (
     DjangoFetchTransport,
+    QuerySetPageResult,
     dispatch_sync,
+    publish_stream_after_commit,
     queryset_page,
     queryset_result,
     relationship,
@@ -42,6 +49,7 @@ from .core import (
     ReviewDraft,
     ReviewStatus,
     TrafficSummary,
+    VisitorDraft,
     VisitorEvent,
 )
 
@@ -158,12 +166,12 @@ def review_moderation_page(
     return dispatch_sync(api.account.moderation.list, page)
 
 
-def visitor_event_page(
+def visitor_event_snapshot(
     page: CursorPageRequest | None = None,
-) -> Page[VisitorEvent]:
+) -> StreamSnapshot[Page[VisitorEvent]]:
     if page is None:
         page = CursorPageRequest(size=4)
-    return dispatch_sync(api.account.visitors.list, page)
+    return dispatch_sync(api.account.visitors.snapshot, page)
 
 
 def traffic_summary() -> TrafficSummary:
@@ -546,20 +554,69 @@ def visitor_summary() -> TrafficSummary:
     )
 
 
+def visitor_page(page: CursorPageRequest) -> QuerySetPageResult:
+    return queryset_page(
+        db.VisitorEvent.objects.all(),
+        page,
+        order_by=("-occurred_at", "-id"),
+        include_total=True,
+    )
+
+
+class VisitorHistory:
+    async def load(
+        self,
+        _scope: str,
+        page: CursorPageRequest,
+    ) -> Page[VisitorEvent]:
+        result = await sync_to_async(visitor_page)(page)
+        return await result.materialize_operation_result(Page[VisitorEvent])
+
+
+visitor_feed = StreamFeed(
+    StreamHub[VisitorEvent](),
+    VisitorHistory(),
+    "visitors",
+)
+
+
+def record_visitor(draft: VisitorDraft) -> VisitorEvent:
+    visit = db.VisitorEvent.objects.create(
+        path=draft.path,
+        source=draft.source,
+        region=draft.region,
+        device=draft.device,
+        occurred_at=timezone.now(),
+    )
+    event = VisitorEvent.model_validate(visit, from_attributes=True)
+    publish_stream_after_commit(visitor_feed, event)
+    return event
+
+
 @js
 class VisitorResource(Resource[VisitorEvent]):
     @query
     async def list(self, page: CursorPageRequest) -> Page[VisitorEvent]:
-        return queryset_page(
-            db.VisitorEvent.objects.all(),
-            page,
-            order_by=("-occurred_at", "-id"),
-            include_total=True,
-        )
+        return await visitor_feed.load(page)
 
     @query
     async def summary(self) -> TrafficSummary:
         return await sync_to_async(visitor_summary)()
+
+    @query
+    async def snapshot(
+        self,
+        page: CursorPageRequest,
+    ) -> StreamSnapshot[Page[VisitorEvent]]:
+        return await visitor_feed.snapshot(page)
+
+    @stream
+    def events(self) -> Stream[VisitorEvent]:
+        return visitor_feed.events()
+
+    @mutation
+    async def record(self, draft: VisitorDraft) -> VisitorEvent:
+        return await sync_to_async(record_visitor)(draft)
 
 
 @js

@@ -11,16 +11,7 @@ from pyjs.web.serviceworker import (
 )
 from pyjs.web.ui import Widget
 
-
-@js
-def calculate_result(left: float, right: float, operator: str) -> float:
-    if operator == "+":
-        return left + right
-    if operator == "-":
-        return left - right
-    if operator == "*":
-        return left * right
-    return left / right
+from .model import Calculator
 
 
 @js
@@ -83,8 +74,8 @@ def service_worker_main():
 
 @nojs
 def service_worker_javascript(request):
+    from pyjs.javascript.transpiler import bundle
     from pyjs.server.dev import Response
-    from pyjs.transpiler import bundle
 
     source, _ = bundle(service_worker_main, include_main=True, include_css=False)
     return Response(
@@ -288,76 +279,38 @@ class CalculatorApp(Widget):
     def render_display(self):
         self.display.textContent = self.display_value
 
+    def read_model(self) -> Calculator:
+        calculator = Calculator(self.display_value)
+        calculator.stored_value = self.stored_value
+        calculator.pending_operator = self.pending_operator
+        calculator.replace_display = self.replace_display
+        calculator.error = self.error
+        return calculator
+
     def clear(self):
-        self.display_value = "0"
-        self.stored_value = 0.0
-        self.pending_operator = ""
-        self.replace_display = True
-        self.error = False
+        self.press("action", "clear")
 
     def value(self) -> float:
-        if self.error:
-            return 0.0
-        return float(self.display_value)
+        return self.read_model().value()
 
     def input_digit(self, digit: str):
-        if self.error:
-            self.clear()
-        if self.replace_display or self.display_value == "0":
-            self.display_value = digit
-            self.replace_display = False
-        else:
-            self.display_value += digit
+        self.press("digit", digit)
 
     def input_decimal(self):
-        if self.error:
-            self.clear()
-        if self.replace_display:
-            self.display_value = "0."
-            self.replace_display = False
-        elif len(self.display_value.split(".")) == 1:
-            self.display_value += "."
+        self.press("decimal", ".")
 
     def toggle_sign(self):
-        value = self.display_value
-        if self.error or value == "0" or value == "0.0":
-            return
-        self.display_value = str(0.0 - float(value))
+        self.press("action", "sign")
 
     def percent(self):
-        if self.error:
-            return
-        self.display_value = str(float(self.display_value) / 100.0)
-        self.replace_display = True
+        self.press("action", "percent")
 
     def choose_operator(self, operator: str):
-        if self.error:
-            return
-        if self.pending_operator != "" and not self.replace_display:
-            self.calculate()
-            if self.error:
-                return
-        self.stored_value = float(self.display_value)
-        self.pending_operator = operator
-        self.replace_display = True
+        self.press("operator", operator)
 
     def calculate(self) -> float:
-        operator = self.pending_operator
-        if self.error or operator == "":
-            return self.value()
-        right = float(self.display_value)
-        if operator == "/" and right == 0.0:
-            self.display_value = "Error"
-            self.pending_operator = ""
-            self.replace_display = True
-            self.error = True
-            return 0.0
-        result = calculate_result(self.stored_value, right, operator)
-        self.display_value = str(result)
-        self.stored_value = result
-        self.pending_operator = ""
-        self.replace_display = True
-        return result
+        self.press("equals", "=")
+        return self.value()
 
     async def persist_result(self):
         if self.save_url == "":
@@ -373,20 +326,13 @@ class CalculatorApp(Widget):
         )
 
     def press(self, kind: str, value: str):
-        if kind == "digit":
-            self.input_digit(value)
-        elif kind == "decimal":
-            self.input_decimal()
-        elif kind == "operator":
-            self.choose_operator(value)
-        elif kind == "equals":
-            self.calculate()
-        elif value == "clear":
-            self.clear()
-        elif value == "sign":
-            self.toggle_sign()
-        else:
-            self.percent()
+        calculator = self.read_model()
+        calculator.press(kind, value)
+        self.stored_value = calculator.stored_value
+        self.pending_operator = calculator.pending_operator
+        self.replace_display = calculator.replace_display
+        self.error = calculator.error
+        self.display_value = calculator.display_value
 
 
 def main(
@@ -420,19 +366,3 @@ def save_result(request):
     if not math.isfinite(float(result)):
         raise ValueError("result must be finite")
     request.session["last_result"] = result
-
-
-if __name__ == "__main__":
-    import os
-
-    from pyjs.server.dev import serve
-
-    serve(
-        "calculator",
-        render=render,
-        routes={
-            ("POST", "/api/calculator/result"): save_result,
-            ("GET", "/calculator-serviceworker.js"): service_worker_javascript,
-        },
-        port=int(os.environ.get("PYJS_PORT", "8000")),
-    )

@@ -1,4 +1,6 @@
-from pyjs import js
+"""Buttons and grouped button controls."""
+
+from pyjs import js, llvm
 from pyjs.web.domx import ProxyElement, button, tag, tw
 
 
@@ -9,37 +11,44 @@ class Button(ProxyElement):
         *children: object,
         variant: str = "default",
         size: str = "default",
+        href: str = "",
     ):
-        self.element = button(
-            tw(
-                "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap "
-                "rounded-md bg-slate-950 px-4 text-sm font-medium text-white shadow-sm "
-                "outline-none transition-colors hover:bg-slate-800 focus-visible:ring-2 "
-                "focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50 "
-                "data-[variant=outline]:border data-[variant=outline]:border-slate-300 "
-                "data-[variant=outline]:bg-white data-[variant=outline]:text-slate-950 "
-                "data-[variant=outline]:hover:bg-slate-100 data-[variant=secondary]:bg-slate-100 "
-                "data-[variant=secondary]:text-slate-950 data-[variant=secondary]:shadow-none "
-                "data-[variant=ghost]:bg-transparent data-[variant=ghost]:text-slate-950 "
-                "data-[variant=ghost]:shadow-none data-[variant=ghost]:hover:bg-slate-100 "
-                "data-[variant=destructive]:bg-red-600 data-[variant=destructive]:hover:bg-red-500 "
-                "data-[variant=link]:bg-transparent data-[variant=link]:text-slate-950 "
-                "data-[variant=link]:shadow-none data-[variant=link]:underline "
-                "data-[variant=link]:underline-offset-4 data-[size=xs]:h-7 data-[size=xs]:px-2 "
-                "data-[size=xs]:text-xs data-[size=sm]:h-8 data-[size=sm]:px-3 "
-                "data-[size=lg]:h-10 data-[size=lg]:px-6 data-[size=icon]:size-9 "
-                "data-[size=icon]:px-0"
-            ),
-            {
-                "data-size": size,
-                "data-slot": "button",
-                "data-variant": variant,
-                "type": "button",
-            },
-            *children,
+        classes = tw(
+            "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap "
+            "rounded-md bg-slate-950 px-4 text-sm font-medium text-white shadow-sm "
+            "outline-none transition-colors hover:bg-slate-800 focus-visible:ring-2 "
+            "focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50 "
+            "data-[variant=outline]:border data-[variant=outline]:border-slate-300 "
+            "data-[variant=outline]:bg-white data-[variant=outline]:text-slate-950 "
+            "data-[variant=outline]:hover:bg-slate-100 data-[variant=secondary]:bg-slate-100 "
+            "data-[variant=secondary]:text-slate-950 data-[variant=secondary]:shadow-none "
+            "data-[variant=ghost]:bg-transparent data-[variant=ghost]:text-slate-950 "
+            "data-[variant=ghost]:shadow-none data-[variant=ghost]:hover:bg-slate-100 "
+            "data-[variant=destructive]:bg-red-600 data-[variant=destructive]:hover:bg-red-500 "
+            "data-[variant=link]:bg-transparent data-[variant=link]:text-slate-950 "
+            "data-[variant=link]:shadow-none data-[variant=link]:underline "
+            "data-[variant=link]:underline-offset-4 data-[size=xs]:h-7 data-[size=xs]:px-2 "
+            "data-[size=xs]:text-xs data-[size=sm]:h-8 data-[size=sm]:px-3 "
+            "data-[size=lg]:h-10 data-[size=lg]:px-6 data-[size=icon]:size-9 "
+            "data-[size=icon]:px-0 data-[size=icon-xs]:size-6 data-[size=icon-xs]:px-0 "
+            "data-[size=icon-sm]:size-7 data-[size=icon-sm]:px-0 "
+            "data-[size=icon-lg]:size-10 data-[size=icon-lg]:px-0"
         )
+        attributes = {
+            "data-size": size,
+            "data-slot": "button",
+            "data-variant": variant,
+        }
+        if href != "":
+            attributes["href"] = href
+            self.element = tag("a", classes, attributes, *children)
+            return
+        attributes["type"] = "button"
+        self.element = button(classes, attributes, *children)
 
-    def on_click(self, callback: callable):
+    # SSR does not register events; erase the wrapper before reaching callbacks.
+    @llvm.inline("")
+    def on_click(self, callback: callable) -> None:
         self.element.addEventListener("click", callback)
 
 

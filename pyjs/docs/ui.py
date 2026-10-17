@@ -13,6 +13,7 @@ from pyjs.web.domx import (
 )
 from pyjs.web.events import Event, EventTarget, KeyboardEvent
 from pyjs.web.html import HTMLElement
+from pyjs.web.network import fetch
 
 
 class SearchRecord(JSONObject):
@@ -76,10 +77,11 @@ class DocsApp(CustomElement):
         article="",
         outline="",
         search_data="[]",
+        search_url: str = "",
         site_home_href: str = "",
         site_navigation="",
         project_links="",
-        version: str = "",
+        version_navigation="",
     ):
         super().__init__()
         if not site_home_href:
@@ -156,13 +158,13 @@ class DocsApp(CustomElement):
                 ),
             )
         )
-        self.search_data = ref(
-            tag(
-                "script",
-                {"class": "docs-search-data", "type": "application/json"},
-                search_data,
-            )
-        )
+        search_attributes = {
+            "class": "docs-search-data",
+            "type": "application/json",
+        }
+        if search_url:
+            search_attributes["data-search-url"] = search_url
+        self.search_data = ref(tag("script", search_attributes, search_data))
         self.navigation_panel = ref(
             tag(
                 "aside",
@@ -194,7 +196,7 @@ class DocsApp(CustomElement):
                         tag("span", site_name),
                     ),
                     tag("a", {"class": "brand-section", "href": home_href}, "Docs"),
-                    tag("span", {"class": "docs-version"}, version) if version else "",
+                    version_navigation,
                     site_navigation,
                     div({"class": "header-spacer"}),
                     self.search_button,
@@ -285,10 +287,23 @@ class DocsApp(CustomElement):
         else:
             self.setAttribute("data-menu-open", "")
 
-    def open_search(self, event: Event | None = None):
+    async def open_search(self, event: Event | None = None):
         if not self.search_dialog.open:
             self.search_dialog.showModal()
         self.search_input.focus()
+        await self.load_search()
+
+    async def load_search(self):
+        search_url = self.search_data.getAttribute("data-search-url")
+        if search_url is None or self.search_data.textContent != "[]":
+            return
+        response = await fetch(search_url)
+        if not response.ok:
+            self.search_results.replaceChildren(
+                div({"class": "search-empty"}, "Search index could not be loaded.")
+            )
+            return
+        self.search_data.textContent = await response.text()
 
     def close_search(self, event: Event | None = None):
         if self.search_dialog.open:
@@ -362,10 +377,11 @@ def main(
     article="",
     outline="",
     search_data="[]",
+    search_url: str = "",
     site_home_href: str = "",
     site_navigation="",
     project_links="",
-    version: str = "",
+    version_navigation="",
 ):
     return DocsApp(
         site_name,
@@ -374,8 +390,9 @@ def main(
         article,
         outline,
         search_data,
+        search_url,
         site_home_href,
         site_navigation,
         project_links,
-        version,
+        version_navigation,
     )

@@ -566,7 +566,7 @@ def assistant_questionnaire():
                     "mobile",
                     "Mobile application",
                     QuestionnaireChoiceDescription(
-                        "A NativeScript application targeting Android and iOS."
+                        "A direct-JVM application using native Android APIs."
                     ),
                     shortcut="M",
                 ),
@@ -924,11 +924,11 @@ class ChatApp(Widget):
         if pro:
             self.membership_status.textContent = "This workspace is on the Pro plan."
             self.membership_button.element.textContent = "Pro is active"
-            self.membership_button.element.disabled = True
+            self.membership_button.setAttribute("disabled", "")
         else:
             self.membership_status.textContent = "This workspace is currently on Free."
             self.membership_button.element.textContent = "Upgrade to Pro"
-            self.membership_button.element.disabled = False
+            self.membership_button.removeAttribute("disabled")
 
     def upgrade_membership(self, event: Event):
         if self.connection == "preview":

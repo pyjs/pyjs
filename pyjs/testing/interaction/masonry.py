@@ -2,7 +2,13 @@ import json
 from dataclasses import asdict, dataclass
 
 from pyjs import js
-from pyjs.nativescript.simulator import (
+from pyjs.ui.interaction import (
+    InteractionMeasurement,
+    InteractionProjection,
+    InteractionSample,
+    InteractionViewport,
+)
+from pyjs.ui.masonry import (
     MasonryDragDecision,
     MasonryDragSession,
     MasonryDragSimulator,
@@ -11,12 +17,6 @@ from pyjs.nativescript.simulator import (
     MasonryViewport,
     MasonryViewportAnchor,
     NativeRect,
-)
-from pyjs.ui.interaction import (
-    InteractionMeasurement,
-    InteractionProjection,
-    InteractionSample,
-    InteractionViewport,
 )
 
 from .gesture import GestureScript
@@ -465,7 +465,7 @@ class MasonryTraceRecorder:
 
 @js
 class MasonryGestureTarget:
-    """Structural interface implemented by the NativeScript masonry layout."""
+    """Structural interface implemented by the masonry layout adapter."""
 
     __pyjs_structural__ = True
 

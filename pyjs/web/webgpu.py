@@ -16,6 +16,7 @@ from pyjs.javascript import (
     Uint16Array,
     Uint32Array,
 )
+from pyjs.web._webgpu import buffer_source_bytes, lower, request_adapter, wrap
 from pyjs.web.dom import DOMException
 from pyjs.web.events import Event, EventTarget
 from pyjs.web.html import (
@@ -436,13 +437,17 @@ class GPUComputePassEncoder:
 
     def dispatchWorkgroups(
         self, workgroupCountX: int, workgroupCountY: int = 1, workgroupCountZ: int = 1
-    ) -> None: ...
+    ) -> None:
+        self._native.dispatch_workgroups(
+            workgroupCountX, workgroupCountY, workgroupCountZ
+        )
 
     def dispatchWorkgroupsIndirect(
         self, indirectBuffer: GPUBuffer, indirectOffset: int
     ) -> None: ...
 
-    def end(self) -> None: ...
+    def end(self) -> None:
+        self._native.end()
 
     def insertDebugMarker(self, markerLabel: str) -> None: ...
 
@@ -455,7 +460,12 @@ class GPUComputePassEncoder:
         index: int,
         bindGroup: GPUBindGroup | None,
         dynamicOffsets: list[int] | None = None,
-    ) -> None: ...
+    ) -> None:
+        self._native.set_bind_group(
+            index,
+            bindGroup._native if bindGroup is not None else None,
+            dynamicOffsets or (),
+        )
 
     def setImmediates(
         self,
@@ -479,7 +489,8 @@ class GPUComputePassEncoder:
         dataSize: int | None = None,
     ) -> None: ...
 
-    def setPipeline(self, pipeline: GPUComputePipeline) -> None: ...
+    def setPipeline(self, pipeline: GPUComputePipeline) -> None:
+        self._native.set_pipeline(pipeline._native)
 
 
 @js.dictionary
@@ -510,7 +521,9 @@ class GPUComputePipeline:
     def __init__(self):
         self.label: str = ""
 
-    def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout: ...
+    def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout:
+        native = self._native.get_bind_group_layout(index)
+        return wrap(GPUBindGroupLayout, native, label=getattr(native, "label", ""))
 
 
 @js.dictionary
@@ -848,16 +861,51 @@ class GPUBuffer:
         self.mapState: str = ""
         self.size: int = 0
         self.usage: int = 0
+        self._map_mode: int = 0
+        self._map_offset: int = 0
+        self._pending: object = None
 
-    def destroy(self) -> None: ...
+    def destroy(self) -> None:
+        self._native.destroy()
+        self._pending = None
+        self.mapState = "unmapped"
 
-    def getMappedRange(self, offset: int = 0, size: int | None = None) -> ArrayBuffer: ...
+    def getMappedRange(self, offset: int = 0, size: int | None = None) -> ArrayBuffer:
+        if self._pending is None:
+            raise RuntimeError("buffer is not mapped")
+        if offset % 8:
+            raise ValueError("mapped range offset must be a multiple of 8")
+        start = offset - self._map_offset
+        stop = len(self._pending) if size is None else start + size
+        if start < 0 or stop < start or stop > len(self._pending):
+            raise ValueError("requested range is outside the mapped buffer range")
+        if (stop - start) % 4:
+            raise ValueError("mapped range size must be a multiple of 4")
+        view = ArrayBuffer(stop - start)
+        view._bytes = memoryview(self._pending)[start:stop]
+        return view
 
-    async def mapAsync(
-        self, mode: int, offset: int = 0, size: int | None = None
-    ) -> None: ...
+    async def mapAsync(self, mode: int, offset: int = 0, size: int | None = None) -> None:
+        length = self.size - offset if size is None else size
+        await self._native.map_async(mode, offset, length)
+        if mode & GPUMapMode.READ:
+            self._pending = bytearray(self._native.read_mapped(offset, length))
+        else:
+            self._pending = bytearray(length)
+        self._map_mode = mode
+        self._map_offset = offset
+        self.mapState = "mapped"
 
-    def unmap(self) -> None: ...
+    def unmap(self) -> None:
+        pending = self._pending
+        if pending is not None and self._map_mode & GPUMapMode.WRITE:
+            self._native.write_mapped(pending, self._map_offset)
+        if pending is not None:
+            self._native.unmap()
+        self._pending = None
+        self._map_mode = 0
+        self._map_offset = 0
+        self.mapState = "unmapped"
 
 
 @js.dictionary
@@ -1055,9 +1103,25 @@ class GPUTexture:
         baseArrayLayer: int = 0,
         arrayLayerCount: int | None = None,
         swizzle: str = "rgba",
-    ) -> GPUTextureView: ...
+    ) -> GPUTextureView:
+        args = {
+            "label": label,
+            "usage": usage,
+            "aspect": aspect,
+            "base_mip_level": baseMipLevel,
+            "mip_level_count": mipLevelCount,
+            "base_array_layer": baseArrayLayer,
+            "array_layer_count": arrayLayerCount,
+            "swizzle": swizzle,
+        }
+        if format is not None:
+            args["format"] = format
+        if dimension is not None:
+            args["dimension"] = dimension
+        return wrap(GPUTextureView, self._native.create_view(**args), label=label)
 
-    def destroy(self) -> None: ...
+    def destroy(self) -> None:
+        self._native.destroy()
 
 
 @js.native
@@ -1170,7 +1234,9 @@ class GPURenderPipeline:
     def __init__(self):
         self.label: str = ""
 
-    def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout: ...
+    def getBindGroupLayout(self, index: int) -> GPUBindGroupLayout:
+        native = self._native.get_bind_group_layout(index)
+        return wrap(GPUBindGroupLayout, native, label=getattr(native, "label", ""))
 
 
 @js.native
@@ -1195,7 +1261,8 @@ class GPURenderPassEncoder:
 
     Browser support: Chrome 144, Safari 26"""
 
-    def setPipeline(self, pipeline: GPURenderPipeline) -> None: ...
+    def setPipeline(self, pipeline: GPURenderPipeline) -> None:
+        self._native.set_pipeline(pipeline._native)
 
     def setScissorRect(self, x: int, y: int, width: int, height: int) -> None: ...
 
@@ -1207,7 +1274,10 @@ class GPURenderPassEncoder:
         buffer: GPUBuffer | None,
         offset: int = 0,
         size: int | None = None,
-    ) -> None: ...
+    ) -> None:
+        self._native.set_vertex_buffer(
+            slot, buffer._native if buffer is not None else None, offset, size
+        )
 
     def setBlendConstant(self, *, r: float, g: float, b: float, a: float) -> None: ...
 
@@ -1239,7 +1309,8 @@ class GPURenderPassEncoder:
         indexFormat: str,
         offset: int = 0,
         size: int | None = None,
-    ) -> None: ...
+    ) -> None:
+        self._native.set_index_buffer(buffer._native, indexFormat, offset, size)
 
     def endOcclusionQuery(self) -> None: ...
 
@@ -1256,7 +1327,12 @@ class GPURenderPassEncoder:
         index: int,
         bindGroup: GPUBindGroup | None,
         dynamicOffsets: list[int] | None = None,
-    ) -> None: ...
+    ) -> None:
+        self._native.set_bind_group(
+            index,
+            bindGroup._native if bindGroup is not None else None,
+            dynamicOffsets or (),
+        )
 
     def __init__(self):
         self.label: str = ""
@@ -1269,7 +1345,8 @@ class GPURenderPassEncoder:
         instanceCount: int = 1,
         firstVertex: int = 0,
         firstInstance: int = 0,
-    ) -> None: ...
+    ) -> None:
+        self._native.draw(vertexCount, instanceCount, firstVertex, firstInstance)
 
     def drawIndexed(
         self,
@@ -1278,7 +1355,10 @@ class GPURenderPassEncoder:
         firstIndex: int = 0,
         baseVertex: int = 0,
         firstInstance: int = 0,
-    ) -> None: ...
+    ) -> None:
+        self._native.draw_indexed(
+            indexCount, instanceCount, firstIndex, baseVertex, firstInstance
+        )
 
     def drawIndexedIndirect(
         self, indirectBuffer: GPUBuffer, indirectOffset: int
@@ -1286,7 +1366,8 @@ class GPURenderPassEncoder:
 
     def drawIndirect(self, indirectBuffer: GPUBuffer, indirectOffset: int) -> None: ...
 
-    def end(self) -> None: ...
+    def end(self) -> None:
+        self._native.end()
 
     def setViewport(
         self,
@@ -1315,11 +1396,34 @@ class GPUCommandEncoder:
         *,
         label: str = "",
         timestampWrites: GPUComputePassTimestampWrites | None = None,
-    ) -> GPUComputePassEncoder: ...
+    ) -> GPUComputePassEncoder:
+        timestamp_writes = None if timestampWrites is None else lower(timestampWrites)
+        return wrap(
+            GPUComputePassEncoder,
+            self._native.begin_compute_pass(
+                label=label, timestamp_writes=timestamp_writes
+            ),
+            label=label,
+        )
 
     def beginRenderPass(
         self, descriptor: GPURenderPassDescriptor
-    ) -> GPURenderPassEncoder: ...
+    ) -> GPURenderPassEncoder:
+        args = lower(descriptor)
+        for attachment in args.get("color_attachments", []):
+            if attachment and isinstance(attachment.get("clear_value"), dict):
+                c = attachment["clear_value"]
+                attachment["clear_value"] = (
+                    c.get("r", 0.0),
+                    c.get("g", 0.0),
+                    c.get("b", 0.0),
+                    c.get("a", 1.0),
+                )
+        return wrap(
+            GPURenderPassEncoder,
+            self._native.begin_render_pass(**args),
+            label=descriptor.label,
+        )
 
     def clearBuffer(
         self, buffer: GPUBuffer, offset: int = 0, size: int | None = None
@@ -1327,7 +1431,14 @@ class GPUCommandEncoder:
 
     def copyBufferToBuffer(
         self, source: GPUBuffer, destination: GPUBuffer, size: int | None = None
-    ) -> None: ...
+    ) -> None:
+        self._native.copy_buffer_to_buffer(
+            source._native,
+            0,
+            destination._native,
+            0,
+            size if size is not None else min(source.size, destination.size),
+        )
 
     def copyBufferToTexture(
         self,
@@ -1347,7 +1458,10 @@ class GPUCommandEncoder:
         width: int,
         height: int = 1,
         depthOrArrayLayers: int = 1,
-    ) -> None: ...
+    ) -> None:
+        self._native.copy_texture_to_buffer(
+            lower(source), lower(destination), (width, height, depthOrArrayLayers)
+        )
 
     def copyTextureToTexture(
         self,
@@ -1359,7 +1473,8 @@ class GPUCommandEncoder:
         depthOrArrayLayers: int = 1,
     ) -> None: ...
 
-    def finish(self, *, label: str = "") -> GPUCommandBuffer: ...
+    def finish(self, *, label: str = "") -> GPUCommandBuffer:
+        return wrap(GPUCommandBuffer, self._native.finish(label=label), label=label)
 
     def insertDebugMarker(self, markerLabel: str) -> None: ...
 
@@ -1440,9 +1555,12 @@ class GPUQueue:
         | DataView,
         dataOffset: int = 0,
         size: int | None = None,
-    ) -> None: ...
+    ) -> None:
+        raw = buffer_source_bytes(data, dataOffset, size)
+        self._native.write_buffer(buffer._native, bufferOffset, raw)
 
-    def submit(self, commandBuffers: list[GPUCommandBuffer]) -> None: ...
+    def submit(self, commandBuffers: list[GPUCommandBuffer]) -> None:
+        self._native.submit([command._native for command in commandBuffers])
 
     def __init__(self):
         self.label: str = ""
@@ -1457,7 +1575,8 @@ class GPUQueue:
         depthOrArrayLayers: int = 1,
     ) -> None: ...
 
-    async def onSubmittedWorkDone(self) -> None: ...
+    async def onSubmittedWorkDone(self) -> None:
+        await self._native.on_submitted_work_done_async()
 
     def writeTexture(
         self,
@@ -1505,11 +1624,54 @@ class GPUDevice(EventTarget):
 
     def createBindGroupLayout(
         self, descriptor: GPUBindGroupLayoutDescriptor
-    ) -> GPUBindGroupLayout: ...
+    ) -> GPUBindGroupLayout:
+        return wrap(
+            GPUBindGroupLayout,
+            self._native.create_bind_group_layout(**lower(descriptor)),
+            label=descriptor.label,
+        )
 
-    def createBuffer(self, descriptor: GPUBufferDescriptor) -> GPUBuffer: ...
+    def createBuffer(self, descriptor: GPUBufferDescriptor) -> GPUBuffer:
+        args = lower(descriptor)
+        mapped = args.get("mapped_at_creation", False)
+        native = self._native.create_buffer(**args)
+        buffer = wrap(
+            GPUBuffer,
+            native,
+            size=native.size,
+            usage=native.usage,
+            label=args.get("label", ""),
+        )
+        buffer.mapState = "mapped" if mapped else "unmapped"
+        buffer._pending = bytearray(native.size) if mapped else None
+        buffer._map_mode = GPUMapMode.WRITE if mapped else 0
+        buffer._map_offset = 0
+        return buffer
 
-    def createTexture(self, descriptor: GPUTextureDescriptor) -> GPUTexture: ...
+    def createTexture(self, descriptor: GPUTextureDescriptor) -> GPUTexture:
+        args = lower(descriptor)
+        size = args["size"]
+        if isinstance(size, dict):
+            size = (
+                size.get("width", 1),
+                size.get("height", 1),
+                size.get("depth_or_array_layers", 1),
+            )
+        args["size"] = tuple(size) + (1,) * (3 - len(size))
+        native = self._native.create_texture(**args)
+        return wrap(
+            GPUTexture,
+            native,
+            width=args["size"][0],
+            height=args["size"][1],
+            depthOrArrayLayers=args["size"][2],
+            format=args["format"],
+            usage=args["usage"],
+            dimension=args.get("dimension", "2d"),
+            mipLevelCount=args.get("mip_level_count", 1),
+            sampleCount=args.get("sample_count", 1),
+            label=args.get("label", ""),
+        )
 
     def createSampler(
         self,
@@ -1525,23 +1687,77 @@ class GPUDevice(EventTarget):
         lodMaxClamp: float = 32,
         compare: str | None = None,
         maxAnisotropy: int = 1,
-    ) -> GPUSampler: ...
+    ) -> GPUSampler:
+        return wrap(
+            GPUSampler,
+            self._native.create_sampler(
+                label=label,
+                address_mode_u=addressModeU,
+                address_mode_v=addressModeV,
+                address_mode_w=addressModeW,
+                mag_filter=magFilter,
+                min_filter=minFilter,
+                mipmap_filter=mipmapFilter,
+                lod_min_clamp=lodMinClamp,
+                lod_max_clamp=lodMaxClamp,
+                compare=compare,
+                max_anisotropy=maxAnisotropy,
+            ),
+            label=label,
+        )
 
     def createShaderModule(
         self, descriptor: GPUShaderModuleDescriptor
-    ) -> GPUShaderModule: ...
+    ) -> GPUShaderModule:
+        return wrap(
+            GPUShaderModule,
+            self._native.create_shader_module(**lower(descriptor)),
+            label=descriptor.label,
+        )
 
     def createComputePipeline(
         self, descriptor: GPUComputePipelineDescriptor
-    ) -> GPUComputePipeline: ...
+    ) -> GPUComputePipeline:
+        layout = descriptor.layout
+        return wrap(
+            GPUComputePipeline,
+            self._native.create_compute_pipeline(
+                label=descriptor.label,
+                layout=layout if isinstance(layout, str) else layout._native,
+                compute=lower(descriptor.compute),
+            ),
+            label=descriptor.label,
+        )
 
     async def createComputePipelineAsync(
         self, descriptor: GPUComputePipelineDescriptor
-    ) -> GPUComputePipeline: ...
+    ) -> GPUComputePipeline:
+        return self.createComputePipeline(descriptor)
 
     def createPipelineLayout(
         self, descriptor: GPUPipelineLayoutDescriptor
-    ) -> GPUPipelineLayout: ...
+    ) -> GPUPipelineLayout:
+        """Create a native layout while preserving nullable group slots.
+
+        wgpu-py represents each WebGPU null slot with an empty native layout.
+        """
+        bind_group_layouts = []
+        for layout in descriptor.bindGroupLayouts:
+            native = (
+                self._native.create_bind_group_layout(entries=[])
+                if layout is None
+                else layout._native
+            )
+            bind_group_layouts.append(native)
+        return wrap(
+            GPUPipelineLayout,
+            self._native.create_pipeline_layout(
+                label=descriptor.label,
+                bind_group_layouts=bind_group_layouts,
+                immediate_size=descriptor.immediateSize,
+            ),
+            label=descriptor.label,
+        )
 
     def createQuerySet(self, descriptor: GPUQuerySetDescriptor) -> GPUQuerySet: ...
 
@@ -1551,15 +1767,53 @@ class GPUDevice(EventTarget):
 
     def createRenderPipeline(
         self, descriptor: GPURenderPipelineDescriptor
-    ) -> GPURenderPipeline: ...
+    ) -> GPURenderPipeline:
+        args = lower(descriptor)
+        layout = descriptor.layout
+        args["layout"] = layout if isinstance(layout, str) else layout._native
+        return wrap(
+            GPURenderPipeline,
+            self._native.create_render_pipeline(**args),
+            label=descriptor.label,
+        )
 
     async def createRenderPipelineAsync(
         self, descriptor: GPURenderPipelineDescriptor
-    ) -> GPURenderPipeline: ...
+    ) -> GPURenderPipeline:
+        return self.createRenderPipeline(descriptor)
 
-    def createBindGroup(self, descriptor: GPUBindGroupDescriptor) -> GPUBindGroup: ...
+    def createBindGroup(self, descriptor: GPUBindGroupDescriptor) -> GPUBindGroup:
+        entries = []
+        for entry in descriptor.entries:
+            resource = entry.resource
+            if isinstance(resource, GPUBufferBinding):
+                size = getattr(resource, "size", None)
+                lowered = {
+                    "buffer": resource.buffer._native,
+                    "offset": resource.offset,
+                    "size": resource.buffer.size - resource.offset
+                    if size is None
+                    else size,
+                }
+            elif isinstance(resource, GPUBuffer):
+                lowered = {"buffer": resource._native, "offset": 0, "size": resource.size}
+            else:
+                lowered = resource._native
+            entries.append({"binding": entry.binding, "resource": lowered})
+        return wrap(
+            GPUBindGroup,
+            self._native.create_bind_group(
+                label=descriptor.label, layout=descriptor.layout._native, entries=entries
+            ),
+            label=descriptor.label,
+        )
 
-    def createCommandEncoder(self, *, label: str = "") -> GPUCommandEncoder: ...
+    def createCommandEncoder(self, *, label: str = "") -> GPUCommandEncoder:
+        return wrap(
+            GPUCommandEncoder,
+            self._native.create_command_encoder(label=label),
+            label=label,
+        )
 
     def destroy(self) -> None: ...
 
@@ -1592,7 +1846,20 @@ class GPUAdapter:
         requiredFeatures: list[str] | None = None,
         requiredLimits: dict[str, int | None] | None = None,
         defaultQueue: GPUQueueDescriptor | None = None,
-    ) -> GPUDevice: ...
+    ) -> GPUDevice:
+        native = self._native.request_device_sync(
+            label=label,
+            required_features=requiredFeatures or (),
+            required_limits=requiredLimits,
+            default_queue=None if defaultQueue is None else lower(defaultQueue),
+        )
+        device = wrap(GPUDevice, native, label=label)
+        queue_label = "" if defaultQueue is None else defaultQueue.label
+        device.queue = wrap(GPUQueue, native.queue, label=queue_label)
+        device.adapterInfo = self.info
+        device.features = native.features
+        device.limits = native.limits
+        return device
 
 
 @js.native
@@ -1610,12 +1877,30 @@ class GPU:
         powerPreference: str | None = None,
         forceFallbackAdapter: bool = False,
         xrCompatible: bool = False,
-    ) -> GPUAdapter | None: ...
+    ) -> GPUAdapter | None:
+        """Request a native GPU adapter; XR compatibility is browser-only."""
+        native = request_adapter(featureLevel, powerPreference, forceFallbackAdapter)
+        if native is None:
+            return None
+        adapter = wrap(GPUAdapter, native)
+        info = GPUAdapterInfo()
+        raw = native.info
+        info.vendor = raw.get("vendor", "")
+        info.architecture = raw.get("architecture", "")
+        info.device = raw.get("device", "")
+        info.description = raw.get("description", "")
+        info.isFallbackAdapter = bool(raw.get("adapter_type") == "CPU")
+        adapter.info = info
+        adapter.features = native.features
+        adapter.limits = native.limits
+        return adapter
 
     def __init__(self):
         self.wgslLanguageFeatures: WGSLLanguageFeatures = None
 
-    def getPreferredCanvasFormat(self) -> str: ...
+    def getPreferredCanvasFormat(self) -> str:
+        """Return a format supported across wgpu-py's desktop backends."""
+        return "bgra8unorm-srgb"
 
 
 @js.native
@@ -1989,7 +2274,7 @@ class GPURenderPassDescriptor:
     def __init__(
         self,
         color_attachments: list[GPURenderPassColorAttachment | None],
-        depth_stencil_attachment: GPURenderPassDepthStencilAttachment | None,
+        depth_stencil_attachment: GPURenderPassDepthStencilAttachment | None = None,
         label: str = "",
         *,
         maxDrawCount: int = 50000000,
@@ -1997,7 +2282,8 @@ class GPURenderPassDescriptor:
         timestampWrites: GPURenderPassTimestampWrites | None = None,
     ):
         self.colorAttachments = color_attachments
-        self.depthStencilAttachment = depth_stencil_attachment
+        if depth_stencil_attachment is not None:
+            self.depthStencilAttachment = depth_stencil_attachment
         self.label = label
         self.maxDrawCount = maxDrawCount
         if occlusionQuerySet is not None:
@@ -2079,7 +2365,7 @@ class GPURenderPipelineDescriptor:
         vertex: GPUVertexState,
         fragment: GPUFragmentState | None,
         primitive: GPUPrimitiveState | None,
-        depth_stencil: GPUDepthStencilState | None,
+        depth_stencil: GPUDepthStencilState | None = None,
         layout: GPUPipelineLayout | str = "auto",
         label: str = "",
         *,
@@ -2088,7 +2374,8 @@ class GPURenderPipelineDescriptor:
         self.vertex = vertex
         self.fragment = fragment
         self.primitive = primitive
-        self.depthStencil = depth_stencil
+        if depth_stencil is not None:
+            self.depthStencil = depth_stencil
         self.layout = layout
         self.label = label
         if multisample is None:

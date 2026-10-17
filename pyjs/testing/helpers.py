@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from pyjs.transpiler import analyze_source, compile_source
-from pyjs.transpiler.diagnostics import CompilationError, format_compilation_error
-from pyjs.transpiler.transpiler import Transpiler, bundle_import
+from pyjs.analysis.diagnostics import CompilationError, format_compilation_error
+from pyjs.javascript.source import analyze_source, compile_source
+from pyjs.javascript.transpiler import Transpiler, bundle_import
 
 WIDTH = 80
 TESTS_DIR = Path(__file__).parents[2] / "tests" / "transpiler"

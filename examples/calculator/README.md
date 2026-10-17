@@ -5,7 +5,7 @@ example for pyjs browser-target testing.
 
 It demonstrates:
 
-- calculator state and behavior owned by a custom element
+- a shared calculator model with browser and native Android views
 - typed `state()` fields serialized to DOM attributes and rendered with
   `@effect`
 - a centered responsive custom-element UI
@@ -15,7 +15,7 @@ It demonstrates:
 - asynchronous result persistence through an HTTP POST route
 - per-browser in-memory sessions that restore the last result after refresh
 - a Python-authored service worker with cache-first offline application loading
-- a native Android implementation using the same arithmetic primitive
+- a native Android implementation using the same state machine
 - browser tests that interact with the real DOM through button events
 
 The example intentionally stays focused on calculator behavior. Reusable widget
@@ -37,12 +37,23 @@ the server clears them. The app also registers `/calculator-serviceworker.js`.
 After its first controlled reload, the calculator can load and calculate while
 the browser is offline.
 
-Run the native Android version on an existing emulator, or let the managed
-NativeScript tooling start its configured device:
+Run the native Android version with an Android SDK and JDK installed. PyJS
+builds a signed debug APK and uses a running or configured emulator:
 
 ```console
 python -m pyjs_examples.calculator --android
 ```
+
+`model.py` owns number entry, arithmetic, operator selection, and error
+recovery. Both views dispatch key actions to its `Calculator` class. The web
+view copies its DOM-backed state into the model for each action and writes the
+result back, preserving server rendering and hydration. Android keeps a model
+instance and updates its native display after each action. The two numeric
+conversion helpers use Python/JavaScript conversion with explicit JVM bindings.
+
+`android.py` implements the native controls and `android_build.py`
+packages them through D8 and AAPT2. This is the only Android implementation;
+there is no JavaScript runtime or Gradle project in the app.
 
 ## Run the tests
 
@@ -52,7 +63,7 @@ From the repository root, run the Python target:
 pytest -q examples/calculator/tests
 ```
 
-Run the same model tests plus the browser-only UI tests in the browser:
+Run the browser UI tests and shared model scenarios in the browser:
 
 ```bash
 pytest -q examples/calculator/tests --pyjs-target=web
@@ -70,5 +81,8 @@ Run the Android interaction test with:
 
 ```console
 pytest -q examples/calculator/tests/test_android_calculator.py \
-  --pyjs-target=android --pyjs-android-avd=Routine_Test
+  --pyjs-target=android --pyjs-android-runtime=robolectric
 ```
+
+Use `--pyjs-android-runtime=device --pyjs-android-avd=YOUR_AVD` instead
+for the emulator tier.

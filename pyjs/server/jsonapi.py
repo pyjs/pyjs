@@ -32,6 +32,18 @@ def parse_jsonapi_document(source: str) -> JSONAPIDocument:
     return json.loads(source)
 
 
+@js.inline("JSON.stringify([{resource_type}, String({identifier})])")
+def resource_identity(
+    resource_type: str,
+    identifier: str | int,
+) -> str:
+    """Build the stable identity shared by every resource transport."""
+    return json.dumps(
+        [resource_type, str(identifier)],
+        separators=(",", ":"),
+    )
+
+
 @js.inline("{value}")
 def _resource_object(value: object) -> ResourceObject:
     return value
@@ -66,19 +78,32 @@ def _model_value(
 
 
 @js
-def _attach_document(model: BaseModel, document: object) -> None:
+def _attach_document(
+    model: BaseModel,
+    document: object,
+    identity: str,
+) -> None:
     object.__setattr__(model, "__pyjs_jsonapi_document__", document)
+    object.__setattr__(model, "__pyjs_resource_identity__", identity)
 
 
 _attach_document.source(
-    "Object.defineProperty(model, '$pyjsDocument', "
-    "{value: document, configurable: true});"
+    "Object.defineProperties(model, {"
+    "$pyjsDocument: {value: document, configurable: true}, "
+    "$pyjsIdentity: {value: identity, configurable: true}"
+    "});"
 )
 
 
 @js.inline("{model}.$pyjsDocument ?? null")
 def model_document(model: object) -> object | None:
     return getattr(model, "__pyjs_jsonapi_document__", None)
+
+
+@js.inline("{model}.$pyjsIdentity ?? null")
+def model_identity(model: object) -> str | None:
+    """Return the attached identity of a decoded JSON:API model, if any."""
+    return getattr(model, "__pyjs_resource_identity__", None)
 
 
 @js
@@ -238,9 +263,13 @@ class JSONAPIDecoder(DecodedJSONAPIDocument):
         elif primary_value is not None:
             data = primary_models[0]
         super().__init__(data, resources, relationships)
-        for values_by_id in resources.values():
-            for value in values_by_id.values():
-                _attach_document(value, self)
+        for resource_type, values_by_id in resources.items():
+            for identifier, value in values_by_id.items():
+                _attach_document(
+                    value,
+                    self,
+                    resource_identity(resource_type, identifier),
+                )
 
 
 @js

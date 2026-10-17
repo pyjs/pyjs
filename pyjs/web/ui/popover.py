@@ -4,6 +4,7 @@ from pyjs import js
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
+from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
 
@@ -186,7 +187,7 @@ class Popover(Widget):
         self.setAttribute("data-state", "closed")
         self.trigger.set_expanded(False)
         if restore_focus:
-            self.trigger.element.focus()
+            cast(HTMLElement, self.trigger.element).focus()
 
     def toggle(self, event: Event):
         if self.is_open:

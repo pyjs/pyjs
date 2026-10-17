@@ -6,6 +6,8 @@ from pyjs.web.ssr import render_document, render_html, write_html
 
 
 class NavigationPage:
+    """Server response metadata for progressively navigated content."""
+
     def __init__(self, body, title, status=200, headers=None):
         self.body = body
         self.title = title
@@ -14,6 +16,7 @@ class NavigationPage:
 
 
 def html(body, js, css, script_type, title=""):
+    """Create an HTML document element around a body and generated assets."""
     return tag(
         "html",
         tag(
@@ -29,10 +32,12 @@ def html(body, js, css, script_type, title=""):
 
 
 def page(body, js, css, script_type="module", title=""):
+    """Serialize a complete server-rendered application page."""
     return render_document(html(body, js, css, script_type, title))
 
 
 def navigation_fragment(body, title, layout_id, bundle=None):
+    """Serialize content and metadata for progressive page navigation."""
     return render_html(
         tag(
             "div",
@@ -43,4 +48,5 @@ def navigation_fragment(body, title, layout_id, bundle=None):
 
 
 def write(parent: HTMLElement, source):
+    """Replace a DOM parent's children from trusted server-rendered HTML."""
     write_html(parent, source)

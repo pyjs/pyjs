@@ -52,17 +52,19 @@ def DrawerDescription(*children):
 
 @js
 class DrawerContent(DialogContent):
-    def __init__(self, label: str, *children):
+    def __init__(self, label: str, *children, placement: str = "bottom"):
         handle = div(
             tw("mx-auto mt-3 h-1.5 w-12 rounded-full bg-slate-300"),
             {"aria-hidden": "true", "data-slot": "drawer-handle"},
         )
+        if placement != "bottom":
+            handle = div()
         super().__init__(
             label,
             handle,
             *children,
             component="drawer",
-            placement="bottom",
+            placement=placement,
         )
 
 

@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
-from django.db.models import Prefetch, QuerySet, prefetch_related_objects
+from django.db.models import Model, Prefetch, QuerySet, prefetch_related_objects
 from pydantic import TypeAdapter
 
 from pyjs.server import resolve_include_paths, resource_graph
@@ -419,13 +419,25 @@ class _QuerySetEncoder:
 
 
 def encode_jsonapi_queryset(
-    root,
-    resource_type,
-    queryset,
-    include_paths=(),
+    root: type | object,
+    resource_type: type,
+    queryset: QuerySet | Sequence[Model],
+    include_paths: Sequence[str] = (),
     *,
     many: bool = True,
 ) -> dict[str, object]:
+    """Encode Django model instances and relationships as a JSON:API document.
+
+    Args:
+        root: Root API class or instance containing the resource graph.
+        resource_type: Resource describing the queryset's model.
+        queryset: Django queryset or materialized model collection.
+        include_paths: Validated relationship paths to include.
+        many: Encode primary data as a collection when true.
+
+    Returns:
+        A JSON-serializable JSON:API document.
+    """
     if isinstance(include_paths, str):
         raise TypeError("include_paths must be a sequence, not a string.")
     graph = resource_graph(root)

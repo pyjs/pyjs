@@ -1,0 +1,8 @@
+def main() -> None:
+    a: str = 'foo'
+    print(a)
+    print(a.[str]__len__!())
+    a = a.[str]__add__!('bar')
+    print(a)
+    print(a.[str]__add__!('baz'))
+    print(f'a: {a.[str]__str__!()}')

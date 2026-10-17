@@ -24,21 +24,26 @@ uv creates and maintains `.venv`; activation is optional. Python versions,
 dependencies, pytest discovery, and Ruff rules are defined in
 `.python-version`, `pyproject.toml`, and `uv.lock`.
 
-The private development checkout contains the complete test suite. The public
-release mirror intentionally contains only release files and example tests.
-From that checkout, run:
+The repository contains the complete product suite and example tests:
 
 ```bash
-uv run pytest -q examples
+uv run pytest -q examples extras
 ```
 
-Public contributions are integrated into the authoritative development
-checkout and validated against the full suite before the next public sync.
+Submit changes as pull requests to `pyjs/pyjs`. Include focused regressions,
+the checks you ran, and any platform coverage you could not exercise.
 
 ## Repository landmarks
 
-- `pyjs/transpiler/` contains analysis, type modeling, JavaScript emission,
-  source compilation, and bundle generation.
+- `pyjs/analysis/` contains source analysis, diagnostics, and the typed object
+  graph.
+- `pyjs/javascript/` contains ECMAScript APIs, emission, source maps, and
+  bundle generation; `pyjs/shader/` contains WGSL APIs and emission.
+- `pyjs/native/` contains the experimental LLVM emitter, native models and
+  Python-authored runtime algorithms, including DOM storage and memory
+  management; `pyjs/java/` contains direct JVM class-file emission.
+  Native behavior and supported boundaries have executable coverage under
+  `tests/native/`.
 - `pyjs/web/` contains browser interfaces and web-specific libraries.
 - `pyjs/web/ui/` contains reusable web components.
 - `pyjs/testing/` contains the browser test runner and pytest integration.
@@ -79,8 +84,9 @@ runner UI, and inspect the PNG and JSON outputs rather than relying only on the
 exit status. The README testing section and example tests demonstrate the
 public testing model, markers, render assertions, and artifact behavior.
 
-Android tests are opt-in and require a configured emulator. Run them when a
-change affects `pyjs.nativescript`, Android tooling, or shared test artifacts.
+Android tests are opt-in. Use compiled Robolectric tests for host-side UI
+checks, then a configured emulator for gestures and system UI. Run the
+relevant tier when Android APIs, tooling, or shared test artifacts change.
 
 ## Compiler changes
 
@@ -127,8 +133,8 @@ editable Python. WebIDL refreshes are maintainer-coordinated and must preserve
 CPython implementations and deliberate type improvements. After substantial
 core web API changes, run browser tests for every affected module.
 
-Before committing a WebIDL-backed declaration change, follow `WEBIDL.md`: run
-the synchronizer, inspect the complete
+Before committing a WebIDL-backed declaration change, run
+`uv run python scripts/update_webidl.py --validate`, inspect the complete
 `pyjs/web/` diff, and rerun it to confirm the patch is stable. Do this after
 manual type or implementation improvements too, not only when adding an API
 through the generator. If synchronization repeatedly overwrites an intentional
@@ -140,15 +146,13 @@ do not silently discard the unrelated diff or encode per-run approval state.
 Document behavior where its consumers will find it:
 
 - `README.md` for installation, positioning, and the first workflow;
-- `docs/` for concepts and API guidance;
 - example READMEs for running and testing a particular application; and
 - `pyjs/skills/pyjs/SKILL.md` for coding agents building with PyJS.
 
 Describe notable user-facing behavior and compatibility changes from an
 application developer's perspective rather than repeating the commit message.
-Maintainers collect those notes in the private release changelog. Small
+Collect those notes in `CHANGELOG.md`. Small
 examples are welcome when they make a compiler improvement or removed
 workaround clear.
 
-Do not put framework usage instructions in the private repository
-`AGENTS.md`.
+Keep framework usage instructions with the public documentation and examples.

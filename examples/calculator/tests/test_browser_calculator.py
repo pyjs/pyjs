@@ -1,15 +1,18 @@
 import pytest
 from pyjs import js
 from pyjs.testing.web import mount
+from pyjs.web.dom import Element
 from pyjs.web.events import Event
-from pyjs.web.html import HTMLButtonElement
-from pyjs_examples.calculator.calculator import CalculatorApp
+
+from ..calculator import CalculatorApp
+from ..model import Calculator
+from .test_model import check_calculator
 
 pytestmark = pytest.mark.pyjs_web
 
 
 @js
-def click(button: HTMLButtonElement):
+def click(button: Element):
     button.dispatchEvent(Event("click"))
 
 
@@ -65,3 +68,21 @@ def test_calculator_visual_showcase():
     click(app.equals_button.element)
 
     assert float(app.display.textContent.strip()) == 36.0
+
+
+@js
+def test_shared_model_in_browser():
+    check_calculator(Calculator())
+
+
+@js
+def test_decimal_after_sign_change_remains_valid():
+    app = mounted_calculator()
+    click(app.five_button.element)
+    click(app.sign_button.element)
+    click(app.decimal_button.element)
+    click(app.add_button.element)
+    click(app.two_button.element)
+    click(app.equals_button.element)
+    assert float(app.display.textContent.strip()) == -3.0
+    assert not app.error

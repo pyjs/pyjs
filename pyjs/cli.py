@@ -6,6 +6,7 @@ import json
 import os
 import runpy
 import shutil
+import subprocess
 import sys
 import textwrap
 import tomllib
@@ -14,8 +15,15 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
+from pyjs.analysis.analyzer import release_compilation
+from pyjs.analysis.diagnostics import CompilationError, format_compilation_error
 from pyjs.docs.cli import add_parser as add_docs_parser
 from pyjs.docs.cli import run as run_docs
+from pyjs.javascript.source import SourceCompilation, compile_source
+from pyjs.javascript.transpiler import (
+    bundle_with_source_map,
+    prepare_bundle,
+)
 from pyjs.scaffolding import (
     Template,
     create,
@@ -28,6 +36,11 @@ from pyjs.server import page
 from pyjs.server.dev import serve as serve_application
 from pyjs.testing.capture import capture_url
 from pyjs.tooling.node import Node
+from pyjs.tooling.npm import (
+    ManagedNpmProject,
+    collect_npm_imports,
+    collect_npm_packages,
+)
 from pyjs.tooling.perf import (
     DEFAULT_SAMPLES,
     DEFAULT_WARMUPS,
@@ -37,17 +50,17 @@ from pyjs.tooling.perf import (
     javascript_benchmark,
     run_python,
 )
-from pyjs.transpiler import (
-    CompilationError,
-    SourceCompilation,
-    bundle_with_source_map,
-    compile_source,
-    format_compilation_error,
-    prepare_bundle,
-)
-from pyjs.transpiler.analyzer import release_compilation
 
-SUBCOMMANDS = {"build", "create", "serve", "template", "inspect", "skill", "docs"}
+SUBCOMMANDS = {
+    "build",
+    "create",
+    "serve",
+    "template",
+    "inspect",
+    "skill",
+    "docs",
+    "npm",
+}
 
 
 @dataclass(frozen=True)
@@ -216,6 +229,34 @@ def parser() -> argparse.ArgumentParser:
     subcommands.add_parser(
         "skill",
         help="print version-matched instructions for coding agents",
+    )
+    npm_command = subcommands.add_parser(
+        "npm",
+        help="manage JavaScript dependencies declared by PyJS modules",
+    )
+    npm_subcommands = npm_command.add_subparsers(
+        dest="npm_command",
+        required=True,
+    )
+    npm_sync = npm_subcommands.add_parser(
+        "sync",
+        help="install exact npm dependencies reachable from an application",
+    )
+    npm_sync.add_argument(
+        "target",
+        nargs="?",
+        help="application module, optionally followed by :entry point",
+    )
+    npm_sync.add_argument(
+        "--directory",
+        type=Path,
+        default=Path(".pyjs/npm"),
+        help="managed dependency directory (default: .pyjs/npm)",
+    )
+    npm_sync.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the synchronized dependency set as JSON",
     )
     add_docs_parser(subcommands)
     return command
@@ -722,12 +763,26 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
     file_stem = f"{module_name}.{entry}"
 
     js_file_name = f"{file_stem}.js"
-    print(f"Writing {module_name}:{entry} JavaScript to ./{js_file_name}")
     generated, css = bundle_with_source_map(
         entry_point,
         args.include_main,
         filename=js_file_name,
     )
+    vendor = None
+    if generated.npm_imports:
+        project = ManagedNpmProject.for_project(Path.cwd())
+        try:
+            vendor = project.copy_vendor(
+                generated.npm_imports,
+                Path("pyjs-vendor.js"),
+            )
+        except RuntimeError:
+            command_parser.error(
+                "JavaScript dependencies are not synchronized; run "
+                f"'pyjs npm sync {args.module}'"
+            )
+
+    print(f"Writing {module_name}:{entry} JavaScript to ./{js_file_name}")
     source_map_name = f"{js_file_name}.map"
     Path(js_file_name).write_text(
         generated.with_source_mapping_url(source_map_name),
@@ -737,6 +792,9 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
         generated.source_map.to_json(),
         encoding="utf-8",
     )
+    if vendor is not None:
+        vendor_output = Path("pyjs-vendor.js")
+        print(f"Writing managed JavaScript dependencies to ./{vendor_output}")
 
     if args.only_js:
         return 0
@@ -796,6 +854,70 @@ def _serve(args, command_parser: argparse.ArgumentParser) -> int:
             runpy.run_module(target, run_name="__main__", alter_sys=True)
             return 0
     serve_application(target)
+    return 0
+
+
+def _entry_point(target: str, command_parser: argparse.ArgumentParser):
+    if target.endswith(".py") or os.sep in target:
+        command_parser.error("npm sync expects an importable application module")
+    module_name, separator, entry_name = target.partition(":")
+    if not separator:
+        entry_name = "main"
+    try:
+        module = importlib.import_module(module_name)
+        return getattr(module, entry_name)
+    except (AttributeError, ImportError, ModuleNotFoundError) as error:
+        command_parser.error(str(error))
+
+
+def _npm_sync(args, command_parser: argparse.ArgumentParser) -> int:
+    target = args.target or _configured_application(command_parser)
+    entry_point = _entry_point(target, command_parser)
+    try:
+        package, analyzed_entry_point, _ = prepare_bundle(
+            entry_point,
+            include_css=False,
+        )
+        try:
+            packages = collect_npm_packages(package)
+            imports = collect_npm_imports(package)
+        finally:
+            release_compilation(analyzed_entry_point)
+        result = ManagedNpmProject(args.directory).sync(packages, imports)
+    except (
+        OSError,
+        RuntimeError,
+        subprocess.CalledProcessError,
+        TypeError,
+        ValueError,
+    ) as error:
+        command_parser.error(str(error))
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "directory": str(result.directory),
+                    "packages": {
+                        package.name: package.version
+                        for package in result.packages
+                    },
+                    "vendor": str(result.vendor) if result.vendor else None,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    print(
+        f"Synchronized {len(result.packages)} npm "
+        f"{'package' if len(result.packages) == 1 else 'packages'} "
+        f"in {result.directory}"
+    )
+    for package in result.packages:
+        print(f"  {package.name}@{package.version}")
+    if result.vendor is not None:
+        print(f"Built browser module at {result.vendor}")
     return 0
 
 
@@ -1005,6 +1127,8 @@ def main(argv: list[str] | None = None) -> int:
         return _inspect(args, command_parser)
     if args.command == "skill":
         return _skill()
+    if args.command == "npm":
+        return _npm_sync(args, command_parser)
     if args.command == "docs":
         return run_docs(args)
     raise AssertionError(f"unknown command: {args.command}")

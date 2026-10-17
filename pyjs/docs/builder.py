@@ -7,11 +7,12 @@ import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pyjs.transpiler import TranspiledJavaScript, bundle_with_source_map
+from pyjs.javascript.sourcemap import TranspiledJavaScript
+from pyjs.javascript.transpiler import bundle_with_source_map
 from pyjs.web.domx import tag
 from pyjs.web.ssr import raw_html, render_document
 
-from .config import DocsConfig, load_config
+from .config import DocsConfig, DocsVersion, load_config
 from .markdown import parse_document, render_markdown
 from .models import NavNode, Page
 from .navigation import build_navigation, humanize, navigation_pages, route_for
@@ -40,7 +41,7 @@ def _page_title(html_source: str, fallback: str) -> str:
     return html.unescape(TAG.sub("", match.group(1))).replace("¶", "").strip()
 
 
-def _discover_pages(config: DocsConfig) -> list[Page]:
+def _discover_pages(config: DocsConfig):
     if not config.docs_dir.is_dir():
         raise FileNotFoundError(f"Documentation directory does not exist: {config.docs_dir}")
     pages = []
@@ -50,7 +51,10 @@ def _discover_pages(config: DocsConfig) -> list[Page]:
             continue
         relative_path = source_path.relative_to(config.docs_dir)
         metadata, source = parse_document(source_path)
-        rendered, headings, inferred_description = render_markdown(source)
+        try:
+            rendered, headings, inferred_description = render_markdown(source)
+        except ValueError as error:
+            raise ValueError(f"{source_path}: {error}") from error
         source_route = route_for(relative_path)
         route = _prefixed_route(source_route, config.route_prefix)
         if route in routes:
@@ -74,9 +78,22 @@ def _discover_pages(config: DocsConfig) -> list[Page]:
                 headings=headings,
             )
         )
+    api = None
+    if config.api_modules:
+        from .api_rendering import build_api_documentation
+
+        api = build_api_documentation(config)
+        for page in api.pages:
+            if page.route in routes:
+                raise ValueError(
+                    f"Generated API reference and {routes[page.route]} both "
+                    f"produce the route {page.route!r}"
+                )
+            routes[page.route] = page.source_path
+            pages.append(page)
     if not pages:
         raise ValueError(f"No Markdown pages found in {config.docs_dir}")
-    return pages
+    return pages, api
 
 
 def _relative_url(page: Page, target: Page, fragment: str = "") -> str:
@@ -99,6 +116,48 @@ def _docs_home(pages: list[Page]) -> Page:
     return next(
         (page for page in pages if page.relative_path == Path("index.md")),
         pages[0],
+    )
+
+
+def _version_url(page: Page, version: DocsVersion) -> str:
+    source_route = route_for(page.relative_path)
+    return version.url.rstrip("/") + source_route
+
+
+def _render_version_navigation(page: Page, config: DocsConfig):
+    if not config.version:
+        return ""
+    if not config.versions:
+        return tag("span", {"class": "docs-version"}, config.version)
+    links = []
+    for version in config.versions:
+        attributes = {
+            "class": "docs-version-link",
+            "href": _version_url(page, version),
+        }
+        if version.label == config.version:
+            attributes["aria-current"] = "page"
+        links.append(tag("a", attributes, version.label))
+    return tag(
+        "details",
+        {"class": "docs-version-picker"},
+        tag(
+            "summary",
+            {
+                "aria-label": f"Documentation version {config.version}",
+                "class": "docs-version",
+            },
+            config.version,
+        ),
+        tag(
+            "div",
+            {
+                "aria-label": "Documentation versions",
+                "class": "docs-version-menu",
+                "role": "navigation",
+            },
+            *links,
+        ),
     )
 
 
@@ -227,30 +286,47 @@ def _render_article(page: Page, pages: list[Page], config: DocsConfig) -> str:
     )
 
 
-def _search_records(pages: list[Page], current: Page) -> str:
-    records = []
+def _search_records(pages: list[Page]) -> str:
+    records = {}
+
+    def add(record: dict[str, str], *, replace: bool = False):
+        if replace or record["url"] not in records:
+            records[record["url"]] = record
+
     for page in pages:
         text = html.unescape(SPACE.sub(" ", TAG.sub(" ", page.html))).replace("¶", "").strip()
-        records.append(
+        add(
             {
                 "title": page.title,
                 "section": humanize(page.relative_path.parent.name or "Guide"),
                 "text": text[:240],
-                "url": _relative_url(current, page),
+                "url": page.route,
             }
         )
         for heading in page.headings:
             if heading.level == 1:
                 continue
-            records.append(
+            add(
                 {
                     "title": heading.title,
                     "section": page.title,
                     "text": text[:240],
-                    "url": _relative_url(current, page, f"#{heading.id}"),
+                    "url": f"{page.route}#{heading.id}",
                 }
             )
-    return json.dumps(records, separators=(",", ":")).replace("</", "<\\/")
+        for entry in page.search_entries:
+            add(
+                {
+                    "title": entry.title,
+                    "section": entry.section,
+                    "text": entry.text,
+                    "url": page.route + entry.fragment,
+                },
+                replace=True,
+            )
+    return json.dumps(list(records.values()), separators=(",", ":")).replace(
+        "</", "<\\/"
+    )
 
 
 def _render_page(
@@ -298,23 +374,91 @@ def _render_page(
         raw_html(_render_navigation(navigation, page)),
         raw_html(_render_article(page, pages, config)),
         raw_html(_render_outline(page, config)),
-        _search_records(pages, page),
+        "[]",
+        f"{asset_prefix}/search.json",
         site_root,
         site_navigation,
         raw_html("".join(project_links)),
-        config.version,
+        _render_version_navigation(page, config),
     )
     canonical = config.site_url.rstrip("/") + page.route if config.site_url else ""
+    page_title = f"{page.title} · {config.site_name}"
     head_children = [
         tag("meta", {"charset": "utf-8"}),
         tag("meta", {"name": "viewport", "content": "width=device-width, initial-scale=1"}),
-        tag("title", f"{page.title} · {config.site_name}"),
+        tag("title", page_title),
         tag("meta", {"name": "description", "content": page.description}),
+        tag(
+            "meta",
+            {"property": "og:title", "content": page_title},
+        ),
+        tag("meta", {"property": "og:description", "content": page.description}),
+        tag("meta", {"property": "og:type", "content": "website"}),
+        tag("meta", {"property": "og:site_name", "content": config.site_name}),
+        tag(
+            "meta",
+            {
+                "name": "twitter:card",
+                "content": (
+                    "summary_large_image" if config.social_image else "summary"
+                ),
+            },
+        ),
+        tag("meta", {"name": "color-scheme", "content": "dark light"}),
         tag("link", {"rel": "icon", "href": f"{asset_prefix}/favicon.svg"}),
         tag("link", {"rel": "stylesheet", "href": f"{asset_prefix}/docs.css"}),
     ]
     if canonical:
+        head_children.append(tag("meta", {"property": "og:url", "content": canonical}))
         head_children.append(tag("link", {"rel": "canonical", "href": canonical}))
+    if config.social_image:
+        image_alt = config.social_image_alt or f"{config.site_name} documentation"
+        head_children.extend(
+            (
+                tag(
+                    "meta",
+                    {"property": "og:image", "content": config.social_image},
+                ),
+                tag("meta", {"property": "og:image:alt", "content": image_alt}),
+                tag(
+                    "meta",
+                    {"name": "twitter:title", "content": page_title},
+                ),
+                tag(
+                    "meta",
+                    {"name": "twitter:description", "content": page.description},
+                ),
+                tag(
+                    "meta",
+                    {"name": "twitter:image", "content": config.social_image},
+                ),
+                tag("meta", {"name": "twitter:image:alt", "content": image_alt}),
+            )
+        )
+        if config.social_image_width:
+            head_children.append(
+                tag(
+                    "meta",
+                    {
+                        "property": "og:image:width",
+                        "content": str(config.social_image_width),
+                    },
+                )
+            )
+        if config.social_image_height:
+            head_children.append(
+                tag(
+                    "meta",
+                    {
+                        "property": "og:image:height",
+                        "content": str(config.social_image_height),
+                    },
+                )
+            )
+    if config.x_handle:
+        head_children.append(
+            tag("meta", {"name": "twitter:site", "content": config.x_handle})
+        )
     document = tag(
         "html",
         {"lang": "en"},
@@ -349,7 +493,7 @@ def build(
     config = config or load_config()
     if config.site_dir == config.docs_dir or config.docs_dir in config.site_dir.parents:
         raise ValueError("Documentation output must be outside the source directory")
-    pages = _discover_pages(config)
+    pages, api = _discover_pages(config)
     navigation = build_navigation(pages)
     ordered_pages = navigation_pages(navigation)
     hidden_pages = [page for page in pages if page.hidden]
@@ -379,8 +523,20 @@ def build(
         encoding="utf-8",
     )
     (assets_dir / "docs.css").write_text(generated_css + docs_css, encoding="utf-8")
+    (assets_dir / "search.json").write_text(
+        _search_records(pages),
+        encoding="utf-8",
+    )
     shutil.copy2(Path(__file__).with_name("favicon.svg"), assets_dir / "favicon.svg")
     _copy_assets(config)
+    if api is not None:
+        inventory_path = _docs_output_root(config) / "objects.inv"
+        inventory_path.parent.mkdir(parents=True, exist_ok=True)
+        inventory_path.write_bytes(api.inventory)
+        (assets_dir / "api-coverage.json").write_text(
+            api.coverage_json(),
+            encoding="utf-8",
+        )
 
     for page in pages:
         page.output_path.parent.mkdir(parents=True, exist_ok=True)

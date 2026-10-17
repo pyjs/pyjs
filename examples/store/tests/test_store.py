@@ -4,8 +4,8 @@ import json
 
 import pytest
 from django.test import RequestFactory
+from pyjs.javascript.transpiler import bundle_targets_with_source_maps
 from pyjs.server import OperationError
-from pyjs.transpiler import bundle_targets_with_source_maps
 from pyjs.web.domx import div
 from pyjs.web.events import Event
 from pyjs.web.ssr import render_html
@@ -26,9 +26,15 @@ from pyjs_examples.store.api import (
     review_moderation_page,
     traffic_summary,
     update_inventory,
-    visitor_event_page,
+    visitor_event_snapshot,
+    visitor_feed,
 )
-from pyjs_examples.store.core import CheckoutDraft, InventoryChange, ReviewDraft
+from pyjs_examples.store.core import (
+    CheckoutDraft,
+    InventoryChange,
+    ReviewDraft,
+    VisitorDraft,
+)
 from pyjs_examples.store.server import application
 from pyjs_examples.store.store import (
     AccountDashboard,
@@ -140,6 +146,20 @@ def test_store_bundle_hierarchy_matches_the_application_architecture():
     assert "AccountResource.prototype, 'moderation'" in reviews
     assert "AccountResource.prototype, 'moderation'" not in inventory
     assert "class VisitorActivityPage extends Widget" in visitors
+    assert "class Stream__VisitorEvent extends StreamSession" in visitors
+    assert (
+        "const {StreamSession} = "
+        "__import_js__('pyjs.server.stream_client');"
+    ) in visitors
+    assert "var source = new EventSource(path);" in all_javascript
+    assert (
+        "const $path = this._path + '/events?arguments=' + "
+        "encodeURIComponent(JSON.stringify($arguments));"
+    ) in visitors
+    assert "var session = api.account.visitors.events();" in visitors
+    assert "session.resume_after(" in visitors
+    assert "class StreamingList extends Widget" in visitors
+    assert "class StreamingLog extends StreamingList" in visitors
     assert "AccountResource.prototype, 'visitors'" in visitors
     assert "AccountResource.prototype, 'visitors'" not in inventory
     assert "ApplicationAPI.prototype, 'products'" not in overview
@@ -180,6 +200,7 @@ def test_store_server_render_contains_the_database_catalog():
     assert 'data-product-card="Canvas field bag"' in source
     assert 'data-product-card="Daily notebook"' in source
     assert 'data-product-card="Travel tumbler"' not in source
+    assert 'data-resource-identity="[&quot;products&quot;,&quot;2&quot;]"' in source
     assert 'data-inventory="4"' in source
     assert 'data-slot="sheet-content"' in source
     assert (
@@ -433,9 +454,11 @@ def test_product_resource_encodes_a_typed_cursor_page():
 
 
 def test_visitor_activity_uses_a_typed_cursor_feed_and_data_chart():
-    first = visitor_event_page()
+    snapshot = visitor_event_snapshot()
+    first = snapshot.value
     summary = traffic_summary()
-    source = render_html(VisitorActivityPage(summary, first))
+    activity = VisitorActivityPage(summary, snapshot)
+    source = render_html(activity)
 
     assert summary.total == 12
     assert summary.labels == [
@@ -450,9 +473,17 @@ def test_visitor_activity_uses_a_typed_cursor_feed_and_data_chart():
     assert summary.values == [2, 1, 2, 1, 2, 2, 2]
     assert [visit.id for visit in first.items] == [12, 11, 10, 9]
     assert first.next is not None
+    assert f'data-stream-sequence="{snapshot.sequence}"' in source
     assert source.count('data-visitor-event="') == 4
+    assert source.count('data-slot="streaming-log-line"') == 4
     assert source.count('data-slot="chart-point"') == 7
     assert "Load older visits" in source
+
+    activity.receive_visit(first.items[0])
+    deduplicated = render_html(activity)
+
+    assert deduplicated.count('data-visitor-event="') == 4
+    assert deduplicated.count('data-slot="streaming-log-line"') == 4
 
     response = call(
         operation_pattern("account_visitors_list"),
@@ -463,6 +494,35 @@ def test_visitor_activity_uses_a_typed_cursor_feed_and_data_chart():
     assert response.status_code == 200
     assert [visit["id"] for visit in document["items"]] == [8, 7, 6, 5]
     assert document["next"] is not None
+
+
+def test_recording_a_visitor_persists_and_publishes_the_typed_event():
+    subscription = visitor_feed.backend.subscribe(visitor_feed.scope)
+    try:
+        response = call(
+            operation_pattern("account_visitors_record"),
+            {
+                "draft": VisitorDraft(
+                    path="/products/task-lamp/",
+                    source="Live test",
+                    region="Chicago, US",
+                    device="Mobile",
+                ).model_dump()
+            },
+        )
+        document = json.loads(response.content)
+        published = subscription.receive_nowait()
+    finally:
+        subscription.close()
+
+    assert response.status_code == 200
+    assert document["data"]["id"] == "13"
+    assert document["data"]["attributes"]["path"] == (
+        "/products/task-lamp/"
+    )
+    assert published.scope == "visitors"
+    assert published.value.id == 13
+    assert published.value.source == "Live test"
 
 
 def test_product_detail_includes_bounded_reviews_and_recommendations():

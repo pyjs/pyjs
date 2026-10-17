@@ -9,6 +9,11 @@ from django.middleware.csrf import get_token
 from django.templatetags.static import static
 from django.utils.cache import patch_vary_headers
 
+from pyjs.javascript.transpiler import (
+    BundleTarget,
+    bundle_targets_with_source_maps,
+    bundle_with_source_map,
+)
 from pyjs.server.application import (
     ApplicationContent,
     ApplicationNode,
@@ -18,11 +23,7 @@ from pyjs.server.application import (
 )
 from pyjs.server.build import BuildStats
 from pyjs.server.rendering import navigation_fragment
-from pyjs.transpiler import (
-    BundleTarget,
-    bundle_targets_with_source_maps,
-    bundle_with_source_map,
-)
+from pyjs.tooling.npm import ManagedNpmProject
 from pyjs.web.dom import Element
 from pyjs.web.domx import tag
 from pyjs.web.navigation import NAVIGATION_HEADER
@@ -30,6 +31,21 @@ from pyjs.web.ssr import render_document
 
 
 class PyJSApplication:
+    """Compile and render a split-bundle PyJS application in Django.
+
+    Args:
+        entry_point: Root UI function or declarative application section.
+        name: Django static directory used for generated assets.
+        mounts: Pages and sections mounted below a root function.
+        layout_id: Hydrated navigation layout receiving page fragments.
+        javascript_name: Filename for the root JavaScript bundle.
+        stylesheet_name: Filename for the shared stylesheet.
+        head: Elements included in every document head.
+        html_attributes: Attributes for the document element.
+        body_attributes: Attributes for the document body.
+        development_reload_url: Optional development-only reload script.
+    """
+
     def __init__(
         self,
         entry_point: EntryPoint | ApplicationSection,
@@ -42,6 +58,7 @@ class PyJSApplication:
         head: tuple[Element, ...] = (),
         html_attributes: Mapping[str, str] | None = None,
         body_attributes: Mapping[str, str] | None = None,
+        development_reload_url: str | None = None,
     ):
         if isinstance(entry_point, ApplicationSection):
             if mounts:
@@ -61,6 +78,7 @@ class PyJSApplication:
             {"lang": "en"} if html_attributes is None else dict(html_attributes)
         )
         self.body_attributes = dict(body_attributes or {})
+        self.development_reload_url = development_reload_url
         self.build_stats: BuildStats | None = None
         self._page_sections: dict[ApplicationPage, tuple[ApplicationSection, ...]] = {}
         self._target_names: dict[ApplicationNode, str] = {}
@@ -149,6 +167,15 @@ class PyJSApplication:
         return result, content.page
 
     def build(self, output_directory: str | Path | None = None) -> tuple[Path, Path]:
+        """Compile application bundles, source maps, and the shared stylesheet.
+
+        Args:
+            output_directory: Destination directory, or the containing Django
+                application's static directory when omitted.
+
+        Returns:
+            Paths to the root JavaScript bundle and shared stylesheet.
+        """
         started = time.perf_counter()
         if output_directory is None:
             output_directory = self.default_output_directory()
@@ -187,24 +214,39 @@ class PyJSApplication:
                 encoding="utf-8",
                 newline="\n",
             )
+        npm_imports = tuple(
+            sorted(
+                {
+                    value
+                    for generated in generated_targets.values()
+                    for value in generated.npm_imports
+                }
+            )
+        )
+        javascript_files = len(generated_targets)
+        if npm_imports:
+            module = import_module(self.entry_point.__module__)
+            module_file = getattr(module, "__file__", None)
+            start = Path(module_file) if module_file is not None else Path.cwd()
+            vendor_output = output_directory / "pyjs-vendor.js"
+            ManagedNpmProject.for_project(start).copy_vendor(
+                npm_imports,
+                vendor_output,
+            )
+            javascript_bytes += vendor_output.stat().st_size
+            javascript_files += 1
         stylesheet_output.write_text(stylesheet, encoding="utf-8", newline="\n")
         self.build_stats = BuildStats(
             time.perf_counter() - started,
-            len(generated_targets),
+            javascript_files,
             javascript_bytes,
             len(stylesheet.encode("utf-8")),
         )
         return javascript_output, stylesheet_output
 
     def default_output_directory(self) -> Path:
-        module = import_module(self.entry_point.__module__)
-        module_file = getattr(module, "__file__", None)
-        if module_file is None:
-            raise ValueError(
-                "Cannot locate the Django application for this PyJS entry point; "
-                "pass output_directory to build()."
-            )
-        app_config = apps.get_containing_app_config(str(Path(module_file).resolve()))
+        module_name = self.entry_point.__module__
+        app_config = apps.get_containing_app_config(module_name)
         if app_config is None:
             raise ValueError(
                 "The PyJS entry point is not inside an installed Django application; "
@@ -258,6 +300,20 @@ class PyJSApplication:
                     },
                     " ",
                 ),
+                *(
+                    (
+                        tag(
+                            "script",
+                            {
+                                "src": self.development_reload_url,
+                                "type": "module",
+                            },
+                            " ",
+                        ),
+                    )
+                    if self.development_reload_url is not None
+                    else ()
+                ),
             ),
         )
 
@@ -272,6 +328,20 @@ class PyJSApplication:
         status: int = 200,
         headers: Mapping[str, str] | None = None,
     ) -> HttpResponse:
+        """Render a full document or progressive navigation fragment.
+
+        Args:
+            request: Current Django request.
+            content: Page content or the result of calling an application page.
+            title: Browser document title.
+            shell_args: Request-scoped values passed to the root shell.
+            head: Elements included in this response's document head.
+            status: HTTP response status.
+            headers: Additional HTTP response headers.
+
+        Returns:
+            A Django response containing SSR HTML and bundle metadata.
+        """
         content, page = self._resolve_content(content)
         if page is not None and self.layout_id is not None:
             if request.headers.get(NAVIGATION_HEADER) == "1":

@@ -1,3 +1,5 @@
+"""Typed client/server APIs, resource relationships, and live data helpers."""
+
 import annotationlib
 import inspect
 import json
@@ -9,8 +11,8 @@ from types import MappingProxyType
 from typing import Protocol, Union, cast, get_args, get_origin, runtime_checkable
 
 from pyjs import js, nojs
+from pyjs.decorators import configure_js
 from pyjs.javascript import _stringify_unchecked
-from pyjs.server import live as _live
 from pyjs.server.application import ApplicationPage as ApplicationPage
 from pyjs.server.application import ApplicationSection as ApplicationSection
 from pyjs.server.atomic import AtomicBatch as AtomicBatch
@@ -26,7 +28,16 @@ from pyjs.server.jsonapi import (
     JSONAPIDecoder,
     JSONAPIDocument,
     model_document,
+    model_identity,
+    resource_identity,
 )
+from pyjs.server.live import Invalidation as Invalidation
+from pyjs.server.live import InvalidationBackend as InvalidationBackend
+from pyjs.server.live import InvalidationHub as InvalidationHub
+from pyjs.server.live import InvalidationSubscription as InvalidationSubscription
+from pyjs.server.live import ReplayInvalidationBackend as ReplayInvalidationBackend
+from pyjs.server.live import api_topic as api_topic
+from pyjs.server.live import resource_topic as resource_topic
 from pyjs.server.pagination import (
     CursorPageRequest as CursorPageRequest,
 )
@@ -38,6 +49,17 @@ from pyjs.server.rendering import html as html
 from pyjs.server.rendering import navigation_fragment as navigation_fragment
 from pyjs.server.rendering import page as page
 from pyjs.server.rendering import write as write
+from pyjs.server.stream import StreamBackend as StreamBackend
+from pyjs.server.stream import StreamCursor as StreamCursor
+from pyjs.server.stream import StreamEvent as StreamEvent
+from pyjs.server.stream import StreamHub as StreamHub
+from pyjs.server.stream import StreamResyncRequired as StreamResyncRequired
+from pyjs.server.stream import StreamSnapshot as StreamSnapshot
+from pyjs.server.stream import StreamSubscription as StreamSubscription
+from pyjs.server.stream_binding import Stream as Stream
+from pyjs.server.stream_binding import StreamFeed as StreamFeed
+from pyjs.server.stream_binding import StreamHistory as StreamHistory
+from pyjs.server.stream_client import StreamSession as StreamSession
 from pyjs.server.transport import (
     ClientTransport,
     FetchTransport,
@@ -45,16 +67,63 @@ from pyjs.server.transport import (
 from pyjs.server.transport import (
     TransportResponse as TransportResponse,
 )
+from pyjs.server.valkey import ValkeyStreamBackend as ValkeyStreamBackend
 from pyjs.server.watch import LiveSession as LiveSession
 from pyjs.server.watch import WatchedQuery as WatchedQuery
 
-Invalidation = _live.Invalidation
-InvalidationBackend = _live.InvalidationBackend
-InvalidationHub = _live.InvalidationHub
-InvalidationSubscription = _live.InvalidationSubscription
-ReplayInvalidationBackend = _live.ReplayInvalidationBackend
-api_topic = _live.api_topic
-resource_topic = _live.resource_topic
+__all__ = [
+    "API",
+    "ApplicationPage",
+    "ApplicationSection",
+    "AtomicBatch",
+    "ClientTransport",
+    "CursorPageRequest",
+    "FetchTransport",
+    "Invalidation",
+    "InvalidationBackend",
+    "InvalidationHub",
+    "InvalidationSubscription",
+    "LiveSession",
+    "NavigationPage",
+    "OffsetPageRequest",
+    "OperationError",
+    "OperationIssue",
+    "OperationResultError",
+    "Page",
+    "Relationship",
+    "ReplayInvalidationBackend",
+    "Resource",
+    "Stream",
+    "StreamBackend",
+    "StreamCursor",
+    "StreamEvent",
+    "StreamFeed",
+    "StreamHistory",
+    "StreamHub",
+    "StreamResyncRequired",
+    "StreamSnapshot",
+    "StreamSession",
+    "StreamSubscription",
+    "TransportResponse",
+    "ValkeyStreamBackend",
+    "WatchedQuery",
+    "action",
+    "api_topic",
+    "dispatch",
+    "dispatch_for_request",
+    "html",
+    "include_paths",
+    "model_identity",
+    "mutation",
+    "navigation_fragment",
+    "operation_error",
+    "page",
+    "query",
+    "resource_identity",
+    "resource_topic",
+    "stream",
+    "write",
+]
 
 class Operation:
     def __init__(self, kind: str, function):
@@ -65,6 +134,7 @@ class Operation:
         self.jsonapi = False
         self.jsonapi_many = False
         self.client_model_references = {}
+        self.stream_value_type = None
 
 
 @runtime_checkable
@@ -93,22 +163,32 @@ def _client_model_map_source(operation: Operation) -> str:
     return f"new Map([{models}])"
 
 
-def _client_result_source(analyzed_function, value: str, receiver: str) -> str:
-    from pyjs.transpiler.objects import (
+def _client_typed_result_source(result_type, value: str, receiver: str) -> str:
+    from pyjs.analysis.objects import (
         client_result_requires_decoding,
         client_type_descriptor,
     )
 
-    if not client_result_requires_decoding(analyzed_function.return_type):
+    if not client_result_requires_decoding(result_type):
         return value
     descriptor = json.dumps(
-        client_type_descriptor(analyzed_function.return_type),
+        client_type_descriptor(result_type),
         separators=(",", ":"),
     )
     return f"{receiver}._decode_result({value}, {descriptor})"
 
 
+def _client_result_source(analyzed_function, value: str, receiver: str) -> str:
+    return _client_typed_result_source(
+        analyzed_function.return_type,
+        value,
+        receiver,
+    )
+
+
 def _client_operation_source(operation: Operation, analyzed_function) -> str:
+    if operation.kind == "stream":
+        return _client_stream_source(operation, analyzed_function)
     function = operation.function
     arguments = _operation_argument_names(operation)
     payload = ", ".join(f"{name}: {name}" for name in arguments)
@@ -132,12 +212,51 @@ def _client_operation_source(operation: Operation, analyzed_function) -> str:
     )
 
 
+def _stream_value_annotation(operation: Operation) -> object:
+    annotation = operation.signature.return_annotation
+    if get_origin(annotation) is not Stream or len(get_args(annotation)) != 1:
+        raise TypeError(
+            f"@stream function {operation.function.__qualname__} must return "
+            "Stream[T]."
+        )
+    return get_args(annotation)[0]
+
+
+def _client_stream_source(operation: Operation, analyzed_function) -> str:
+    return_type = analyzed_function.return_type
+    if return_type.generic_name != "Stream":
+        raise TypeError(
+            f"@stream function {operation.function.__qualname__} must return "
+            "Stream[T]."
+        )
+    value_type = return_type.generic_types["Value"]
+    decoded_value = _client_typed_result_source(
+        value_type,
+        "$value",
+        "this",
+    )
+    arguments = _operation_argument_names(operation)
+    payload = ", ".join(f"{name}: {name}" for name in arguments)
+    return "\n".join(
+        (
+            f"const $arguments = {{{payload}}};",
+            "const $path = this._path + "
+            f"'/{operation.function.__name__}?arguments=' + "
+            "encodeURIComponent(JSON.stringify($arguments));",
+            "return new $StreamSession($path, ($value) => "
+            f"{decoded_value});",
+        )
+    )
+
+
 def _client_operation_binding_source(
     operation: Operation,
     source: str,
     receiver: str,
     analyzed_function,
 ) -> str:
+    if operation.kind == "stream":
+        return f"{source}.bind({receiver})"
     arguments = _operation_argument_names(operation)
     if operation.jsonapi:
         decode = (
@@ -159,21 +278,32 @@ def _client_operation_binding_source(
 
 def operation(kind: str):
     def decorate(function):
-        if not inspect.iscoroutinefunction(function):
+        if kind == "stream" and inspect.iscoroutinefunction(function):
+            raise TypeError("@stream requires a synchronous function")
+        if kind != "stream" and not inspect.iscoroutinefunction(function):
             raise TypeError(f"@{kind} requires an async function")
         remote_operation = Operation(kind, function)
+        if kind == "stream":
+            remote_operation.stream_value_type = _stream_value_annotation(
+                remote_operation
+            )
         function.__pyjs_operation__ = remote_operation
         js(function)
+        if kind == "stream":
+            js.references(**{"$StreamSession": StreamSession})(function)
         function.source(
             lambda analyzed: _client_operation_source(remote_operation, analyzed)
         )
-        function.__js_bind_source__ = (
-            lambda source, receiver, analyzed: _client_operation_binding_source(
-                remote_operation,
-                source,
-                receiver,
-                analyzed,
-            )
+        configure_js(
+            function,
+            bind_source=lambda source, receiver, analyzed: (
+                _client_operation_binding_source(
+                    remote_operation,
+                    source,
+                    receiver,
+                    analyzed,
+                )
+            ),
         )
         return function
 
@@ -181,12 +311,27 @@ def operation(kind: str):
 
 
 query = operation("query")
+"""Declare an idempotent remote API operation that returns data."""
+
 mutation = operation("mutation")
+"""Declare a remote API operation that changes application state."""
+
 action = operation("action")
+"""Declare a remote API operation whose primary result is a side effect."""
+
+stream = operation("stream")
+"""Declare a typed ordered stream configured by a synchronous function."""
+
+
+@js.inline("{path}.slice({path}.lastIndexOf('/') + 1)")
+def _resource_type(path: str) -> str:
+    return path.rsplit("/", 1)[-1]
 
 
 @js
 class Relationship[Value, ResourceType = None]:
+    """Describe a typed relationship between two API resources."""
+
     pass
 
 
@@ -495,24 +640,19 @@ def _build_resource_graph(root_type: type) -> ResourceGraph:
             continue
         owner = operation_metadata.owner
         model_types = _client_model_types(graph, owner)
-        source_imports = {"$JSONAPIDecoder": JSONAPIDecoder}
-        source_dependencies = []
+        references = {"$JSONAPIDecoder": JSONAPIDecoder}
         model_references = {}
         namespace = remote_operation.function.__globals__
         for index, (public_type, model_type) in enumerate(model_types.items()):
             model_name = model_type.__name__
             if namespace.get(model_name) is model_type:
                 model_reference = model_name
-                source_dependencies.append(model_type)
             else:
                 model_reference = f"$JSONAPIModel{index}"
-                source_imports[model_reference] = model_type
+            references[model_reference] = model_type
             model_references[public_type] = model_reference
         remote_operation.client_model_references = model_references
-        remote_operation.function.__js_source_imports__ = source_imports
-        remote_operation.function.__pyjs_source_dependencies__ = tuple(
-            source_dependencies
-        )
+        js.references(**references)(remote_operation.function)
     return graph
 
 
@@ -618,6 +758,12 @@ async def _dispatch_resource_operation(
     result = getattr(resource, operation.name)(**arguments)
     if inspect.isawaitable(result):
         result = await result
+    if operation.kind == "stream":
+        if not isinstance(result, Stream):
+            raise OperationResultError(
+                f"Stream operation {identity!r} did not return Stream[T]."
+            )
+        return result
     return_type = operation.signature.return_annotation
     try:
         if isinstance(result, DeferredOperationResult):
@@ -718,6 +864,16 @@ async def dispatch[**Arguments, Result](
     *args: Arguments.args,
     **kwargs: Arguments.kwargs,
 ) -> Result:
+    """Execute a bound API operation directly on the server.
+
+    Args:
+        remote_operation: Bound operation obtained from an API instance.
+        *args: Positional values accepted by the operation.
+        **kwargs: Keyword values accepted by the operation.
+
+    Returns:
+        The validated operation result without JSON serialization.
+    """
     return cast(
         Result,
         await _dispatch_bound_operation(remote_operation, args, kwargs, None),
@@ -730,6 +886,19 @@ async def dispatch_for_request[**Arguments, Result](
     *args: Arguments.args,
     **kwargs: Arguments.kwargs,
 ) -> Result:
+    """Execute a bound API operation with a framework request object.
+
+    The request becomes available as ``self.request`` in the operation body.
+
+    Args:
+        request: Request object supplied by the server integration.
+        remote_operation: Bound operation obtained from an API instance.
+        *args: Positional values accepted by the operation.
+        **kwargs: Keyword values accepted by the operation.
+
+    Returns:
+        The validated operation result without JSON serialization.
+    """
     return cast(
         Result,
         await _dispatch_bound_operation(remote_operation, args, kwargs, request),
@@ -812,7 +981,6 @@ class APIMetaclass(type):
         # API subclasses are server-only unless their own declaration is
         # explicitly marked @js. Do not inherit the client marker from API or
         # a client-visible contract base.
-        namespace.setdefault("__js__", False)
         children = {}
         operations = {}
         relationships = {}
@@ -888,7 +1056,12 @@ class APIMetaclass(type):
                 operations[attribute] = remote_operation
             elif attribute in operations:
                 inherited = operations[attribute]
-                if not inspect.iscoroutinefunction(value):
+                is_async = inspect.iscoroutinefunction(value)
+                if inherited.kind == "stream" and is_async:
+                    raise TypeError(
+                        f"Stream override {name}.{attribute} must be synchronous."
+                    )
+                if inherited.kind != "stream" and not is_async:
                     raise TypeError(
                         f"Operation override {name}.{attribute} must be async."
                     )
@@ -908,19 +1081,40 @@ class APIMetaclass(type):
             if isinstance(base, ResourceAlias):
                 namespace["__pyjs_model__"] = base.model_type
                 js(base.model_type)
-        namespace["__js_append__"] = lambda included: _api_javascript(
-            name,
-            children,
-            set(relationships) & set(children),
-            included,
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        configure_js(
+            cls,
+            enabled=False,
+            post_definition_source=lambda included: _api_javascript(
+                name,
+                children,
+                set(relationships) & set(children),
+                included,
+            ),
+            member_dependencies=children,
         )
-        namespace["__js_member_dependencies__"] = children
-        return super().__new__(mcls, name, bases, namespace, **kwargs)
+        return cls
 
 
 @js
 class API(metaclass=APIMetaclass):
-    __pyjs_generated_methods__ = ("_decode_jsonapi", "_request")
+    """Root or nested group of typed remote operations.
+
+    Annotated API children form a static hierarchy. On the server, an API
+    instance dispatches request-scoped operation bodies. In transpiled code,
+    the same hierarchy becomes typed client proxies.
+
+    Args:
+        path: URL prefix used by the client transport.
+        relationship: Whether this node represents a resource relationship.
+        transport: Client transport used for remote calls.
+        timeout_ms: Request timeout in milliseconds, or zero for no timeout.
+    """
+
+    __pyjs_generated_methods__ = (
+        "_decode_jsonapi",
+        "_request",
+    )
 
     @nojs
     @classmethod
@@ -1073,6 +1267,13 @@ API._decode_result.source(
 
 @js
 class Resource(API):
+    """Expose operations and relationships for a shared model type."""
+
+    def identity(self, identifier: str | int) -> str:
+        """Build this resource's stable identity for an object identifier."""
+        resource_type = _resource_type(self._path)
+        return resource_identity(resource_type, identifier)
+
     @nojs
     @classmethod
     def __class_getitem__(cls, model_type: type):
@@ -1081,6 +1282,18 @@ class Resource(API):
 
 @js
 def include_paths(resource: API, *relationships: API) -> list[str]:
+    """Build JSON:API include paths from statically typed relationships.
+
+    Args:
+        resource: Resource from which every relationship path starts.
+        *relationships: Descendant relationships to include.
+
+    Returns:
+        Dotted JSON:API relationship paths.
+
+    Raises:
+        ValueError: If a value is not a relationship below ``resource``.
+    """
     prefix = resource._path + "/"
     paths: list[str] = []
     for relationship in relationships:

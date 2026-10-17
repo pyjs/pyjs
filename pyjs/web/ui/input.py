@@ -1,5 +1,8 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.domx import ProxyElement, input, tw
+from pyjs.web.html import HTMLInputElement
 
 
 @js
@@ -30,10 +33,10 @@ class Input(ProxyElement):
         )
 
     def get_value(self) -> str:
-        return self.element.value
+        return cast(HTMLInputElement, self.element).value
 
     def set_value(self, value: str):
-        self.element.value = value
+        cast(HTMLInputElement, self.element).value = value
 
     def set_invalid(self, invalid: bool):
         self.element.setAttribute("aria-invalid", "true" if invalid else "false")

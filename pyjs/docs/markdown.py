@@ -4,6 +4,7 @@ from pathlib import Path
 import markdown
 import yaml
 
+from .diagram_markdown import DiagramExtension
 from .models import Heading
 
 FRONT_MATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.DOTALL)
@@ -25,6 +26,7 @@ def parse_document(path: Path) -> tuple[dict, str]:
 def render_markdown(source: str) -> tuple[str, list[Heading], str]:
     renderer = markdown.Markdown(
         extensions=[
+            DiagramExtension(),
             "admonition",
             "attr_list",
             "codehilite",

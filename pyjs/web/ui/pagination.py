@@ -1,3 +1,5 @@
+"""Offset and cursor pagination controls."""
+
 from collections.abc import Awaitable, Callable
 
 from pyjs import js

@@ -1,0 +1,37 @@
+def main() -> None:
+    print(False.[int]__add__!(1))
+    print(1.[int]__add__!(False))
+    print(True.[int]__sub__!(1))
+    print(1.[int]__sub__!(True))
+    print(False.[int]__add__!(False))
+    print(True.[int]__add__!(True))
+    print(True.[int]__add__!(False))
+    print(True.[int]__mul__!(3))
+    print(False.[int]__add__!(1).[int]__mul__!(3))
+    print(True.[object]__is__!(True))
+    print(False.[object]__is__!(False))
+    print(True.[int]__eq__!(True))
+    print(True.[int]__eq__!(1))
+    print(True.[object]__is__!(bool(1)))
+    print(False.[int]__eq__!(False))
+    print(False.[int]__eq__!(0))
+    print(False.[object]__is__!(bool(0)))
+    print(True.[int]__ne__!(False))
+    print(True.[object]__is_not__!(False))
+    print(False.[object]__is_not__!(True))
+    a: bool = False
+    print(a)
+    print(bin(a))
+    print(oct(a))
+    print(hex(a))
+    a = True
+    print(a)
+    print(bin(a))
+    print(oct(a))
+    print(hex(a))
+    if a:
+        print('a is true')
+    if not a:
+        print('should not print')
+    else:
+        print('else a is true')

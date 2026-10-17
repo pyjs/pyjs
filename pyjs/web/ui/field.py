@@ -36,6 +36,8 @@ def FieldGroup(*children):
 def Field(*children, orientation: str = "vertical"):
     if orientation == "horizontal":
         style = tw("flex w-full items-start gap-3")
+    elif orientation == "responsive":
+        style = tw("flex w-full flex-col gap-2 md:flex-row md:items-start")
     else:
         style = tw("flex w-full flex-col gap-2")
     return tag(
@@ -87,10 +89,46 @@ def FieldDescription(*children):
 
 
 @js
-def FieldError(*children):
+def FieldError(*children, errors: list[str] | None = None):
+    messages: list[object] = []
+    if errors is not None:
+        unique: list[str] = []
+        for message in errors:
+            seen = False
+            for existing in unique:
+                if existing == message:
+                    seen = True
+            if not seen and message != "":
+                unique.append(message)
+        if len(unique) == 1:
+            messages.append(unique[0])
+        elif len(unique) > 1:
+            items: list[object] = []
+            for message in unique:
+                items.append(tag("li", message))
+            messages.append(tag("ul", tw("list-disc ps-4"), *items))
     return tag(
         "div",
         tw("text-sm font-normal text-red-600"),
         {"data-slot": "field-error", "role": "alert"},
         *children,
+        *messages,
+    )
+
+
+@js
+def FieldSeparator(*children):
+    if len(children) == 0:
+        return tag(
+            "div",
+            tw("h-px w-full bg-slate-200"),
+            {"data-slot": "field-separator", "role": "separator"},
+        )
+    return tag(
+        "div",
+        tw("flex items-center gap-2 text-xs text-slate-500"),
+        {"data-slot": "field-separator", "role": "separator"},
+        tag("div", tw("h-px flex-1 bg-slate-200")),
+        tag("span", *children),
+        tag("div", tw("h-px flex-1 bg-slate-200")),
     )

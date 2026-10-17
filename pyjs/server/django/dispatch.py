@@ -13,6 +13,7 @@ def dispatch_sync[**Arguments, Result](
     *args: Arguments.args,
     **kwargs: Arguments.kwargs,
 ) -> Result:
+    """Execute an async bound API operation from synchronous Django code."""
     return _dispatch(remote_operation, *args, **kwargs)
 
 
@@ -22,6 +23,7 @@ def dispatch_for_request_sync[**Arguments, Result](
     *args: Arguments.args,
     **kwargs: Arguments.kwargs,
 ) -> Result:
+    """Execute an async bound API operation with a Django request."""
     return _dispatch_for_request(
         request,
         remote_operation,

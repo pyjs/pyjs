@@ -1,9 +1,14 @@
+"""Android UI-tree inspection, image assertions, and test sessions."""
+
+import logging
 import re
+import subprocess
 import time
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from PIL import Image
 
@@ -15,8 +20,17 @@ from .interaction.gesture import GestureScript
 
 BOUNDS_PATTERN = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 ANDROID_ERROR_PATTERN = re.compile(
-    r"FATAL EXCEPTION|TypeError|Calling js method|Uncaught Exception|CONSOLE ERROR",
+    r"FATAL EXCEPTION|Uncaught Exception",
     re.IGNORECASE,
+)
+ANDROID_STACK_PATTERN = re.compile(
+    r"(?:^\s*|:\s+)(?:at\s|Caused by:|\.\.\. \d+ more)",
+    re.IGNORECASE,
+)
+LOGCAT_RECORD_PATTERN = re.compile(
+    r"^(?:(?P<timestamp>\d\d-\d\d\s+\S+)\s+"
+    r"(?P<pid>\d+)\s+\d+\s+)?"
+    r"(?P<priority>[VDIWEF])\s+(?P<tag>[^:]+):"
 )
 
 
@@ -142,19 +156,76 @@ def assert_android_image(
     )
 
 
+def extract_android_errors(source: str) -> str:
+    """Retain Android crash headings and their following JVM stack frames."""
+    blocks = []
+    block = []
+    error_record = None
+    unstructured_error = False
+
+    def finish_block() -> None:
+        nonlocal block
+        if block:
+            blocks.append(block)
+            block = []
+
+    for line in source.splitlines():
+        record = LOGCAT_RECORD_PATTERN.match(line)
+        identity = None
+        if record is not None:
+            identity = (
+                record.group("pid"),
+                record.group("priority"),
+                record.group("tag").strip(),
+            )
+        if error_record is not None and identity == error_record:
+            block.append(line)
+        elif ANDROID_ERROR_PATTERN.search(line):
+            finish_block()
+            error_record = identity
+            unstructured_error = identity is None
+            block.append(line)
+        elif unstructured_error and ANDROID_STACK_PATTERN.search(line):
+            block.append(line)
+        else:
+            finish_block()
+            error_record = None
+            unstructured_error = False
+    finish_block()
+    if any("FATAL EXCEPTION" in line for block in blocks for line in block):
+        blocks = [
+            block
+            for block in blocks
+            if not any("System.err: An uncaught Exception" in line for line in block)
+        ]
+    return "\n".join(line for block in blocks for line in block)
+
+
 class AndroidTestSession:
-    def __init__(self, sdk: AndroidSDK, device: AndroidDevice, app_id: str):
+    def __init__(
+        self,
+        sdk: AndroidSDK,
+        device: AndroidDevice,
+        app_id: str,
+        *,
+        activity: str,
+    ):
         self.sdk = sdk
         self.device = device
         self.app_id = app_id
+        self.activity = activity
 
-    def adb(self, *arguments: str, text: bool = True, check: bool = True):
+    def adb(
+        self, *arguments: str, text: bool = True, check: bool = True,
+        timeout: float | None = None,
+    ):
         return self.sdk.runner.run(
             [self.sdk.adb, "-s", self.device.identifier, *arguments],
             environment=self.sdk.environment(),
             capture_output=True,
             text=text,
             check=check,
+            timeout=timeout,
         )
 
     def clear_logcat(self) -> None:
@@ -163,23 +234,31 @@ class AndroidTestSession:
     def force_stop(self) -> None:
         self.adb("shell", "am", "force-stop", self.app_id)
 
-    def launch(self) -> None:
-        self.force_stop()
-        self.clear_logcat()
-        self.adb(
-            "shell",
-            "monkey",
-            "-p",
-            self.app_id,
-            "-c",
-            "android.intent.category.LAUNCHER",
-            "1",
+    def is_running(self) -> bool:
+        return bool(
+            self.adb("shell", "pidof", self.app_id, check=False).stdout.strip()
         )
 
+    def launch(self) -> None:
+        self.clear_logcat()
+        self.adb(*self.sdk.launch_arguments(self.app_id, self.activity))
+
     def ui_tree(self) -> str:
-        remote_path = "/data/local/tmp/pyjs-window.xml"
-        self.adb("shell", "uiautomator", "dump", remote_path)
-        return self.adb("shell", "cat", remote_path).stdout
+        # dump can return exit code zero on idle failure without writing a file.
+        remote_path = "/data/local/tmp/pyjs-window-" + uuid4().hex + ".xml"
+        try:
+            result = self.adb("shell", "uiautomator", "dump", remote_path, timeout=20)
+            if "dumped to: " + remote_path not in result.stdout:
+                raise RuntimeError("Android UI dump was not produced: "
+                                   + result.stdout + result.stderr)
+            return self.adb("shell", "cat", remote_path, timeout=5).stdout
+        finally:
+            try:
+                self.adb("shell", "rm", "-f", remote_path, timeout=5)
+            except (OSError, subprocess.SubprocessError) as error:
+                logging.getLogger(__name__).warning(
+                    "Could not remove Android UI dump %s: %s", remote_path, error,
+                )
 
     def elements(self) -> list[AndroidElement]:
         return parse_ui_tree(self.ui_tree())
@@ -215,10 +294,19 @@ class AndroidTestSession:
         while time.monotonic() < deadline:
             try:
                 element = self.find_element(text=text, test_id=test_id, resource_id=resource_id)
-                if element is not None:
-                    return element
             except Exception as exc:
                 last_error = exc
+            else:
+                if element is not None:
+                    return element
+            if not self.is_running():
+                message = (
+                    f"Android application {self.app_id!r} stopped while waiting for UI."
+                )
+                errors = self.log_errors(10_000)
+                if errors:
+                    message += f"\n{errors}"
+                raise RuntimeError(message)
             time.sleep(interval)
         selector = {"text": text, "test_id": test_id, "resource_id": resource_id}
         details = ", ".join(f"{key}={value!r}" for key, value in selector.items() if value)
@@ -319,9 +407,7 @@ class AndroidTestSession:
         return self.adb(*arguments).stdout
 
     def log_errors(self, lines: int = 1000) -> str:
-        return "\n".join(
-            line for line in self.logcat(lines).splitlines() if ANDROID_ERROR_PATTERN.search(line)
-        )
+        return extract_android_errors(self.logcat(lines))
 
     def capture_artifacts(self, directory: Path, name: str) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
@@ -364,7 +450,11 @@ class AndroidTestSession:
             "text/plain",
             lambda path: path.write_text(self.logcat(), encoding="utf-8"),
         )
-        metadata = {"app_id": self.app_id, "device": self.device.identifier}
+        metadata = {
+            "app_id": self.app_id,
+            "activity": self.activity,
+            "device": self.device.identifier,
+        }
         if errors:
             metadata["capture_errors"] = errors
         manifest = ArtifactManifest(
@@ -385,4 +475,15 @@ class AndroidTestSession:
                 exc.add_note(f"Android failure artifact capture failed: {capture_error}")
             else:
                 exc.add_note(f"Android failure artifacts: {manifest}")
+                errors = self._captured_errors(directory, name)
+                if errors:
+                    exc.add_note(f"Android runtime errors:\n{errors}")
             raise
+
+    def _captured_errors(self, directory: Path, name: str) -> str:
+        prefix = re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip("-") or "android"
+        path = directory / f"{prefix}.logcat.txt"
+        try:
+            return extract_android_errors(path.read_text(encoding="utf-8"))
+        except OSError:
+            return ""

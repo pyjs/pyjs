@@ -52,7 +52,7 @@ class CapturingConsole:
         self.original = original
         self.logs = logs
 
-    def capture(self, level: str, args: tuple[object]):
+    def capture(self, level: str, args: tuple[object, ...]):
         values: list[str] = []
         for value in args:
             values.append(format_console_value(value))

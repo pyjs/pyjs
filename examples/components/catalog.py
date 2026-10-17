@@ -1,4 +1,5 @@
-from pyjs import js
+from pyjs import JS, js
+from pyjs.web.dom import Element, navigator
 from pyjs.web.domx import a, button, div, h1, h2, h3, input, p, ref, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLInputElement
@@ -51,7 +52,7 @@ from pyjs.web.ui.carousel import Carousel, CarouselItem
 from pyjs.web.ui.chart import BarChart, LineChart
 from pyjs.web.ui.checkbox import Checkbox
 from pyjs.web.ui.collapsible import Collapsible, CollapsibleContent, CollapsibleTrigger
-from pyjs.web.ui.combobox import Combobox
+from pyjs.web.ui.combobox import Combobox, ComboboxItem
 from pyjs.web.ui.command import Command, CommandItem
 from pyjs.web.ui.context_menu import (
     ContextMenu,
@@ -176,6 +177,65 @@ from pyjs.web.ui.typography import TypographyH3, TypographyInlineCode, Typograph
 
 from .catalog_sources import catalog_source
 
+TESTING_GUIDE_URL: JS = "/docs/guide/testing/"
+CATALOG_DARK_STYLES: JS = """
+@media (prefers-color-scheme: dark) {
+  catalog-app {
+    color-scheme: dark;
+    background: #020617;
+    color: #f8fafc;
+  }
+  catalog-app header,
+  catalog-app .bg-white {
+    background-color: #0f172a;
+  }
+  catalog-app .bg-slate-50 {
+    background-color: #020617;
+  }
+  catalog-app .bg-slate-100 {
+    background-color: #1e293b;
+  }
+  catalog-app .bg-slate-200 {
+    background-color: #334155;
+  }
+  catalog-app .border-slate-200 {
+    border-color: #1e293b;
+  }
+  catalog-app .border-slate-300 {
+    border-color: #334155;
+  }
+  catalog-app .text-slate-950,
+  catalog-app .text-slate-900 {
+    color: #f8fafc;
+  }
+  catalog-app .text-slate-700 {
+    color: #cbd5e1;
+  }
+  catalog-app .text-slate-600,
+  catalog-app .text-slate-500 {
+    color: #94a3b8;
+  }
+  catalog-app .hover\\:text-slate-950:hover {
+    color: #ffffff;
+  }
+}
+"""
+
+
+@js
+class CatalogCopyListener:
+    def __init__(self, control: Element, code: Element):
+        self.control = control
+        self.code = code
+
+    @js.keep
+    async def handleEvent(self, event: Event):
+        text = self.code.textContent
+        if text is None:
+            return
+        await navigator.clipboard.writeText(text)
+        self.control.textContent = "Copied"
+
 
 @js
 def field(label: str, input_element: HTMLInputElement):
@@ -239,6 +299,11 @@ def component_showcase(
                 {"href": source_url},
                 "View Python source",
             ),
+            a(
+                tw("font-medium text-slate-700 underline underline-offset-4"),
+                {"href": TESTING_GUIDE_URL},
+                "Testing guidance",
+            ),
         ),
     )
 
@@ -264,6 +329,14 @@ def python_example(source: str):
                 "leading-6 text-slate-100"
             ),
             tag("code", source),
+        ),
+        button(
+            tw(
+                "m-3 mt-0 rounded-md border border-slate-700 px-3 py-1.5 "
+                "text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+            ),
+            {"data-catalog-copy": "", "type": "button"},
+            "Copy",
         ),
     )
 
@@ -303,6 +376,14 @@ def api_reference(module: str, accessibility: str, *signatures: str):
                 ),
                 {"href": source_url},
                 "View Python source",
+            ),
+            a(
+                tw(
+                    "mt-3 ml-4 inline-block text-xs font-medium underline "
+                    "underline-offset-4"
+                ),
+                {"href": TESTING_GUIDE_URL},
+                "Testing guidance",
             ),
         ),
         div(
@@ -485,9 +566,9 @@ def remaining_component_showcases():
             "Combobox",
             "Filters and selects from a searchable collection.",
             Combobox(
-                CommandItem("Python", "Python"),
-                CommandItem("JavaScript", "JavaScript"),
-                CommandItem("Rust", "Rust"),
+                ComboboxItem("Python", "Python"),
+                ComboboxItem("JavaScript", "JavaScript"),
+                ComboboxItem("Rust", "Rust"),
                 placeholder="Choose a language...",
             ),
         ),
@@ -1715,6 +1796,7 @@ class CatalogApp(Widget):
         )
         self.add(
             tw("block min-h-screen bg-slate-50 text-slate-950"),
+            tag("style", CATALOG_DARK_STYLES),
             a(
                 tw(
                     "fixed left-3 top-3 z-50 -translate-y-20 rounded-md bg-slate-950 "
@@ -1726,6 +1808,16 @@ class CatalogApp(Widget):
             header,
             div(tw("mx-auto flex max-w-7xl"), sidebar, content),
         )
+
+    def initialize(self):
+        for source in self.querySelectorAll("[data-catalog-source]"):
+            control = source.querySelector("[data-catalog-copy]")
+            code = source.querySelector("code")
+            if control is not None and code is not None:
+                control.addEventListener(
+                    "click",
+                    CatalogCopyListener(control, code),
+                )
 
     def save_profile(self, event: Event):
         self.status.textContent = "Saved profile for " + self.name_input.value + "."

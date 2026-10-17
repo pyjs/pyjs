@@ -86,10 +86,12 @@ class StateField:
 
 
 def state(default):
+    """Declare DOM-backed reactive state with an inferred scalar type."""
     return StateField(default)
 
 
 def effect(*fields: StateField):
+    """Run a custom-element method when any selected state field changes."""
     if not fields or not all(isinstance(field, StateField) for field in fields):
         raise TypeError("effect() requires one or more fields declared with state()")
 

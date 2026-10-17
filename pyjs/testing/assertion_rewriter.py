@@ -4,9 +4,9 @@ from types import ModuleType
 
 import pytest
 
+from pyjs.analysis.objects import CompilationExtension
 from pyjs.testing.client.assertions import assert_compare, assert_condition
 from pyjs.testing.client.pytest import raises
-from pyjs.transpiler import CompilationExtension
 
 ASSERT_ALIAS = "__pyjs_test_assert__"
 COMPARE_ALIAS = "__pyjs_test_assert_compare__"

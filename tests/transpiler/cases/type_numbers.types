@@ -1,0 +1,34 @@
+def main() -> None:
+    a: int = 9
+    print(a)
+    print(1.[int]__add__!(1))
+    print(1.[int]__add__!(2.[int]__add__!(3)))
+    a = a.[int]__add__!(2)
+    print(a)
+    print(7.[int]__sub__!(5))
+    print(7.[int]__sub__!(5).[int]__sub__!(1))
+    print(7.[int]__sub__!(5.[int]__sub__!(1)))
+    a = a.[int]__sub__!(5)
+    print(a)
+    print(2.[int]__mul__!(3))
+    print(0.[int]__mul__!(3))
+    a = a.[int]__mul__!(2)
+    print(a)
+    a = 5
+    print(5.[int]__pow__!(2))
+    a = a.[int]__pow__!(2)
+    print(a)
+    print($float_string(5.[int]__truediv__!(2)))
+    print(5.[int]__floordiv__!(2))
+    divided: float = 5.0
+    divided = divided.[float]__truediv__!(2)
+    print($float_string(divided))
+    a = 5
+    a = a.[int]__floordiv__!(2)
+    print(a)
+    print(isinstance(a, int))
+    a = 11
+    print(a)
+    print(bin(a))
+    print(oct(a))
+    print(hex(a))

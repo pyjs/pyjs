@@ -166,43 +166,9 @@ class ReorderSession:
         insertion_index: int,
         requested_depth: int,
     ) -> ReorderDecision:
-        insertion_index = max(0, min(insertion_index, len(self.remaining_items)))
-        maximum_depth = self.max_depth - self.relative_max_depth
-        if insertion_index == 0:
-            maximum_depth = 0
-        else:
-            previous_depth = self.remaining_items[insertion_index - 1].depth
-            maximum_depth = min(maximum_depth, previous_depth + 1)
-        target_depth = max(0, min(requested_depth, maximum_depth))
-
-        source = ReorderItem(self.source.id, target_depth)
-        visible_items: list[ReorderItem] = []
-        for index in range(insertion_index):
-            visible_items.append(self.remaining_items[index])
-        visible_items.append(source)
-        for index in range(insertion_index, len(self.remaining_items)):
-            visible_items.append(self.remaining_items[index])
-
-        depth_change = target_depth - self.source_depth
-        moved_subtree: list[ReorderItem] = []
-        for item in self.subtree:
-            moved_subtree.append(ReorderItem(item.id, item.depth + depth_change))
-        committed_items: list[ReorderItem] = []
-        for index in range(insertion_index):
-            committed_items.append(self.remaining_items[index])
-        for item in moved_subtree:
-            committed_items.append(item)
-        for index in range(insertion_index, len(self.remaining_items)):
-            committed_items.append(self.remaining_items[index])
-        committed_items = _normalize_items(committed_items, self.max_depth)
-
-        return ReorderDecision(
-            self.source.id,
-            self.hidden_item_ids,
-            visible_items,
-            committed_items,
-            insertion_index,
-            target_depth,
+        return _project_reorder(
+            self.subtree, self.remaining_items, self.hidden_item_ids,
+            self.relative_max_depth, self.max_depth, insertion_index, requested_depth,
         )
 
     def update(
@@ -215,6 +181,80 @@ class ReorderSession:
             self.insertion_index_at(rows, pointer),
             self.depth_for_delta(horizontal_delta),
         )
+
+
+@js
+def project_reorder(
+    items: list[ReorderItem], source_index: int, insertion_index: int,
+    requested_depth: int, max_depth: int,
+) -> ReorderDecision | None:
+    """Project a subtree move from a platform-selected slot and depth.
+
+    The slot indexes the remaining outline after removing the source subtree.
+    Input is normalized without mutation. Invalid sources return None.
+    """
+    if source_index < 0 or source_index >= len(items):
+        return None
+    max_depth = max(0, max_depth)
+    items = _normalize_items(items, max_depth)
+    end = source_index + 1
+    while end < len(items) and items[end].depth > items[source_index].depth:
+        end += 1
+    subtree: list[ReorderItem] = []
+    remaining: list[ReorderItem] = []
+    hidden: list[str] = []
+    relative_max = 0
+    for index in range(len(items)):
+        item = items[index]
+        if source_index <= index and index < end:
+            subtree.append(item)
+            relative_max = max(relative_max, item.depth - items[source_index].depth)
+            if index > source_index:
+                hidden.append(item.id)
+        else:
+            remaining.append(item)
+    return _project_reorder(
+        subtree, remaining, hidden, relative_max, max_depth, insertion_index, requested_depth,
+    )
+
+
+@js
+def _project_reorder(
+    subtree: list[ReorderItem], remaining_items: list[ReorderItem],
+    hidden_item_ids: list[str], relative_max_depth: int, max_depth: int,
+    insertion_index: int, requested_depth: int,
+) -> ReorderDecision:
+    insertion_index = max(0, min(insertion_index, len(remaining_items)))
+    maximum_depth = max_depth - relative_max_depth
+    if insertion_index == 0:
+        maximum_depth = 0
+    else:
+        previous_depth = remaining_items[insertion_index - 1].depth
+        maximum_depth = min(maximum_depth, previous_depth + 1)
+    target_depth = max(0, min(requested_depth, maximum_depth))
+
+    source = ReorderItem(subtree[0].id, target_depth)
+    visible_items: list[ReorderItem] = []
+    for index in range(insertion_index):
+        visible_items.append(remaining_items[index])
+    visible_items.append(source)
+    for index in range(insertion_index, len(remaining_items)):
+        visible_items.append(remaining_items[index])
+
+    depth_change = target_depth - subtree[0].depth
+    committed_items: list[ReorderItem] = []
+    for index in range(insertion_index):
+        committed_items.append(remaining_items[index])
+    for item in subtree:
+        committed_items.append(ReorderItem(item.id, item.depth + depth_change))
+    for index in range(insertion_index, len(remaining_items)):
+        committed_items.append(remaining_items[index])
+    committed_items = _normalize_items(committed_items, max_depth)
+
+    return ReorderDecision(
+        source.id, hidden_item_ids, visible_items, committed_items,
+        insertion_index, target_depth,
+    )
 
 
 @js
@@ -311,4 +351,5 @@ __all__ = [
     "ReorderRow",
     "ReorderSession",
     "edge_scroll_offset",
+    "project_reorder",
 ]

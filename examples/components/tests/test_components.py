@@ -1,3 +1,4 @@
+import ast
 import re
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from pyjs_examples.components.app import (
     main,
     workspace_page,
 )
-from pyjs_examples.components.catalog import CatalogApp
+from pyjs_examples.components.catalog import CATALOG_DARK_STYLES, CatalogApp
 from pyjs_examples.components.catalog_sources import catalog_source
 from pyjs_examples.components.workspace import WorkspaceApp
 
@@ -35,8 +36,15 @@ def test_components_renders_catalog_inside_the_persistent_layout():
     assert rendered.count('data-catalog-source=""') == rendered.count(
         'data-catalog-component="'
     )
+    assert rendered.count('data-catalog-copy=""') == rendered.count(
+        'data-catalog-component="'
+    )
+    assert rendered.count("Testing guidance") == rendered.count(
+        'data-catalog-component="'
+    )
     assert "Slider(45, minimum=0, maximum=100, label='Volume')" in rendered
     assert "Accessibility" in rendered
+    assert "prefers-color-scheme: dark" in CATALOG_DARK_STYLES
     assert 'data-pyjs-navigation-link="" href="/">Catalog</a>' in rendered
     assert (
         'data-pyjs-navigation-link="" href="/workspace">Workspace block</a>'
@@ -55,6 +63,20 @@ def test_components_renders_catalog_inside_the_persistent_layout():
         component_id == "dialog" or catalog_source(component_id) != ""
         for component_id in component_ids
     )
+    assert [
+        component_id
+        for component_id in component_ids
+        if component_id != "dialog"
+        and not _is_valid_python(catalog_source(component_id))
+    ] == []
+
+
+def _is_valid_python(source: str) -> bool:
+    try:
+        ast.parse(source)
+    except SyntaxError:
+        return False
+    return True
 
 
 def test_component_routes_return_independent_navigation_pages():

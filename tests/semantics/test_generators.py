@@ -1,0 +1,165 @@
+from pyjs.testing.helpers import ad, at
+from tests.backend_semantics import GENERATOR_CLEANUP_CONTRACT, GENERATOR_CONTRACT
+
+from .helpers import assert_semantics
+
+
+def test_shared_generator_contract():
+    assert_semantics(GENERATOR_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_shared_generator_cleanup_contract():
+    assert_semantics(GENERATOR_CLEANUP_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_generator_functions_yield_lazily_and_stop_on_bare_return():
+    assert_semantics(
+        """\
+        from collections.abc import Iterable
+
+        from pyjs import js
+
+        @js
+        def values(limit: int) -> Iterable[int]:
+            for value in range(limit):
+                if value == 3:
+                    return
+                yield value * 2
+
+        @js
+        class Paths:
+            @staticmethod
+            def dirty(values: list[str]) -> Iterable[str]:
+                for value in values:
+                    yield value
+
+        generated = values(5)
+        for value in generated:
+            print(value)
+        for value in generated:
+            print(value)
+        for value in Paths.dirty(["modified", "staged"]):
+            print(value)
+        """
+    )
+
+
+def test_unannotated_generator_methods_infer_their_item_type():
+    at(
+        """
+        @js
+        class Values:
+            def generate(self, limit: int):
+                for value in range(limit):
+                    yield str(value)
+
+        def main():
+            for value in Values().generate(2):
+                print(value)
+        """,
+        """
+        class Values:
+
+            def generate(limit: int) -> Iterator[str]:
+                for value: int in range(limit):
+                    yield value.[int]__str__!()
+
+        def main() -> None:
+            for value: str in Values().[Values]generate(2):
+                print(value)
+        """,
+        """
+        export class Values {
+
+            *generate(limit) {
+                for (var value of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)((function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;i+=step)yield i})(0,limit,1))) {
+                    yield String(value);
+                }
+            }
+        }
+
+        export function main() {
+            for (var value of new Values().generate(2)) {
+                console.log(value);
+            }
+        }
+        """,
+    )
+
+
+def test_generator_return_values_have_a_focused_diagnostic():
+    ad(
+        """
+        from pyjs import js
+
+        @js
+        def values():
+            yield 1
+            return 2
+
+        @js
+        def main():
+            for value in values():
+                print(value)
+        """,
+        """
+          File "generator_return.py", line 7
+            return 2
+            ^^^^^^^^
+        pyjs.CompilationError: generator return values are not supported [PYJS2001]
+        help: Use a bare return to stop the generator.
+        """,
+        filename="generator_return.py",
+    )
+
+
+def test_yield_from_has_a_focused_diagnostic():
+    ad(
+        """
+        from pyjs import js
+
+        @js
+        def values():
+            yield from [1, 2]
+
+        @js
+        def main():
+            for value in values():
+                print(value)
+        """,
+        """
+          File "yield_from.py", line 6
+            yield from [1, 2]
+            ^^^^^^^^^^^^^^^^^
+        pyjs.CompilationError: yield from is not supported [PYJS2001]
+        help: Iterate over the value and yield each item explicitly.
+        """,
+        filename="yield_from.py",
+    )
+
+
+def test_generator_yields_must_match_the_declared_item_type():
+    ad(
+        """
+        from collections.abc import Iterable
+
+        from pyjs import js
+
+        @js
+        def values() -> Iterable[str]:
+            yield 1
+
+        @js
+        def main():
+            for value in values():
+                print(value)
+        """,
+        """
+          File "generator_type.py", line 7
+            def values() -> Iterable[str]:
+                            ^^^^^^^^^^^^^
+        pyjs.CompilationError: Generator produces Iterator[int], not Iterable[str] [PYJS1105]
+        help: Change the return annotation to match the yielded values.
+        """,
+        filename="generator_type.py",
+    )

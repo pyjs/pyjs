@@ -1,3 +1,5 @@
+"""Accessible SVG bar, line, and multi-series charts."""
+
 from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import div, ref, svg_tag, tw
@@ -59,6 +61,14 @@ def chart_bounds(values: list[int]) -> tuple[int, int]:
         if maximum == 0:
             maximum = 1
     return minimum, maximum
+
+
+@js
+def chart_series_bounds(series_values: list[list[int]]) -> tuple[int, int]:
+    values: list[int] = []
+    for series in series_values:
+        values.extend(series)
+    return chart_bounds(values)
 
 
 @js
@@ -298,3 +308,218 @@ class LineChart(Widget):
             value_labels.pop(0)
             annotation_labels.pop(0)
         self.set_points(values, labels, value_labels, annotation_labels)
+
+
+@js
+class MultiLineChart(Widget):
+    """Line chart for aligned series with an accessible HTML legend."""
+
+    def __init__(
+        self,
+        series_values: list[list[int]],
+        series_labels: list[str],
+        labels: list[str] | None = None,
+        *,
+        colors: list[str] | None = None,
+        label: str = "Multi-series line chart",
+        value_labels: list[list[str]] | None = None,
+        grid_color: str = "#e2e8f0",
+        annotation_labels: list[str] | None = None,
+        annotation_color: str = "#d97706",
+    ):
+        super().__init__()
+        if len(series_values) != len(series_labels):
+            raise ValueError(
+                "Chart values and series labels must have equal lengths."
+            )
+        point_count = len(series_values[0]) if series_values else 0
+        for values in series_values:
+            if len(values) != point_count:
+                raise ValueError("Multi-series chart values must be aligned.")
+        if value_labels is not None:
+            if len(value_labels) != len(series_values):
+                raise ValueError(
+                    "Chart values and formatted value labels must have equal "
+                    "lengths."
+                )
+            for formatted in value_labels:
+                if len(formatted) != point_count:
+                    raise ValueError(
+                        "Multi-series formatted value labels must be aligned."
+                    )
+        if colors is None:
+            palette = [
+                "#0891b2",
+                "#2563eb",
+                "#7c3aed",
+                "#059669",
+                "#d97706",
+                "#dc2626",
+            ]
+        else:
+            palette = colors
+        if not palette:
+            raise ValueError("A multi-series chart requires at least one color.")
+        resolved_labels = chart_labels(
+            series_values[0] if series_values else [],
+            labels,
+        )
+        resolved_annotations = chart_annotation_labels(
+            series_values[0] if series_values else [],
+            annotation_labels,
+        )
+        minimum, maximum = chart_series_bounds(series_values)
+        children: list[Element] = []
+        for y in (40, 200, 360):
+            children.append(
+                svg_tag(
+                    "line",
+                    {
+                        "aria-hidden": "true",
+                        "stroke": grid_color,
+                        "x1": "40",
+                        "x2": "960",
+                        "y1": str(y),
+                        "y2": str(y),
+                    },
+                )
+            )
+        for point_index in range(point_count):
+            annotation = resolved_annotations[point_index]
+            if not annotation:
+                continue
+            if point_count == 1:
+                x = 500
+            else:
+                x = 40 + point_index * 920 // (point_count - 1)
+            children.append(
+                svg_tag(
+                    "line",
+                    {
+                        "aria-label": (
+                            resolved_labels[point_index] + ": " + annotation
+                        ),
+                        "data-annotation-label": annotation,
+                        "data-label": resolved_labels[point_index],
+                        "data-slot": "chart-annotation",
+                        "role": "graphics-symbol",
+                        "stroke": annotation_color,
+                        "stroke-dasharray": "12 8",
+                        "stroke-width": "4",
+                        "x1": str(x),
+                        "x2": str(x),
+                        "y1": "40",
+                        "y2": "360",
+                    },
+                )
+            )
+        legend_items: list[Element] = []
+        for series_index in range(len(series_values)):
+            values = series_values[series_index]
+            series_label = series_labels[series_index]
+            color = palette[series_index % len(palette)]
+            formatted = (
+                value_labels[series_index]
+                if value_labels is not None
+                else chart_value_labels(values, None)
+            )
+            path = ""
+            for point_index in range(len(values)):
+                if point_count == 1:
+                    x = 500
+                else:
+                    x = 40 + point_index * 920 // (point_count - 1)
+                y = 360 - (values[point_index] - minimum) * 320 // (
+                    maximum - minimum
+                )
+                path += (
+                    ("M" if point_index == 0 else " L")
+                    + str(x)
+                    + " "
+                    + str(y)
+                )
+                children.append(
+                    svg_tag(
+                        "circle",
+                        {
+                            "aria-label": (
+                                series_label
+                                + " · "
+                                + resolved_labels[point_index]
+                                + ": "
+                                + formatted[point_index]
+                            ),
+                            "fill": color,
+                            "data-label": resolved_labels[point_index],
+                            "data-series": series_label,
+                            "data-slot": "chart-point",
+                            "data-value": str(values[point_index]),
+                            "data-value-label": formatted[point_index],
+                            "r": "7",
+                            "role": "graphics-symbol",
+                            "cx": str(x),
+                            "cy": str(y),
+                        },
+                    )
+                )
+            if path:
+                children.insert(
+                    3 + series_index,
+                    svg_tag(
+                        "path",
+                        {
+                            "aria-label": series_label,
+                            "fill": "none",
+                            "d": path,
+                            "data-series": series_label,
+                            "data-slot": "chart-line",
+                            "role": "graphics-symbol",
+                            "stroke-linecap": "round",
+                            "stroke-linejoin": "round",
+                            "stroke": color,
+                            "stroke-width": "8",
+                        },
+                    ),
+                )
+            legend_items.append(
+                div(
+                    tw("flex items-center gap-2 text-xs text-slate-600"),
+                    {"data-series-label": series_label},
+                    div(
+                        tw("h-2.5 w-2.5 rounded-full"),
+                        {
+                            "aria-hidden": "true",
+                            "style": "background-color: " + color,
+                        },
+                    ),
+                    series_label,
+                )
+            )
+        self.svg = ref(
+            svg_tag(
+                "svg",
+                tw("h-auto w-full overflow-visible"),
+                {
+                    "aria-label": label,
+                    "data-slot": "chart",
+                    "role": "img",
+                    "viewBox": "0 0 1000 400",
+                },
+                *children,
+            )
+        )
+        self.add(
+            div(
+                tw("w-full overflow-hidden"),
+                {"data-slot": "chart-container"},
+                self.svg,
+            ),
+            div(
+                tw("mt-3 flex flex-wrap gap-x-4 gap-y-2"),
+                {"aria-label": "Chart series", "data-slot": "chart-legend"},
+                *legend_items,
+            ),
+        )
+
+    def chart(self) -> Element:
+        return self.svg

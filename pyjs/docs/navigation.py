@@ -4,7 +4,9 @@ from .models import NavNode, Page
 
 
 def humanize(value: str) -> str:
-    return value.replace("-", " ").replace("_", " ").strip().title()
+    words = value.replace("-", " ").replace("_", " ").strip().split()
+    names = {"api": "API", "js": "JS", "pyjs": "PyJS"}
+    return " ".join(names.get(word.lower(), word.title()) for word in words)
 
 
 def build_navigation(pages: list[Page]) -> NavNode:

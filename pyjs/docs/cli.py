@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from pyjs.server.dev import Application, Server
@@ -6,13 +7,28 @@ from .builder import build
 from .config import load_config
 
 
+def _print_api_coverage(output: Path):
+    report = output / "_pyjs" / "api-coverage.json"
+    if not report.is_file():
+        return
+    coverage = json.loads(report.read_text(encoding="utf-8"))
+    module_label = "module" if coverage["modules"] == 1 else "modules"
+    print(
+        "API reference: "
+        f"{coverage['documented']}/{coverage['symbols']} public symbols "
+        f"documented across {coverage['modules']} {module_label}"
+    )
+    if coverage["undocumented"]:
+        print(f"API coverage details: {report}")
+
+
 def _serve(project_root: Path, host: str, port: int):
     output = build(load_config(project_root))
     application = Application(name="PyJS documentation")
     application.mount_files("/", output, index=True)
     server = Server(application, host=host, port=port, allow_remote=True)
     print(f"Built documentation in {output}")
-    print(f"Serving documentation at {server.url}")
+    _print_api_coverage(output)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -50,6 +66,7 @@ def run(args) -> int:
     if args.docs_command == "build":
         output = build(load_config(project_root))
         print(f"Built documentation in {output}")
+        _print_api_coverage(output)
         return 0
     _serve(project_root, args.host, args.port)
     return 0

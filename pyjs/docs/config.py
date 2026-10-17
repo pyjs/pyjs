@@ -4,6 +4,12 @@ from tomllib import load
 
 
 @dataclass(frozen=True)
+class DocsVersion:
+    label: str
+    url: str
+
+
+@dataclass(frozen=True)
 class DocsConfig:
     project_root: Path
     docs_dir: Path
@@ -17,10 +23,43 @@ class DocsConfig:
     route_prefix: str = ""
     nojekyll: bool = True
     version: str = ""
+    versions: tuple[DocsVersion, ...] = ()
+    social_image: str = ""
+    social_image_alt: str = ""
+    social_image_width: int = 0
+    social_image_height: int = 0
+    x_handle: str = ""
+    api_modules: tuple[str, ...] = ()
+
+
+def _versions(values: list[dict[str, object]]) -> tuple[DocsVersion, ...]:
+    return tuple(
+        DocsVersion(label=str(value["label"]), url=str(value["url"]))
+        for value in values
+    )
 
 
 def _project_name(name: str) -> str:
     return "PyJS" if name.lower() == "pyjs" else name.replace("-", " ").title()
+
+
+def _api_modules(value: object) -> tuple[str, ...]:
+    if isinstance(value, str) or not isinstance(value, (list, tuple)):
+        raise ValueError("tool.pyjs.docs.api must be a list of module names")
+    modules = tuple(value)
+    invalid = [
+        module
+        for module in modules
+        if not isinstance(module, str)
+        or not module
+        or not all(part.isidentifier() for part in module.split("."))
+    ]
+    if invalid:
+        raise ValueError(
+            "tool.pyjs.docs.api contains invalid module names: "
+            + ", ".join(repr(module) for module in invalid)
+        )
+    return modules
 
 
 def load_config(project_root: str | Path = ".") -> DocsConfig:
@@ -48,4 +87,11 @@ def load_config(project_root: str | Path = ".") -> DocsConfig:
         route_prefix=docs.get("route_prefix", ""),
         nojekyll=docs.get("nojekyll", True),
         version=str(docs.get("version", project.get("version", ""))),
+        versions=_versions(docs.get("versions", [])),
+        social_image=str(docs.get("social_image", "")),
+        social_image_alt=str(docs.get("social_image_alt", "")),
+        social_image_width=int(docs.get("social_image_width", 0)),
+        social_image_height=int(docs.get("social_image_height", 0)),
+        x_handle=str(docs.get("x_handle", "")),
+        api_modules=_api_modules(docs.get("api", ())),
     )

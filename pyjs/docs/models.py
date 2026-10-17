@@ -9,6 +9,14 @@ class Heading:
     level: int
 
 
+@dataclass(frozen=True)
+class SearchEntry:
+    title: str
+    section: str
+    fragment: str
+    text: str
+
+
 @dataclass
 class Page:
     source_path: Path
@@ -21,6 +29,7 @@ class Page:
     hidden: bool
     html: str
     headings: list[Heading]
+    search_entries: tuple[SearchEntry, ...] = ()
     previous: Page | None = None
     next: Page | None = None
 

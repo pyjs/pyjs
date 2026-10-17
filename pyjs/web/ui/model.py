@@ -1,3 +1,5 @@
+"""Pydantic-aware forms, fields, columns, and data tables."""
+
 import types
 from datetime import date
 from typing import Self, Union, get_args, get_origin
@@ -5,6 +7,7 @@ from typing import Self, Union, get_args, get_origin
 from pydantic import BaseModel
 
 from pyjs import js, nojs
+from pyjs.decorators import configure_js
 from pyjs.server.errors import OperationError
 from pyjs.server.pagination import Page
 from pyjs.web.crypto import crypto
@@ -13,6 +16,20 @@ from pyjs.web.domx import ProxyElement, form, input, tag, tw
 from pyjs.web.html import HTMLInputElement
 from pyjs.web.ui.date import iso_date
 from pyjs.web.ui.field import FieldError
+
+__all__ = [
+    "BooleanModelColumn",
+    "BooleanModelField",
+    "DataTable",
+    "DateModelField",
+    "FloatModelField",
+    "IntegerModelField",
+    "ModelColumn",
+    "ModelField",
+    "ModelForm",
+    "TextModelColumn",
+    "TextModelField",
+]
 
 
 @js.inline("{model}[{name}]")
@@ -422,7 +439,7 @@ def _declared_members(bases, namespace, metadata_name, member_type):
         value.name = name
         if not value.label:
             value.label = name.replace("_", " ")
-        value.__js__ = False
+        nojs(value)
         members[name] = value
     return members
 
@@ -495,7 +512,7 @@ class ModelFormMetaclass(type):
         if model_type is not None:
             meta = namespace.get("Meta", None)
             if meta is not None:
-                meta.__js__ = False
+                nojs(meta)
             selected = _selected_model_fields(
                 name,
                 model_type,
@@ -516,7 +533,7 @@ class ModelFormMetaclass(type):
                 if not field.label:
                     field.label = field_name.replace("_", " ")
                 field.configure(model_field)
-                field.__js__ = False
+                nojs(field)
                 fields_by_name[field_name] = field
             fields = list(fields_by_name.values())
             unknown = set(declared_by_name) - set(model_type.model_fields)
@@ -525,21 +542,26 @@ class ModelFormMetaclass(type):
                 raise TypeError(f"Unknown {model_type.__name__} field(s): {names}.")
             namespace["__pyjs_model__"] = model_type
             namespace["__pyjs_model_fields__"] = selected
-            namespace["__js_append__"] = lambda included: _form_javascript(
-                name,
-                model_type,
-                fields,
-            )
-            namespace["__js_append_dependencies__"] = (
-                model_type,
-                *(type(field) for field in fields),
-            )
             namespace["__pyjs_fields__"] = fields
             namespace["__pyjs_fields_by_name__"] = fields_by_name
         else:
             namespace["__pyjs_fields__"] = list(declared_by_name.values())
             namespace["__pyjs_fields_by_name__"] = declared_by_name
-        return super().__new__(mcls, name, bases, namespace, **kwargs)
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        if model_type is not None:
+            @js.references(model_type, *(type(field) for field in fields))
+            def post_definition(included):
+                return _form_javascript(
+                    name,
+                    model_type,
+                    fields,
+                )
+
+            configure_js(
+                cls,
+                post_definition_source=post_definition,
+            )
+        return cls
 
 
 def _meta_names(
@@ -873,18 +895,23 @@ class DataTableMetaclass(type):
                 names = ", ".join(unknown)
                 raise TypeError(f"Unknown {model_type.__name__} column(s): {names}.")
             namespace["__pyjs_model__"] = model_type
-            namespace["__js_append__"] = lambda included: _adapter_javascript(
-                name,
-                model_type,
-                "__pyjs_columns__",
-                columns,
-            )
-            namespace["__js_append_dependencies__"] = (
-                model_type,
-                *(type(column) for column in columns),
-            )
         namespace["__pyjs_columns__"] = columns
-        return super().__new__(mcls, name, bases, namespace, **kwargs)
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        if model_type is not None:
+            @js.references(model_type, *(type(column) for column in columns))
+            def post_definition(included):
+                return _adapter_javascript(
+                    name,
+                    model_type,
+                    "__pyjs_columns__",
+                    columns,
+                )
+
+            configure_js(
+                cls,
+                post_definition_source=post_definition,
+            )
+        return cls
 
 
 @js.inline("{table}.constructor.__pyjs_columns__")

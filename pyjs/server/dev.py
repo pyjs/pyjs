@@ -31,13 +31,12 @@ from types import MappingProxyType
 from typing import Any, Self
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from pyjs.analysis.analyzer import release_compilation
+from pyjs.javascript.sourcemap import TranspiledJavaScript
+from pyjs.javascript.transpiler import prepare_bundle_with_source_maps
 from pyjs.server.build import BuildStats
 from pyjs.server.rendering import NavigationPage, navigation_fragment, page
-from pyjs.transpiler import (
-    TranspiledJavaScript,
-    prepare_bundle_with_source_maps,
-)
-from pyjs.transpiler.analyzer import release_compilation
+from pyjs.tooling.npm import ManagedNpmProject, collect_npm_imports
 from pyjs.web.navigation import NAVIGATION_HEADER
 
 DEFAULT_BODY_LIMIT = 1024 * 1024
@@ -1486,6 +1485,7 @@ class _PyjsApplication:
         self.module_last_modified = None
         self.package = None
         self.source_maps = None
+        self.vendor = None
         self.css_provided = bool(css)
         self.css = css
         self.entry_point = None
@@ -1574,7 +1574,6 @@ class _PyjsApplication:
             last_modified = self.module_path.stat().st_mtime
             if self.module_last_modified == last_modified:
                 return
-            self.module_last_modified = last_modified
             started = time.perf_counter()
             importlib.reload(self.module)
             entry_point = getattr(self.module, self.entry_point_name)
@@ -1591,6 +1590,16 @@ class _PyjsApplication:
                 additional_entry_points=additional_entry_points,
             )
             try:
+                npm_imports = collect_npm_imports(self.package)
+                vendor = ManagedNpmProject.for_project(
+                    self.module_path
+                ).vendor_for(npm_imports)
+                if npm_imports and vendor is None:
+                    raise RuntimeError(
+                        "JavaScript dependencies are not synchronized; run "
+                        f"'pyjs npm sync {self.module_name}:{self.entry_point_name}'"
+                    )
+                self.vendor = vendor.read_bytes() if vendor is not None else None
                 if not self.css_provided:
                     self.css = css
                 for package_name, javascript in self.package.items():
@@ -1604,10 +1613,12 @@ class _PyjsApplication:
                 self.source_maps = source_maps
                 self.build_stats = BuildStats(
                     time.perf_counter() - started,
-                    len(self.package),
-                    sum(len(source) for source in self.package.values()),
+                    len(self.package) + (self.vendor is not None),
+                    sum(len(source) for source in self.package.values())
+                    + (len(self.vendor) if self.vendor is not None else 0),
                     len(self.css.encode("utf-8")),
                 )
+                self.module_last_modified = last_modified
             finally:
                 release_compilation(self.entry_point)
 
@@ -1666,6 +1677,13 @@ class _PyjsApplicationAdapter(Application):
             )
         if method == "GET" and request.path == "/index.css":
             return Response(self.compiled.get_css(), content_type="text/css")
+        if method == "GET" and request.path == "/pyjs-vendor.js":
+            if self.compiled.vendor is not None:
+                return Response(
+                    self.compiled.vendor,
+                    content_type="application/javascript",
+                )
+            return Response.text("Not found", status=404)
         if (method, request.path) in self.compiled.routes:
             return self.compiled.dispatch(request)
         if method == "GET" and request.path.endswith(".js.map"):

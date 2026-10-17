@@ -1,5 +1,8 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.domx import ProxyElement, input, tw
+from pyjs.web.html import HTMLInputElement
 
 
 @js
@@ -14,15 +17,15 @@ class Checkbox(ProxyElement):
             ),
             {"data-slot": "checkbox", "name": name, "type": "checkbox"},
         )
-        self.element.checked = checked
+        cast(HTMLInputElement, self.element).checked = checked
         if checked:
             self.element.setAttribute("checked", "")
 
     def is_checked(self) -> bool:
-        return self.element.checked
+        return cast(HTMLInputElement, self.element).checked
 
     def set_checked(self, checked: bool):
-        self.element.checked = checked
+        cast(HTMLInputElement, self.element).checked = checked
 
     def set_invalid(self, invalid: bool):
         self.element.setAttribute("aria-invalid", "true" if invalid else "false")

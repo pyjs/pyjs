@@ -1,0 +1,2 @@
+def main() -> None:
+    simple: dict[str, str] = {'one': 'two'}

@@ -240,3 +240,31 @@ class Npm:
             ],
             environment=self.node.environment(),
         )
+
+    def sync(self, prefix: Path) -> None:
+        """Install a managed package.json while preserving npm's exact lockfile."""
+        self.install(prefix, save=True, exact=True)
+
+    def bundle(self, entry: Path, output: Path) -> None:
+        """Bundle a managed ESM entry point with the installed esbuild."""
+        self.node.ensure()
+        if not self.node.npm_executable.is_file():
+            raise RuntimeError(
+                f"npm was not found next to {self.node.executable}: "
+                f"{self.node.npm_executable}"
+            )
+        self.runner.run(
+            [
+                self.node.npm_executable,
+                "exec",
+                "--prefix",
+                entry.parent,
+                "--",
+                "esbuild",
+                entry,
+                "--bundle",
+                "--format=esm",
+                f"--outfile={output}",
+            ],
+            environment=self.node.environment(),
+        )

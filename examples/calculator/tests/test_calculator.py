@@ -1,5 +1,6 @@
 from pyjs import js
-from pyjs_examples.calculator.calculator import CalculatorApp
+
+from ..calculator import CalculatorApp
 
 
 @js

@@ -1,34 +1,53 @@
-from pathlib import Path
-
 import pytest
-from pyjs.testing.android import AndroidTestSession
-from pyjs.tooling.android import AndroidSDK
-from pyjs.tooling.nativescript import NativeScriptProject
-from pyjs_examples.calculator.android import android_main
+from pyjs.android.testing import background, by_id, by_text, launch, recreate, resume
 
-pytestmark = pytest.mark.pyjs_android
+from ..android import CalculatorActivity
+from ..model import Calculator
+from .test_model import check_calculator
+
+pytestmark = pytest.mark.pyjs_android_jvm
 
 
-def test_calculator_runs_on_android(request, pyjs_artifacts_dir: Path):
-    android = AndroidSDK()
-    project = NativeScriptProject(
-        android_main,
-        name="PyJS Calculator",
-        app_id="org.pyjs.calculator",
-        android=android,
-    )
-    device = project.run_android(request.config.getoption("--pyjs-android-avd"))
-    session = AndroidTestSession(android, device, project.app_id)
-    artifacts = pyjs_artifacts_dir / "android"
+def test_calculator_runs_on_android() -> None:
+    launch(CalculatorActivity)
+    for index in range(19):
+        by_id(100 + index).scroll_to()
+        by_id(100 + index).assert_displayed()
+    by_text("7").scroll_to()
+    by_text("7").click()
+    by_text("+").scroll_to()
+    by_text("+").click()
+    by_text("8").scroll_to()
+    by_text("8").click()
+    by_text("=").scroll_to()
+    by_text("=").click()
+    by_text("15.0").scroll_to()
+    by_text("15.0").assert_displayed()
 
-    with session.artifacts_on_failure(artifacts, "calculator"):
-        session.launch()
-        session.wait_for_element(test_id="calculator-display", text="0")
-        session.tap_element(test_id="key-1")
-        session.tap_element(test_id="key-+")
-        session.tap_element(test_id="key-2")
-        session.tap_element(test_id="key-=")
-        session.wait_for_element(test_id="calculator-display", text="3.0")
-        assert session.log_errors() == ""
 
-    session.capture_artifacts(artifacts, "calculator")
+def test_shared_model_on_android() -> None:
+    check_calculator(Calculator())
+
+
+def test_decimal_after_sign_change_on_android() -> None:
+    launch(CalculatorActivity)
+    for label in ["5", "±", ".", "+", "2", "="]:
+        by_text(label).scroll_to()
+        by_text(label).click()
+    by_text("-3.0").scroll_to()
+    by_text("-3.0").assert_displayed()
+
+
+def test_pending_calculation_survives_recreation() -> None:
+    launch(CalculatorActivity)
+    for label in ["7", "+"]:
+        by_text(label).scroll_to()
+        by_text(label).click()
+    background()
+    resume()
+    recreate()
+    for label in ["8", "="]:
+        by_text(label).scroll_to()
+        by_text(label).click()
+    by_text("15.0").scroll_to()
+    by_text("15.0").assert_displayed()

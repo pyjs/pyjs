@@ -5,6 +5,12 @@ from pyjs import js
 
 @js
 class AtomicBatch:
+    """Collect remote operations and submit them in one request.
+
+    Create a batch with `pyjs.server.API.atomic`, add operations in order, and
+    await `commit` once.
+    """
+
     def __init__(self, api: object):
         self.api = api
         self.operations: list[object] = []
@@ -13,10 +19,12 @@ class AtomicBatch:
 
     @js
     def add(self, remote_operation: callable, *values: object) -> Self:
+        """Append a bound remote operation and its positional values."""
         raise RuntimeError("Atomic batches execute in a transpiled client.")
 
     @js
     async def commit(self) -> list[object]:
+        """Submit the operations and decode their ordered results."""
         raise RuntimeError("Atomic batches execute in a transpiled client.")
 
 

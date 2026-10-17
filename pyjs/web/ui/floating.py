@@ -1,7 +1,6 @@
 from pyjs import js
-from pyjs.web.dom import DOMRect, document
+from pyjs.web.dom import DOMRect, Element, document
 from pyjs.web.domx import tw
-from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 
 
@@ -59,7 +58,7 @@ class FloatingPanel(Widget):
 
     def open(
         self,
-        anchor: HTMLElement,
+        anchor: Element,
         side: str = "bottom",
         align: str = "start",
         side_offset: int = 4,

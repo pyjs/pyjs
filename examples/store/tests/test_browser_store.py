@@ -495,12 +495,20 @@ def test_store_visitor_feed_appends_cursor_pages_and_observes_its_sentinel():
         async with running_store() as url:
             async with Browser() as browser:
                 page = await browser.new_page(url + "account/visitors/")
+                await page.wait_for_selector("visitor-activity-page")
+                await asyncio.sleep(0.2)
+                assert page.exceptions == []
                 await page.wait_for(
                     "document.querySelector('visitor-activity-page')?._initialized "
                     "=== true",
                     "the visitor feed to hydrate",
                 )
                 await page.wait_for_count("[data-visitor-event]", 4)
+                await page.wait_for_count(
+                    '[data-testid="visitor-log"] '
+                    '[data-slot="streaming-log-line"]',
+                    4,
+                )
                 assert await page.evaluate(
                     "document.querySelector('line-chart svg').namespaceURI"
                 ) == "http://www.w3.org/2000/svg"
@@ -515,6 +523,11 @@ def test_store_visitor_feed_appends_cursor_pages_and_observes_its_sentinel():
                     ".scrollIntoView()"
                 )
                 await page.wait_for_count("[data-visitor-event]", 12)
+                await page.wait_for_count(
+                    '[data-testid="visitor-log"] '
+                    '[data-slot="streaming-log-line"]',
+                    12,
+                )
 
                 assert await page.evaluate_json(
                     "Array.from(document.querySelectorAll('[data-visitor-event]'))"
@@ -528,6 +541,22 @@ def test_store_visitor_feed_appends_cursor_pages_and_observes_its_sentinel():
                     '[data-slot="infinite-scroll-button"]',
                     "disabled",
                 ) == ""
+
+                await page.click('[data-testid="simulate-visitor"]')
+                await page.wait_for_count("[data-visitor-event]", 13)
+                await page.wait_for_count(
+                    '[data-testid="visitor-log"] '
+                    '[data-slot="streaming-log-line"]',
+                    13,
+                )
+                assert await page.attribute(
+                    "[data-visitor-event]:first-child",
+                    "data-visitor-event",
+                ) == "13"
+                assert "/products/canvas-field-bag/" in await page.text(
+                    '[data-testid="visitor-log"] '
+                    '[data-slot="streaming-log-line"]:last-child'
+                )
                 assert page.exceptions == []
 
     asyncio.run(run())

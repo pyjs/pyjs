@@ -1,3 +1,5 @@
+"""Composable semantic table elements."""
+
 from pyjs import js
 from pyjs.web.domx import tag, tw
 

@@ -1,8 +1,22 @@
+import weakref
 from collections.abc import Iterator
 
-from pyjs import js
+from pyjs import js, nojs
+from pyjs.web._dom_storage import (
+    _AttributeItems,
+    _child_offset,
+    _ChildNodeItems,
+    _DefaultCollector,
+    _element_text_content,
+    _ElementItems,
+    _get_parts,
+    _parts,
+    _set_element_text_content,
+)
 from pyjs.web.console import Console
 from pyjs.web.events import AbortSignal, Event, EventListener, EventTarget
+
+_html_element_factory = None
 
 
 @js.dictionary
@@ -32,7 +46,7 @@ class CustomElementRegistry:
 
 
 @js.native
-class DOMException:
+class DOMException(Exception):
     """WebIDL source: @webref/idl/webidl.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/DOMException
@@ -217,56 +231,110 @@ class DOMTokenList:
 
     Browser support: Chrome 8, Safari 5.1"""
 
-    def __init__(self):
-        self.tokens: list[str] = []
-        self.length: int = 0
-        self.value: str = ""
+    __slots__ = ("_tokens", "_element", "_attribute")
 
-    def _sync(self) -> None:
-        self.length = len(self.tokens)
-        self.value = " ".join(self.tokens)
+    def __init__(
+        self,
+        tokens: list[str] | None = None,
+        *,
+        element: object | None = None,
+        attribute: str | None = None,
+    ):
+        if (element is None) != (attribute is None):
+            raise ValueError("element and attribute must be provided together")
+        if element is not None and tokens is not None:
+            raise ValueError("tokens and element are mutually exclusive")
+        self._tokens = [] if tokens is None else tokens
+        self._element = element
+        self._attribute = attribute
+
+    def _read(self) -> list[str]:
+        if self._element is None:
+            return self._tokens
+        return (self._element.getAttribute(self._attribute) or "").split()
+
+    def _write(self, tokens: list[str]) -> None:
+        if self._element is None:
+            self._tokens[:] = tokens
+        else:
+            self._element.setAttribute(self._attribute, " ".join(tokens))
+
+    @property
+    def tokens(self) -> list[str]:
+        return self._read()
+
+    @tokens.setter
+    def tokens(self, tokens: list[str]):
+        self._write(tokens)
+
+    @property
+    def length(self) -> int:
+        return len(self._read())
+
+    @property
+    def value(self) -> str:
+        return " ".join(self._read())
+
+    @value.setter
+    def value(self, value: str):
+        self._write(value.split())
 
     def add(self, *tokens: str) -> None:
+        current = list(self._read())
+        changed = False
         for token in tokens:
-            if token not in self.tokens:
-                self.tokens.append(token)
-        self._sync()
+            if token not in current:
+                current.append(token)
+                changed = True
+        if changed:
+            self._write(current)
 
     def item(self, index: int) -> str | None:
-        if index < 0 or index >= len(self.tokens):
+        tokens = self._read()
+        if index < 0 or index >= len(tokens):
             return None
-        return self.tokens[index]
+        return tokens[index]
 
     def remove(self, *tokens: str) -> None:
+        current = list(self._read())
+        changed = False
         for token in tokens:
-            if token in self.tokens:
-                self.tokens.remove(token)
-        self._sync()
+            if token in current:
+                current.remove(token)
+                changed = True
+        if changed:
+            self._write(current)
 
     def replace(self, token: str, newToken: str) -> bool:
-        if token not in self.tokens:
+        tokens = list(self._read())
+        if token not in tokens:
             return False
-        index = self.tokens.index(token)
-        if newToken in self.tokens:
-            self.tokens.remove(token)
+        if token == newToken:
+            return True
+        index = tokens.index(token)
+        if newToken in tokens:
+            tokens.remove(token)
         else:
-            self.tokens[index] = newToken
-        self._sync()
+            tokens[index] = newToken
+        self._write(tokens)
         return True
 
     def supports(self, token: str) -> bool: ...
 
     def toggle(self, token: str, force: bool | None = None) -> bool:
-        present = token in self.tokens
+        tokens = list(self._read())
+        present = token in tokens
         enabled = not present if force is None else force
-        if enabled:
-            self.add(token)
-        else:
-            self.remove(token)
+        if enabled and (not present):
+            tokens.append(token)
+            self._write(tokens)
+        elif not enabled and present:
+            tokens.remove(token)
+            self._write(tokens)
         return enabled
 
     def contains(self, token: str) -> bool:
-        return token in self.tokens
+        return token in self._read()
 
 
 @js.native
@@ -536,9 +604,14 @@ class HTMLCollection[T]:
 
     Browser support: Chrome 1, Safari 1"""
 
-    def __init__(self):
-        self._items: list[T] = []
-        self.length: int = 0
+    __slots__ = ("_items",)
+
+    def __init__(self, items=None):
+        self._items = [] if items is None else items
+
+    @property
+    def length(self) -> int:
+        return len(self._items)
 
     @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> T:
@@ -567,16 +640,12 @@ class HTMLCollection[T]:
 
     def _append(self, item: T) -> None:
         self._items.append(item)
-        self.length = len(self._items)
 
     def _clear(self) -> None:
-        while self._items:
-            self._items.pop()
-        self.length = 0
+        self._items.clear()
 
     def _remove(self, item: T) -> None:
         self._items.remove(item)
-        self.length = len(self._items)
 
 
 @js.native
@@ -774,19 +843,42 @@ class NamedNodeMap[T]:
 
     Browser support: Chrome 1, Safari 1"""
 
-    def __init__(self):
-        self._attributes: dict[str, T] = {}
-        self.length: int = 0
+    __slots__ = ("_attributes", "_owner")
+
+    def __init__(self, attributes: dict[str, T] | None = None, owner=None):
+        self._attributes = {} if attributes is None else attributes
+        self._owner = owner
+
+    def _materialize(self, name: str) -> Attr | None:
+        value = self._attributes.get(name)
+        if value is None:
+            return None
+        if isinstance(value, Attr):
+            return value
+        attribute = Attr()
+        attribute.localName = name
+        attribute.name = name
+        attribute.ownerElement = self._owner
+        attribute.value = value
+        self._attributes[name] = attribute
+        return attribute
+
+    @property
+    def length(self) -> int:
+        return len(self._attributes)
 
     @js.inline("{self}[{key}]")
     def __getitem__(self, key: int | str) -> T:
         if isinstance(key, int):
-            return list(self._attributes.values())[key]
-        return self._attributes[key]
+            key = list(self._attributes)[key]
+        attribute = self._materialize(key)
+        if attribute is None:
+            raise KeyError(key)
+        return attribute
 
     @js.inline("{self}[Symbol.iterator]()")
     def __iter__(self) -> Iterator[T]:
-        return iter(self._attributes.values())
+        return (self._materialize(name) for name in self._attributes)
 
     @js.inline("{name} in {self}")
     def __contains__(self, name: str) -> bool:
@@ -798,10 +890,10 @@ class NamedNodeMap[T]:
 
     @js.inline("{self}[{qualifiedName}]")
     def getNamedItem(self, qualifiedName: str) -> Attr | None:
-        return self._attributes.get(qualifiedName)
+        return self._materialize(qualifiedName)
 
     def getNamedItemNS(self, namespace: str | None, localName: str) -> Attr | None:
-        for attribute in self._attributes.values():
+        for attribute in self:
             if attribute.namespaceURI == namespace and attribute.localName == localName:
                 return attribute
         return None
@@ -809,13 +901,15 @@ class NamedNodeMap[T]:
     @js.inline("{self}[{index}]")
     def item(self, index: int) -> Attr | None:
         if 0 <= index < len(self._attributes):
-            return list(self._attributes.values())[index]
+            return self._materialize(list(self._attributes)[index])
         return None
 
     def removeNamedItem(self, qualifiedName: str) -> Attr:
-        attribute = self._attributes.pop(qualifiedName)
+        attribute = self._materialize(qualifiedName)
+        if attribute is None:
+            raise KeyError(qualifiedName)
+        del self._attributes[qualifiedName]
         attribute.ownerElement = None
-        self.length = len(self._attributes)
         return attribute
 
     def removeNamedItemNS(self, namespace: str | None, localName: str) -> Attr:
@@ -825,9 +919,9 @@ class NamedNodeMap[T]:
         return self.removeNamedItem(attribute.name)
 
     def setNamedItem(self, attr: Attr) -> Attr | None:
-        previous = self._attributes.get(attr.name)
+        previous = self._materialize(attr.name)
+        attr.ownerElement = self._owner
         self._attributes[attr.name] = attr
-        self.length = len(self._attributes)
         return previous
 
     def setNamedItemNS(self, attr: Attr) -> Attr | None:
@@ -839,6 +933,26 @@ class NamedNodeMap[T]:
         return previous
 
 
+_NODE_DEFAULTS = None
+
+
+def _node_attribute(instance, name):
+    global _NODE_DEFAULTS
+    if _NODE_DEFAULTS is None:
+        prototype = Node.__new__(Node)
+        object.__setattr__(prototype, "__dict__", _DefaultCollector(Node))
+        Node.__init__(prototype)
+        _NODE_DEFAULTS = dict(vars(prototype))
+    try:
+        value = _NODE_DEFAULTS[name]
+    except KeyError:
+        raise AttributeError(name) from None
+    if value is not None and (not isinstance(value, (bool, int, float, str, bytes))):
+        value = type(value)()
+        object.__setattr__(instance, name, value)
+    return value
+
+
 @js.native
 class Node(EventTarget):
     """WebIDL source: @webref/idl/dom.idl
@@ -848,12 +962,15 @@ class Node(EventTarget):
     Browser support: Chrome 1, Safari 1"""
 
     nodeName = "undefined"
+    __slots__ = ("_pyjs_parent",)
 
     def __init__(self):
+        data = object.__getattribute__(self, "__dict__")
+        if not isinstance(data, _DefaultCollector) or data.owner is not Node:
+            return
         super().__init__()
         self.parentNode: Node | None = None
         self.previousSibling: Node | None = None
-        self.textContent: str | None = ""
         self.baseURI: str = ""
         self.childNodes: NodeList[Node] = NodeList[Node]()
         self.firstChild: Node | None = None
@@ -864,6 +981,37 @@ class Node(EventTarget):
         self.nodeValue: str | None = None
         self.ownerDocument: Document | None = None
         self.parentElement: Element | None = None
+
+    @nojs
+    def __getattr__(self, name):
+        return _node_attribute(self, name)
+
+    @property
+    def textContent(self) -> str | None:
+        """Fallback storage for node kinds without specialized text semantics."""
+        return self.__dict__.get("textContent", "")
+
+    @textContent.setter
+    def textContent(self, value: str | None):
+        self.__dict__["textContent"] = value
+
+    @property
+    def parentNode(self) -> Node | None:
+        try:
+            parent = object.__getattribute__(self, "_pyjs_parent")
+        except AttributeError:
+            return None
+        return parent()
+
+    @parentNode.setter
+    def parentNode(self, value: Node | None):
+        if value is None:
+            try:
+                object.__delattr__(self, "_pyjs_parent")
+            except AttributeError:
+                pass
+        else:
+            object.__setattr__(self, "_pyjs_parent", weakref.ref(value))
 
     ATTRIBUTE_NODE = 2
     CDATA_SECTION_NODE = 4
@@ -969,9 +1117,14 @@ class NodeList[T]:
 
     Browser support: Chrome 1, Safari 1"""
 
-    def __init__(self):
-        self._items: list[T] = []
-        self.length: int = 0
+    __slots__ = ("_items",)
+
+    def __init__(self, items: list[T] | None = None):
+        self._items = [] if items is None else items
+
+    @property
+    def length(self) -> int:
+        return len(self._items)
 
     @js.inline("{self}[{index}]")
     def __getitem__(self, index: int) -> T:
@@ -993,16 +1146,12 @@ class NodeList[T]:
 
     def _append(self, item: T) -> None:
         self._items.append(item)
-        self.length = len(self._items)
 
     def _clear(self) -> None:
-        while self._items:
-            self._items.pop()
-        self.length = 0
+        self._items.clear()
 
     def _remove(self, item: T) -> None:
         self._items.remove(item)
-        self.length = len(self._items)
 
 
 @js.native
@@ -2032,6 +2181,32 @@ class DocumentFragment(Node):
     def replaceChildren(self, *nodes: Node | str) -> None: ...
 
 
+_ELEMENT_DEFAULTS = None
+
+
+def _element_attribute(instance, name):
+    global _ELEMENT_DEFAULTS
+    if _ELEMENT_DEFAULTS is None:
+        properties = {
+            name
+            for base in Element.__mro__
+            for name, value in vars(base).items()
+            if isinstance(value, property)
+        }
+        prototype = Element.__new__(Element)
+        object.__setattr__(prototype, "__dict__", _DefaultCollector(Element, properties))
+        Element.__init__(prototype)
+        _ELEMENT_DEFAULTS = dict(vars(prototype))
+    try:
+        value = _ELEMENT_DEFAULTS[name]
+    except KeyError:
+        return _node_attribute(instance, name)
+    if value is not None and (not isinstance(value, (bool, int, float, str, bytes))):
+        value = type(value)()
+        object.__setattr__(instance, name, value)
+    return value
+
+
 @js.native
 class Element(Node):
     """WebIDL source: @webref/idl/dom.idl
@@ -2042,8 +2217,13 @@ class Element(Node):
 
     tagName = "UNDEFINED"
     observedAttributes = []
+    __pyjs_ssr_tag_name__ = None
+    __slots__ = ("_pyjs_parts", "_pyjs_style")
 
     def __init__(self):
+        data = object.__getattribute__(self, "__dict__")
+        if not isinstance(data, _DefaultCollector) or data.owner is not Element:
+            return
         super().__init__()
         self.children: HTMLCollection[Element] = HTMLCollection[Element]()
         self.childElementCount: int = 0
@@ -2072,7 +2252,110 @@ class Element(Node):
         self.scrollWidth: int = 0
         self.shadowRoot: ShadowRoot | None = None
         self.slot: str = ""
-        self.textContent: str = ""
+
+    @property
+    @nojs
+    def _dom(self):
+        return object.__getattribute__(self, "__dict__")
+
+    @property
+    def textContent(self) -> str:
+        return _element_text_content(self, Text)
+
+    @textContent.setter
+    def textContent(self, value: str | None):
+        _set_element_text_content(self, value)
+
+    @property
+    def attributes(self) -> NamedNodeMap[Attr]:
+        return NamedNodeMap(_AttributeItems(_parts(self), self), self)
+
+    @attributes.setter
+    def attributes(self, value: NamedNodeMap[Attr]):
+        """Discard the eager WebIDL default while retaining the sparse view.
+
+        Generated initializers assign this read-only view when an application
+        subclass calls ``super().__init__()``.
+        """
+        pass
+
+    @property
+    def childNodes(self) -> NodeList[Node]:
+        return NodeList(_ChildNodeItems(_parts(self), self, Text))
+
+    @childNodes.setter
+    def childNodes(self, value: NodeList[Node]):
+        pass
+
+    @property
+    def children(self) -> HTMLCollection[Element]:
+        return HTMLCollection(_ElementItems(_parts(self), Element))
+
+    @children.setter
+    def children(self, value: HTMLCollection[Element]):
+        pass
+
+    @property
+    def childElementCount(self) -> int:
+        parts = _get_parts(self)
+        if parts is None:
+            return 0
+        return sum(
+            isinstance(parts[index], Element)
+            for index in range(_child_offset(parts), len(parts))
+        )
+
+    @childElementCount.setter
+    def childElementCount(self, value: int):
+        pass
+
+    @property
+    def classList(self) -> DOMTokenList:
+        return DOMTokenList(element=self, attribute="class")
+
+    @classList.setter
+    def classList(self, value: DOMTokenList):
+        """Discard the eager WebIDL default while retaining the sparse view."""
+        pass
+
+    @property
+    def parentElement(self) -> Element | None:
+        parent = self.parentNode
+        return parent if isinstance(parent, Element) else None
+
+    @parentElement.setter
+    def parentElement(self, value: Element | None):
+        self.parentNode = value
+
+    @property
+    def style(self) -> CSSStyleProperties:
+        try:
+            properties = object.__getattribute__(self, "_pyjs_style")
+        except AttributeError:
+            view = CSSStyleProperties()
+            object.__setattr__(self, "_pyjs_style", vars(view))
+            return view
+        view = CSSStyleProperties.__new__(CSSStyleProperties)
+        view.__dict__ = properties
+        return view
+
+    @style.setter
+    def style(self, value: CSSStyleProperties):
+        """Discard the eager WebIDL default while retaining the sparse view."""
+        pass
+
+    @nojs
+    def __getattr__(self, name):
+        return _element_attribute(self, name)
+
+    @nojs
+    def __setattr__(self, name, value):
+        data = object.__getattribute__(self, "__dict__")
+        if isinstance(data, _DefaultCollector):
+            if name not in data.properties:
+                data[name] = value
+            return
+        object.__setattr__(self, name, value)
 
     def getBoundingClientRect(self) -> DOMRect:
         return DOMRect()
@@ -2102,7 +2385,16 @@ class Element(Node):
         block: str = "start",
         inline: str = "nearest",
         container: str = "all",
-    ) -> None: ...
+    ) -> None:
+        """Scroll this element into view using ScrollIntoViewOptions fields.
+
+        The browser boolean ``alignToTop`` overload is not supported, so
+        ``element.scrollIntoView(False)`` and ``element.scrollIntoView(True)``
+        are not accepted. Pass ``block="end"`` to reproduce
+        ``scrollIntoView(false)``, or ``block="start"`` to reproduce
+        ``scrollIntoView(true)``.
+        """
+        ...
 
     async def scrollTo(
         self,
@@ -2114,19 +2406,18 @@ class Element(Node):
 
     @js
     def setAttribute(self, name: str, value: object | str) -> None:
-        attribute = self.attributes.getNamedItem(name)
-        old_value: str | None = None
+        attributes = _AttributeItems(_parts(self), self)
+        attribute = attributes.get(name)
+        old_value = None
         if attribute is not None:
-            old_value = attribute.value
-        if attribute is None:
-            attribute = Attr()
-            attribute.localName = name
-            attribute.name = name
-        attribute.value = str(value)
-        attribute.ownerElement = self
-        self.attributes.setNamedItem(attribute)
+            old_value = attribute if isinstance(attribute, str) else attribute.value
+        value = str(value)
+        if isinstance(attribute, Attr):
+            attribute.value = value
+        else:
+            attributes[name] = value
         if self._is_observed_attribute(name):
-            self.attributeChangedCallback(name, old_value, str(value))
+            self.attributeChangedCallback(name, old_value, value)
 
     def convertPointFromNode(
         self,
@@ -2156,24 +2447,34 @@ class Element(Node):
     ) -> DOMQuad: ...
 
     def getAttribute(self, name: str) -> str | None:
-        attribute = self.attributes.getNamedItem(name)
-        if attribute is None:
+        parts = _get_parts(self)
+        if parts is None:
             return None
+        attribute = _AttributeItems(parts, self).get(name)
+        if isinstance(attribute, str) or attribute is None:
+            return attribute
         return attribute.value
 
     @js
     def removeAttribute(self, name: str) -> None:
-        attribute = self.attributes.getNamedItem(name)
-        if attribute is not None:
-            self.attributes.removeNamedItem(name)
-            if self._is_observed_attribute(name):
-                self.attributeChangedCallback(name, attribute.value, None)
+        parts = _get_parts(self)
+        if parts is None:
+            return
+        attributes = _AttributeItems(parts, self)
+        attribute = attributes.pop(name, None)
+        if attribute is None:
+            return
+        if isinstance(attribute, str):
+            old_value = attribute
+        else:
+            old_value = attribute.value
+            attribute.ownerElement = None
+        if self._is_observed_attribute(name):
+            self.attributeChangedCallback(name, old_value, None)
 
     def getAttributeNames(self) -> list[str]:
-        names: list[str] = []
-        for attribute in self.attributes:
-            names.append(attribute.name)
-        return names
+        parts = _get_parts(self)
+        return [] if parts is None else list(_AttributeItems(parts, self))
 
     def getAttributeNode(self, qualifiedName: str) -> Attr | None: ...
 
@@ -2195,7 +2496,8 @@ class Element(Node):
 
     @js
     def hasAttribute(self, name: str) -> bool:
-        return name in self.attributes
+        parts = _get_parts(self)
+        return parts is not None and name in _AttributeItems(parts, self)
 
     @js
     def _is_observed_attribute(self, name: str) -> bool:
@@ -2210,18 +2512,13 @@ class Element(Node):
 
     @js
     def append(self, *nodes: Node | str) -> None:
+        parts = _parts(self)
         for node in nodes:
             if isinstance(node, str):
-                text = Text(node)
-                text.parentNode = self
-                self.childNodes._append(text)
+                parts.append(node)
             elif isinstance(node, Node):
                 node.parentNode = self
-                self.childNodes._append(node)
-                if isinstance(node, Element):
-                    node.parentElement = self
-                    self.children._append(node)
-        self.childElementCount = len(self.children)
+                parts.append(node)
 
     def releasePointerCapture(self, pointerId: int) -> None: ...
 
@@ -2230,19 +2527,51 @@ class Element(Node):
         if self.parentElement is None:
             return
         parent = self.parentElement
-        parent.childNodes._remove(self)
-        parent.children._remove(self)
-        parent.childElementCount = len(parent.children)
-        self.parentElement = None
+        parts = _get_parts(parent)
+        if parts is not None:
+            _ChildNodeItems(parts, parent, Text).remove(self)
         self.parentNode = None
 
     def removeAttributeNode(self, attr: Attr) -> Attr: ...
 
     def removeAttributeNS(self, namespace: str | None, localName: str) -> None: ...
 
+    def insertBefore(self, node: Node, child: Node | None) -> Node:
+        if child is not None:
+            parts = _get_parts(self)
+            offset = 0 if parts is None else _child_offset(parts)
+            if parts is None or child not in parts[offset:]:
+                error = DOMException(
+                    "The node before which the new node is to be inserted is not a child of this node.",
+                    "NotFoundError",
+                )
+                error.code = DOMException.NOT_FOUND_ERR
+                raise error
+            if node is child:
+                return node
+        else:
+            parts = _parts(self)
+        if child is None:
+            parent = node.parentNode
+            if parent is not None:
+                node.remove()
+            self.append(node)
+            return node
+        offset = _child_offset(parts)
+        index = parts.index(child, offset)
+        parent = node.parentNode
+        if parent is not None:
+            node.remove()
+            if parent is self:
+                index = parts.index(child, offset)
+        node.parentNode = self
+        parts.insert(index, node)
+        return node
+
     def replaceChildren(self, *nodes: Node | str) -> None:
-        self.childNodes._clear()
-        self.children._clear()
+        parts = _get_parts(self)
+        if parts is not None:
+            del parts[_child_offset(parts) :]
         for node in nodes:
             self.append(node)
 
@@ -2313,6 +2642,16 @@ class Attr(Node):
 
     Browser support: Chrome 1, Safari 1"""
 
+    __slots__ = (
+        "localName",
+        "name",
+        "namespaceURI",
+        "ownerElement",
+        "prefix",
+        "specified",
+        "value",
+    )
+
     def __init__(self):
         super().__init__()
         self.localName: str = ""
@@ -2332,12 +2671,22 @@ class CharacterData(Node):
 
     Browser support: Chrome 1, Safari 1"""
 
+    __slots__ = (
+        "data",
+        "length",
+        "nextElementSibling",
+        "previousElementSibling",
+        "textContent",
+    )
+
     def __init__(self):
         super().__init__()
         self.data: str = ""
         self.length: int = 0
         self.nextElementSibling: Element | None = None
+        self.parentNode: Node | None = None
         self.previousElementSibling: Element | None = None
+        self.textContent: str = ""
 
     def after(self, *nodes: Node | str) -> None: ...
 
@@ -2588,11 +2937,13 @@ class Document(Node):
         customElementRegistry: CustomElementRegistry | None = None,
         is_: str | None = None,
     ) -> Element:
-        from pyjs.web.html import HTMLElement
+        global _html_element_factory
+        element_factory = _html_element_factory
+        if element_factory is None:
+            from pyjs.web.html import _create_html_element
 
-        e = HTMLElement()
-        e.nodeName = e.tagName = name.upper()
-        return e
+            element_factory = _html_element_factory = _create_html_element
+        return element_factory(name)
 
     def createElementNS(
         self,
@@ -2920,6 +3271,8 @@ class Text(CharacterData):
     MDN: https://developer.mozilla.org/docs/Web/API/Text
 
     Browser support: Chrome 1, Safari 1"""
+
+    __slots__ = ("assignedSlot", "wholeText")
 
     def __init__(self, data: str = ""):
         super().__init__()

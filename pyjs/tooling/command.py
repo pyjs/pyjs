@@ -34,7 +34,9 @@ class CommandRunner:
         capture_output: bool = False,
         input: str | bytes | None = None,
         check: bool = True,
+        pass_fds: tuple[int, ...] = (),
         text: bool = True,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
         return subprocess.run(
             [str(part) for part in command],
@@ -43,7 +45,9 @@ class CommandRunner:
             check=check,
             capture_output=capture_output,
             input=input,
+            pass_fds=pass_fds,
             text=text,
+            timeout=timeout,
         )
 
     def start(

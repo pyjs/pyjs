@@ -1,13 +1,17 @@
 import json
+from collections.abc import Awaitable, Callable
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db import transaction
 from django.http import JsonResponse
 from django.urls import path
+from pydantic import TypeAdapter
 
 from pyjs.server import (
+    API,
     OperationError,
     OperationIssue,
+    Stream,
     dispatch_operation,
     operation_error,
 )
@@ -20,6 +24,7 @@ from pyjs.server.django.queryset import (
     QuerySetResult,
     encode_queryset_page,
 )
+from pyjs.server.django.stream import stream_response
 from pyjs.server.jsonapi import encode_jsonapi_values
 from pyjs.server.live import (
     InvalidationBackend,
@@ -57,7 +62,27 @@ def _request_payload(request) -> dict:
     return payload
 
 
+def _stream_request_payload(request) -> dict:
+    source = request.GET.get("arguments", "{}")
+    try:
+        payload = json.loads(source)
+    except json.JSONDecodeError:
+        raise operation_error(
+            "The stream arguments are not valid JSON.",
+            status=400,
+            title="Invalid request",
+        ) from None
+    if not isinstance(payload, dict):
+        raise operation_error(
+            "Stream arguments must be a JSON object.",
+            status=400,
+            title="Invalid request",
+        )
+    return payload
+
+
 def csrf_failure(request, reason: str = "") -> JsonResponse:
+    """Return a structured operation error for Django CSRF rejection."""
     return error_response(
         operation_error(
             "The request could not be verified. Reload the page and try again.",
@@ -94,6 +119,42 @@ def _operation_view(root_type, operation, backend: InvalidationBackend):
             else:
                 response = JsonResponse(data, safe=False)
             return response
+        except Exception as error:
+            return exception_response(error)
+
+    view.__name__ = operation.identity.replace(".", "_")
+    return view
+
+
+def _stream_operation_view(root_type, operation):
+    async def view(request):
+        try:
+            if request.method != "GET":
+                return _request_error("Stream operations require GET.", 405)
+            binding = await dispatch_operation(
+                root_type,
+                operation.identity,
+                _stream_request_payload(request),
+                request,
+                serialize=False,
+            )
+            if not isinstance(binding, Stream):
+                raise TypeError("A stream operation returned an invalid binding.")
+            adapter = TypeAdapter(operation.operation.stream_value_type)
+
+            def serialize(value):
+                value = adapter.validate_python(value)
+                return adapter.dump_python(value, mode="json")
+
+            return await stream_response(
+                binding.backend,
+                binding.scope,
+                request,
+                access=binding.authorize,
+                serialize=serialize,
+                heartbeat=binding.heartbeat,
+                buffer_limit=binding.buffer_limit,
+            )
         except Exception as error:
             return exception_response(error)
 
@@ -244,21 +305,36 @@ async def _operation_result(root_type, operation, payload, request):
 
 
 def urls_for(
-    api,
+    api: API,
     invalidation_backend: InvalidationBackend | None = None,
     *,
-    live_authorize=None,
-):
+    live_authorize: Callable[[object], bool | Awaitable[bool]] | None = None,
+) -> list[object]:
+    """Create Django URL patterns for a typed API hierarchy.
+
+    Args:
+        api: Root API instance to expose.
+        invalidation_backend: Live invalidation backend, or the process-local
+            default when omitted.
+        live_authorize: Optional request authorization callback for live data.
+
+    Returns:
+        Django URL patterns for operations, atomic batches, SSE, and polling.
+    """
     if invalidation_backend is None:
         invalidation_backend = default_invalidation_backend
     patterns = []
     patterns.append(path("atomic", _atomic_view(type(api), invalidation_backend)))
     for operation in api.resource_graph.operations:
         route = "/".join((*operation.owner.path, operation.name))
+        if operation.kind == "stream":
+            view = _stream_operation_view(type(api), operation)
+        else:
+            view = _operation_view(type(api), operation, invalidation_backend)
         patterns.append(
             path(
                 route,
-                _operation_view(type(api), operation, invalidation_backend),
+                view,
             )
         )
     patterns.extend(

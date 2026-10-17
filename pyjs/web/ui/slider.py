@@ -1,5 +1,8 @@
+from typing import cast
+
 from pyjs import js
 from pyjs.web.domx import ProxyElement, input, tw
+from pyjs.web.html import HTMLInputElement
 
 
 @js
@@ -37,10 +40,10 @@ class Slider(ProxyElement):
         )
 
     def get_value(self) -> str:
-        return self.element.value
+        return cast(HTMLInputElement, self.element).value
 
     def set_value(self, value: int):
-        self.element.value = str(value)
+        cast(HTMLInputElement, self.element).value = str(value)
 
     def on_input(self, callback: callable):
         self.element.addEventListener("input", callback)

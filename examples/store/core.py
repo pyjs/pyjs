@@ -131,6 +131,14 @@ class VisitorEvent(ModelSchema):
 
 
 @js
+class VisitorDraft(BaseModel):
+    path: str = Field(max_length=160)
+    source: str = Field(max_length=80)
+    region: str = Field(max_length=80)
+    device: str = Field(max_length=40)
+
+
+@js
 class TrafficSummary(BaseModel):
     total: int
     labels: list[str]

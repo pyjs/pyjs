@@ -1,3 +1,5 @@
+"""Application theme variables and theme-provider controls."""
+
 from pyjs import JS, js
 from pyjs.web.domx import div, tag
 

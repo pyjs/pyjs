@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "group": "androidx.annotation",
+      "name": "annotation-jvm",
+      "version": "1.8.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "9aab326d9492800991854360ac248f493ce7f7c3183519309b78ace9e240f6f6"
+    },
+    {
+      "group": "androidx.concurrent",
+      "name": "concurrent-futures-ktx",
+      "version": "1.2.0",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "e1f3e17bb4358ccd6c77ca45f70635c9aba237261f19eaa4f64a0218c00e2a3e"
+    },
+    {
+      "group": "androidx.concurrent",
+      "name": "concurrent-futures",
+      "version": "1.2.0",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "4810315a798690b5d3bb40c92bcd41c045fd2c36bbfc50b27cbac3d6a0eda190"
+    },
+    {
+      "group": "androidx.lifecycle",
+      "name": "lifecycle-common",
+      "version": "2.3.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "15848fb56db32f4c7cdc72b324003183d52a4884d6bf09be708ac7f587d139b5"
+    },
+    {
+      "group": "androidx.test.espresso",
+      "name": "espresso-core",
+      "version": "3.7.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "5dd90e366838bf044cb52eae06474debd285df18a7a77c40441ac8e8951bb00f"
+    },
+    {
+      "group": "androidx.test.espresso",
+      "name": "espresso-idling-resource",
+      "version": "3.7.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "5ff62326b49c308c1d060466ae3cf4aa0e3deaf9295f077a6886048dda3e9b14"
+    },
+    {
+      "group": "androidx.test.ext",
+      "name": "junit",
+      "version": "1.3.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "3363df84da4540ba8daff02c3f7cd65471037a6a5370591a7e6deba377b36e7f"
+    },
+    {
+      "group": "androidx.test.services",
+      "name": "storage",
+      "version": "1.6.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "f97e3cf6aaf4e3fb97ef219d37a9c0a0720183c1f6db87b37642521e26fb6d30"
+    },
+    {
+      "group": "androidx.test.uiautomator",
+      "name": "uiautomator",
+      "version": "2.4.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "e7c57391d8baa1435c242334f605c4a282d03695442032622438b23bf2c6c904"
+    },
+    {
+      "group": "androidx.test",
+      "name": "core",
+      "version": "1.7.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "f4dacd8edceeec48e0c76ecf28339b28f4b4f6b74f8e34e9e59b472c27d9eb81"
+    },
+    {
+      "group": "androidx.test",
+      "name": "monitor",
+      "version": "1.8.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "56cb7496a06d9f2dca7d3ff76c50a8a30bd18e00a24a3b267d5a31437b278e67"
+    },
+    {
+      "group": "androidx.test",
+      "name": "runner",
+      "version": "1.7.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "970311c47119928a2e406a88892a3d270387cc5a49a181a1c44511105b41b818"
+    },
+    {
+      "group": "androidx.tracing",
+      "name": "tracing",
+      "version": "1.1.0",
+      "extension": "aar",
+      "repository": "google",
+      "sha256": "5b78e2c618fc10b3d14decc01df76158f15954ad746aacf0607766721da081f6"
+    },
+    {
+      "group": "com.google.code.findbugs",
+      "name": "jsr305",
+      "version": "3.0.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+    },
+    {
+      "group": "com.google.errorprone",
+      "name": "error_prone_annotations",
+      "version": "2.30.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "144f3aefbd6e27daec55d3753b2c6b13c1afdaf0cf04816cdb564588ed92f1bd"
+    },
+    {
+      "group": "com.google.guava",
+      "name": "listenablefuture",
+      "version": "1.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "e4ad7607e5c0477c6f890ef26a49cb8d1bb4dffb650bab4502afee64644e3069"
+    },
+    {
+      "group": "javax.inject",
+      "name": "javax.inject",
+      "version": "1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
+    },
+    {
+      "group": "junit",
+      "name": "junit",
+      "version": "4.13.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3"
+    },
+    {
+      "group": "org.hamcrest",
+      "name": "hamcrest-core",
+      "version": "1.3",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9"
+    },
+    {
+      "group": "org.hamcrest",
+      "name": "hamcrest-library",
+      "version": "1.3",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "711d64522f9ec410983bd310934296da134be4254a125080a0416ec178dfad1c"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "name": "kotlin-stdlib",
+      "version": "2.1.20",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "1bcc74e8ce84e2c25eaafde10f1248349cce3062b6e36978cbeec610db1e930a"
+    },
+    {
+      "group": "org.jetbrains.kotlinx",
+      "name": "kotlinx-coroutines-core-jvm",
+      "version": "1.8.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "f3d4f5de1c391bbcc20f3b3435ccbac013521e76b6902d7d59635ec15c1f797e"
+    },
+    {
+      "group": "org.jetbrains",
+      "name": "annotations",
+      "version": "23.0.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+    },
+    {
+      "group": "org.jspecify",
+      "name": "jspecify",
+      "version": "1.0.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+    }
+  ]
+}

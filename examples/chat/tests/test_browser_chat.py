@@ -1,9 +1,12 @@
+from typing import cast
+
 import pytest
 from pyjs import js
 from pyjs.testing.web import mount
 from pyjs.web.dom import sessionStorage
 from pyjs.web.domx import require_element
 from pyjs.web.events import Event
+from pyjs.web.html import HTMLButtonElement
 from pyjs_examples.chat.chat import ChatApp
 from pyjs_examples.chat.protocol import ChatMessage, ChatSnapshot
 
@@ -132,18 +135,31 @@ def test_chat_combines_human_rooms_with_an_assistant_conversation():
 def test_chat_membership_tracks_the_workspace_plan():
     sessionStorage.setItem("pyjs-chat-display-name", "Alice")
     app = mounted_chat()
+    upgrade_button = app.membership_button.element
+    assert isinstance(upgrade_button, HTMLButtonElement)
 
     assert app.membership == "free"
+    assert not upgrade_button.disabled
     assert app.free_plan.getAttribute("data-current") == "true"
     assert app.pro_plan.getAttribute("data-current") == "false"
     assert app.membership_sheet.trigger.element.textContent == "Upgrade"
 
     app.membership_sheet.open()
-    app.membership_button.element.click()
+    cast(HTMLButtonElement, app.membership_button.element).click()
 
     assert app.membership == "pro"
     assert app.free_plan.getAttribute("data-current") == "false"
     assert app.pro_plan.getAttribute("data-current") == "true"
     assert app.membership_sheet.trigger.element.textContent == "Pro plan"
-    assert app.membership_button.element.disabled
+    assert upgrade_button.disabled
     assert "Pro plan" in app.membership_status.textContent
+
+    app.membership = "free"
+
+    assert not upgrade_button.disabled
+    assert upgrade_button.textContent == "Upgrade to Pro"
+    assert app.free_plan.getAttribute("data-current") == "true"
+    assert app.pro_plan.getAttribute("data-current") == "false"
+    upgrade_button.click()
+    assert app.membership == "pro"
+    assert upgrade_button.disabled

@@ -8,6 +8,8 @@ from pyjs.server import (
     LiveSession,
     OperationError,
     Page,
+    Stream,
+    StreamSnapshot,
     WatchedQuery,
 )
 from pyjs.web.crypto import crypto
@@ -39,6 +41,8 @@ from pyjs.web.ui.sheet import (
     SheetTitle,
     SheetTrigger,
 )
+from pyjs.web.ui.streaming_list import StreamingList
+from pyjs.web.ui.streaming_log import StreamingLog
 from pyjs.web.ui.theme import Theme, ThemeProvider
 
 from .api import api
@@ -56,6 +60,7 @@ from .core import (
     ReviewDraft,
     ReviewStatus,
     TrafficSummary,
+    VisitorDraft,
     VisitorEvent,
 )
 
@@ -334,6 +339,7 @@ def product_card(product: Product):
             "data-inventory": str(product.inventory),
             "data-product-card": product.name,
             "data-product-id": str(product.id),
+            "data-resource-identity": api.products.identity(product.id),
         },
         product_visual(product.symbol, product.tone),
         CardContent(
@@ -1339,9 +1345,32 @@ def visitor_event_rows(events: list[VisitorEvent]) -> list[Element]:
 
 
 @js
+def visitor_log_lines(events: list[VisitorEvent]) -> list[str]:
+    lines: list[str] = []
+    for visit in events:
+        lines.append(
+            visit.occurred_time
+            + "  "
+            + visit.path
+            + "  "
+            + visit.region
+            + "  "
+            + visit.device
+        )
+    lines.reverse()
+    return lines
+
+
+@js
 class VisitorActivityPage(Widget):
-    def __init__(self, summary: TrafficSummary, page: Page[VisitorEvent]):
+    def __init__(
+        self,
+        summary: TrafficSummary,
+        snapshot: StreamSnapshot[Page[VisitorEvent]],
+    ):
         super().__init__()
+        page = snapshot.value
+        self.set_data("stream-sequence", str(snapshot.sequence))
         self.chart = ref(
             LineChart(
                 summary.values,
@@ -1352,15 +1381,26 @@ class VisitorActivityPage(Widget):
             )
         )
         self.events = ref(
-            div(
-                {
-                    "aria-label": "Recent visitor activity",
-                    "data-testid": "visitor-events",
-                    "role": "feed",
-                },
+            StreamingList(
                 *visitor_event_rows(page.items),
+                label="Recent visitor activity",
+                max_items=200,
+                newest_first=True,
             )
         )
+        tag(
+            self.events,
+            tw("h-[30rem] [&_[data-slot=message-scroller-content]]:gap-0"),
+            {"data-testid": "visitor-events"},
+        )
+        self.log = ref(
+            StreamingLog(
+                *visitor_log_lines(page.items),
+                label="Raw visitor request log",
+                max_lines=200,
+            )
+        )
+        tag(self.log, tw("h-64"), {"data-testid": "visitor-log"})
         self.more = ref(
             InfiniteScroll(
                 page.next,
@@ -1369,6 +1409,10 @@ class VisitorActivityPage(Widget):
             )
         )
         self.more.on_load(self.load_more)
+        self.simulate = ref(Button("Simulate live visit", variant="outline"))
+        self.simulate.setAttribute("data-testid", "simulate-visitor")
+        self.simulate.on_click(self.simulate_visit)
+        self.live: Stream[VisitorEvent] | None = None
         self.add(
             tw("block min-h-screen bg-stone-950 px-5 py-16 text-stone-50 lg:px-8"),
             div(
@@ -1380,10 +1424,14 @@ class VisitorActivityPage(Widget):
                     "← Account",
                 ),
                 h1(tw("mt-8 font-serif text-5xl"), "Visitor activity"),
-                p(
-                    tw("mt-3 max-w-2xl text-stone-400"),
-                    "A cursor-backed activity feed progressively appends older "
-                    "sessions without replacing the rows already in the DOM.",
+                div(
+                    tw("mt-3 flex flex-wrap items-center justify-between gap-4"),
+                    p(
+                        tw("max-w-2xl text-stone-400"),
+                        "A live ordered stream adds new sessions while cursor "
+                        "pagination retrieves older history.",
+                    ),
+                    self.simulate,
                 ),
                 div(
                     tw("mt-10 grid gap-5 lg:grid-cols-[14rem_1fr]"),
@@ -1407,12 +1455,66 @@ class VisitorActivityPage(Widget):
                     self.events,
                     self.more,
                 ),
+                div(
+                    tw("mt-8"),
+                    p(
+                        tw("mb-3 text-sm font-medium text-stone-300"),
+                        "Raw request log",
+                    ),
+                    self.log,
+                ),
             ),
+        )
+
+    def initialize(self):
+        session = api.account.visitors.events()
+        sequence = self.get_data("stream-sequence")
+        session.resume_after(0 if sequence is None else int(sequence))
+        session.on_event(self.receive_visit)
+        session.on_resync(self.resync)
+        session.start()
+        self.live = session
+
+    def disconnected(self):
+        if self.live is not None:
+            self.live.close()
+
+    def reconnected(self):
+        if self.live is not None:
+            self.live.start()
+
+    def receive_visit(self, visit: VisitorEvent):
+        selector = '[data-visitor-event="' + str(visit.id) + '"]'
+        if self.events.querySelector(selector) is not None:
+            return
+        self.events.append_live(*visitor_event_rows([visit]))
+        self.log.append_live(*visitor_log_lines([visit]))
+
+    async def resync(self, sequence: int):
+        snapshot = await api.account.visitors.snapshot(
+            CursorPageRequest(size=4)
+        )
+        page = snapshot.value
+        self.events.replace(*visitor_event_rows(page.items))
+        self.log.replace(*visitor_log_lines(page.items))
+        self.more.set_cursor(page.next)
+        if self.live is not None and self.isConnected:
+            self.live.resume_after(snapshot.sequence).start()
+
+    async def simulate_visit(self, event: Event):
+        await api.account.visitors.record(
+            VisitorDraft(
+                path="/products/canvas-field-bag/",
+                source="Live demo",
+                region="Portland, US",
+                device="Desktop",
+            )
         )
 
     async def load_more(self, request: CursorPageRequest):
         page = await api.account.visitors.list(request)
-        self.events.append(*visitor_event_rows(page.items))
+        self.events.add_history(*visitor_event_rows(page.items))
+        self.log.add_history(*visitor_log_lines(page.items))
         self.more.set_cursor(page.next)
 
 

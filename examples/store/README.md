@@ -10,7 +10,8 @@ It demonstrates:
 - bounded recent-review includes and batched product recommendations;
 - public review pagination, validated submission, and seller moderation;
 - typed, cursor-paginated account order history;
-- an infinite visitor activity feed and data-driven SVG traffic chart;
+- a live, replayable visitor stream combined with infinite cursor history;
+- a bounded pauseable activity view and data-driven SVG traffic chart;
 - a model-driven checkout form and structured operation errors;
 - seller inventory selection with one validated, atomic bulk update;
 - DOM-owned shopping-bag state;
@@ -53,6 +54,8 @@ Product details demonstrate both Django relationship-loader modes. Recent
 reviews use one ordered prefetch limited independently for each product.
 Recommendations use one batched computed loader and share the same JSON:API
 document, identity map, and typed client access as ordinary relationships.
+Catalog cards expose the resource's stable identity in the DOM, including when
+products arrive through a typed page rather than a JSON:API document.
 The public review resource continues beyond the bounded include with signed
 cursor pages. New reviews are validated into a pending state, remain absent
 from public reads, and appear after a seller publishes them from the account
@@ -67,8 +70,15 @@ single live invalidation after commit.
 The visitor activity page keeps keyset pagination on the server while an
 `InfiniteScroll` control appends each older page to the existing DOM. Its
 explicit button remains available to keyboard and assistive-technology users;
-an `IntersectionObserver` sentinel provides automatic loading. The same page
-feeds aggregated daily values into a dependency-free SVG `LineChart`.
+an `IntersectionObserver` sentinel provides automatic loading. A typed
+`@stream` operation receives newly recorded visits through the mounted API.
+Its Django-model history implements the backend-neutral `StreamHistory`
+contract. `StreamFeed` captures a `StreamSnapshot` watermark for race-free
+replay, while stable visitor identities suppress at-least-once duplicates.
+`StreamingList` provides the structured activity feed while `StreamingLog`
+shows the same events as bounded plain-text output. Both follow the live edge
+and let the operator pause delivery. The page also feeds aggregated daily
+values into a dependency-free SVG `LineChart`.
 
 Checkout creates a one-time hosted payment through the same stable Stripe
 gateway used with the official SDK. During development, Store supplies the

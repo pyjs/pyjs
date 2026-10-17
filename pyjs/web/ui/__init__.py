@@ -8,11 +8,15 @@ would make the supported import and tree-shaking boundary less obvious.
 """
 
 from pyjs.web.crypto import crypto
-from pyjs.web.domx import CustomElement, tag
+from pyjs.web.dom import Element
+from pyjs.web.domx import CustomElement, ProxyElement, tag
+
+__all__ = ["Widget"]
 
 
 class Widget(CustomElement):
-    def add(self, *children):
+    """Base custom element for reusable PyJS web controls."""
+    def add(self, *children: str | dict[str, str] | Element | ProxyElement):
         tag(self, *children)
 
     def get_component_id(self) -> str:

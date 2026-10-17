@@ -1,0 +1,170 @@
+def tag(name_or_element: str | WebElement | ProxyElement, *args: tuple__strUdict__str_strUWebElementUProxyElement__variadic) -> WebElement:
+    external
+
+def tw(classes: str) -> dict[str, str]:
+    external
+
+def render_html(element: WebElement) -> str:
+    external
+
+class Setting:
+
+    def __init__(custom_id: str, name: str, description: str, risk: str, changed: bool, changed_text: str, restart: bool, restart_text: str, search: str, values: list__tuple__str_str, guidance: str, extra: str) -> None:
+        block entry:
+            store_field(self, custom_id, custom_id)
+            store_field(self, name, name)
+            store_field(self, description, description)
+            store_field(self, risk, risk)
+            store_field(self, changed, changed)
+            store_field(self, changed_text, changed_text)
+            store_field(self, restart, restart)
+            store_field(self, restart_text, restart_text)
+            store_field(self, search, search)
+            store_field(self, values, values)
+            store_field(self, guidance, guidance)
+            store_field(self, extra, extra)
+            return None
+
+def settings() -> list[Setting]:
+    block entry:
+        result: list[Setting] = new[caller] list[Setting]()
+        iterator = iter(range(48))
+        jump for_next
+    block for_next:
+        branch_next iterator:
+            item index: int -> for_body
+            done -> for_done
+    block for_body:
+        changed: bool = index.[int]__mod__(5).[int]__eq__(0)
+        restart: bool = index.[int]__mod__(7).[int]__eq__(0)
+        branch index.[int]__mod__(11).[int]__eq__(0):
+            true -> conditional_true
+            false -> conditional_false
+    block conditional_true:
+        jump conditional_done('high')
+    block conditional_false:
+        branch index.[int]__mod__(7).[int]__eq__(0):
+            true -> conditional_true_2
+            false -> conditional_false_2
+    block conditional_true_2:
+        jump conditional_done_2('caution')
+    block conditional_false_2:
+        jump conditional_done_2('routine')
+    block conditional_done_2(conditional_done_value_2: str):
+        jump conditional_done(conditional_done_value_2)
+    block conditional_done(conditional_done_value: str):
+        risk: str = conditional_done_value
+        $assignment1: list[Setting] = result
+        $assignment2: str = f"ce{format(index.[int]__add__(1), '')}"
+        $assignment3: str = f"work_mem_{format(index, '')}"
+        $assignment4: str = risk
+        $assignment5: bool = changed
+        branch changed:
+            true -> conditional_true_3
+            false -> conditional_false_3
+    block conditional_true_3:
+        jump conditional_done_3('true')
+    block conditional_false_3:
+        jump conditional_done_3('false')
+    block conditional_done_3(conditional_done_value_3: str):
+        $assignment6: str = conditional_done_value_3
+        $assignment7: bool = restart
+        branch restart:
+            true -> conditional_true_4
+            false -> conditional_false_4
+    block conditional_true_4:
+        jump conditional_done_4('true')
+    block conditional_false_4:
+        jump conditional_done_4('false')
+    block conditional_done_4(conditional_done_value_4: str):
+        $assignment8: str = conditional_done_value_4
+        $assignment9: str = f"work_mem_{format(index, '')} resource usage memory"
+        $assignment10: list[tuple[str, str]] = new[caller] list[tuple[str, str]](new[caller] tuple[str, str]('Current', '4096 kB'), new[caller] tuple[str, str]('Default', '4096'), new[caller] tuple[str, str]('Reset', '4096'), new[caller] tuple[str, str]('Source', 'default'), new[caller] tuple[str, str]('Type', 'integer'), new[caller] tuple[str, str]('Range', '64 – 2147483647'))
+        branch index.[int]__mod__(3).[int]__eq__(0):
+            true -> conditional_true_5
+            false -> conditional_false_5
+    block conditional_true_5:
+        jump conditional_done_5('Review workload concurrency before increasing this value.')
+    block conditional_false_5:
+        jump conditional_done_5('')
+    block conditional_done_5(conditional_done_value_5: str):
+        list_append($assignment1, new[caller] Setting(custom_id=$assignment2, name=$assignment3, description='Memory available to query operations & sorts.', risk=$assignment4, changed=$assignment5, changed_text=$assignment6, restart=$assignment7, restart_text=$assignment8, search=$assignment9, values=$assignment10, guidance='Estimate peak concurrent sorts and hashes.', extra=conditional_done_value_5))
+        jump for_next
+    block for_done:
+        return result
+
+def badge(text: str, variant: str) -> WebElement:
+    block entry:
+        return span(tw('badge px-2 text-xs'), new[local] dict[str, str]('data-variant': variant), text)
+
+class BenchmarkSetting(WebCustomElement):
+
+    def __init__(setting: Setting) -> None:
+        block entry:
+            super().[object]__init__()
+            $assignment3: BenchmarkSetting = self
+            $assignment4: dict[str, str] = tw('custom setting-guidance')
+            $assignment5: WebElement = p(tw('guidance text-sm'), load_field(setting, guidance))
+            branch load_field(setting, extra).[str]__bool__():
+                true -> conditional_true
+                false -> conditional_false
+        block conditional_true:
+            jump conditional_done(p(tw('extra text-xs'), load_field(setting, extra)))
+        block conditional_false:
+            jump conditional_done(span())
+        block conditional_done(conditional_done_value: WebElement):
+            tag($assignment3, $assignment4, $assignment5, conditional_done_value)
+            return None
+
+def setting_row(setting: Setting) -> WebElement:
+    block entry:
+        badges: list[WebElement] = new[local] list[WebElement](badge(load_field(setting, risk), 'outline'))
+        branch load_field(setting, changed):
+            true -> if_true
+            false -> if_done
+    block if_true:
+        list_append(badges, badge('non-default', 'secondary'))
+        jump if_done
+    block if_done:
+        branch load_field(setting, restart):
+            true -> if_true_2
+            false -> if_done_2
+    block if_true_2:
+        list_append(badges, badge('restart pending', 'default'))
+        jump if_done_2
+    block if_done_2:
+        values: list[WebElement] = new[local] list[WebElement]()
+        iterator = iter(load_field(setting, values))
+        jump for_next
+    block for_next:
+        branch_next iterator:
+            item (label: str, value: str) -> for_body
+            done -> for_done
+    block for_body:
+        list_append(values, div(p(tw('label text-xs'), label), p(tw('value text-sm'), value)))
+        jump for_next
+    block for_done:
+        return tag('details', tw('setting border-b'), new[local] dict[str, str]('data-setting': load_field(setting, search), 'data-risk': load_field(setting, risk), 'data-changed': load_field(setting, changed_text), 'data-restart': load_field(setting, restart_text)), tag('summary', tw('summary px-4 py-3'), div(tw('heading flex'), div(tag('code', tw('name font-semibold'), load_field(setting, name)), p(tw('description text-xs'), load_field(setting, description))), div(tw('badges flex'), *badges))), div(tw('body grid'), div(tw('values grid'), *values), new[local] BenchmarkSetting(setting)))
+
+def settings_page(values: list__Setting) -> WebElement:
+    block entry:
+        rows: list[WebElement] = new[local] list[WebElement]()
+        iterator = iter(values)
+        jump for_next
+    block for_next:
+        branch_next iterator:
+            item setting: Setting -> for_body
+            done -> for_done
+    block for_body:
+        list_append(rows, setting_row(setting))
+        jump for_next
+    block for_done:
+        return div(tw('catalog rounded'), new[local] dict[str, str]('data-settings': ''), *rows)
+
+def render_settings(values: list__Setting) -> str:
+    block entry:
+        return render_html(settings_page(values))
+
+def main() -> str:
+    block entry:
+        return render_settings(settings())

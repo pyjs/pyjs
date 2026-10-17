@@ -15,6 +15,12 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+from pyjs.javascript.sourcemap import (
+    SourceMap,
+    TranspiledJavaScript,
+    map_stack_trace,
+)
+from pyjs.javascript.transpiler import bundle
 from pyjs.server.dev import Application, Request, Response, Server, WebSocket
 from pyjs.testing.builder import (
     BrowserBundle,
@@ -24,12 +30,7 @@ from pyjs.testing.builder import (
 )
 from pyjs.testing.protocol import failed_run
 from pyjs.tooling.browser import Browser, BrowserPage
-from pyjs.transpiler import (
-    SourceMap,
-    TranspiledJavaScript,
-    bundle,
-    map_stack_trace,
-)
+from pyjs.tooling.npm import ManagedNpmProject
 
 BROWSER_CONNECT_TIMEOUT_SECONDS = 30
 BROWSER_DISPATCH_TIMEOUT_SECONDS = 10
@@ -118,6 +119,7 @@ class PrototypeDaemon:
         self.current_bundle = ""
         self.current_css = ""
         self.current_source_map = SourceMap()
+        self.current_vendor = b""
         self.current_run_id: str | None = None
         self.cached_suite_id: str | None = None
         self.cached_bundle: BrowserBundle | None = None
@@ -196,6 +198,7 @@ class PrototypeDaemon:
         self.current_bundle = ""
         self.current_css = ""
         self.current_source_map = SourceMap()
+        self.current_vendor = b""
         self.current_run_id = None
         self.cached_suite_id = None
         self.cached_bundle = None
@@ -238,6 +241,16 @@ class PrototypeDaemon:
         return Response(
             self.current_css,
             content_type="text/css; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def vendor_javascript(self, request: Request) -> Response:
+        self.touch_activity()
+        if not self.current_vendor:
+            return Response.text("vendor not available", status=404)
+        return Response(
+            self.current_vendor,
+            content_type="application/javascript; charset=utf-8",
             headers={"Cache-Control": "no-store"},
         )
 
@@ -317,6 +330,7 @@ class PrototypeDaemon:
         self.current_bundle = ""
         self.current_css = ""
         self.current_source_map = SourceMap()
+        self.current_vendor = b""
         self.current_run_id = None
         bundle_result = self.cached_bundle if suite_id == self.cached_suite_id else None
         if bundle_result is None:
@@ -329,6 +343,17 @@ class PrototypeDaemon:
                 self.cached_suite_id = suite_id
                 self.cached_bundle = bundle_result
 
+        vendor = ManagedNpmProject.for_project(self.project_root).vendor_for(
+            bundle_result.npm_imports
+        )
+        if bundle_result.npm_imports and vendor is None:
+            self.discard_bundle()
+            return failed_run(
+                "bundle_build",
+                "JavaScript dependencies are not synchronized; run "
+                "'pyjs npm sync' from the project directory",
+            )
+
         self.reusable = True
         generated = TranspiledJavaScript(
             bundle_result.javascript,
@@ -340,6 +365,7 @@ class PrototypeDaemon:
         )
         self.current_css = bundle_result.css
         self.current_source_map = bundle_result.source_map
+        self.current_vendor = vendor.read_bytes() if vendor is not None else b""
         self.current_run_id = run_id
         result_future: asyncio.Future[list[dict[str, Any]]] = (
             asyncio.get_running_loop().create_future()
@@ -680,6 +706,7 @@ async def async_main(
     application.get("/bundle.js", daemon.bundle_javascript)
     application.get("/bundle.js.map", daemon.bundle_source_map)
     application.get("/bundle.css", daemon.bundle_css)
+    application.get("/pyjs-vendor.js", daemon.vendor_javascript)
     application.get("/healthz", daemon.health)
     application.get("/shutdown", daemon.request_shutdown)
     application.websocket("/ws", daemon.handler)

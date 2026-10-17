@@ -1,3 +1,5 @@
+"""Desktop, mobile, and responsive application sidebars."""
+
 from typing import cast
 
 from pyjs import js

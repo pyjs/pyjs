@@ -1,7 +1,10 @@
+from typing import cast
+
 import pytest
 from pyjs import js
 from pyjs.testing.web import bubbling_click, mount
 from pyjs.web.domx import require_element
+from pyjs.web.html import HTMLButtonElement
 from pyjs_examples.components.workspace import WorkspaceApp
 
 pytestmark = pytest.mark.pyjs_web
@@ -31,13 +34,13 @@ def test_new_task_dialog_validates_and_adds_a_task():
     app = mounted_workspace()
     app.new_task_dialog.open()
 
-    app.create_task_button.element.click()
+    cast(HTMLButtonElement, app.create_task_button.element).click()
     assert app.new_task_dialog.is_open
     assert app.task_title.getAttribute("aria-invalid") == "true"
     assert len(app.toaster.querySelectorAll("[data-slot=toast]")) == 1
 
     app.task_title.set_value("Prepare support handoff")
-    app.create_task_button.element.click()
+    cast(HTMLButtonElement, app.create_task_button.element).click()
 
     assert not app.new_task_dialog.is_open
     assert app.task_count == 6
@@ -72,7 +75,7 @@ def test_workspace_navigation_date_picker_and_settings_are_interactive():
 
     app.settings_sheet.open()
     app.capacity_slider.set_value(88)
-    app.save_settings_button.element.click()
+    cast(HTMLButtonElement, app.save_settings_button.element).click()
     assert not app.settings_sheet.is_open
     toast = require_element(app.toaster, "[data-slot=toast]:last-child")
     assert "88%" in toast.textContent

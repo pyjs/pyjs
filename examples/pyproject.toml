@@ -66,6 +66,7 @@ packages = [
     "pyjs_examples.notes",
     "pyjs_examples.space_invaders",
     "pyjs_examples.store",
+    "pyjs_examples.homescreen_widget",
 ]
 
 [tool.setuptools.package-dir]
@@ -77,11 +78,9 @@ packages = [
 "pyjs_examples.components" = ["README.md", "tests/*.py"]
 "pyjs_examples.notes" = [
     "README.md",
-    "mobile_assets/fonts/*",
     "visual_test.py",
     "tests/*.py",
     "tests/renders/*.png",
-    "tests/renders/android/*.png",
 ]
 "pyjs_examples.space_invaders" = [
     "README.md",
@@ -94,6 +93,7 @@ packages = [
     "visual_test.py",
     "tests/*.py",
 ]
+"pyjs_examples.homescreen_widget" = ["README.md", "res/**/*.xml"]
 
 [tool.pytest.ini_options]
 testpaths = [

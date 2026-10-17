@@ -22,6 +22,16 @@ class OperationErrorPayload(TypedDict):
 
 @js
 class OperationIssue:
+    """One structured validation or operation failure.
+
+    Args:
+        detail: Human-readable description of the failure.
+        location: Path to the invalid argument or field.
+        status: HTTP status associated with the issue.
+        title: Short category shown to users.
+        code: Stable machine-readable error code.
+    """
+
     def __init__(
         self,
         detail: str,
@@ -55,6 +65,8 @@ class OperationIssue:
 
 @js
 class OperationError(Exception):
+    """A remote operation failure containing structured issues."""
+
     def __init__(self, issues: list[OperationIssue]):
         message = "Operation failed"
         if issues:
@@ -74,6 +86,8 @@ class OperationError(Exception):
 
 
 class OperationResultError(Exception):
+    """Reject a server operation result with a structured operation error."""
+
     pass
 
 
@@ -84,6 +98,18 @@ def operation_error(
     title: str = "Validation error",
     code: str = "invalid",
 ) -> OperationError:
+    """Create an operation error containing one issue.
+
+    Args:
+        detail: Human-readable description of the failure.
+        *location: Path to the invalid argument or field.
+        status: HTTP status associated with the issue.
+        title: Short category shown to users.
+        code: Stable machine-readable error code.
+
+    Returns:
+        An error ready to raise from an API operation.
+    """
     return OperationError(
         [OperationIssue(detail, list(location), status, title, code)]
     )

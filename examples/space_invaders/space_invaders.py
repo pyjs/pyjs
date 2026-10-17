@@ -916,11 +916,11 @@ class SpaceInvadersApp(Widget):
                     "transition hover:border-cyan-200 hover:bg-cyan-300/10"
                 ),
                 {
-                    "href": "https://pyjs.org/docs/guide/troubleshooting/#webgpu-is-unavailable",
+                    "href": "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API",
                     "rel": "noreferrer",
                     "target": "_blank",
                 },
-                "Check WebGPU support",
+                "Learn about WebGPU",
             )
         )
         self.status_text = ref(

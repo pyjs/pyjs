@@ -27,8 +27,9 @@ Features may overlap when that makes an application more realistic.
 | [Calculator](calculator/) | Universal app | Web, PWA, Android, SSR, state |
 | [Components](components/) | UI reference | Widgets, forms, navigation |
 | [Notes](notes/) | Personal app | Web, Android, drag/drop, restore |
+| [Home screen widget](homescreen_widget/) | Android sample | RemoteViews |
 | [Chat](chat/) | Real-time starter | WebSockets, multi-window, plans |
-| [Store](store/) | Business app | Django, JSON:API, SSE, themes, cursor feeds |
+| [Store](store/) | Business app | Django, JSON:API, streams, cursor feeds |
 | [Space Invaders](space_invaders/) | GPU game | WebGPU, input, render tests |
 
 Run an application with its module name, for example:
@@ -43,8 +44,11 @@ python -m pyjs_examples.store
 
 Install `pyjs-examples[store]` before running Store from a release package.
 
-Calculator and Notes accept `--android` to build and launch their NativeScript
-versions. Their default command serves the web version.
+Calculator and Notes accept `--android` to build and launch their direct-JVM
+Android versions. Their default command serves the web version.
+
+Home screen widget is a direct-JVM example rather than a template application.
+Its local README shows the small build command for its signed APK.
 
 Components is also the source and test surface for the planned website
 component reference. It combines the former catalog, workspace, navigation,
@@ -55,7 +59,8 @@ uses DOM-owned ordering, drag/drop, server restoration, and visual tests.
 
 Store is the canonical Django and typed client/server example. It also owns the
 themability story, signed cursor feeds, infinite scrolling, and data-driven
-charts.
+charts. Its visitor page demonstrates snapshot-backed typed streams and a
+bounded plain-text log viewer.
 
 ## Templates
 

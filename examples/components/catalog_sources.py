@@ -96,8 +96,8 @@ def catalog_source(component_id: str) -> str:
     if component_id == "combobox":
         return (
             "Combobox(\n"
-            "    CommandItem('Python', 'Python'),\n"
-            "    CommandItem('JavaScript', 'JavaScript'),\n"
+            "    ComboboxItem('Python', 'Python'),\n"
+            "    ComboboxItem('JavaScript', 'JavaScript'),\n"
             "    placeholder='Choose a language...',\n"
             ")"
         )

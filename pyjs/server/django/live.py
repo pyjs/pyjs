@@ -63,6 +63,7 @@ def publish_after_commit(
     *,
     using: str | None = None,
 ):
+    """Publish invalidation topics after the current transaction commits."""
     unique_topics = tuple(dict.fromkeys(topics))
     if unique_topics:
         transaction.on_commit(

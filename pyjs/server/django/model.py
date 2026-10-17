@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models.fields import NOT_PROVIDED
 from pydantic import BaseModel, ConfigDict, Field
 
-from pyjs import js
+from pyjs import js, nojs
 
 ALL_FIELDS = "__all__"
 
@@ -164,7 +164,7 @@ class ModelSchemaMetaclass(type(BaseModel)):
         namespace["model_config"] = ConfigDict(**model_config)
 
         cls = super().__new__(mcls, name, bases, namespace, **kwargs)
-        meta.__js__ = False
+        nojs(meta)
         type.__setattr__(cls, "Meta", meta)
         cls.__pyjs_django_model__ = django_model
         return cls
@@ -172,4 +172,11 @@ class ModelSchemaMetaclass(type(BaseModel)):
 
 @js
 class ModelSchema(BaseModel, metaclass=ModelSchemaMetaclass):
+    """Pydantic model whose fields can be derived from a Django model.
+
+    Define a Django-style nested `Meta` class with `model` and either `fields`
+    or `exclude`. Explicit Pydantic fields are additive and take
+    precedence over inferred Django fields.
+    """
+
     pass

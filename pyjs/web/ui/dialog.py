@@ -1,3 +1,5 @@
+"""Modal dialogs, triggers, content regions, and close controls."""
+
 from typing import cast
 
 from pyjs import js
@@ -5,6 +7,7 @@ from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, div, p, ref, require_element, tag, tw
 from pyjs.web.domx import dialog as dialog_element
 from pyjs.web.events import CustomEvent, Event
+from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 
 
@@ -287,7 +290,7 @@ class Dialog(Widget):
         document.body.style.overflow = self.previous_body_overflow
         self.setAttribute("data-state", "closed")
         self.trigger.set_expanded(False)
-        self.trigger.element.focus()
+        cast(HTMLElement, self.trigger.element).focus()
 
     def disconnected(self):
         if self.is_open:

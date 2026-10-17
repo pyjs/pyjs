@@ -1,3 +1,5 @@
+"""Repeatable browser screenshots with retained diagnostic state."""
+
 import asyncio
 import json
 from dataclasses import asdict, dataclass

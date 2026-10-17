@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import cache
 
 from pyjs import js
-from pyjs.transpiler import bundle
+from pyjs.javascript.transpiler import bundle
 from pyjs.web.dom import Element
 from pyjs.web.domx import button, div, form, h1, input, p, span, tag, tw
 from pyjs.web.ssr import raw_html, render_document

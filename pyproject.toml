@@ -19,6 +19,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pytest",
     "websockets",
+    "griffelib>=2,<3",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -46,6 +47,7 @@ examples = ["pyjs-examples==0.4.0"]
 extras = ["pyjs-extras==0.4.0"]
 stripe = ["pyjs-extras[stripe]==0.4.0"]
 django = ["django>=6.0,<6.2"]
+webgpu = ["wgpu==0.32.0"]
 
 [dependency-groups]
 dev = [
@@ -70,8 +72,11 @@ line-length = 90
 extend-exclude = ["tests"]
 
 [tool.ruff.lint]
-extend-select = ["B", "I", "UP"]
+extend-select = ["B", "I", "TID251", "UP"]
 ignore = ["F403", "F405"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "Python 3.14 does not need postponed annotations."
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -95,7 +100,13 @@ include = ["pyjs*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-"pyjs" = ["skills/pyjs/SKILL.md"]
+"pyjs" = [
+    "skills/pyjs/SKILL.md",
+    "testing/android_device_runtime.json",
+    "testing/android_runtime.json",
+]
+"pyjs.android" = ["*.json"]
+"pyjs.native" = ["UNICODE-LICENSE.txt", "PYTHON-LICENSE.txt"]
 "pyjs.docs" = ["*.css", "*.svg"]
 "pyjs.scaffolding" = [
     "templates/*.template",

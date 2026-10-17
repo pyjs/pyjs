@@ -1,5 +1,5 @@
 from pyjs import js
-from pyjs.transpiler import bundle
+from pyjs.javascript.transpiler import bundle
 from pyjs.web.dom import document
 from pyjs_extras.stripe.browser import (
     ConfirmPaymentOptions,

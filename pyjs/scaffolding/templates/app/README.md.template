@@ -25,6 +25,10 @@ pyjs serve
 
 Open <http://127.0.0.1:8000/>.
 
+Run `pyjs skill` for installed-version guidance on custom elements, state,
+browser APIs, components, testing, and deployment. Complete executable examples
+are available through `pyjs template`.
+
 ## Test
 
 Check the Python source:

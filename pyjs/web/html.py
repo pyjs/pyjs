@@ -1,5 +1,9 @@
-from pyjs import js
+from collections.abc import Iterator
+from weakref import WeakKeyDictionary
+
+from pyjs import js, nojs
 from pyjs.javascript import Float16Array, Uint8ClampedArray
+from pyjs.web._dom_storage import _DatasetMap, _DefaultCollector
 from pyjs.web.dom import (
     CSSStyleProperties,
     Document,
@@ -491,11 +495,14 @@ class DOMStringMap:
 
     Browser support: Chrome 7, Safari 5.1"""
 
-    def __init__(self):
-        self.map: dict[str, str] = {}
+    __slots__ = ("map",)
+
+    def __init__(self, mapping=None):
+        self.map = {} if mapping is None else mapping
 
     @js.inline("delete {self}[{name}]")
-    def __delitem__(self, name: str) -> None: ...
+    def __delitem__(self, name: str) -> None:
+        del self.map[name]
 
     @js.inline("{self}[{name}]")
     def __getitem__(self, name: str) -> str:
@@ -504,6 +511,18 @@ class DOMStringMap:
     @js.inline("{self}[{name}] = {value}")
     def __setitem__(self, name: str, value: str) -> None:
         self.map[name] = value
+
+    @js.inline("Object.keys({self})[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.map)
+
+    @js.inline("Object.keys({self}).length")
+    def __len__(self) -> int:
+        return len(self.map)
+
+    @js.inline("Object.entries({self})")
+    def items(self) -> Iterator[tuple[str, str]]:
+        return iter(self.map.items())
 
 
 @js.native
@@ -727,13 +746,151 @@ class HTMLAllCollection:
     def namedItem(self, name: str) -> HTMLCollection[Element] | Element | None: ...
 
 
+def _generated_html_class(cls):
+    return next(base for base in cls.__mro__ if base.__module__ == __name__)
+
+
+def _inherited_html_metadata(cls, name, default):
+    return next(
+        (vars(base)[name] for base in cls.__mro__[1:] if name in vars(base)), default
+    )
+
+
+class HTMLElementMetaclass(type):
+    _default_cache = {}
+    _class_defaults = WeakKeyDictionary()
+    _element_types = {}
+
+    def __new__(mcls, name, bases, namespace, /, **kwargs):
+        cls = super().__new__(mcls, name, bases, namespace, **kwargs)
+        cls.__pyjs_direct_attributes__ = cls.setAttribute is Element.setAttribute
+        cls.__pyjs_direct_append__ = cls.append is Element.append
+        initializer_owner = next(base for base in cls.__mro__ if "__init__" in vars(base))
+        cls.__pyjs_skip_generated_init__ = initializer_owner.__module__ == __name__
+        observed_attributes = vars(cls).get("observedAttributes")
+        if observed_attributes is None:
+            observed_attributes = _inherited_html_metadata(
+                cls, "__pyjs_observed_attributes__", ()
+            )
+        observed_attributes = tuple(observed_attributes)
+        cls.__pyjs_observed_attributes__ = observed_attributes
+        tag_name = vars(cls).get("tagName")
+        if tag_name is None:
+            tag_name = _inherited_html_metadata(cls, "__pyjs_ssr_tag_name__", None)
+        elif tag_name == "UNDEFINED":
+            tag_name = None
+        else:
+            tag_name = tag_name.lower()
+        cls.__pyjs_ssr_tag_name__ = tag_name
+        cls.__pyjs_ssr_open__ = None if tag_name is None else f"<{tag_name}"
+        cls.__pyjs_ssr_close__ = None if tag_name is None else f"</{tag_name}>"
+        if tag_name is not None and cls.__module__ == __name__:
+            mcls._element_types.setdefault(tag_name, cls)
+        return cls
+
+    def __call__(cls, *args, **kwargs):
+        if not args and (not kwargs) and cls.__pyjs_skip_generated_init__:
+            instance = cls.__new__(cls)
+            object.__setattr__(instance, "_pyjs_parts", [0])
+            return instance
+        return super().__call__(*args, **kwargs)
+
+    @property
+    def dom_defaults(cls):
+        cache = HTMLElementMetaclass._default_cache
+        class_defaults = HTMLElementMetaclass._class_defaults
+        defaults = class_defaults.get(cls)
+        if defaults is None:
+            html_class = _generated_html_class(cls)
+            defaults = cache.get(html_class)
+            if defaults is None:
+                properties = {
+                    name
+                    for base in html_class.__mro__
+                    for name, value in vars(base).items()
+                    if isinstance(value, property)
+                }
+                prototype = html_class.__new__(html_class)
+                object.__setattr__(
+                    prototype, "__dict__", _DefaultCollector(html_class, properties)
+                )
+                html_class.__init__(prototype)
+                defaults = dict(vars(prototype))
+                cache[html_class] = defaults
+            class_defaults[cls] = defaults
+        return defaults
+
+
+def _html_element_type(name):
+    element_types = HTMLElementMetaclass._element_types
+    element_type = element_types.get(name)
+    if element_type is None:
+        element_type = element_types.get(name.lower())
+    return element_type
+
+
+def _new_html_element(element_type):
+    element = element_type.__new__(element_type)
+    object.__setattr__(element, "_pyjs_parts", [0])
+    return element
+
+
+def _create_html_element(name):
+    element_type = _html_element_type(name)
+    if element_type is not None:
+        return _new_html_element(element_type)
+    element = _new_html_element(HTMLElement)
+    node_name = name.upper()
+    element.nodeName = node_name
+    element.tagName = node_name
+    return element
+
+
 @js.native
-class HTMLElement(Element):
+class HTMLElement(Element, metaclass=HTMLElementMetaclass):
     """WebIDL source: @webref/idl/html.idl
 
     MDN: https://developer.mozilla.org/docs/Web/API/HTMLElement
 
     Browser support: Chrome 1, Safari 1"""
+
+    @property
+    def className(self) -> str:
+        return self.getAttribute("class") or ""
+
+    @className.setter
+    def className(self, value: str):
+        self.setAttribute("class", value)
+
+    @property
+    def dataset(self) -> DOMStringMap:
+        return DOMStringMap(_DatasetMap(self))
+
+    @dataset.setter
+    def dataset(self, value: DOMStringMap):
+        """Discard the eager WebIDL default while retaining the sparse view."""
+        pass
+
+    @nojs
+    def __getattr__(self, name):
+        try:
+            value = type(self).dom_defaults[name]
+        except KeyError:
+            return super().__getattr__(name)
+        if value is None or isinstance(value, (bool, int, float, str, bytes)):
+            return value
+        value = type(value)()
+        self._dom[name] = value
+        return value
+
+    @nojs
+    def __setattr__(self, name, value):
+        data = object.__getattribute__(self, "__dict__")
+        if isinstance(data, _DefaultCollector):
+            if name not in data.properties:
+                data[name] = value
+            return
+        object.__setattr__(self, name, value)
 
     def __init__(self):
         super().__init__()
@@ -921,6 +1078,19 @@ class HTMLOptionsCollection(HTMLCollection[Element]):
     MDN: https://developer.mozilla.org/docs/Web/API/HTMLOptionsCollection
 
     Browser support: Chrome 1, Safari 3"""
+
+    @property
+    def length(self) -> int:
+        return len(self._items)
+
+    @length.setter
+    def length(self, value: int):
+        if value < 0:
+            raise ValueError("length cannot be negative")
+        while len(self._items) > value:
+            self._items.pop()
+        while len(self._items) < value:
+            self._items.append(HTMLOptionElement())
 
     def __init__(self):
         super().__init__()
@@ -1674,6 +1844,27 @@ class OffscreenCanvasRenderingContext2D:
     ) -> None: ...
 
     def translate(self, x: float, y: float) -> None: ...
+
+
+@js.inline("{canvas}.getContext('2d', {options})")
+def get_offscreen_2d_context(
+    canvas: OffscreenCanvas, options: CanvasRenderingContext2DSettings
+) -> OffscreenCanvasRenderingContext2D | None: ...
+
+
+@js.inline("{context}.drawImage({image}, {sx}, {sy}, {sw}, {sh}, {dx}, {dy}, {dw}, {dh})")
+def draw_image_source(
+    context: OffscreenCanvasRenderingContext2D,
+    image: OffscreenCanvas,
+    sx: float,
+    sy: float,
+    sw: float,
+    sh: float,
+    dx: float,
+    dy: float,
+    dw: float,
+    dh: float,
+) -> None: ...
 
 
 @js.native
@@ -4175,6 +4366,8 @@ class HTMLSelectElement(HTMLElement):
     MDN: https://developer.mozilla.org/docs/Web/API/HTMLSelectElement
 
     Browser support: Chrome 1, Safari 1"""
+
+    tagName = nodeName = "SELECT"
 
     def __init__(self):
         super().__init__()

@@ -617,7 +617,7 @@ class StripeSimulator:
         body = f"""
         <main>
           <p class="eyebrow">Local Stripe simulator</p>
-          <h1>Subscribe to Gencourt</h1>
+          <h1>Subscribe</h1>
           <p class="price">${price["unit_amount"] / 100:.2f} per month</p>
           <p>{escape(session.get("customer_email", ""))}</p>
           {error_html}
@@ -678,7 +678,7 @@ class StripeSimulator:
                 action="/portal/{escape(session_id)}/{action}">
             <button type="submit">{label}</button>
           </form>
-          <a href="{escape(session["return_url"])}">Return to Gencourt</a>
+          <a href="{escape(session["return_url"])}">Return to application</a>
         </main>
         """
         return self._html(self._document("Stripe Customer Portal", body))

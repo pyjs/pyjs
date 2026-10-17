@@ -186,6 +186,13 @@ async def _await_query(pending: object) -> object:
 
 @js
 class WatchedQuery[Value]:
+    """Cache a typed async query and refresh it after live invalidation.
+
+    Args:
+        loader: Async function or generated API query to execute.
+        *args: Initial positional arguments for the loader.
+    """
+
     def __init__(self, loader: Callable[..., Awaitable[Value]], *args: object):
         self.current: Value | None = None
         self.loaded = False
@@ -208,6 +215,7 @@ class WatchedQuery[Value]:
         return value
 
     async def refresh(self) -> Value:
+        """Execute the loader once, coalescing concurrent refresh requests."""
         if self._pending is not None:
             return self._result(await _await_query(self._pending))
 
@@ -231,11 +239,13 @@ class WatchedQuery[Value]:
             self._pending = None
 
     async def get(self) -> Value:
+        """Return the current value or load it when absent or stale."""
         if not self.stale and self.loaded:
             return self._result(self.current)
         return await self.refresh()
 
     async def reload(self) -> Value:
+        """Invalidate and refresh until the newest generation is loaded."""
         self.invalidate()
         value = await self.refresh()
         while self.stale:
@@ -243,10 +253,12 @@ class WatchedQuery[Value]:
         return value
 
     def invalidate(self):
+        """Mark the current value stale without starting network work."""
         self._generation += 1
         self.stale = True
 
     def set_args(self, *args: object) -> Self:
+        """Replace loader arguments and invalidate the current value."""
         self.arguments.clear()
         for argument in args:
             self.arguments.append(argument)
@@ -256,6 +268,7 @@ class WatchedQuery[Value]:
         return self
 
     def seed(self, value: Value) -> Self:
+        """Install an already materialized value, such as SSR page data."""
         self.current = value
         self.loaded = True
         self.loading = False
@@ -264,6 +277,7 @@ class WatchedQuery[Value]:
         return self
 
     def on_update(self, callback: callable) -> Self:
+        """Call `callback` whenever a fresh value is accepted."""
         self._update = callback
         return self
 
@@ -308,6 +322,7 @@ class WatchedQuery[Value]:
         return True
 
     def watch(self, session: LiveSession, *topics: str) -> Self:
+        """Attach the query to a live session and selected invalidation topics."""
         selected: list[str] = []
         for topic in topics:
             selected.append(topic)
@@ -402,6 +417,14 @@ class _LiveWatch:
 
 @js
 class LiveSession:
+    """Coordinate live query updates over SSE with long-poll fallback.
+
+    Args:
+        path: URL prefix of the API providing live endpoints.
+        transport: Client transport used for result subscriptions and refreshes.
+        autostart: Start transport automatically when a query is attached.
+    """
+
     __pyjs_generated_methods__ = ("_subscriptions_changed",)
 
     def __init__(
@@ -450,6 +473,7 @@ class LiveSession:
             self.start()
 
     def start(self):
+        """Start live delivery unless the session is already running."""
         if self.transport != "stopped":
             return
         self._closed = False
@@ -471,6 +495,7 @@ class LiveSession:
         self.transport = "sse"
 
     def close(self):
+        """Stop live delivery and discard queued refresh work."""
         self._closed = True
         self._result_queries.clear()
         if self._source is not None:

@@ -1,10 +1,13 @@
+import argparse
 import os
-import sys
 
-if "--android" in sys.argv:
-    from .notes import run
+parser = argparse.ArgumentParser(description="Run the Notes example.")
+parser.add_argument("--android", action="store_true", help="Build and run the Android APK")
 
-    run()
+if parser.parse_args().android:
+    from .android_build import run_android
+
+    run_android()
 else:
     from pyjs.server.dev import serve
 

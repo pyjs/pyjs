@@ -18,6 +18,8 @@ class CursorPaginationError(ValueError):
 
 
 class QuerySetResult:
+    """Deferred conversion of a Django queryset into an annotated result."""
+
     def __init__(
         self,
         queryset: QuerySet,
@@ -38,6 +40,8 @@ class QuerySetResult:
 
 
 class QuerySetPageResult:
+    """Deferred cursor page over an ordered Django queryset."""
+
     def __init__(
         self,
         queryset: QuerySet,
@@ -308,6 +312,15 @@ def queryset_result[Result](
     *,
     include_paths: Sequence[str] = (),
 ) -> Result:
+    """Adapt a lazy queryset to a model or list return annotation.
+
+    Args:
+        queryset: Django queryset selected by an API operation.
+        include_paths: JSON:API relationships to include in the document.
+
+    Returns:
+        A deferred result validated against the operation annotation.
+    """
     return cast(Result, QuerySetResult(queryset, include_paths))
 
 
@@ -318,6 +331,17 @@ def queryset_page[Item](
     order_by: Sequence[str] = (),
     include_total: bool = False,
 ) -> Page[Item]:
+    """Adapt a lazy queryset to a typed cursor page.
+
+    Args:
+        queryset: Django queryset selected by an API operation.
+        request: Cursor and page-size values received from the client.
+        order_by: Stable Django ordering fields used by the cursor.
+        include_total: Calculate the complete result count when true.
+
+    Returns:
+        A deferred page validated against the operation annotation.
+    """
     return cast(
         Page[Item],
         QuerySetPageResult(queryset, request, order_by, include_total),
@@ -332,5 +356,6 @@ def paginate_queryset(
     order_by: Sequence[str] = (),
     include_total: bool = False,
 ) -> Page:
+    """Materialize one cursor page immediately on the server."""
     result = QuerySetPageResult(queryset, request, order_by, include_total)
     return materialize_queryset_page(result, page_type)

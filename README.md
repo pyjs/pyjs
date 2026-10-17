@@ -13,10 +13,14 @@ Python runtime to JavaScript targets.**
 PyJS statically analyzes reachable Python and emits readable, tree-shaken
 JavaScript. The same component can render real HTML on the server, hydrate as a
 native custom element in the browser, and share application logic with a
-NativeScript Android app.
+direct-JVM Android app.
 
 PyJS is early-release software: complete applications and tests work today,
 while APIs can still change between releases.
+
+Browser JavaScript and direct-JVM Android are the application-facing targets.
+The JVM, LLVM, and WebAssembly backends remain experimental; their APIs and
+supported subsets may change rapidly.
 
 ## See it work in 30 seconds
 
@@ -116,7 +120,7 @@ full-stack applications:
 | [Components](examples/components/) | UI reference | Widgets, forms, routing |
 | [Notes](examples/notes/) | Personal app | Android, drag/drop, restore |
 | [Chat](examples/chat/) | Real-time starter | WebSockets, multi-window |
-| [Store](examples/store/) | Business app | Django, JSON:API, SSE, theming |
+| [Store](examples/store/) | Business app | Django, JSON:API, streams, themes |
 | [Space Invaders](examples/space_invaders/) | GPU game | WebGPU, render tests |
 
 Inspect or copy any of them:
@@ -146,7 +150,7 @@ python -m pyjs_examples.store
 `pyjs create NAME` creates a project in `NAME/`, with application code in
 `NAME/NAME/NAME.py` and tests in `NAME/tests/`. Pass a destination as the
 second positional argument to populate another directory, such as
-`pyjs create routine .`. Add `--src-layout` to put the package under `src/`.
+`pyjs create example .`. Add `--src-layout` to put the package under `src/`.
 After installation, `python -m NAME` starts either package layout through its
 ordinary Python entry point. `pyjs serve` is also available as a convenience
 and uses the application recorded in `pyproject.toml`.
@@ -453,36 +457,27 @@ against checked-in PNG baselines.
 | `pyjs docs build` | Build a static documentation site |
 | `pyjs docs serve` | Build and serve documentation locally |
 | `pyjs inspect URL` | Capture a screenshot and structured browser diagnostics |
+| `pyjs npm sync [TARGET]` | Install exact reachable JavaScript dependencies |
 | `pyjs skill` | Print version-matched instructions for coding agents |
 
 The built-in development server is run from Python source with
 `pyjs.server.dev.serve(__file__)`; generated starters and examples already
 provide this entry point.
 
-NativeScript projects can declare external npm modules without editing the
-generated build directory:
+Web compatibility modules can declare exact npm dependencies as module
+metadata. `pyjs npm sync` analyzes the configured application and installs only
+the packages reachable from its client bundle into `.pyjs/npm`; no user-owned
+`package.json` or global npm installation is required.
 
-```python
-from pyjs.nativescript import NativeScriptModule
-from pyjs.tooling.nativescript import NativeScriptProject
-
-widgets = NativeScriptModule("@example/widgets", "1.2.3", ("Widget",))
-project = NativeScriptProject(
-    main,
-    name="Example",
-    app_id="org.example.app",
-    modules=(widgets,),
-)
-```
-
-PyJS installs the pinned package and emits its CommonJS imports before the
-transpiled application bundle.
+Synchronize an application after adding its first managed JavaScript wrapper,
+then build it normally.
 
 ## Current limitations and missing features
 
 PyJS is intentionally a typed subset of Python, and the current releases remain
-pre-alpha. This section summarizes the current boundary while the versioned
-documentation site is being prepared.
+pre-alpha. This section summarizes the current boundary. Run `pyjs skill` for
+guidance matching the installed version and inspect the executable templates
+with `pyjs template`.
 
 - Multiple inheritance is not supported.
 - Reflection, runtime monkey-patching, `eval()`, and arbitrary dynamic imports
@@ -495,8 +490,9 @@ documentation site is being prepared.
   concise diagnostics with precise source locations.
 - Generated bundles include source maps back to Python. Mapping coverage and
   browser-runtime presentation will continue to improve.
-- The development server rebuilds when it starts, but browser hot reload is not
-  implemented.
+- The built-in development server rebuilds when it starts, but does not yet
+  trigger browser reload itself. Reloadable Django applications can opt into
+  the development browser reload client.
 - Browser-target pytest fixtures and helpers are a subset of normal pytest.
   Browser tests support `pytest.raises()` as a context manager, including its
   `match` argument and captured exception value.
@@ -506,13 +502,12 @@ documentation site is being prepared.
   not currently batched.
 - The bundled HTTP server and documentation server are development tools, not
   production servers.
-- NativeScript output currently targets Android. Core application, layout,
-  input, storage, drag-and-drop, screenshot, and device-test workflows work;
-  platform API coverage continues to expand.
+- Android uses direct JVM bytecode and native framework/AndroidX APIs.
+  Calculator and Notes demonstrate the supported subset; Notes editor parity
+  and broader platform coverage remain in progress.
 
 Run `pyjs skill` for the installed-version guidance and `pyjs template` for
-complete executable examples while the public documentation site is being
-prepared.
+complete executable examples.
 
 ## Contributing
 

@@ -1,6 +1,9 @@
-from collections.abc import Awaitable, Callable
+"""Cursor-driven infinite scrolling with observer and button fallbacks."""
 
-from pyjs import js
+from collections.abc import Awaitable, Callable
+from typing import cast
+
+from pyjs import js, llvm
 from pyjs.server import CursorPageRequest
 from pyjs.web.dom import (
     IntersectionObserver,
@@ -9,6 +12,7 @@ from pyjs.web.dom import (
 )
 from pyjs.web.domx import div, p, ref, tw
 from pyjs.web.events import Event
+from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
 from pyjs.web.ui.button import Button
 
@@ -79,7 +83,9 @@ class InfiniteScroll(Widget):
             self.observer.disconnect()
             self.observer = None
 
-    def on_load(self, callback: _LoadCallback):
+    # Static SSR registers no browser work and does not analyze its callbacks.
+    @llvm.inline("")
+    def on_load(self, callback: _LoadCallback) -> None:
         self._load_callback = callback
         self.button.on_click(self.load_more)
 
@@ -127,7 +133,7 @@ class InfiniteScroll(Widget):
     ):
         for entry in entries:
             if entry.isIntersecting:
-                self.button.element.click()
+                cast(HTMLElement, self.button.element).click()
                 return
 
     def _is_loading(self) -> bool:

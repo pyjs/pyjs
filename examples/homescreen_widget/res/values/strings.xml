@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_title">Notes</string>
+    <string name="widget_empty">No notes yet</string>
+    <string name="widget_description">A compact Notes notes widget</string>
+</resources>

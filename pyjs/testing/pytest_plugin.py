@@ -13,7 +13,7 @@ import sys
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -42,6 +42,7 @@ DEFAULT_BROWSER_HEIGHT = 1000
 DEFAULT_COLOR_SCHEME = "system"
 DEFAULT_TEST_TIMEOUT_SECONDS = 30.0
 DEFAULT_RETAINED_IFRAMES = 10
+ANDROID_DEPENDENCY_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,13 @@ class BrowserResults:
         self.eligible_tests: list[SelectedTest] | None = None
 
 
+class AndroidJVMResults:
+    def __init__(self) -> None:
+        self.suite_id = uuid.uuid4().hex
+        self.eligible_tests: list[SelectedTest] | None = None
+        self.results = None
+
+
 def add_failure_artifacts(error: str, response: dict[str, Any], nodeid: str) -> str:
     failure_artifacts = response.get("failure_artifacts")
     artifact = failure_artifacts.get(nodeid) if isinstance(failure_artifacts, dict) else None
@@ -189,6 +197,35 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--pyjs-android-avd",
         default=None,
         help="Android virtual device to start when no emulator is already running.",
+    )
+    group.addoption(
+        "--pyjs-android-headless",
+        action="store_true",
+        help="Start a managed Android emulator without a window or audio.",
+    )
+    group.addoption(
+        "--pyjs-android-runtime",
+        choices=["host", "robolectric", "device"],
+        default=None,
+        help="Run host-driven, Robolectric, or compiled device Android tests.",
+    )
+    group.addoption(
+        "--pyjs-android-graphics",
+        choices=["native", "legacy"],
+        default="native",
+        help="Robolectric graphics: native Android metrics or legacy fakes.",
+    )
+    group.addoption(
+        "--pyjs-android-api",
+        type=int,
+        default=35,
+        help="Android API used to compile and execute JVM Android tests.",
+    )
+    group.addoption(
+        "--pyjs-android-timeout",
+        type=float,
+        default=120,
+        help="Seconds allowed for one compiled Android test suite.",
     )
     group.addoption(
         "--pyjs-daemon-port",
@@ -272,6 +309,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("pyjs_artifacts_dir", "Directory for generated test artifacts.", default="")
     parser.addini("pyjs_timeout", "Browser test execution timeout in seconds.", default="")
     parser.addini(
+        "pyjs_android_dependency_sets",
+        "Named checksum-locked Android application dependencies (NAME=PATH).",
+        type="linelist",
+        default=[],
+    )
+    parser.addini(
         "pyjs_retained_iframes",
         "Maximum number of rendered test previews retained by the runner.",
         default="",
@@ -291,7 +334,20 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "pyjs_android: run a test only with --pyjs-target=android",
     )
+    config.addinivalue_line(
+        "markers",
+        "pyjs_android_jvm: compile a test for Robolectric or AndroidJUnitRunner",
+    )
+    config.addinivalue_line(
+        "markers",
+        "pyjs_android_device: require AndroidJUnitRunner instead of Robolectric",
+    )
+    config.addinivalue_line(
+        "markers",
+        "pyjs_android_dependencies(*sets): package application dependency sets",
+    )
     config._pyjs_web_results = BrowserResults()
+    config._pyjs_android_jvm_results = AndroidJVMResults()
     if config.getoption("--pyjs-target") == "web":
         config._pyjs_browser_test_config = BrowserTestConfig.from_pytest(config)
 
@@ -299,13 +355,23 @@ def pytest_configure(config: pytest.Config) -> None:
 def selected_test_from_item(item: pytest.Function) -> SelectedTest:
     if item.cls is not None:
         raise ValueError(
-            f"Web target currently supports module-level test functions, not {item.nodeid}"
+            f"Compiled targets support module-level test functions, not {item.nodeid}"
         )
     function_name = getattr(item, "originalname", None) or item.name
+    dependencies = []
+    iter_markers = getattr(item, "iter_markers", lambda _name: ())
+    for marker in iter_markers("pyjs_android_dependencies"):
+        if marker.kwargs or any(not isinstance(value, str) for value in marker.args):
+            raise pytest.UsageError(
+                "pyjs_android_dependencies accepts dependency-set names as "
+                "positional strings"
+            )
+        dependencies.extend(marker.args)
     return SelectedTest(
         nodeid=item.nodeid,
         module_name=item.module.__name__,
         function_name=function_name,
+        android_dependencies=tuple(dict.fromkeys(dependencies)),
     )
 
 
@@ -314,15 +380,37 @@ def is_web_test(item: pytest.Item) -> bool:
         item.get_closest_marker("pyjs_web") is not None
         and item.get_closest_marker("pyjs_python") is None
         and item.get_closest_marker("pyjs_android") is None
+        and item.get_closest_marker("pyjs_android_jvm") is None
+    )
+
+
+def is_android_jvm_test(item: pytest.Item) -> bool:
+    return item.get_closest_marker("pyjs_android_jvm") is not None
+
+
+def is_android_jvm_test_for_runtime(item: pytest.Item, runtime: str) -> bool:
+    return is_android_jvm_test(item) and (
+        runtime == "device"
+        or item.get_closest_marker("pyjs_android_device") is None
     )
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
     target = item.config.getoption("--pyjs-target")
     android_test = item.get_closest_marker("pyjs_android") is not None
-    if target == "android" and not android_test:
-        pytest.skip("not an Android device test")
-    if target != "android" and android_test:
+    android_jvm_test = is_android_jvm_test(item)
+    android_runtime = item.config.getoption("--pyjs-android-runtime") or "host"
+    if (
+        target == "android"
+        and android_runtime == "robolectric"
+        and item.get_closest_marker("pyjs_android_device") is not None
+    ):
+        pytest.skip("device-only Android test")
+    if target == "android" and android_runtime == "host" and not android_test:
+        pytest.skip("not a host-driven Android test")
+    if target == "android" and android_runtime != "host" and not android_jvm_test:
+        pytest.skip("not a compiled Android test")
+    if target != "android" and (android_test or android_jvm_test):
         pytest.skip("Android-only test")
     if target != "web" and item.get_closest_marker("pyjs_web") is not None:
         pytest.skip("web-only test")
@@ -337,7 +425,10 @@ def pyjs_artifacts_dir(request: pytest.FixtureRequest) -> Path:
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
-    if pyfuncitem.config.getoption("--pyjs-target") != "web":
+    target = pyfuncitem.config.getoption("--pyjs-target")
+    if target == "android" and is_android_jvm_test(pyfuncitem):
+        return run_android_jvm_item(pyfuncitem)
+    if target != "web":
         return None
 
     state: BrowserResults = pyfuncitem.config._pyjs_web_results
@@ -373,6 +464,226 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
     error = result.get("error", f"Browser test failed: {pyfuncitem.nodeid}")
     error = add_failure_artifacts(error, response, pyfuncitem.nodeid)
     pytest.fail(error, pytrace=False)
+
+
+def run_android_jvm_item(pyfuncitem: pytest.Function) -> bool | None:
+    config = pyfuncitem.config
+    runtime = config.getoption("--pyjs-android-runtime") or "host"
+    if runtime not in {"robolectric", "device"}:
+        return None
+    state: AndroidJVMResults = config._pyjs_android_jvm_results
+    try:
+        if state.eligible_tests is None:
+            state.eligible_tests = [
+                selected_test_from_item(item)
+                for item in pyfuncitem.session.items
+                if isinstance(item, pytest.Function)
+                and is_android_jvm_test_for_runtime(item, runtime)
+            ]
+        if state.results is None:
+            run = (
+                run_robolectric_target
+                if runtime == "robolectric"
+                else run_android_device_target
+            )
+            state.results = run(config, state.eligible_tests, state.suite_id)
+        result = state.results[pyfuncitem.nodeid]
+    except pytest.UsageError:
+        raise
+    except Exception as exc:
+        if state.eligible_tests is not None:
+            from pyjs.testing.android_runtime import AndroidTestResult
+
+            state.results = {
+                test.nodeid: AndroidTestResult("failed", str(exc))
+                for test in state.eligible_tests
+            }
+        pytest.fail(str(exc), pytrace=False)
+    if result.outcome == "passed":
+        return True
+    pytest.fail(result.error or f"Android test failed: {pyfuncitem.nodeid}", pytrace=False)
+
+
+def run_robolectric_target(
+    config: pytest.Config,
+    selected_tests: list[SelectedTest],
+    suite_id: str,
+):
+    from pyjs.android.api import AndroidAPI
+    from pyjs.android.dependencies import resolve_android_dependency_locks
+    from pyjs.testing.android_jvm import AndroidJVMSuiteBuilder
+    from pyjs.testing.android_runtime import AndroidRuntimeResolver, RobolectricRunner
+    from pyjs.tooling.android import AndroidSDK
+    from pyjs.tooling.android_jvm import AndroidResourceLinker
+
+    api = positive_int("pyjs_android_api", config.getoption("--pyjs-android-api"))
+    timeout = positive_float(
+        "pyjs_android_timeout",
+        config.getoption("--pyjs-android-timeout"),
+    )
+    project_root = Path(str(config.rootpath)).resolve()
+    cache = Path(str(config.cache.mkdir("pyjs"))).resolve()
+    shared_cache = Path(
+        os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+    ) / "pyjs" / "android-test"
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    progress = reporter.write_line if reporter is not None else None
+    sdk = AndroidSDK()
+    android = AndroidAPI.from_sdk(api, sdk)
+    runtime = AndroidRuntimeResolver(shared_cache, progress).resolve(api)
+    dependency_locks = android_dependency_locks(config)
+    dependency_sets = android_dependency_sets(
+        selected_tests,
+        frozenset(dependency_locks),
+    )
+    dependencies = None
+    if dependency_sets:
+        selected_locks = tuple(
+            (name, dependency_locks[name]) for name in sorted(dependency_sets)
+        )
+        dependencies = resolve_android_dependency_locks(
+            shared_cache / "application",
+            selected_locks,
+            progress,
+        )
+    compilation = AndroidJVMSuiteBuilder(project_root, cache).build(
+        selected_tests,
+        suite_id,
+        api=api,
+    )
+    if dependencies is not None:
+        compilation = replace(
+            compilation,
+            resources=(*compilation.resources, *dependencies.jars),
+        )
+    runner = RobolectricRunner(
+        sdk.java_home / "bin" / "java",
+        sdk.build_tool("aapt2"),
+        android.android_jar,
+        runtime,
+        api,
+        resource_linker=AndroidResourceLinker(sdk),
+        dependencies=dependencies,
+        graphics_mode=config.getoption("--pyjs-android-graphics"),
+    )
+    return runner.run(
+        compilation,
+        cache / "android-jvm" / suite_id / "classes",
+        timeout=timeout,
+    )
+
+
+def android_dependency_sets(
+    selected_tests: list[SelectedTest],
+    available: frozenset[str] = frozenset({"androidx"}),
+) -> frozenset[str]:
+    values = frozenset(
+        dependency
+        for selected in selected_tests
+        for dependency in selected.android_dependencies
+    )
+    unknown = values - available
+    if unknown:
+        names = ", ".join(repr(name) for name in sorted(unknown))
+        raise pytest.UsageError(f"unknown Android dependency set: {names}")
+    return values
+
+
+def android_dependency_locks(config: pytest.Config) -> dict[str, Path]:
+    from pyjs.android.dependencies import ANDROIDX_RUNTIME_LOCK
+
+    result = {"androidx": ANDROIDX_RUNTIME_LOCK}
+    for entry in config.getini("pyjs_android_dependency_sets"):
+        name, separator, path = entry.partition("=")
+        name = name.strip()
+        path = path.strip()
+        if not separator or ANDROID_DEPENDENCY_NAME.fullmatch(name) is None or not path:
+            raise pytest.UsageError(
+                "pyjs_android_dependency_sets entries must use NAME=PATH with "
+                "a lowercase dependency-set name"
+            )
+        if name in result:
+            raise pytest.UsageError(f"duplicate Android dependency set: {name!r}")
+        lock = Path(path)
+        if not lock.is_absolute():
+            lock = Path(str(config.rootpath)) / lock
+        lock = lock.resolve()
+        if not lock.is_file():
+            raise pytest.UsageError(
+                f"Android dependency lock for {name!r} was not found at {lock}"
+            )
+        result[name] = lock
+    return result
+
+
+def run_android_device_target(
+    config: pytest.Config,
+    selected_tests: list[SelectedTest],
+    suite_id: str,
+):
+    from pyjs.android.api import AndroidAPI
+    from pyjs.android.dependencies import resolve_android_dependency_locks
+    from pyjs.testing.android_device import (
+        AndroidDeviceTestBuilder,
+        AndroidDeviceTestRunner,
+    )
+    from pyjs.testing.android_jvm import AndroidJVMSuiteBuilder
+    from pyjs.testing.android_runtime import AndroidRuntimeResolver
+    from pyjs.tooling.android import AndroidSDK
+
+    api = positive_int("pyjs_android_api", config.getoption("--pyjs-android-api"))
+    timeout = positive_float(
+        "pyjs_android_timeout",
+        config.getoption("--pyjs-android-timeout"),
+    )
+    project_root = Path(str(config.rootpath)).resolve()
+    cache = Path(str(config.cache.mkdir("pyjs"))).resolve()
+    shared_cache = Path(
+        os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+    ) / "pyjs" / "android-test"
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
+    progress = reporter.write_line if reporter is not None else None
+    sdk = AndroidSDK()
+    android = AndroidAPI.from_sdk(api, sdk)
+    dependency_locks = android_dependency_locks(config)
+    dependency_sets = android_dependency_sets(
+        selected_tests,
+        frozenset(dependency_locks),
+    )
+    runtime = AndroidRuntimeResolver(shared_cache, progress).resolve_device()
+    dependencies = None
+    if dependency_sets:
+        selected_locks = tuple(
+            (name, dependency_locks[name]) for name in sorted(dependency_sets)
+        )
+        dependencies = resolve_android_dependency_locks(
+            shared_cache / "application",
+            selected_locks,
+            progress,
+        )
+    compilation = AndroidJVMSuiteBuilder(project_root, cache).build(
+        selected_tests,
+        suite_id,
+        api=api,
+        robolectric=False,
+    )
+    output = cache / "android-device" / suite_id
+    packages = AndroidDeviceTestBuilder(
+        sdk,
+        android.android_jar,
+        runtime,
+        api,
+        dependencies=dependencies,
+    ).build(compilation, output)
+    device = sdk.ensure_emulator(
+        config.getoption("--pyjs-android-avd"),
+        headless=config.getoption("--pyjs-android-headless"),
+    )
+    return AndroidDeviceTestRunner(sdk, device).run(
+        compilation,
+        packages,
+        timeout=timeout,
+    )
 
 
 def verify_render_artifacts(item: pytest.Function, artifacts: list[dict[str, Any]]) -> str | None:
@@ -532,6 +843,10 @@ def run_browser_target(
     project_root = Path(str(config.rootpath)).resolve()
     cache_dir = Path(str(config.cache.mkdir("pyjs"))).resolve()
     settings = browser_test_config(config)
+    testing_signature = getattr(config, "_pyjs_testing_signature", None)
+    if testing_signature is None:
+        testing_signature = compute_testing_signature()
+        config._pyjs_testing_signature = testing_signature
     try:
         ensure_daemon_running(
             port,
@@ -539,6 +854,7 @@ def run_browser_target(
             project_root,
             cache_dir,
             settings,
+            testing_signature,
         )
         response = asyncio.run(
             send_run_request(
@@ -640,8 +956,8 @@ def ensure_daemon_running(
     project_root: Path,
     cache_dir: Path,
     settings: BrowserTestConfig,
+    expected_signature: str,
 ) -> None:
-    expected_signature = compute_testing_signature()
     health = get_daemon_health(port)
     if daemon_matches_project(
         health,

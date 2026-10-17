@@ -130,12 +130,15 @@ def _normalize_source(
         value = value.replace("From the repository root", "From the project root")
 
     if name.endswith(".py"):
+        root_prefix = "." * len(PurePosixPath(name).parts)
         for module in template.modules:
             value = value.replace(
                 f"from {template.name}.{module} import",
                 f"from {module} import",
             )
-            value = value.replace(f"from .{module} import", f"from {module} import")
+            value = value.replace(
+                f"from {root_prefix}{module} import", f"from {module} import",
+            )
 
     return value.encode("utf-8")
 

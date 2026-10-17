@@ -20,7 +20,7 @@ from .api import (
     product_page,
     review_moderation_page,
     traffic_summary,
-    visitor_event_page,
+    visitor_event_snapshot,
 )
 from .store import (
     ACCOUNT_PAGE,
@@ -90,7 +90,7 @@ def reviews(request: HttpRequest) -> HttpResponse:
 def visitors(request: HttpRequest) -> HttpResponse:
     return application.response(
         request,
-        VISITOR_ACTIVITY_PAGE(traffic_summary(), visitor_event_page()),
+        VISITOR_ACTIVITY_PAGE(traffic_summary(), visitor_event_snapshot()),
         title="Visitor activity · Northstar Supply",
     )
 

@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pyjs.javascript.sourcemap import SourceMap
+from pyjs.javascript.transpiler import bundle_with_source_map
 from pyjs.testing.assertion_rewriter import TestingExtension
-from pyjs.transpiler import SourceMap, bundle_with_source_map
+from pyjs.tooling.npm import NpmImport
 
 ENTRYPOINT_MODULE = "__pyjs_test_entrypoint__"
 PYJS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -30,12 +32,14 @@ class SelectedTest:
     nodeid: str
     module_name: str
     function_name: str
+    android_dependencies: tuple[str, ...] = ()
 
-    def to_payload(self) -> dict[str, str]:
+    def to_payload(self) -> dict[str, object]:
         return {
             "nodeid": self.nodeid,
             "module_name": self.module_name,
             "function_name": self.function_name,
+            "android_dependencies": list(self.android_dependencies),
         }
 
     @classmethod
@@ -44,6 +48,7 @@ class SelectedTest:
             nodeid=payload["nodeid"],
             module_name=payload["module_name"],
             function_name=payload["function_name"],
+            android_dependencies=tuple(payload.get("android_dependencies", ())),
         )
 
 
@@ -52,6 +57,7 @@ class BrowserBundle:
     javascript: str
     css: str
     source_map: SourceMap = SourceMap()
+    npm_imports: tuple[NpmImport, ...] = ()
 
 
 class BrowserBundleBuilder:
@@ -83,7 +89,12 @@ class BrowserBundleBuilder:
                 sys.modules.pop(ENTRYPOINT_MODULE, None)
                 linecache.cache.pop(str(self.entrypoint_path), None)
         source_map = generated.source_map.shifted(2)
-        return BrowserBundle(generated.javascript, css or "", source_map)
+        return BrowserBundle(
+            generated.javascript,
+            css or "",
+            source_map,
+            generated.npm_imports,
+        )
 
 
 def is_within(path: Path, directory: Path) -> bool:

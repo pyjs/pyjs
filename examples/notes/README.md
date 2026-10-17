@@ -1,48 +1,50 @@
 # Notes
 
-Notes is a polished, Google Keep-inspired application with web and native
-Android interfaces. Both targets use DOM- or platform-owned state rather than
-maintaining a second UI data store.
+Notes demonstrates web and native Android interfaces. The web application
+uses DOM-owned ordering and server restoration; Android uses native
+RecyclerView and an in-memory adapter.
 
 The web application demonstrates:
 
-- native HTML drag-and-drop between Notes, Pinned, and Archive sections;
+- HTML drag-and-drop between Notes, Pinned, and Archive sections;
 - precise before/after reordering and accessible arrow controls;
-- DOM-owned note ordering;
-- server-side rendering and hydration;
+- DOM-owned ordering, server rendering, and hydration;
 - per-browser server persistence restored after refresh; and
 - browser interaction, native drag, and visual regression tests.
 
-The Android application demonstrates a responsive masonry grid, pinned-note
-sections, list and grid modes, search, navigation, note colors, editable text
-and checklists, native drag reordering, and common note actions.
+The Android example currently demonstrates variable-height masonry cards,
+stable IDs, recycled-holder rebinding, colors, and long-press reordering.
+Its search header is decorative. Search, editable notes/checklists,
+pinned sections, navigation, and note actions are not implemented in this
+example.
 
-## Run the web application
+## Run
 
 ```console
 python -m pyjs_examples.notes
-```
-
-Open the printed URL. Move notes between sections and refresh the page to see
-the server restore their order.
-
-## Run the Android application
-
-With an Android SDK and a running virtual device:
-
-```console
 python -m pyjs_examples.notes --android
 ```
 
-## Run the tests
+The default starts the web server. `--android` builds and launches the JVM
+implementation using Android framework classes and RecyclerView. It needs an
+Android SDK and JDK, not a JavaScript Android runtime or Gradle project.
+Android notes reset to the sample data on launch; no backend is required.
+
+## Test
 
 ```console
 pytest -q examples/notes/tests
 pytest -q examples/notes/tests --pyjs-target=web \
   --pyjs-browser=managed
-pytest -q examples/notes/tests/test_android_notes.py \
-  --pyjs-target=android --pyjs-android-avd=Routine_Test
+pytest -q examples/notes/tests/test_android_ui.py \
+  --pyjs-target=android --pyjs-android-runtime=robolectric
+pytest -q examples/notes/tests/test_android_ui.py \
+  --pyjs-target=android --pyjs-android-runtime=device \
+  --pyjs-android-avd=YOUR_AVD
 ```
 
-The Material Icons font is distributed under Apache License 2.0. Its license
-is included beside the font in `mobile_assets/fonts/`.
+`test_android_model.py` checks note/color/ID movement in CPython.
+`test_android_ui.py` checks the native grid and initial adapter order under
+Robolectric or on a device. Its device-only test drags a card in both directions
+with UI Automator and checks the exact resulting stable-ID order on Espresso's
+UI thread. No separate host-driven APK fixture is needed.

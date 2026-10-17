@@ -30,6 +30,8 @@ async def fetch(url: str, options: FetchOptions) -> FetchResponse: ...
 
 @js
 class TransportResponse:
+    """Response status and body returned by a client transport."""
+
     def __init__(self, status: int, body: str):
         self.status = status
         self.body = body
@@ -41,6 +43,8 @@ class TransportResponse:
 
 @js
 class ClientTransport:
+    """Client-side transport contract used by generated API proxies."""
+
     async def request(
         self,
         url: str,
@@ -51,6 +55,8 @@ class ClientTransport:
 
 @js
 class FetchTransport(ClientTransport):
+    """Browser transport that sends API operations with ``fetch()``."""
+
     def request_headers(self) -> dict[str, str]:
         return {"Content-Type": "application/json"}
 

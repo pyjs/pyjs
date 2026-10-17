@@ -5,6 +5,8 @@ from pyjs.web.dom import document
 
 @js
 class DjangoFetchTransport(FetchTransport):
+    """Fetch transport that adds Django's document CSRF token."""
+
     def request_headers(self) -> dict[str, str]:
         csrf_meta = document.querySelector('meta[name="csrf-token"]')
         if csrf_meta is None:

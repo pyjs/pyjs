@@ -10,6 +10,8 @@ type QuerySetFactory = Callable[[], QuerySet]
 
 @dataclass(frozen=True)
 class DjangoRelationship:
+    """Django loading strategy for one declared resource relationship."""
+
     source: str | None
     queryset: QuerySet | QuerySetFactory | None
     load: RelationshipLoad | None
@@ -25,6 +27,18 @@ def relationship(
     model: type[Model] | None = None,
     limit: int | None = None,
 ) -> DjangoRelationship:
+    """Configure how Django loads a resource relationship.
+
+    Args:
+        source: Direct relation field on the source Django model.
+        queryset: Queryset or factory used to load related models.
+        load: Custom batch loader for a computed relationship.
+        model: Django model returned by a custom loader.
+        limit: Maximum related values included for each source object.
+
+    Returns:
+        Relationship metadata consumed by JSON:API encoding.
+    """
     if queryset is not None and load is not None:
         raise TypeError("A Django relationship cannot use both queryset and load.")
     if load is None and model is not None:

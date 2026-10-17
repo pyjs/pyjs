@@ -7,6 +7,8 @@ SectionEntryPoint = Callable[[object], object]
 
 @dataclass(frozen=True, eq=False)
 class ApplicationPage:
+    """Named client entry point that can be rendered as an application page."""
+
     name: str
     entry_point: EntryPoint
 
@@ -16,6 +18,8 @@ class ApplicationPage:
 
 @dataclass(frozen=True, eq=False)
 class ApplicationSection:
+    """Shared bundle boundary containing pages or nested sections."""
+
     name: str
     entry_point: SectionEntryPoint
     children: tuple[ApplicationSection | ApplicationPage, ...] = ()
