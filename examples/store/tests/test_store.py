@@ -120,6 +120,7 @@ def test_store_bundle_hierarchy_matches_the_application_architecture():
     assert "class AtomicBatch" in root
     assert "class StoreHeader extends Widget" in public
     assert "class CatalogPage extends Widget" in catalog
+    assert "add_button.element.disabled = true;" in catalog
     assert "class AccountDashboard extends Widget" in overview
     assert "class StoreHeader extends Widget" not in catalog
     assert "class CatalogPage extends Widget" not in root

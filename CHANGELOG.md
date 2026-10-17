@@ -6,6 +6,17 @@
 
 - Introduced this changelog. Future releases will record notable features,
   compatibility changes and fixes here.
+- Pull-request CI covers Linux, Windows and macOS, including parallel LLVM,
+  browser/WebGPU and Android tests, cross-platform package installation, and
+  retained failure artifacts. Releases reuse the same validation workflow.
+
+### Fixed
+
+- JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
+- Browser test compilation no longer blocks control-connection keepalives;
+  disconnected requests release pending results without overlapping builds.
+  The runner page is prepared before readiness so cold compilation cannot
+  strand the browser on an HTTP timeout page.
 
 ### Feature overview
 

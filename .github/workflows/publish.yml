@@ -33,9 +33,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out public source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - name: Validate versions and release tag
@@ -49,16 +49,13 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  build-linux:
-    name: Build linux-x64
+  validate:
+    name: Validate and build release
     if: github.event_name == 'push' || inputs.target == 'all'
     needs: preflight
-    uses: ./.github/workflows/build-runtime.yml
+    uses: ./.github/workflows/ci.yml
     with:
-      artifact: npm-linux-x64
-      platform: Linux
-      runner: ubuntu-latest
-      target: linux-x64
+      retain-packages: true
 
   build-single:
     name: Build selected runtime and launcher
@@ -68,59 +65,14 @@ jobs:
     with:
       artifact: npm-${{ inputs.target }}
       platform: ${{ inputs.target }}
-      runner: ${{ fromJSON('{"linux-x64":"ubuntu-latest","linux-arm64":"ubuntu-24.04-arm","win32-x64":"windows-latest","darwin-arm64":"macos-15","darwin-x64":"macos-15-intel"}')[inputs.target] }}
+      runner: ${{ fromJSON('{"linux-x64":"ubuntu-24.04","linux-arm64":"ubuntu-24.04-arm","win32-x64":"windows-2025","darwin-arm64":"macos-15","darwin-x64":"macos-15-intel"}')[inputs.target] }}
       target: ${{ inputs.target }}
       include-launcher: true
-
-  build-linux-arm64:
-    name: Build linux-arm64
-    needs: build-linux
-    uses: ./.github/workflows/build-runtime.yml
-    with:
-      artifact: npm-linux-arm64
-      platform: Linux arm64
-      runner: ubuntu-24.04-arm
-      target: linux-arm64
-
-  build-windows:
-    name: Build win32-x64
-    needs: build-linux-arm64
-    uses: ./.github/workflows/build-runtime.yml
-    with:
-      artifact: npm-win32-x64
-      platform: Windows
-      runner: windows-latest
-      target: win32-x64
-
-  build-macos-arm64:
-    name: Build darwin-arm64
-    needs: build-windows
-    uses: ./.github/workflows/build-runtime.yml
-    with:
-      artifact: npm-darwin-arm64
-      platform: macOS arm64
-      runner: macos-15
-      target: darwin-arm64
-
-  build-macos-x64:
-    name: Build darwin-x64
-    needs: build-macos-arm64
-    uses: ./.github/workflows/build-runtime.yml
-    with:
-      artifact: npm-darwin-x64
-      platform: macOS x64
-      runner: macos-15-intel
-      target: darwin-x64
 
   publish-runtimes:
     name: Publish ${{ matrix.package }}
     if: github.event_name == 'push'
-    needs:
-      - build-linux
-      - build-linux-arm64
-      - build-macos-arm64
-      - build-macos-x64
-      - build-windows
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -142,18 +94,18 @@ jobs:
       id-token: write
     steps:
       - name: Check out public source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Download release artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: ${{ matrix.artifact }}
           path: release-artifact
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - name: Set up Node.js and npm
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
@@ -174,7 +126,7 @@ jobs:
     name: Publish @pyjsdev/cli
     if: github.event_name == 'push'
     needs:
-      - build-linux
+      - validate
       - preflight
       - publish-runtimes
     runs-on: ubuntu-latest
@@ -184,18 +136,18 @@ jobs:
       id-token: write
     steps:
       - name: Check out public source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Download Linux release artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: npm-linux-x64
           path: release-artifact
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - name: Set up Node.js and npm
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org

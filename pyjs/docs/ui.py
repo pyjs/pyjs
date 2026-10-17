@@ -1,6 +1,13 @@
 from pyjs import js
 from pyjs.javascript import JSON, JSONObject
-from pyjs.web.dom import document, localStorage, navigator, sessionStorage, window
+from pyjs.web.dom import (
+    Element,
+    document,
+    localStorage,
+    navigator,
+    sessionStorage,
+    window,
+)
 from pyjs.web.domx import (
     CustomElement,
     button,
@@ -73,15 +80,15 @@ class DocsApp(CustomElement):
         self,
         site_name: str = "",
         home_href: str = "./",
-        navigation="",
-        article="",
-        outline="",
+        navigation: str | Element = "",
+        article: str | Element = "",
+        outline: str | Element = "",
         search_data="[]",
         search_url: str = "",
         site_home_href: str = "",
-        site_navigation="",
-        project_links="",
-        version_navigation="",
+        site_navigation: str | Element = "",
+        project_links: str | Element = "",
+        version_navigation: str | Element = "",
     ):
         super().__init__()
         if not site_home_href:
@@ -373,15 +380,15 @@ class DocsApp(CustomElement):
 def main(
     site_name: str = "PyJS",
     home_href: str = "./",
-    navigation="",
-    article="",
-    outline="",
+    navigation: str | Element = "",
+    article: str | Element = "",
+    outline: str | Element = "",
     search_data="[]",
     search_url: str = "",
     site_home_href: str = "",
-    site_navigation="",
-    project_links="",
-    version_navigation="",
+    site_navigation: str | Element = "",
+    project_links: str | Element = "",
+    version_navigation: str | Element = "",
 ):
     return DocsApp(
         site_name,

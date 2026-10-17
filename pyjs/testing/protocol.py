@@ -2,6 +2,7 @@ import json
 from typing import Any, Literal
 
 type RunFailureStage = Literal[
+    "busy",
     "bundle_build",
     "browser_connection",
     "bundle_dispatch",

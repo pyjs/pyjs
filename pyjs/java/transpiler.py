@@ -3253,14 +3253,23 @@ class JVMEmitter:
             )
             code.emit(0xB8, exit_reference.to_bytes(2, "big"))
         else:
+            # Executable string results are UTF-8 bytes, independent of the
+            # console's PrintStream charset (which can be lossy on Windows).
+            charset = self.class_file.constants.string("UTF-8")
+            code.emit(0x13, charset.to_bytes(2, "big"))
+            encode_reference = self.class_file.method_reference(
+                "java/lang/String", "getBytes", "(Ljava/lang/String;)[B",
+            )
+            code.emit(0xB6, encode_reference.to_bytes(2, "big"))
             print_reference = self.class_file.method_reference(
                 "java/io/PrintStream",
-                "print",
-                "(Ljava/lang/String;)V",
+                "write",
+                "([B)V",
             )
             code.emit(0xB6, print_reference.to_bytes(2, "big"))
         code.emit(0xB1)
-        return Method(0x0009, "main", "([Ljava/lang/String;)V", code.render(), 2, 1)
+        return Method(0x0009, "main", "([Ljava/lang/String;)V", code.render(),
+                      3 if return_type == "Ljava/lang/String;" else 2, 1)
 
     def default_constructor(self, class_file: ClassFile) -> Method:
         code = Bytecode()

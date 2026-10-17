@@ -553,10 +553,12 @@ def test_store_visitor_feed_appends_cursor_pages_and_observes_its_sentinel():
                     "[data-visitor-event]:first-child",
                     "data-visitor-event",
                 ) == "13"
-                assert "/products/canvas-field-bag/" in await page.text(
-                    '[data-testid="visitor-log"] '
-                    '[data-slot="streaming-log-line"]:last-child'
+                # The stream's trailing sentinel is not a log line.
+                lines = await page.evaluate_json(
+                    "Array.from(document.querySelectorAll('[data-testid=visitor-log] "
+                    "[data-slot=streaming-log-line]')).map(line => line.textContent)"
                 )
+                assert "/products/canvas-field-bag/" in lines[-1]
                 assert page.exceptions == []
 
     asyncio.run(run())

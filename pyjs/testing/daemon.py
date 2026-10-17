@@ -8,6 +8,7 @@ import json
 import os
 import re
 import signal
+import threading
 import time
 import traceback
 import uuid
@@ -115,6 +116,9 @@ class PrototypeDaemon:
         self.retained_iframes = retained_iframes
         self.managed_page: BrowserPage | None = None
         self.bundle_builder = BrowserBundleBuilder(self.project_root, self.cache_dir)
+        # Both builders change imported modules. Serialize their worker threads,
+        # including when a cancelled request leaves a compilation finishing.
+        self.build_lock = threading.Lock()
         self.signature = compute_testing_signature()
         self.current_bundle = ""
         self.current_css = ""
@@ -124,6 +128,7 @@ class PrototypeDaemon:
         self.cached_suite_id: str | None = None
         self.cached_bundle: BrowserBundle | None = None
         self.reusable = True
+        self.runner_page_html: str | None = None
         self.runner_page_error: str | None = None
         self.active_browser: WebSocket | None = None
         self.last_browser_seen: float | None = None
@@ -204,23 +209,29 @@ class PrototypeDaemon:
         self.cached_bundle = None
         self.reusable = False
 
-    async def runner_page(self, request: Request) -> Response:
-        self.touch_activity()
+    async def prepare_runner_page(self) -> None:
+        if self.runner_page_html is not None or self.runner_page_error is not None:
+            return
         try:
-            runner_page = await asyncio.to_thread(self.runner_html)
+            self.runner_page_html = await asyncio.to_thread(self.runner_html)
         except Exception:
             self.runner_page_error = traceback.format_exc()
             self.reusable = False
             self.browser_ready.set()
+
+    async def runner_page(self, request: Request) -> Response:
+        self.touch_activity()
+        await self.prepare_runner_page()
+        if self.runner_page_error is not None:
             return Response.html(
                 runner_build_failure_html(self.runner_page_error),
                 status=500,
                 headers={"Cache-Control": "no-store"},
             )
-        self.runner_page_error = None
         if self.active_browser is None:
             self.browser_ready.clear()
-        return Response.html(runner_page, headers={"Cache-Control": "no-store"})
+        assert self.runner_page_html is not None
+        return Response.html(self.runner_page_html, headers={"Cache-Control": "no-store"})
 
     def bundle_javascript(self, request: Request) -> Response:
         self.touch_activity()
@@ -279,31 +290,35 @@ class PrototypeDaemon:
 
     async def handler(self, connection: WebSocket) -> None:
         try:
-            async for raw_message in connection:
-                message = json.loads(raw_message)
-                message_type = message.get("type")
-                self.note_browser_activity(connection)
+            async with asyncio.TaskGroup() as tasks:
+                pending_run = None
+                try:
+                    async for raw_message in connection:
+                        message = json.loads(raw_message)
+                        message_type = message.get("type")
+                        self.note_browser_activity(connection)
 
-                if message_type == "browser_heartbeat":
-                    continue
+                        if message_type == "browser_heartbeat":
+                            continue
 
-                self.touch_activity()
-                if message_type == "register_browser":
-                    self.activate_browser(connection)
-                    await connection.send(json.dumps({"type": "browser_registered"}))
-                    continue
-
-                if message_type == "run_tests":
-                    response = await self.handle_run_tests(message)
-                    await connection.send(json.dumps(response))
-                    continue
-
-                if message_type == "test_results":
-                    run_id = message["run_id"]
-                    future = self.pending_results.get(run_id)
-                    if future is not None and not future.done():
-                        future.set_result(message["results"])
-                    continue
+                        self.touch_activity()
+                        if message_type == "register_browser":
+                            self.activate_browser(connection)
+                            await connection.send(json.dumps({"type": "browser_registered"}))
+                        elif message_type == "run_tests":
+                            if pending_run is not None and not pending_run.done():
+                                await connection.send(json.dumps(failed_run("busy", "A test request is already running")))
+                            else:
+                                # Keep reading control frames, including pings,
+                                # while compilation and browser execution wait.
+                                pending_run = tasks.create_task(self.respond_to_run(connection, message))
+                        elif message_type == "test_results":
+                            future = self.pending_results.get(message["run_id"])
+                            if future is not None and not future.done():
+                                future.set_result(message["results"])
+                finally:
+                    if pending_run is not None:
+                        pending_run.cancel()
         finally:
             was_active = self.active_browser is connection
             self.deactivate_browser(connection)
@@ -314,9 +329,24 @@ class PrototypeDaemon:
                             ConnectionError("Browser runner disconnected")
                         )
 
+    async def respond_to_run(self, connection: WebSocket, message: dict[str, Any]) -> None:
+        response = await self.handle_run_tests(message)
+        await connection.send(json.dumps(response))
+
+    def build_bundle(self, selected_tests: list[SelectedTest], run_id: str) -> BrowserBundle:
+        with self.build_lock:
+            return self.bundle_builder.build(selected_tests, run_id)
+
     async def handle_run_tests(self, message: dict[str, Any]) -> dict[str, Any]:
         async with self.run_lock:
-            return await self._handle_run_tests(message)
+            try:
+                return await self._handle_run_tests(message)
+            except asyncio.CancelledError:
+                future = self.pending_results.pop(self.current_run_id, None)
+                if future is not None:
+                    future.cancel()
+                self.discard_bundle()
+                raise
 
     async def _handle_run_tests(self, message: dict[str, Any]) -> dict[str, Any]:
         self.touch_activity()
@@ -335,7 +365,7 @@ class PrototypeDaemon:
         bundle_result = self.cached_bundle if suite_id == self.cached_suite_id else None
         if bundle_result is None:
             try:
-                bundle_result = self.bundle_builder.build(selected_tests, suite_id or run_id)
+                bundle_result = await asyncio.to_thread(self.build_bundle, selected_tests, suite_id or run_id)
             except Exception as exc:
                 self.discard_bundle()
                 return failed_run("bundle_build", str(exc))
@@ -583,7 +613,7 @@ class PrototypeDaemon:
 
         while not self.shutdown_event.is_set():
             await asyncio.sleep(1)
-            if self.pending_results:
+            if self.run_lock.locked() or self.pending_results:
                 continue
             if time.monotonic() - self.last_activity < self.idle_seconds:
                 continue
@@ -608,7 +638,8 @@ class PrototypeDaemon:
         return self.active_browser
 
     def runner_html(self) -> str:
-        runner_components_js, runner_components_css = build_runner_components()
+        with self.build_lock:
+            runner_components_js, runner_components_css = build_runner_components()
         return f"""<!doctype html>
 <html lang="en">
   <head>
@@ -693,6 +724,12 @@ async def async_main(
         test_timeout,
         retained_iframes,
     )
+    # Compile once before advertising readiness. Otherwise the first HTTP page
+    # request can queue behind test compilation and exceed the request deadline,
+    # leaving the managed browser on a 504 page with no control connection.
+    await daemon.prepare_runner_page()
+    if daemon.runner_page_error is not None:
+        raise RuntimeError("Failed to build browser runner page:\n" + daemon.runner_page_error)
     loop = asyncio.get_running_loop()
     handled_signals: list[signal.Signals] = []
     for shutdown_signal in (signal.SIGINT, signal.SIGTERM):

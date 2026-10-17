@@ -51,10 +51,11 @@ async def test_text_encoding_and_sha256_digest_use_native_browser_apis():
 
     digest = Uint8Array(await crypto.subtle.digest("SHA-256", encoded))
     assert len(digest) == 32
-    assert digest[0] == 74
-    assert digest[1] == 127
-    assert digest[2] == 77
-    assert digest[3] == 60
+    # hashlib.sha256("Example ✓".encode("utf-8")).digest()
+    expected = [81, 131, 137, 67, 147, 241, 182, 195, 75, 52, 212, 217, 161, 51, 6, 72,
+                43, 189, 181, 193, 53, 76, 216, 145, 161, 77, 117, 166, 39, 223, 154, 219]
+    for index, value in enumerate(expected):
+        assert digest[index] == value
 
 
 @js

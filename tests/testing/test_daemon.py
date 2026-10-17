@@ -1,16 +1,19 @@
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from pyjs.testing.builder import BrowserBundle
-from pyjs.testing.daemon import PrototypeDaemon
-from pyjs.tooling.node import Node
-from pyjs.tooling.npm import NpmImport, NpmPackage
 from pyjs.analysis.diagnostics import SourceFile
 from pyjs.javascript.sourcemap import SourceMap, SourceMapping
+from pyjs.testing.builder import BrowserBundle
+from pyjs.testing.daemon import PrototypeDaemon
+from pyjs.testing.protocol import RunFailureStage
+from pyjs.tooling.node import Node
+from pyjs.tooling.npm import NpmImport, NpmPackage
 
 BUNDLE = BrowserBundle("bundle", "")
 
@@ -23,10 +26,163 @@ def run_tests(daemon):
     return asyncio.run(daemon._handle_run_tests({"tests": []}))
 
 
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_compilation_keeps_control_pings_and_runner_builds_responsive(tmp_path, monkeypatch, disconnect):
+    from websockets.asyncio.client import connect
+
+    from pyjs.server.dev import Application, Server
+
+    daemon = make_daemon(tmp_path)
+    building = threading.Event()
+    release = threading.Event()
+    runner_built = threading.Event()
+
+    def build(*args):
+        building.set()
+        assert release.wait(5), "compilation blocked the control connection"
+        return BUNDLE
+
+    def runner_components():
+        assert release.is_set(), "runner compilation overlapped test imports"
+        runner_built.set()
+        return "", ""
+
+    async def send_result(raw):
+        daemon.pending_results[json.loads(raw)["run_id"]].set_result([])
+
+    daemon.bundle_builder.build = build
+    daemon.ensure_browser_connection = AsyncMock(return_value=SimpleNamespace(send=send_result))
+    monkeypatch.setattr("pyjs.testing.daemon.build_runner_components", runner_components)
+
+    async def scenario():
+        app = Application()
+        app.websocket("/control")(daemon.handler)
+        server = Server(app, port=0, quiet=True)
+        await server.start_async()
+        try:
+            async with connect(app.websocket_url.rstrip("/") + "/control") as client:
+                await client.send(json.dumps({"type": "run_tests", "tests": []}))
+                assert await asyncio.to_thread(building.wait, 2)
+                runner = asyncio.create_task(daemon.runner_page(request()))
+                pong = await client.ping()
+                await asyncio.wait_for(pong, 2)
+                assert not runner_built.is_set()
+                await client.send(json.dumps({"type": "run_tests", "tests": []}))
+                busy = json.loads(await asyncio.wait_for(client.recv(), 2))
+                assert busy["stage"] == "busy"
+                assert busy["stage"] in get_args(RunFailureStage.__value__)
+                if disconnect:
+                    await client.close()
+                    await asyncio.wait_for(daemon.run_lock.acquire(), 2)
+                    daemon.run_lock.release()
+                    assert daemon.pending_results == {}
+                    assert daemon.reusable is False
+                release.set()
+                if not disconnect:
+                    result = json.loads(await asyncio.wait_for(client.recv(), 2))
+                    assert result["status"] == "ok", result
+                assert (await runner).status == 200
+                assert runner_built.is_set()
+        finally:
+            release.set()
+            await server.close_async()
+
+    asyncio.run(scenario())
+
+
 def request(path="/", query=None):
     from pyjs.server.dev import Request
 
     return Request("GET", path, path, query or {}, {}, b"")
+
+
+@pytest.mark.parametrize("build_failure", [False, True])
+def test_startup_prepares_runner_before_listening_and_reuses_page(tmp_path, monkeypatch, build_failure):
+    from urllib.request import urlopen
+
+    from pyjs.server.dev import Server
+    from pyjs.testing.daemon import async_main
+
+    building, release = threading.Event(), threading.Event()
+    servers, builds = [], []
+
+    def components():
+        builds.append(1)
+        building.set()
+        assert release.wait(5)
+        if build_failure:
+            raise ValueError("invalid runner code")
+        return "// prepared runner", ""
+
+    def read(url):
+        with urlopen(url, timeout=2) as response:
+            return response.status, response.read().decode()
+
+    async def scenario():
+        started = asyncio.Event()
+
+        class RecordingServer(Server):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs, request_timeout=0.1, quiet=True)
+                servers.append(self)
+
+            async def start_async(self):
+                await super().start_async()
+                started.set()
+                return self
+
+        monkeypatch.setattr("pyjs.testing.daemon.Server", RecordingServer)
+        monkeypatch.setattr("pyjs.testing.daemon.build_runner_components", components)
+        task = asyncio.create_task(async_main(
+            "127.0.0.1", 0, 0, tmp_path, tmp_path / "cache", "system", False,
+            1440, 1000, "system", tmp_path / "artifacts", 30, 10,
+        ))
+        try:
+            assert await asyncio.to_thread(building.wait, 2)
+            assert not servers, "daemon advertised readiness before runner compilation"
+            release.set()
+            if build_failure:
+                with pytest.raises(RuntimeError, match="invalid runner code"):
+                    await asyncio.wait_for(task, 2)
+                assert not servers
+                return
+            await asyncio.wait_for(started.wait(), 2)
+            for _ in range(2):
+                status, body = await asyncio.to_thread(read, servers[0].url + "/")
+                assert status == 200
+                assert "// prepared runner" in body
+            assert builds == [1], "page requests recompiled the runner"
+        finally:
+            release.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_request_drops_pending_browser_results(tmp_path):
+    daemon = make_daemon(tmp_path)
+    daemon.bundle_builder.build = Mock(return_value=BUNDLE)
+
+    async def scenario():
+        dispatched = asyncio.Event()
+
+        async def send(raw):
+            dispatched.set()
+
+        daemon.ensure_browser_connection = AsyncMock(return_value=SimpleNamespace(send=send))
+        task = asyncio.create_task(daemon.handle_run_tests({"tests": []}))
+        await asyncio.wait_for(dispatched.wait(), 2)
+        future, = daemon.pending_results.values()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert future.cancelled()
+        assert daemon.pending_results == {}
+        assert not daemon.run_lock.locked()
+        assert daemon.reusable is False
+
+    asyncio.run(scenario())
 
 
 def test_newest_registered_browser_remains_active_when_older_browser_disconnects(tmp_path):

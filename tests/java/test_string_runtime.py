@@ -163,6 +163,7 @@ def main() -> int:
 
 
 LEGACY_REPEAT_METHODS = {
+    ("java/lang/String", "getBytes", "(Ljava/lang/String;)[B"),
     ("java/lang/String", "length", "()I"),
     ("java/lang/StringBuilder", "<init>", "(I)V"),
     ("java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;"),
@@ -177,8 +178,8 @@ def test_repetition_calls_only_android_21_string_methods(tmp_path):
          str(tmp_path / "PyjsProgram.class")],
         capture_output=True, text=True, check=True, timeout=30,
     ).stdout
-    # Compare the entire external string call set, excluding main/exception
-    # wrappers, so newer APIs cannot enter the repetition helper unnoticed.
+    # Check every external string call, including the executable wrapper's
+    # UTF-8 conversion, so newer APIs cannot enter unnoticed.
     references = set(re.findall(
         r'// Method (java/lang/String(?:Builder)?)\."?([\w<>]+)"?:(\S+)',
         disassembly,
