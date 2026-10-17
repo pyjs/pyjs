@@ -15,6 +15,8 @@
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
 - Browser test compilation no longer blocks control-connection keepalives;
   disconnected requests release pending results without overlapping builds.
+  The runner page is prepared before readiness so cold compilation cannot
+  strand the browser on an HTTP timeout page.
 
 ### Feature overview
 

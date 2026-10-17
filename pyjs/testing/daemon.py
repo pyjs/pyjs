@@ -128,6 +128,7 @@ class PrototypeDaemon:
         self.cached_suite_id: str | None = None
         self.cached_bundle: BrowserBundle | None = None
         self.reusable = True
+        self.runner_page_html: str | None = None
         self.runner_page_error: str | None = None
         self.active_browser: WebSocket | None = None
         self.last_browser_seen: float | None = None
@@ -208,23 +209,29 @@ class PrototypeDaemon:
         self.cached_bundle = None
         self.reusable = False
 
-    async def runner_page(self, request: Request) -> Response:
-        self.touch_activity()
+    async def prepare_runner_page(self) -> None:
+        if self.runner_page_html is not None or self.runner_page_error is not None:
+            return
         try:
-            runner_page = await asyncio.to_thread(self.runner_html)
+            self.runner_page_html = await asyncio.to_thread(self.runner_html)
         except Exception:
             self.runner_page_error = traceback.format_exc()
             self.reusable = False
             self.browser_ready.set()
+
+    async def runner_page(self, request: Request) -> Response:
+        self.touch_activity()
+        await self.prepare_runner_page()
+        if self.runner_page_error is not None:
             return Response.html(
                 runner_build_failure_html(self.runner_page_error),
                 status=500,
                 headers={"Cache-Control": "no-store"},
             )
-        self.runner_page_error = None
         if self.active_browser is None:
             self.browser_ready.clear()
-        return Response.html(runner_page, headers={"Cache-Control": "no-store"})
+        assert self.runner_page_html is not None
+        return Response.html(self.runner_page_html, headers={"Cache-Control": "no-store"})
 
     def bundle_javascript(self, request: Request) -> Response:
         self.touch_activity()
@@ -717,6 +724,12 @@ async def async_main(
         test_timeout,
         retained_iframes,
     )
+    # Compile once before advertising readiness. Otherwise the first HTTP page
+    # request can queue behind test compilation and exceed the request deadline,
+    # leaving the managed browser on a 504 page with no control connection.
+    await daemon.prepare_runner_page()
+    if daemon.runner_page_error is not None:
+        raise RuntimeError("Failed to build browser runner page:\n" + daemon.runner_page_error)
     loop = asyncio.get_running_loop()
     handled_signals: list[signal.Signals] = []
     for shutdown_signal in (signal.SIGINT, signal.SIGTERM):

@@ -32,6 +32,7 @@ DEFAULT_IDLE_SECONDS = 120
 NO_BROWSER_RETRY_SECONDS = 2
 CONTROL_CONNECT_TIMEOUT_SECONDS = 10
 CONTROL_SEND_TIMEOUT_SECONDS = 10
+DAEMON_START_TIMEOUT_SECONDS = 120
 RUN_RESPONSE_TIMEOUT_SECONDS = 75
 RESPONSE_TIMEOUT_GRACE_SECONDS = 15
 DAEMON_LOG_TAIL_LINES = 20
@@ -976,7 +977,7 @@ def ensure_daemon_running(
     python_paths = [str(project_root), *(path for path in sys.path if path)]
     environment["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(python_paths))
     with daemon_log.open("a", encoding="utf-8") as logfile:
-        subprocess.Popen(
+        process = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
@@ -1014,8 +1015,11 @@ def ensure_daemon_running(
             start_new_session=True,
         )
 
-    deadline = time.time() + 10
-    while time.time() < deadline:
+    # Readiness includes cold runner compilation, not just binding the socket.
+    deadline = time.monotonic() + DAEMON_START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"PyJS daemon exited during startup:\n{read_log_tail(daemon_log)}")
         health = get_daemon_health(port)
         if daemon_matches_project(
             health,

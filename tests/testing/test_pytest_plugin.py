@@ -63,6 +63,37 @@ def render_item(tmp_path, update=False):
     )
 
 
+def test_daemon_startup_waits_for_cold_runner_compilation(tmp_path, monkeypatch):
+    settings = BrowserTestConfig.from_pytest(pytest_config(tmp_path))
+    # The old ten-second socket-start deadline expired before a cold build.
+    clock = iter((0, 1, 15, 40))
+    monkeypatch.setattr(pytest_plugin.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(pytest_plugin.time, "time", lambda: next(clock))
+    monkeypatch.setattr(pytest_plugin.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(pytest_plugin, "get_daemon_health", Mock(return_value=None))
+    matches = Mock(side_effect=[False, False, False, True])
+    monkeypatch.setattr(pytest_plugin, "daemon_matches_project", matches)
+    launch = Mock(return_value=Mock(poll=Mock(return_value=None)))
+    monkeypatch.setattr(pytest_plugin.subprocess, "Popen", launch)
+
+    pytest_plugin.ensure_daemon_running(8765, 120, tmp_path, tmp_path / "cache", settings, "signature")
+
+    launch.assert_called_once()
+    assert matches.call_count == 4
+
+
+def test_daemon_startup_reports_process_failure_without_waiting(tmp_path, monkeypatch):
+    settings = BrowserTestConfig.from_pytest(pytest_config(tmp_path))
+    monkeypatch.setattr(pytest_plugin, "get_daemon_health", Mock(return_value=None))
+    monkeypatch.setattr(pytest_plugin.subprocess, "Popen", Mock(return_value=Mock(poll=Mock(return_value=1))))
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "daemon.log").write_text("Failed to build browser runner page: invalid runner code\n")
+
+    with pytest.raises(RuntimeError, match="exited during startup.*", check=lambda exc: "invalid runner code" in str(exc)):
+        pytest_plugin.ensure_daemon_running(8765, 120, tmp_path, cache, settings, "signature")
+
+
 def test_browser_filename_has_no_implicit_pyjs_behavior():
     item = SimpleNamespace(
         path="tests/test_browser_external_service.py",
