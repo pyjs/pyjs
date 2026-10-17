@@ -6,8 +6,9 @@
 
 - Introduced this changelog. Future releases will record notable features,
   compatibility changes and fixes here.
-- Pull-request CI runs parallel target suites, including LLVM, browser/WebGPU
-  and Android execution, with retained failure artifacts.
+- Pull-request CI covers Linux, Windows and macOS, including parallel LLVM,
+  browser/WebGPU and Android tests, cross-platform package installation, and
+  retained failure artifacts. Releases reuse the same validation workflow.
 
 ### Feature overview
 

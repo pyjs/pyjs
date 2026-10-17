@@ -54,6 +54,7 @@ dev = [
     "django>=6.0,<6.2",
     "pyjs-examples==0.4.0",
     "pyjs-extras[stripe]==0.4.0",
+    "pytest-xdist==3.8.0",
     "ruff==0.15.22",
     "uvicorn>=0.52,<1",
 ]

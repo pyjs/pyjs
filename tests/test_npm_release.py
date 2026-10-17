@@ -165,29 +165,30 @@ vm.runInNewContext(fs.readFileSync(filename, "utf8"), {
 def test_public_workflow_builds_and_gates_every_runtime():
     workflows = NPM_ROOT.parent / ".github/workflows"
     jobs = yaml.safe_load((workflows / "publish.yml").read_text())["jobs"]
-    builds = {
-        job["with"]["target"]: (name, job)
-        for name, job in jobs.items()
-        if job.get("uses") == "./.github/workflows/build-runtime.yml"
-        and name != "build-single"
-    }
+    ci = yaml.safe_load((workflows / "ci.yml").read_text())["jobs"]
+    builds = {entry["target"]: entry for entry in ci["package"]["strategy"]["matrix"]["include"]}
     assert builds.keys() == TARGETS.keys()
-    # Platforms share preflight but never serialize behind another OS build.
-    for _, job in builds.values():
-        assert job["needs"] == "preflight"
-        assert job["if"] == "github.event_name == 'push' || inputs.target == 'all'"
-    assert builds["linux-arm64"][1]["with"]["runner"] == "ubuntu-24.04-arm"
+    # A release reuses PR tests/builds and publishes those exact archives. No
+    # separate build chain can bypass the test gate or rebuild after testing.
+    validation = jobs["validate"]
+    assert validation["uses"] == "./.github/workflows/ci.yml"
+    assert validation["needs"] == "preflight"
+    assert validation["with"] == {"retain-packages": True}
+    assert validation["if"] == "github.event_name == 'push' || inputs.target == 'all'"
+    assert builds["linux-arm64"]["runner"] == "ubuntu-24.04-arm"
     publication = jobs["publish-runtimes"]
-    assert {name for name, job in builds.values()} == set(publication["needs"])
-    assert publication["strategy"]["matrix"]["include"] == [
-        {"artifact": job["with"]["artifact"], "package": TARGETS[target].package_name}
-        for target, (name, job) in builds.items()
-    ]
+    assert publication["needs"] == "validate"
+    assert {item["artifact"]: item["package"] for item in publication["strategy"]["matrix"]["include"]} == {
+        f"npm-{target}": TARGETS[target].package_name for target in builds}
+    assert "validate" in jobs["publish-launcher"]["needs"]
     assert "publish-runtimes" in jobs["publish-launcher"]["needs"]
     assert jobs["build-single"]["needs"] == "preflight"
     assert jobs["build-single"]["with"]["include-launcher"] is True
     assert jobs["publish-runtimes"]["if"] == "github.event_name == 'push'"
     assert jobs["publish-launcher"]["if"] == "github.event_name == 'push'"
+    for name in ("publish-runtimes", "publish-launcher"):
+        assert jobs[name]["environment"] == "npm"
+        assert jobs[name]["permissions"] == {"contents": "read", "id-token": "write"}
 
 
 def test_shared_runtime_build_checks_python_packages_and_can_avoid_pr_archives():

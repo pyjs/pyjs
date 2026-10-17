@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      retain-packages:
+        description: Retain tested package archives for release publication
+        default: false
+        type: boolean
 
 # Fork approvals are configured in repository Actions settings. Never use
 # pull_request_target or a self-hosted runner to execute candidate code.
@@ -18,56 +24,68 @@ concurrency:
 jobs:
   tests:
     name: Tests (${{ matrix.name }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: 12
       matrix:
         include:
           - {name: core, target: core, shard: 1, shards: 1}
           - {name: js, target: js, shard: 1, shards: 1}
-          - {name: native-1, target: native, shard: 1, shards: 4}
-          - {name: native-2, target: native, shard: 2, shards: 4}
-          - {name: native-3, target: native, shard: 3, shards: 4}
-          - {name: native-4, target: native, shard: 4, shards: 4}
+          - {name: native-1, target: native, shard: 1, shards: 6}
+          - {name: native-2, target: native, shard: 2, shards: 6}
+          - {name: native-3, target: native, shard: 3, shards: 6}
+          - {name: native-4, target: native, shard: 4, shards: 6}
+          - {name: native-5, target: native, shard: 5, shards: 6}
+          - {name: native-6, target: native, shard: 6, shards: 6}
           - {name: jvm, target: jvm, shard: 1, shards: 1}
           - {name: wasm, target: wasm, shard: 1, shards: 1}
           - {name: browser, target: browser, shard: 1, shards: 1}
           - {name: android-robolectric, target: android-robolectric, shard: 1, shards: 1}
           - {name: android-device, target: android-device, shard: 1, shards: 1}
+          - {name: windows, target: portable, shard: 1, shards: 1, runner: windows-2025}
+          - {name: macos, target: portable, shard: 1, shards: 1, runner: macos-15}
     env:
       PYTHONUTF8: "1"
-      PYJS_CLANG: /usr/bin/clang-21
+      PYJS_CLANG: ${{ matrix.target != 'portable' && '/usr/bin/clang-21' || '' }}
     steps:
       - name: Use runner-local temporary storage
+        shell: bash
         run: |
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "XDG_RUNTIME_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: true
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "21"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-      - name: Install Clang and software Vulkan
+      - name: Install Clang
+        if: matrix.target == 'core' || matrix.target == 'js' || matrix.target == 'native'
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
           echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-21 main' | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
-          sudo apt-get install -y clang-21 libclang-rt-21-dev lld-21 libvulkan1 mesa-vulkan-drivers
+          sudo apt-get install -y clang-21 libclang-rt-21-dev lld-21
           "$PYJS_CLANG" --version
+      - name: Install software Vulkan
+        if: matrix.target == 'core' || matrix.target == 'browser'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
       - name: Install locked workspace
-        run: uv sync --locked --extra webgpu
+        run: uv sync --locked ${{ matrix.target == 'core' && '--extra webgpu' || '' }}
       - name: Check source and software GPU
         if: matrix.target == 'core'
         run: |
@@ -87,7 +105,7 @@ jobs:
           fi
       - name: Run target tests
         if: matrix.target != 'android-device'
-        run: uv run --no-sync python scripts/ci.py ${{ matrix.target }} --shard ${{ matrix.shard }} --shards ${{ matrix.shards }}
+        run: uv run --no-sync python scripts/ci.py ${{ matrix.target }} --shard ${{ matrix.shard }} --shards ${{ matrix.shards }} --workers ${{ matrix.target == 'native' && 2 || 1 }}
       - name: Enable emulator acceleration
         if: matrix.target == 'android-device'
         run: |
@@ -95,7 +113,7 @@ jobs:
           sudo chmod a+rw /dev/kvm
       - name: Run Android device tests
         if: matrix.target == 'android-device'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           arch: x86_64
@@ -105,7 +123,7 @@ jobs:
           script: uv run --no-sync python scripts/ci.py android-device
       - name: Upload results and failure artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: tests-${{ matrix.name }}
           path: test-artifacts/
@@ -113,13 +131,25 @@ jobs:
           if-no-files-found: warn
 
   package:
-    name: Package
+    name: Package (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {target: linux-x64, runner: ubuntu-24.04, platform: Linux}
+          - {target: linux-arm64, runner: ubuntu-24.04-arm, platform: Linux arm64}
+          - {target: win32-x64, runner: windows-2025, platform: Windows}
+          - {target: darwin-arm64, runner: macos-15, platform: macOS arm64}
+          - {target: darwin-x64, runner: macos-15-intel, platform: macOS x64}
     uses: ./.github/workflows/build-runtime.yml
     with:
-      artifact: ci-linux-x64
-      platform: Linux
-      runner: ubuntu-24.04
-      target: linux-x64
+      artifact: npm-${{ matrix.target }}
+      platform: ${{ matrix.platform }}
+      runner: ${{ matrix.runner }}
+      target: ${{ matrix.target }}
+      include-launcher: ${{ matrix.target == 'linux-x64' }}
+      retain-artifact: ${{ inputs.retain-packages || false }}
 
   complete:
     name: CI complete
