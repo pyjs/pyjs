@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -23,10 +24,97 @@ def run_tests(daemon):
     return asyncio.run(daemon._handle_run_tests({"tests": []}))
 
 
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_compilation_keeps_control_pings_and_runner_builds_responsive(tmp_path, monkeypatch, disconnect):
+    from websockets.asyncio.client import connect
+    from pyjs.server.dev import Application, Server
+
+    daemon = make_daemon(tmp_path)
+    building = threading.Event()
+    release = threading.Event()
+    runner_built = threading.Event()
+
+    def build(*args):
+        building.set()
+        assert release.wait(5), "compilation blocked the control connection"
+        return BUNDLE
+
+    def runner_components():
+        assert release.is_set(), "runner compilation overlapped test imports"
+        runner_built.set()
+        return "", ""
+
+    async def send_result(raw):
+        daemon.pending_results[json.loads(raw)["run_id"]].set_result([])
+
+    daemon.bundle_builder.build = build
+    daemon.ensure_browser_connection = AsyncMock(return_value=SimpleNamespace(send=send_result))
+    monkeypatch.setattr("pyjs.testing.daemon.build_runner_components", runner_components)
+
+    async def scenario():
+        app = Application()
+        app.websocket("/control")(daemon.handler)
+        server = Server(app, port=0, quiet=True)
+        await server.start_async()
+        try:
+            async with connect(app.websocket_url.rstrip("/") + "/control") as client:
+                await client.send(json.dumps({"type": "run_tests", "tests": []}))
+                assert await asyncio.to_thread(building.wait, 2)
+                runner = asyncio.create_task(daemon.runner_page(request()))
+                pong = await client.ping()
+                await asyncio.wait_for(pong, 2)
+                assert not runner_built.is_set()
+                await client.send(json.dumps({"type": "run_tests", "tests": []}))
+                busy = json.loads(await asyncio.wait_for(client.recv(), 2))
+                assert busy["stage"] == "busy"
+                if disconnect:
+                    await client.close()
+                    await asyncio.wait_for(daemon.run_lock.acquire(), 2)
+                    daemon.run_lock.release()
+                    assert daemon.pending_results == {}
+                    assert daemon.reusable is False
+                release.set()
+                if not disconnect:
+                    result = json.loads(await asyncio.wait_for(client.recv(), 2))
+                    assert result["status"] == "ok", result
+                assert (await runner).status == 200
+                assert runner_built.is_set()
+        finally:
+            release.set()
+            await server.close_async()
+
+    asyncio.run(scenario())
+
+
 def request(path="/", query=None):
     from pyjs.server.dev import Request
 
     return Request("GET", path, path, query or {}, {}, b"")
+
+
+def test_cancelled_request_drops_pending_browser_results(tmp_path):
+    daemon = make_daemon(tmp_path)
+    daemon.bundle_builder.build = Mock(return_value=BUNDLE)
+
+    async def scenario():
+        dispatched = asyncio.Event()
+
+        async def send(raw):
+            dispatched.set()
+
+        daemon.ensure_browser_connection = AsyncMock(return_value=SimpleNamespace(send=send))
+        task = asyncio.create_task(daemon.handle_run_tests({"tests": []}))
+        await asyncio.wait_for(dispatched.wait(), 2)
+        future, = daemon.pending_results.values()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert future.cancelled()
+        assert daemon.pending_results == {}
+        assert not daemon.run_lock.locked()
+        assert daemon.reusable is False
+
+    asyncio.run(scenario())
 
 
 def test_newest_registered_browser_remains_active_when_older_browser_disconnects(tmp_path):

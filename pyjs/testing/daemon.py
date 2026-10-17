@@ -8,6 +8,7 @@ import json
 import os
 import re
 import signal
+import threading
 import time
 import traceback
 import uuid
@@ -115,6 +116,9 @@ class PrototypeDaemon:
         self.retained_iframes = retained_iframes
         self.managed_page: BrowserPage | None = None
         self.bundle_builder = BrowserBundleBuilder(self.project_root, self.cache_dir)
+        # Both builders change imported modules. Serialize their worker threads,
+        # including when a cancelled request leaves a compilation finishing.
+        self.build_lock = threading.Lock()
         self.signature = compute_testing_signature()
         self.current_bundle = ""
         self.current_css = ""
@@ -279,31 +283,35 @@ class PrototypeDaemon:
 
     async def handler(self, connection: WebSocket) -> None:
         try:
-            async for raw_message in connection:
-                message = json.loads(raw_message)
-                message_type = message.get("type")
-                self.note_browser_activity(connection)
+            async with asyncio.TaskGroup() as tasks:
+                pending_run = None
+                try:
+                    async for raw_message in connection:
+                        message = json.loads(raw_message)
+                        message_type = message.get("type")
+                        self.note_browser_activity(connection)
 
-                if message_type == "browser_heartbeat":
-                    continue
+                        if message_type == "browser_heartbeat":
+                            continue
 
-                self.touch_activity()
-                if message_type == "register_browser":
-                    self.activate_browser(connection)
-                    await connection.send(json.dumps({"type": "browser_registered"}))
-                    continue
-
-                if message_type == "run_tests":
-                    response = await self.handle_run_tests(message)
-                    await connection.send(json.dumps(response))
-                    continue
-
-                if message_type == "test_results":
-                    run_id = message["run_id"]
-                    future = self.pending_results.get(run_id)
-                    if future is not None and not future.done():
-                        future.set_result(message["results"])
-                    continue
+                        self.touch_activity()
+                        if message_type == "register_browser":
+                            self.activate_browser(connection)
+                            await connection.send(json.dumps({"type": "browser_registered"}))
+                        elif message_type == "run_tests":
+                            if pending_run is not None and not pending_run.done():
+                                await connection.send(json.dumps(failed_run("busy", "A test request is already running")))
+                            else:
+                                # Keep reading control frames, including pings,
+                                # while compilation and browser execution wait.
+                                pending_run = tasks.create_task(self.respond_to_run(connection, message))
+                        elif message_type == "test_results":
+                            future = self.pending_results.get(message["run_id"])
+                            if future is not None and not future.done():
+                                future.set_result(message["results"])
+                finally:
+                    if pending_run is not None:
+                        pending_run.cancel()
         finally:
             was_active = self.active_browser is connection
             self.deactivate_browser(connection)
@@ -314,9 +322,24 @@ class PrototypeDaemon:
                             ConnectionError("Browser runner disconnected")
                         )
 
+    async def respond_to_run(self, connection: WebSocket, message: dict[str, Any]) -> None:
+        response = await self.handle_run_tests(message)
+        await connection.send(json.dumps(response))
+
+    def build_bundle(self, selected_tests: list[SelectedTest], run_id: str) -> BrowserBundle:
+        with self.build_lock:
+            return self.bundle_builder.build(selected_tests, run_id)
+
     async def handle_run_tests(self, message: dict[str, Any]) -> dict[str, Any]:
         async with self.run_lock:
-            return await self._handle_run_tests(message)
+            try:
+                return await self._handle_run_tests(message)
+            except asyncio.CancelledError:
+                future = self.pending_results.pop(self.current_run_id, None)
+                if future is not None:
+                    future.cancel()
+                self.discard_bundle()
+                raise
 
     async def _handle_run_tests(self, message: dict[str, Any]) -> dict[str, Any]:
         self.touch_activity()
@@ -335,7 +358,7 @@ class PrototypeDaemon:
         bundle_result = self.cached_bundle if suite_id == self.cached_suite_id else None
         if bundle_result is None:
             try:
-                bundle_result = self.bundle_builder.build(selected_tests, suite_id or run_id)
+                bundle_result = await asyncio.to_thread(self.build_bundle, selected_tests, suite_id or run_id)
             except Exception as exc:
                 self.discard_bundle()
                 return failed_run("bundle_build", str(exc))
@@ -583,7 +606,7 @@ class PrototypeDaemon:
 
         while not self.shutdown_event.is_set():
             await asyncio.sleep(1)
-            if self.pending_results:
+            if self.run_lock.locked() or self.pending_results:
                 continue
             if time.monotonic() - self.last_activity < self.idle_seconds:
                 continue
@@ -608,7 +631,8 @@ class PrototypeDaemon:
         return self.active_browser
 
     def runner_html(self) -> str:
-        runner_components_js, runner_components_css = build_runner_components()
+        with self.build_lock:
+            runner_components_js, runner_components_css = build_runner_components()
         return f"""<!doctype html>
 <html lang="en">
   <head>

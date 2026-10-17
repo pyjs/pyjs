@@ -10,6 +10,12 @@
   browser/WebGPU and Android tests, cross-platform package installation, and
   retained failure artifacts. Releases reuse the same validation workflow.
 
+### Fixed
+
+- JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
+- Browser test compilation no longer blocks control-connection keepalives;
+  disconnected requests release pending results without overlapping builds.
+
 ### Feature overview
 
 PyJS compiles typed Python to JavaScript for browser applications, with
