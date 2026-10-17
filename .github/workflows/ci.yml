@@ -49,14 +49,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install Clang and software Vulkan
@@ -73,8 +73,10 @@ jobs:
         run: |
           uv run --no-sync ruff check .
           uv run --no-sync python -c "import wgpu; assert wgpu.gpu.request_adapter_sync() is not None"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         if: matrix.target == 'core' || matrix.target == 'jvm' || startsWith(matrix.target, 'android-')
+        with:
+          packages: platform-tools
       - name: Install Android compilation tools and debug key
         if: matrix.target == 'core' || matrix.target == 'jvm' || startsWith(matrix.target, 'android-')
         run: |

@@ -38,8 +38,11 @@ def suites(target, shard=1, shards=1, root=ROOT):
     if target == "browser":
         # Django test settings and the Store example must live in separate
         # processes. Do not drop Store or extras browser tests to avoid clashes.
-        return [[path, "-m", "pyjs_web", "--pyjs-target=web", "--pyjs-browser=managed"]
-                for path in ("tests", "examples", "extras")]
+        # Extras currently have host-side compilation tests, not marked web
+        # tests. Collect them with examples so future web tests join this lane
+        # without treating an empty standalone extras selection as success.
+        return [[*paths, "-m", "pyjs_web", "--pyjs-target=web", "--pyjs-browser=managed"]
+                for paths in (["tests"], ["examples", "extras"])]
     if target == "android-robolectric":
         return [[path, "-m", "pyjs_android_jvm and not pyjs_android_device",
                  "--pyjs-target=android", "--pyjs-android-runtime=robolectric"]

@@ -39,7 +39,7 @@ def test_core_and_backend_suites_partition_python_tests():
 
 
 def test_browser_and_android_suites_execute_platform_tests_in_separate_processes():
-    assert [suite[0] for suite in suites("browser")] == ["tests", "examples", "extras"]
+    assert [suite[:suite.index("-m")] for suite in suites("browser")] == [["tests"], ["examples", "extras"]]
     for suite in suites("browser"):
         assert "--pyjs-target=web" in suite
         assert "--pyjs-browser=managed" in suite
