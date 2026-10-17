@@ -1540,11 +1540,27 @@ def main() -> int:
     assert result.returncode == 5
 
 
-def test_jvm_transpiler_writes_a_unicode_string_entry_point(tmp_path):
+@pytest.mark.parametrize("ascii_stdout", [False, True])
+def test_jvm_transpiler_writes_a_unicode_string_entry_point(tmp_path, ascii_stdout):
     transpile_jvm(STRING_OUTPUT_SOURCE).write(tmp_path)
+    entry = "PyjsProgram"
+    if ascii_stdout:
+        # Exercise a non-UTF-8 PrintStream on every OS, not only Windows.
+        launcher = tmp_path / "AsciiOutput.java"
+        launcher.write_text('''
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+class AsciiOutput {
+    public static void main(String[] args) {
+        System.setOut(new PrintStream(System.out, true, StandardCharsets.US_ASCII));
+        PyjsProgram.main(args);
+    }
+}
+''')
+        entry = str(launcher)
 
     result = subprocess.run(
-        [java(), "-cp", str(tmp_path), "PyjsProgram"],
+        [java(), "-cp", str(tmp_path), entry],
         check=True,
         capture_output=True,
     )
