@@ -77,14 +77,15 @@ def test_trimming_calls_only_legacy_string_methods(tmp_path):
          str(tmp_path / "PyjsProgram.class")],
         capture_output=True, text=True, check=True, timeout=30,
     ).stdout
-    # Ignore application wrappers, but compare the complete external string
-    # call set so a newer runtime method cannot silently enter this helper.
+    # Include the executable wrapper's UTF-8 conversion in the complete
+    # external string call set; all these APIs must exist at the minimum SDK.
     references = set(re.findall(
         r"// Method java/lang/String\.(\w+):(\S+)", disassembly,
     ))
     assert references == {
         ("length", "()I"), ("charAt", "(I)C"), ("indexOf", "(I)I"),
         ("substring", "(II)Ljava/lang/String;"),
+        ("getBytes", "(Ljava/lang/String;)[B"),
     }
     methods = read_jvm_class(compilation.classes["PyjsProgram"]).declared_methods(
         "pyjs_string_strip",
@@ -105,6 +106,7 @@ def test_trimming_string_methods_exist_at_android_minimum_sdk():
         for name, descriptor in (
             ("length", "()I"), ("charAt", "(I)C"), ("indexOf", "(I)I"),
             ("substring", "(II)Ljava/lang/String;"),
+            ("getBytes", "(Ljava/lang/String;)[B"),
         ):
             method = next(method for method in string.methods
                           if method.name == name and method.descriptor == descriptor)
