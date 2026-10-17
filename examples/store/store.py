@@ -16,7 +16,7 @@ from pyjs.web.crypto import crypto
 from pyjs.web.dom import Element
 from pyjs.web.domx import div, form, h1, input, p, ref, span, tag, tw
 from pyjs.web.events import Event
-from pyjs.web.html import HTMLInputElement, HTMLSelectElement
+from pyjs.web.html import HTMLButtonElement, HTMLInputElement, HTMLSelectElement
 from pyjs.web.navigation import NavigationLayout
 from pyjs.web.ui import Widget
 from pyjs.web.ui.badge import Badge
@@ -329,7 +329,8 @@ def product_card(product: Product):
     add_button.setAttribute("data-product-id", str(product.id))
     add_button.setAttribute("data-price", str(product.cents))
     if product.inventory == 0:
-        add_button.element.disabled = True
+        # Button can also wrap an anchor; this instance has no href.
+        cast(HTMLButtonElement, add_button.element).disabled = True
         add_button.element.textContent = "Sold out"
     details_button = Button("Reviews & ideas", variant="ghost")
     details_button.setAttribute("data-product-details", str(product.id))
@@ -1843,9 +1844,9 @@ def review_moderation_page(page: Page[ModeratedReview]) -> Element:
 @js
 def visitor_activity_page(
     summary: TrafficSummary,
-    page: Page[VisitorEvent],
+    snapshot: StreamSnapshot[Page[VisitorEvent]],
 ) -> Element:
-    return VisitorActivityPage(summary, page)
+    return VisitorActivityPage(summary, snapshot)
 
 
 CATALOG_PAGE = ApplicationPage("catalog", catalog_page)
