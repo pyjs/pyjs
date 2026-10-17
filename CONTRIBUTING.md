@@ -33,6 +33,33 @@ uv run pytest -q examples extras
 Submit changes as pull requests to `pyjs/pyjs`. Include focused regressions,
 the checks you ran, and any platform coverage you could not exercise.
 
+## Pull-request CI
+
+Every PR runs the Linux suite on parallel GitHub-hosted runners: core/server,
+JS/WGSL, LLVM (four module shards), JVM, WebAssembly, browser, Android
+Robolectric, and Android emulator. Browser tests include WebGPU, examples and
+extras; managed-tool download tests and a Linux portable npm package build/install
+smoke test also run. Core and Store Django settings
+are isolated in separate processes. A failure does not cancel sibling targets.
+
+Reproduce a target with `uv run python scripts/ci.py js` (replace `js` with
+`core`, `native`, `jvm`, `wasm`, `browser`, `android-robolectric`, or
+`android-device`). Add `--collect-only` to inspect selection. Native shards
+use `--shard 1 --shards 4`; without those flags, the entire native suite runs.
+The workflow installs Clang 21, JDK 21, Node 24, software Vulkan and the Android
+35 SDK where needed. Local runs need the corresponding tools; browser runs
+need Chrome, and device runs need a running emulator.
+
+JUnit reports, logs and browser/device artifacts are uploaded even after
+failures. Skips are visible in the report; a green run is not a claim of
+Windows/macOS coverage or support for every Python/browser/Android API.
+Empty test selections fail. `CI complete` requires every matrix job to pass.
+
+All external contributors require a maintainer's approval before fork PR
+workflows run. Review the proposed code and workflow changes before approving.
+PR tests use read-only tokens, no repository secrets, and no self-hosted
+runners. Release publishing remains separate and tag-triggered.
+
 ## Repository landmarks
 
 - `pyjs/analysis/` contains source analysis, diagnostics, and the typed object

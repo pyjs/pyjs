@@ -34,7 +34,8 @@ def android_sdk() -> tuple[Path, Path]:
         "ANDROID_SDK_ROOT"
     )
     root = Path(configured) if configured else Path.home() / "Android" / "Sdk"
-    platforms = list((root / "platforms").glob("android-*/android.jar"))
+    platforms = [path for path in (root / "platforms").glob("android-*/android.jar")
+                 if path.parent.name.removeprefix("android-").isdecimal()]
     build_tools = list((root / "build-tools").glob("*/d8"))
     if not platforms or not build_tools:
         pytest.skip("an Android SDK platform and d8 are required")
@@ -51,6 +52,18 @@ def javap():
     if executable is None:
         pytest.skip("a Java runtime is required for JVM backend tests")
     return executable
+
+
+def test_sdk_discovery_ignores_preview_and_extension_platform_names(tmp_path, monkeypatch):
+    for name in ("android-35", "android-36-ext18", "android-Preview"):
+        platform = tmp_path / "platforms" / name
+        platform.mkdir(parents=True)
+        (platform / "android.jar").touch()
+    tools = tmp_path / "build-tools" / "35.0.0"
+    tools.mkdir(parents=True)
+    (tools / "d8").touch()
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path))
+    assert android_sdk() == (tmp_path / "platforms/android-35/android.jar", tools / "d8")
 
 
 def test_android_calculator_surface_compiles_to_framework_valid_dex(tmp_path):

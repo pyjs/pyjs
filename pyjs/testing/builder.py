@@ -124,11 +124,16 @@ def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     for module_name in module_names:
         parts = module_name.split(".")
         selected_names.update(".".join(parts[:index]) for index in range(1, len(parts) + 1))
-    for name, module in list(sys.modules.items()):
+    # Resolve namespace-package paths before removing any parent. Their lazy
+    # __path__ lookup consults sys.modules[parent] after cache invalidation.
+    removed = [
+        name for name, module in list(sys.modules.items())
         if name in selected_names or (
             module is not None and module_is_from_project(module, project_root)
-        ):
-            sys.modules.pop(name, None)
+        )
+    ]
+    for name in removed:
+        sys.modules.pop(name, None)
     for path in list(sys.path_importer_cache):
         if path and is_within(Path(path), project_root):
             sys.path_importer_cache.pop(path, None)

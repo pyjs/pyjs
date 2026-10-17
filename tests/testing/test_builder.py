@@ -1,4 +1,6 @@
 import gc
+import importlib
+import sys
 import weakref
 
 import pytest
@@ -14,6 +16,22 @@ from pyjs.testing.builder import (
     generate_entrypoint_source,
 )
 from pyjs.tooling.npm import NpmImport, NpmPackage
+
+
+def test_project_import_cleanup_handles_nested_namespace_packages(tmp_path, monkeypatch):
+    package = tmp_path / "ci_namespace" / "nested"
+    package.mkdir(parents=True)
+    (package / "value.py").write_text("value = 42\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    names = ("ci_namespace", "ci_namespace.nested", "ci_namespace.nested.value")
+    try:
+        original = importlib.import_module(names[-1])
+        builder_module.clear_project_modules(tmp_path, [])
+        assert all(name not in sys.modules for name in names)
+        assert importlib.import_module(names[-1]) is not original
+    finally:
+        for name in reversed(names):
+            sys.modules.pop(name, None)
 
 
 def test_generate_entrypoint_source_binds_each_selected_test_directly():
