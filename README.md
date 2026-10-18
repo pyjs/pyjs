@@ -609,7 +609,8 @@ with `pyjs template`.
   using `<exception str() failed>` as its message. Explicitly raised custom
   exceptions retain their formatters even without a Python `str()` call.
   The same applies to exceptions passed to native Java calls, exposed through
-  native views, or returned by Java callbacks, including typed map contents.
+  native views, stored in native fields, or returned by Java callbacks,
+  including typed map contents.
   Explicit `__str__()` calls through base views require compatible override
   result types; narrow to the concrete type for a differently typed result.
   Local `super()` aliases keep lexical dispatch; mixed or escaping proxies

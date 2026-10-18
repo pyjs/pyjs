@@ -10,8 +10,8 @@
   cannot accidentally override native Throwable methods.
   Java logging preserves the original exception when formatting fails, and
   local `super()` aliases keep lexical parent dispatch. Exceptions crossing
-  native calls, views and callbacks retain custom text without Python string
-  calls, including exceptions stored in typed maps.
+  native calls, fields, views and callbacks retain custom text without Python
+  string calls, including exceptions stored in typed maps.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.

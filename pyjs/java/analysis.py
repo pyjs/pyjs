@@ -4,9 +4,9 @@ import ast
 import inspect
 
 from pyjs.analysis import create_analysis_environment, super_proxy
-from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type
+from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type, field_owner
 from pyjs.analysis.diagnostics import DiagnosticCode
-from pyjs.analysis.ir import ExceptionRaise, IRInferenceVisitor, Return
+from pyjs.analysis.ir import ExceptionRaise, FieldStore, IRInferenceVisitor, Return
 from pyjs.analysis.lifetime import refine_lifetimes
 from pyjs.analysis.objects import Class, Function, Instance, StaticCast, UnionType
 from pyjs.decorators import backend_metadata, is_declaration
@@ -131,7 +131,18 @@ def retain_native_exception_text(visitor, value):
             pending.extend((value_type.generic_types or {}).values())
 
 
-def retain_native_call_text(visitor, function):
+def retain_native_field_text(visitor, target, value):
+    if not isinstance(target, ast.Attribute):
+        return
+    owner = field_owner(getattr(target, "obj", None))
+    if owner is not None and is_declaration(owner.py_obj, "jvm"):
+        # Use the declared field owner, not the receiver's class: an inherited
+        # native field crosses the ABI, but a Python-owned field on the same
+        # native subclass does not.
+        retain_native_exception_text(visitor, value)
+
+
+def retain_native_boundary_text(visitor, function):
     if function.ir is None:
         return
     for block in function.ir.blocks:
@@ -142,6 +153,11 @@ def retain_native_call_text(visitor, function):
                     values.append(node.func.value)
                 for value in values:
                     retain_native_exception_text(visitor, value)
+            elif isinstance(node, (FieldStore, ast.AnnAssign)) and node.value is not None:
+                retain_native_field_text(visitor, node.target, node.value)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    retain_native_field_text(visitor, target, node.value)
             elif isinstance(node, StaticCast):
                 target = analyzed_value_type(node)
                 if isinstance(target, Class) and is_declaration(target.py_obj, "jvm"):
@@ -223,7 +239,7 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
         processed.update(pending)
         for value in pending:
             if isinstance(value, Function):
-                retain_native_call_text(visitor, value)
+                retain_native_boundary_text(visitor, value)
             else:
                 retain_class(value)
     refine_lifetimes(entry_point)

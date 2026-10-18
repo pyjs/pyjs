@@ -2,6 +2,7 @@
 
 import pytest
 
+from pyjs.java.classfile import Bytecode, ClassFile, Field, Method
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
 
@@ -157,5 +158,118 @@ def create() -> Failure:
 
 def main() -> int:
     assert native_text(create()) == "PyjsProgram$Failure: custom:raw"
+    return 42
+''', tmp_path)
+
+
+NATIVE_HOLDER = '''
+from typing import Annotated, ClassVar
+from pyjs import jvm
+
+@jvm.native("NativeHolder")
+class Holder:
+    value: Annotated[object, jvm.field()]
+    staticValue: ClassVar[Annotated[object, jvm.field()]] = ""
+    def __init__(self) -> None:
+        pass
+    def read(self) -> str:
+        return "PyjsProgram$Failure: " + str(self.value)
+
+@jvm.native("NativeHolder", name="readStatic")
+def read_static() -> str:
+    return "PyjsProgram$Failure: " + str(Holder.staticValue)
+
+class Child(Holder):
+    pass
+'''
+
+
+def write_native_holder(directory):
+    # Java reads the Object field and formats its contents, without an
+    # analyzed Python field read or formatting call retaining the override.
+    helper = ClassFile("NativeHolder", access=0x0021)
+    helper.add_field(Field(0x0001, "value", "Ljava/lang/Object;"))
+    helper.add_field(Field(0x0009, "staticValue", "Ljava/lang/Object;"))
+    code = Bytecode()
+    code.local(0x19, 0)
+    constructor = helper.method_reference("java/lang/Object", "<init>", "()V")
+    code.emit(0xB7, constructor.to_bytes(2, "big"))
+    code.emit(0xB1)
+    helper.add_method(Method(0x0001, "<init>", "()V", code.render(), 1, 1))
+    for static in (False, True):
+        code = Bytecode()
+        if not static:
+            code.local(0x19, 0)
+        field = helper.field_reference(
+            "NativeHolder", "staticValue" if static else "value", "Ljava/lang/Object;",
+        )
+        code.emit(0xB2 if static else 0xB4, field.to_bytes(2, "big"))
+        method = helper.method_reference(
+            "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;",
+        )
+        code.emit(0xB8, method.to_bytes(2, "big"))
+        code.emit(0xB0)
+        helper.add_method(Method(
+            0x0009 if static else 0x0001, "readStatic" if static else "read",
+            "()Ljava/lang/String;", code.render(), 1, 0 if static else 1,
+        ))
+    (directory / "NativeHolder.class").write_bytes(helper.render())
+
+
+@pytest.mark.parametrize("body", [
+    'holder = Holder()\n    holder.value = error\n    return holder.read()',
+    'holder = Child()\n    holder.value = error\n    return holder.read()',
+    'Holder.staticValue = error\n    return read_static()',
+    'Holder.staticValue: object = error\n    return read_static()',
+], ids=["instance", "inherited", "static", "annotated-static"])
+def test_native_field_stores_retain_exception_text(tmp_path, body):
+    write_native_holder(tmp_path)
+    assert_text_matches_python(NATIVE_TEXT + NATIVE_HOLDER + f'''
+def create() -> Exception:
+    return Failure("raw")
+
+def main() -> str:
+    error = create()
+    {body}
+''', tmp_path)
+
+
+def test_python_owned_field_on_native_subclass_does_not_retain_formatter(tmp_path):
+    write_native_holder(tmp_path)
+    result = run_jvm(NATIVE_HOLDER + '''
+class Unused(Exception):
+    def __init__(self, code: int):
+        self.code = code
+
+    def __str__(self) -> str:
+        return not_defined
+
+class Storage(Holder):
+    def __init__(self):
+        super().__init__()
+        self.owned = Unused(42)
+
+def main() -> str:
+    holder = Storage()
+    holder.value = "safe"
+    return holder.read() + str(holder.owned.code)
+''', tmp_path)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "safe42", "")
+
+
+def test_native_field_exception_formatter_dependencies_compile_to_dex(tmp_path):
+    assert_compiles_to_android_dex(NATIVE_TEXT + '''
+from typing import Annotated
+
+@jvm.native("android/os/Message")
+class Message:
+    obj: Annotated[object, jvm.field()]
+    def __init__(self) -> None: ...
+    def toString(self) -> str: ...
+
+def main() -> int:
+    message = Message()
+    message.obj = Failure("raw")
+    assert "custom:raw" in message.toString()
     return 42
 ''', tmp_path)
