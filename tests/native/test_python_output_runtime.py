@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 from pyjs import int32
+from pyjs.native.platform import errno_symbol
 from pyjs.native.runtime import arena, buffers, memory, output
 from pyjs.native.runtime.pointers import Pointer, byte_offset, load_integer, load_pointer
 from pyjs.tooling.llvm import LLVM
@@ -123,7 +124,7 @@ def test_write_all_partial_progress_interrupts_and_failures(tmp_path, optimize, 
         *memory.arena_runtime(), *output.write_all_runtime(), *output.output_runtime(),
     ])
     source = source.replace("call i64 @write(", "call i64 @test.write(")
-    source = source.replace("call ptr @__errno_location()", "call ptr @test.errno()")
+    source = source.replace(f"call ptr @{errno_symbol()}()", "call ptr @test.errno()")
     source += '''
         @test_steps = global [4 x i64] zeroinitializer
         @test_requests = global [4 x i64] zeroinitializer

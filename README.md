@@ -90,6 +90,50 @@ python -m pytest -q --pyjs-target=web --pyjs-browser=managed
 To develop PyJS itself from a source checkout, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Try the experimental native compiler
+
+The LLVM backend compiles a supported subset of typed Python to machine code,
+without embedding CPython. During development, try it from a source checkout
+with Python 3.14, uv, and a native Clang toolchain installed:
+
+```bash
+git clone https://github.com/pyjs/pyjs.git
+cd pyjs
+uv sync
+```
+
+Save this as `try_native.py` in the checkout:
+
+```python
+from pathlib import Path
+
+from pyjs.tooling.llvm import LLVM
+
+result = LLVM().run_source('''
+def main() -> str:
+    squares = [number * number for number in range(6)]
+    return "Squares: " + str(squares) + "\\n"
+''', directory=Path("native-build"))
+
+print(result.stdout, end="")
+if result.returncode:
+    raise RuntimeError(result.stderr)
+```
+
+Run `uv run python try_native.py`. It prints
+`Squares: [0, 1, 4, 9, 16, 25]` and retains the generated `program.ll` and native
+executable in `native-build/`. Clang also needs the host's linker and C runtime
+development libraries: Xcode Command Line Tools on macOS, or MSVC Build Tools,
+the Windows SDK and Clang's compiler-rt on Windows. Use matching 64-bit Python
+and compiler architectures. Set `PYJS_CLANG` to a compiler path if it is not on PATH.
+
+This API compiles for the current host, not an arbitrary cross-compilation
+target. CI compiles and executes on Linux, macOS and Windows, each on x64 and
+arm64, including loading native libraries into Python. The executable entry
+point is a zero-argument `main()` returning
+`str` (written to stdout) or `int` (used as the process exit status). Arbitrary
+Python packages and dynamic Python features are not automatically supported.
+
 ## What makes PyJS different
 
 - **Python stays visible.** Generated JavaScript is readable and maps back to

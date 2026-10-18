@@ -9,6 +9,7 @@ import pytest
 
 from pyjs.analysis.source import create_module
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm_module
+from pyjs.native.platform import binary_suffix
 from pyjs.tooling.llvm import LLVM, LLVMComparison, LLVMExecution, LLVMLibrary
 from pyjs.web.domx import CustomElement
 
@@ -47,6 +48,7 @@ def test_failed_compile_exposes_diagnostics_and_keeps_ir(tmp_path):
 
 @pytest.mark.parametrize("oracle_exit,options", [(1, "print_stacktrace=0:halt_on_error=0"),
                                                  (0, "halt_on_error=0:exitcode=0")])
+@pytest.mark.skipif(sys.platform == "win32", reason="hosted Windows toolchains lack a complete standalone UBSan runtime")
 def test_sanitized_execution_stops_on_recoverable_ubsan_report(tmp_path, monkeypatch, oracle_exit, options):
     llvm = LLVM()
     compiler = llvm.ensure()
@@ -105,7 +107,7 @@ def test_llvm_compiles_and_executes_source(tmp_path):
     assert execution.stderr == ""
     assert execution.artifacts == tmp_path
     assert (tmp_path / "program.ll").is_file()
-    assert (tmp_path / "program").is_file()
+    assert (tmp_path / ("program" + binary_suffix())).is_file()
 
 
 @pytest.mark.parametrize(
@@ -117,7 +119,7 @@ def test_llvm_compiles_and_executes_source(tmp_path):
         """,
         """
         def main() -> str:
-            return "same ✓"
+            return "same ✓\\r\\nnext\\n"
         """,
     ],
 )
@@ -185,7 +187,7 @@ def test_llvm_library_writes_without_materializing_a_python_string(
 
     assert status == 0
     assert output == b"<div>shared library</div>"
-    assert library.path.suffix == ".so"
+    assert library.path.suffix == binary_suffix(shared=True)
     assert library.render_to_fd(-1) == 9
 
 

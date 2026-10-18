@@ -1,6 +1,9 @@
 """Buffered and descriptor output LLVM runtime."""
 
+import sys
 from functools import cache
+
+from pyjs.native.platform import errno_symbol
 
 
 @cache
@@ -52,9 +55,37 @@ def compiled_output_runtime() -> tuple[str, ...]:
 
 
 def write_all_runtime() -> list[str]:
+    # _write uses unsigned 32-bit counts and signed 32-bit results, unlike
+    # POSIX ssize_t/size_t. Keep the algorithm's i64 interface and cap each
+    # partial write; write_all already handles progress and retries.
+    write = ["declare i64 @write(i32, ptr, i64)"]
+    if sys.platform == "win32":
+        write = [
+            "declare i32 @_write(i32, ptr, i32)",
+            "declare ptr @_set_thread_local_invalid_parameter_handler(ptr)",
+            # UCRT otherwise terminates the process on an invalid descriptor.
+            # Scope the handler to this call/thread and restore both it and
+            # errno; never replace the embedding application's global handler.
+            "define private void @pyjs.write.invalid(ptr %expression, ptr %function, ptr %file, i32 %line, i64 %reserved) {",
+            "  ret void",
+            "}",
+            "define internal i64 @write(i32 %fd, ptr %data, i64 %size) {",
+            "  %large = icmp ugt i64 %size, 2147483647",
+            "  %bounded = select i1 %large, i64 2147483647, i64 %size",
+            "  %count = trunc i64 %bounded to i32",
+            "  %previous = call ptr @_set_thread_local_invalid_parameter_handler(ptr @pyjs.write.invalid)",
+            "  %result = call i32 @_write(i32 %fd, ptr %data, i32 %count)",
+            "  %errno = call ptr @_errno()",
+            "  %saved = load i32, ptr %errno",
+            "  %ignored = call ptr @_set_thread_local_invalid_parameter_handler(ptr %previous)",
+            "  store i32 %saved, ptr %errno",
+            "  %wide = sext i32 %result to i64",
+            "  ret i64 %wide",
+            "}",
+        ]
     return [
-        "declare i64 @write(i32, ptr, i64)",
-        "declare ptr @__errno_location()",
+        *write,
+        f"declare ptr @{errno_symbol()}()",
         *compiled_write_runtime(),
     ]
 

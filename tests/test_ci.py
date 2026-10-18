@@ -105,6 +105,7 @@ def test_workflow_runs_every_target_without_privileged_pr_execution():
 
 def test_ci_concurrency_isolates_release_validation_on_the_same_ref():
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    native = yaml.safe_load((ROOT / ".github/workflows/native-platforms.yml").read_text())
     release = yaml.safe_load((ROOT / ".github/workflows/publish.yml").read_text())
 
     def group(workflow, caller):
@@ -114,5 +115,30 @@ def test_ci_concurrency_isolates_release_validation_on_the_same_ref():
 
     # GitHub supplies the caller context inside reusable workflows. Neither
     # ordinary CI nor the release parent may cancel its validation child.
-    assert len({group(ci, ci), group(ci, release), group(release, release)}) == 3
+    assert len({group(ci, ci), group(ci, release), group(release, release),
+                group(native, native), group(native, release)}) == 5
     assert ci["concurrency"]["cancel-in-progress"] is True
+
+
+def test_native_platforms_reuse_runtime_modules_and_gate_every_host():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/native-platforms.yml").read_text())
+    assert set(workflow[True]) == {"pull_request", "push", "workflow_dispatch", "workflow_call"}
+    assert workflow["permissions"] == {"contents": "read"}
+    job = workflow["jobs"]["native"]
+    matrix = job["strategy"]["matrix"]["include"]
+    assert {item["platform"] for item in matrix} == {
+        f"{os}-{arch}" for os in ("linux", "windows", "macos") for arch in ("x64", "arm64")}
+    assert job["strategy"]["max-parallel"] == 3
+    assert job["strategy"]["fail-fast"] is False
+    command = next(step["run"] for step in job["steps"]
+                   if step.get("name") == "Run target tests")
+    selected = set(command.split())
+    for path in (ROOT / "tests/native").glob("test_python_*runtime.py"):
+        assert path.relative_to(ROOT).as_posix() in selected
+    for path in (ROOT / "tests/tooling").glob("test_llvm*.py"):
+        assert path.relative_to(ROOT).as_posix() in selected
+    complete = workflow["jobs"]["complete"]
+    assert complete["needs"] == "native"
+    assert complete["if"] == "always()"
+    assert complete["steps"][0]["env"] == {"RESULT": "${{ needs.native.result }}"}
+    assert complete["steps"][0]["run"] == 'test "$RESULT" = success'

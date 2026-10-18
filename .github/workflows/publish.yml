@@ -69,10 +69,16 @@ jobs:
       target: ${{ inputs.target }}
       include-launcher: true
 
+  validate-native:
+    name: Validate native platforms
+    if: github.event_name == 'push' || inputs.target == 'all'
+    needs: preflight
+    uses: ./.github/workflows/native-platforms.yml
+
   publish-runtimes:
     name: Publish ${{ matrix.package }}
     if: github.event_name == 'push'
-    needs: validate
+    needs: [validate, validate-native]
     strategy:
       fail-fast: false
       matrix:
@@ -127,6 +133,7 @@ jobs:
     if: github.event_name == 'push'
     needs:
       - validate
+      - validate-native
       - preflight
       - publish-runtimes
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ import pytest
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
 from tests.native.allocation_support import run_allocation_case
+from tests.native.runtime_support import MEMORY_SANITIZERS
 
 
 @pytest.mark.parametrize("value, specification", [(1234567, ".,"), (1234.5678, "7._"), ("text", "._s")])
@@ -39,7 +40,7 @@ def test_numeric_formats(optimize):
             return (f"{value:08d}|{value:10d}|{True:03d}|{floating:.2f}|"
                     + format(123, "+08d") + "|" + format(0.125, "10.2%")
                     + "|" + format(-2.5, "010.2E") + "|" + format(3.5, ".3g"))
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -59,7 +60,7 @@ def test_integer_precision_without_type_code_raises_value_error(optimize):
 
         def main() -> str:
             return integer(5) + "|" + integer(-5) + "|" + boolean(True) + "|" + boolean(False)
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -84,7 +85,7 @@ def test_decimal_format_bounds_precede_host_integer_conversion(value, specificat
             except ValueError:
                 return "caught"
     '''
-    LLVM().assert_matches_python(source, optimize=optimize, sanitizers=("address", "undefined"))
+    LLVM().assert_matches_python(source, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("source, floating", [
@@ -145,7 +146,7 @@ def test_format_order_conversion_default_arguments_and_shadowing(optimize):
             ascii = 4
             result = f"{item(events):{specification(events)}}|{item(events)!r}|{item(events)!s}|{item(events)!a}"
             return result + "|" + ",".join(events)
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -185,7 +186,7 @@ def test_format_exceptions_recursion_and_recovery(optimize):
             except TypeError:
                 result += "unsupported"
             return result
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -210,7 +211,7 @@ def test_format_portable_values_and_empty_optional(optimize):
                     + format(int64(-9223372036854775808), "025d")
                     + format(float32(1.1), ".9f")
                     + optional(1) + optional(None) + format(()) + ascii({}))
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -230,7 +231,7 @@ def test_custom_optional_and_exception_fstrings(optimize):
             except ValueError as error:
                 result += f"{str(error)}"
             return result
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("method, diagnostic", [
@@ -281,7 +282,7 @@ def test_integer_base_format_pipeline(optimize):
             value = -9223372036854775808
             return (f"{value:#080b}|{value:#025o}|{value:+#025x}|{value:😀^25X}|"
                     + format(0, "#010b") + format(255, "0=+#15x") + format(42, "#d"))
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("body, diagnostic", [
@@ -339,7 +340,7 @@ def test_unicode_alignment_ascii_and_precision(optimize):
             return (f"{value:😀^9.2s}|{value!r:>15}|{value!a:<30}|"
                     + format(value, ".0s") + format(value, "09")
                     + ascii([value, "x\\n"]) + format([1, 2]) + format(True))
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -362,4 +363,4 @@ def test_custom_format_dispatch_and_dynamic_specs(optimize):
         def main() -> str:
             gc_set_threshold(1)
             return render(Child(), "application-defined")
-    ''', optimize=optimize, sanitizers=("address", "undefined"))
+    ''', optimize=optimize, sanitizers=MEMORY_SANITIZERS)

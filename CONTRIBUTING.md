@@ -43,12 +43,18 @@ standard GitHub-hosted runners. A failure does not cancel sibling targets.
 | Ubuntu x64 | Core/server, JS generation and semantics, WGSL, native WebGPU, JVM, WebAssembly, browser/WebGPU, Android Robolectric and emulator |
 | Ubuntu x64, six LLVM shards | Every native test, including optimization variants, sanitizers and memory contracts; two processes per shard |
 | Windows x64 and macOS arm64 | JS semantics, JVM/WASM execution, CLI/scaffolding, server lifecycle, tool downloads, browser DOM/platform APIs |
+| Linux, Windows and macOS, each x64 and arm64 | Existing LLVM executable, shared-library, runtime algorithm, GC, exception, formatting and tooling contracts at O0/O2 |
 | Linux x64/arm64, Windows x64, macOS x64/arm64 | Python source/wheel build and isolated install; portable npm runtime build/install smoke tests |
 
 The portability lane does not duplicate compiler golden tests, GPU rendering or
 Android SDK execution. Its three SDK-dependent classpath checks may skip; they
-execute on Linux with the SDK installed. LLVM execution remains Linux-native:
-package/import success on another OS does not establish a native ABI there.
+execute on Linux with the SDK installed. Native execution has its own
+six-platform workflow, reusing test modules rather than copying tests per OS.
+Linux runs the complete native corpus; the other hosts run a representative
+selection including every Python-authored runtime module. Linux and macOS
+retain sanitizer coverage. The hosted Windows toolchains lack complete
+sanitizer runtimes: ordinary memory scenarios still run, while sanitizer-only
+tests and POSIX descriptor inheritance explicitly skip there.
 Core and Store Django settings are isolated in separate processes. Linux
 browser coverage includes examples and extras, and managed-tool download tests
 run on all three operating systems.
@@ -60,22 +66,29 @@ Native CI shards use `--shard 1 --shards 6 --workers 2`; without those flags,
 the entire native suite runs sequentially. Modules are assigned by measured
 cost, not filename count, and each module stays within one worker. Discovery
 always includes new test modules even without recorded timings.
-The workflow installs Clang 21, JDK 21, Node 24, software Vulkan and the Android
-35 SDK where needed. Local runs need the corresponding tools; browser runs
+The main workflow installs Clang 21, JDK 21, Node 24, software Vulkan and the Android
+35 SDK where needed. Native portability additionally exercises the runners'
+preinstalled Clang/Apple Clang toolchains and records their versions and process
+architecture. Windows requires the MSVC linker, Windows SDK and compiler-rt.
+Local runs need the corresponding tools; browser runs
 need Chrome, and device runs need a running emulator.
 
 JUnit reports, logs and browser/device artifacts are retained for seven days,
 including after failures. Native tests print diagnostic stacks after two
 minutes in one test. Browser suites stop after ten failures to avoid retrying
 one broken shared bundle hundreds of times; an interrupted suite is a failure,
-not completed coverage. Skips remain visible. Empty selections fail, and
-`CI complete` requires every test and package job to pass.
+not completed coverage. Skips remain visible. Empty selections fail.
+Before merge, require both `CI complete` (all general test/package jobs) and
+`Native platforms complete` (all six native hosts). Releases call both
+workflows and cannot publish if either fails. The native workflow's test
+command can also be run locally; see `.github/workflows/native-platforms.yml`.
 
 Target elapsed time is below 30 minutes; investigate runs above 45 minutes.
 These are tuning targets, not cutoffs: test and package jobs have a 120-minute
 backstop and no per-step timeout. Queue delays are separate from execution time.
 At most 12 test jobs and three package jobs run concurrently, with at most three macOS
-jobs. Superseded PR runs are cancelled. Only standard hosted runners are used;
+jobs. The separate native matrix runs at most three jobs concurrently.
+Superseded PR runs are cancelled. Only standard hosted runners are used;
 no paid runner or increased cache allowance is required.
 
 Compare wall time and total runner use before changing shards. Download the

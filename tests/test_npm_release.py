@@ -177,10 +177,14 @@ def test_public_workflow_builds_and_gates_every_runtime():
     assert validation["if"] == "github.event_name == 'push' || inputs.target == 'all'"
     assert builds["linux-arm64"]["runner"] == "ubuntu-24.04-arm"
     publication = jobs["publish-runtimes"]
-    assert publication["needs"] == "validate"
+    assert publication["needs"] == ["validate", "validate-native"]
+    assert jobs["validate-native"]["uses"] == "./.github/workflows/native-platforms.yml"
+    assert jobs["validate-native"]["needs"] == "preflight"
+    assert jobs["validate-native"]["if"] == validation["if"]
     assert {item["artifact"]: item["package"] for item in publication["strategy"]["matrix"]["include"]} == {
         f"npm-{target}": TARGETS[target].package_name for target in builds}
     assert "validate" in jobs["publish-launcher"]["needs"]
+    assert "validate-native" in jobs["publish-launcher"]["needs"]
     assert "publish-runtimes" in jobs["publish-launcher"]["needs"]
     assert jobs["build-single"]["needs"] == "preflight"
     assert jobs["build-single"]["with"]["include-launcher"] is True

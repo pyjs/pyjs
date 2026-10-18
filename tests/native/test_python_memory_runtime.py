@@ -1,5 +1,4 @@
 import ctypes
-import signal
 import subprocess
 import sys
 import textwrap
@@ -31,7 +30,11 @@ from tests.native.allocation_support import _fail_allocations
 from tests.native.runtime_failure import (
     reject_native_allocations as _reject_native_allocations,
 )
-from tests.native.runtime_support import runtime_functions, runtime_library
+from tests.native.runtime_support import (
+    TRAP_RETURN_CODES,
+    runtime_functions,
+    runtime_library,
+)
 
 
 def _runtime_source():
@@ -441,17 +444,30 @@ def test_invalid_root_operations_still_trap_at_native_boundary(tmp_path, optimiz
         # and disable core dumps so these checks cannot fill the workstation.
         execution = subprocess.run([sys.executable, "-c", textwrap.dedent(f'''
             import ctypes
-            import resource
+            import sys
             from pyjs.native.runtime.heap import _Heap
             from pyjs.native.runtime.roots import _Frame
+            from tests.native.runtime_support import TRAP_RETURN_CODES
 
-            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            if sys.platform != 'win32':
+                import resource
+                resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             library = ctypes.CDLL({str(path)!r})
             pointer = ctypes.c_void_p
             def function(name, result, arguments):
                 value = getattr(library, 'pyjs.gc.' + name)
                 value.restype, value.argtypes = result, arguments
                 return value
+            def expect_trap(call, *arguments):
+                try:
+                    call(*arguments)
+                except OSError as error:
+                    # ctypes translates Windows SEH traps into OSError.
+                    if sys.platform != 'win32' or error.winerror & 0xffffffff not in TRAP_RETURN_CODES:
+                        raise
+                    print('native trap')
+                    return
+                raise AssertionError('native operation did not trap')
             state = _Heap()
             heap = ctypes.byref(state)
             if {action!r} == 'pop_out_of_order':
@@ -459,7 +475,7 @@ def test_invalid_root_operations_still_trap_at_native_boundary(tmp_path, optimiz
                 push = function('frame.push', None, [pointer, pointer, pointer, ctypes.c_int64])
                 push(heap, ctypes.byref(first), None, 0)
                 push(heap, ctypes.byref(second), None, 0)
-                function('frame.pop', None, [pointer, pointer])(heap, ctypes.byref(first))
+                expect_trap(function('frame.pop', None, [pointer, pointer]), heap, ctypes.byref(first))
             else:
                 value = 1
                 if {action!r} == 'pin_allocation_failure':
@@ -467,9 +483,10 @@ def test_invalid_root_operations_still_trap_at_native_boundary(tmp_path, optimiz
                     denied.value = False
                     value = function('alloc', pointer, [pointer, ctypes.c_int64])(heap, 8)
                     denied.value = True
-                function('pin', None, [pointer, pointer])(heap, value)
+                expect_trap(function('pin', None, [pointer, pointer]), heap, value)
         ''')], capture_output=True, timeout=10)
-        assert execution.returncode in (-signal.SIGILL, -signal.SIGTRAP), (
+        assert (execution.returncode == 0 and execution.stdout.strip() == b"native trap"
+                if sys.platform == "win32" else execution.returncode in TRAP_RETURN_CODES), (
             action, execution.returncode, execution.stderr.decode(),
         )
 

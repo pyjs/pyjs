@@ -4,6 +4,7 @@ import ast
 import builtins
 import re
 import struct
+import sys
 import textwrap
 from copy import copy
 from dataclasses import dataclass
@@ -71,6 +72,7 @@ from pyjs.analysis.value_representation import (
     representation_for_member,
 )
 from pyjs.decorators import get_native_decoration
+from pyjs.native.platform import errno_symbol
 from pyjs.numeric import NumericFormat, integer_literal
 from pyjs.python import native as native_builtins
 from pyjs.web.dom import Element as WebElement
@@ -4223,7 +4225,7 @@ class FunctionEmitter:
                     instruction = f"call i64 @write(i32 {descriptor}, ptr {values[1]}, i64 {values[2]})"
                     result_type = "i64"
                 elif operation == "system.errno":
-                    instruction = "call ptr @__errno_location()"
+                    instruction = f"call ptr @{errno_symbol()}()"
                     self.runtime_primitive_instructions.add(instruction)
                     address = self.emit_value(instruction)
                     value = self.emit_value(f"load i32, ptr {address}")
@@ -7270,11 +7272,26 @@ class FunctionEmitter:
         if returns_string and not self.module.uses_native and not self.module.uses_exceptions and not self.module.uses_print:
             result.extend(runtime_output.write_all_runtime())
             result.append("")
-        # CPython ignores SIGPIPE so descriptor failures become catchable
-        # errors. Configure standalone startup, never a library caller's
-        # process-wide policy. These constants belong to our Linux POSIX ABI.
-        result.extend(["declare ptr @signal(i32, ptr)", "define i32 @main() {", "entry:",
-                       "  %sigpipe.previous = call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))"])
+        # Configure standalone startup only, never a library caller's process.
+        # POSIX SIGPIPE is ignored so descriptor failures become catchable.
+        # Windows CRT streams need binary mode to preserve the emitted bytes.
+        if sys.platform == "win32":
+            uses_output = returns_string or self.module.uses_native or self.module.uses_exceptions or self.module.uses_print
+            if uses_output:
+                result.append("declare i32 @_setmode(i32, i32)")
+            result.extend(["define i32 @main() {", "entry:"])
+            if uses_output:
+                # The output runtime supplies this scoped handler. Closed
+                # streams must produce write errors, not CRT process aborts.
+                result.extend([
+                    "  %handler.previous = call ptr @_set_thread_local_invalid_parameter_handler(ptr @pyjs.write.invalid)",
+                    "  %stdout.mode = call i32 @_setmode(i32 1, i32 32768)",
+                    "  %stderr.mode = call i32 @_setmode(i32 2, i32 32768)",
+                    "  %handler.ignored = call ptr @_set_thread_local_invalid_parameter_handler(ptr %handler.previous)",
+                ])
+        else:
+            result.extend(["declare ptr @signal(i32, ptr)", "define i32 @main() {", "entry:",
+                           "  %sigpipe.previous = call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))"])
         arguments = ""
         hidden_arguments = []
         if self.module.uses_arena:

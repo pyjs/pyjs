@@ -3,6 +3,7 @@
 import ctypes
 import math
 import struct
+import sys
 
 from pyjs import int8, int32, llvm
 from pyjs.decorators import native_operation
@@ -119,9 +120,26 @@ def scientific_format() -> Pointer:
     return bytes_data(b"%.*e\0")
 
 
+class _WindowsFloatArguments(ctypes.Structure):
+    # MSVC x64 and ARM64 va_list store each scalar in an eight-byte slot.
+    _fields_ = [("precision", ctypes.c_int64), ("value", ctypes.c_double)]
+
+
 @native_operation("system.format.float")
 def format_buffer(buffer: Pointer, capacity: int, format: Pointer, precision: int32, value: float) -> int32:
-    function = ctypes.CDLL(None).snprintf
+    from pyjs.native.platform import libc
+    if sys.platform == "win32":
+        # UCRT's snprintf is header-inline. Call its exported implementation
+        # with STANDARD_SNPRINTF_BEHAVIOR (2) and STANDARD_ROUNDING (32),
+        # including NULL/0 size queries and Python's half-even ties.
+        # PyOS_snprintf instead retains Windows' negative truncation result.
+        function = libc().__stdio_common_vsprintf
+        function.argtypes = [ctypes.c_uint64, ctypes.c_void_p, ctypes.c_size_t,
+                             ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        function.restype = ctypes.c_int
+        arguments = _WindowsFloatArguments(int(precision), value)
+        return int32(function(34, buffer.address, capacity, format.address, None, ctypes.byref(arguments)))
+    function = libc().snprintf
     # Keep the actual variadic C ABI; treating snprintf as a fixed-signature
     # callback loses floating-argument bookkeeping on some native targets.
     function.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]

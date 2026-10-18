@@ -1,0 +1,98 @@
+name: Native platforms
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-platforms-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          # Start the slowest measured hosts first, keeping three runners busy
+          # without making macOS Intel wait behind a whole earlier wave.
+          - {platform: macos-x64, runner: macos-15-intel}
+          - {platform: windows-arm64, runner: windows-11-arm}
+          - {platform: linux-arm64, runner: ubuntu-24.04-arm}
+          - {platform: macos-arm64, runner: macos-15}
+          - {platform: windows-x64, runner: windows-2025}
+          - {platform: linux-x64, runner: ubuntu-24.04}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+      - name: Install test environment
+        run: uv sync --locked
+      - name: Record compiler and host architecture
+        run: |
+          clang --version
+          uv run python -c "import platform, struct; print(platform.platform(), platform.machine(), struct.calcsize('P') * 8)"
+      - name: Run target tests
+        run: >-
+          uv run pytest -q -ra --tb=short
+          --junitxml=test-artifacts/native.xml
+          tests/tooling/test_llvm_platforms.py
+          tests/tooling/test_llvm_library_boundary.py
+          tests/tooling/test_llvm_bytes.py
+          tests/tooling/test_llvm_comparison_cleanup.py
+          tests/tooling/test_llvm_exceptions.py
+          tests/tooling/test_llvm.py
+          tests/native/test_llvm.py
+          tests/native/test_gc_layouts.py
+          tests/native/test_exceptions.py
+          tests/native/test_exception_payload.py
+          tests/native/test_math.py
+          tests/native/test_formatting.py
+          tests/native/test_python_dom_runtime.py
+          tests/native/test_python_hash_runtime.py
+          tests/native/test_python_input_runtime.py
+          tests/native/test_python_json_runtime.py
+          tests/native/test_python_mapping_runtime.py
+          tests/native/test_python_memory_runtime.py
+          tests/native/test_python_norm_runtime.py
+          tests/native/test_python_object_runtime.py
+          tests/native/test_python_output_runtime.py
+          tests/native/test_python_range_runtime.py
+          tests/native/test_python_sequence_runtime.py
+          tests/native/test_python_text_runtime.py
+          tests/native/test_python_unicode_runtime.py
+          tests/native/test_python_url_runtime.py
+          tests/native/test_python_utf8_runtime.py
+          tests/native/test_python_integer_runtime.py
+          tests/native/test_python_format_runtime.py
+      - name: Retain test results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-${{ matrix.platform }}
+          path: test-artifacts/
+          retention-days: 7
+
+  complete:
+    name: Native platforms complete
+    if: always()
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every native platform
+        env:
+          RESULT: ${{ needs.native.result }}
+        run: test "$RESULT" = success

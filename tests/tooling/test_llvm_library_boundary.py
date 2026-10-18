@@ -1,12 +1,81 @@
-"""Owned native-library lifecycle and Python/POSIX descriptor boundaries."""
+"""Owned native-library lifecycle and Python/host descriptor boundaries."""
 
 import ctypes
+import errno
+import socket
+import sys
 import threading
 from collections.abc import Mapping
 
 import pytest
 
 from pyjs.tooling.llvm import LLVM, LLVMLibrary, LLVMRuntimeError
+
+
+def test_closed_library_releases_file_for_recompilation(tmp_path):
+    first = LLVM().compile_library('def main() -> str: return "first"', tmp_path)
+    assert first.render() == "first"
+    first.close()
+    first.close()
+    first.path.unlink()
+    second = LLVM().compile_library('def main() -> str: return "second"', tmp_path)
+    try:
+        assert second.render() == "second"
+        with pytest.raises(RuntimeError, match="closed"):
+            first.render()
+    finally:
+        second.close()
+
+
+def test_socket_output_spans_buffers_and_reports_disconnection(tmp_path):
+    library = LLVM().compile_library('''
+        def main() -> str:
+            return "λ\\n" * 100000
+    ''', tmp_path)
+    received = []
+    reader, writer = socket.socketpair()
+    reader.settimeout(10)
+    # POSIX native writes require a blocking descriptor; Python timeouts turn
+    # its underlying descriptor nonblocking even though sendall() would wait.
+
+    def receive():
+        while chunk := reader.recv(65536):
+            received.append(chunk)
+
+    thread = threading.Thread(target=receive)
+    thread.start()
+    try:
+        assert library.render_to_socket(writer) == 0
+        writer.shutdown(socket.SHUT_WR)
+        thread.join(10)
+        assert not thread.is_alive()
+        assert b"".join(received) == ("λ\n" * 100000).encode()
+        reader.close()
+        assert library.render_to_socket(writer) != 0
+    finally:
+        writer.close()
+        thread.join(10)
+        reader.close()
+        library.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows socket adapter uses sendall rather than POSIX write")
+@pytest.mark.parametrize("error,expected", [(TimeoutError(), errno.ETIMEDOUT), (OSError(), errno.EIO)])
+def test_windows_socket_errors_without_errno_remain_failures(tmp_path, error, expected):
+    library = LLVM().compile_library('def main() -> str: return "output"', tmp_path)
+
+    class Destination:
+        def fileno(self):
+            return 0
+
+        def sendall(self, data):
+            assert data == b"output"
+            raise error
+
+    try:
+        assert library.render_to_socket(Destination()) == expected
+    finally:
+        library.close()
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
