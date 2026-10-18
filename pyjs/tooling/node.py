@@ -4,19 +4,25 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from sdkmgr import Manager, SDKError
-
 from .command import CommandRunner
 
 NODE_VERSION = "24.18.1"
 MIN_NODE_MAJOR = 20
+_managed_installations = {}
 
 
-def cache_root() -> Path:
-    root = os.environ.get("XDG_CACHE_HOME")
-    if root:
-        return Path(root) / "pyjs"
-    return Path.home() / ".cache" / "pyjs"
+def _installation_key(root, version):
+    # Provider discovery spawns processes and may hash its bootstrap binary.
+    # Reuse successes across short-lived Node instances, but not environments.
+    environment = tuple(sorted(
+        (key, value) for key, value in os.environ.items()
+        if key.startswith(("MISE_", "NVM_", "XDG_")) or key in {
+            "PATH", "PATHEXT", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+            "APPDATA", "LOCALAPPDATA",
+        }
+    ))
+    return (root.resolve() if root is not None else None, version,
+            Path.cwd(), Path.home(), platform.system(), platform.machine(), environment)
 
 
 class Node:
@@ -47,6 +53,8 @@ class Node:
         self._installation = None
 
     def _managed(self, *, install: bool = False):
+        from sdkmgr import Manager, SDKError
+
         if self._installation is not None:
             return self._installation
         if os.environ.get("PYJS_NODE_MIRROR"):
@@ -54,8 +62,14 @@ class Node:
                 "PYJS_NODE_MIRROR is no longer used. Configure your mise/nvm "
                 "provider's mirror, or select an existing runtime with PYJS_NODE."
             )
-        manager = Manager(self.root, interactive=False)
+        key = _installation_key(self.root, self.version)
+        cached = _managed_installations.get(key)
+        if cached is not None and all(cached.executable(tool).is_file()
+                                      for tool in ("node", "npm", "npx")):
+            self._installation = cached
+            return cached
         try:
+            manager = Manager(self.root, interactive=False)
             self._installation = (manager.ensure if install else manager.find)(
                 "node", version=self.version,
             )
@@ -66,6 +80,9 @@ class Node:
                 f"Node {self.version} is not installed. Call Node.ensure() or "
                 f"run sdkmgr install node@{self.version}."
             )
+        if len(_managed_installations) >= 32:
+            _managed_installations.clear()
+        _managed_installations[key] = self._installation
         return self._installation
 
     @property

@@ -10,6 +10,9 @@
 - Android tooling uses sdkmgr's SDK-root and JDK 21 discovery. Existing SDKs
   remain usable without installing a new management CLI, and missing tools
   produce setup instructions without starting installers during tests.
+  Automatic discovery requires JDK 21: other `JAVA_HOME` versions are skipped,
+  and Android Studio's bundled JBR is no longer searched implicitly. Set
+  `JAVA_HOME` to its JDK 21 directory to reuse it.
 - Tests wait for Android boot completion before reusing an existing emulator,
   rather than treating ADB connectivity as installation readiness.
 

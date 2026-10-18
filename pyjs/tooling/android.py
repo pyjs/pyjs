@@ -1,11 +1,9 @@
 import os
 import re
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-
-from sdkmgr import Manager, SDKError
-from sdkmgr.android import sdk_root
 
 from .command import CommandRunner
 
@@ -29,10 +27,13 @@ class AndroidSDK:
 
     @staticmethod
     def find_root() -> Path:
+        from sdkmgr import Manager, SDKError
+        from sdkmgr.android import sdk_root
+
         # Building/using an installed SDK does not require an installer CLI.
         # In particular, keep SDKs provided by Android Studio and CI reusable.
-        manager = Manager(interactive=False)
         try:
+            manager = Manager(interactive=False)
             root = sdk_root(manager.platform)
         except SDKError as error:
             raise RuntimeError(str(error)) from error
@@ -46,6 +47,8 @@ class AndroidSDK:
 
     @staticmethod
     def find_java_home() -> Path:
+        from sdkmgr import Manager, SDKError
+
         try:
             installation = Manager(interactive=False).find("java", version="21")
         except SDKError as error:
@@ -150,19 +153,32 @@ class AndroidSDK:
     def wait_for_emulator(self, timeout: float = 180, *, identifier: str | None = None) -> AndroidDevice:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            devices = [device for device in self.devices(timeout=max(0.1, deadline - time.monotonic()))
-                       if device.state == "device" and device.identifier.startswith("emulator-")
-                       and (identifier is None or device.identifier == identifier)]
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                devices = self.devices(timeout=min(5, remaining))
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                devices = []
             for device in devices:
-                result = self.runner.run(
-                    [self.adb, "-s", device.identifier, "shell", "getprop", "sys.boot_completed"],
-                    environment=self.environment(),
-                    capture_output=True,
-                    timeout=max(0.1, deadline - time.monotonic()),
-                )
+                if (device.state != "device" or not device.identifier.startswith("emulator-")
+                        or (identifier is not None and device.identifier != identifier)):
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    result = self.runner.run(
+                        [self.adb, "-s", device.identifier, "shell", "getprop", "sys.boot_completed"],
+                        environment=self.environment(),
+                        capture_output=True,
+                        timeout=min(5, remaining),
+                    )
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                    continue
                 if result.stdout.strip() == "1":
                     return device
-            time.sleep(1)
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
         raise TimeoutError("Android emulator did not finish booting.")
 
     def ensure_emulator(

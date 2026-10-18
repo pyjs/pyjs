@@ -64,6 +64,8 @@ signing keys or start emulators.
 
 `AndroidSDK()` discovers JDK 21 through sdkmgr, including installations on
 `PATH`; it no longer requires Android Studio or a manually set `JAVA_HOME`.
+Other `JAVA_HOME` versions are skipped. To reuse Android Studio's bundled
+JDK 21, set `JAVA_HOME` explicitly; its JBR directory is not searched.
 SDK roots follow sdkmgr's platform defaults and the `ANDROID_HOME` and
 `ANDROID_SDK_ROOT` variables. Conflicting roots are errors. Android builds and
 test discovery never provision Java/SDK packages or accept licenses; missing
