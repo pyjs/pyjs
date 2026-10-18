@@ -1,7 +1,10 @@
+import subprocess
+
 import pytest
 
 from pyjs.java import read_jvm_class, transpile_jvm
-from tests.java.test_exceptions import assert_matches_python
+from tests.java.test_exceptions import assert_matches_python, run_jvm
+from tests.java.test_jvm import java
 
 
 def test_nullable_boolean_uses_reference_storage_without_changing_bool_abi():
@@ -153,3 +156,72 @@ def test_nullable_boolean_conditional_and_collection_storage(tmp_path):
                     score += 2
             return score
     ''', tmp_path)
+
+
+@pytest.mark.parametrize("value", ["None", "False", "True"])
+@pytest.mark.parametrize(("operation", "index"), [
+    ("values[0] = {value}", 0),
+    ("values.insert(0, {value})", 0),
+    ("values.append({value})", 1),
+])
+def test_nullable_boolean_list_mutation_boxes_values(tmp_path, operation, index, value):
+    assert_matches_python(f'''
+        def main() -> int:
+            values: list[bool | None] = [None]
+            {operation.format(value=value)}
+            actual = values[{index}]
+            if actual is None:
+                return 1
+            return 2 if actual else 3
+    ''', tmp_path)
+
+
+def test_nullable_boolean_dictionary_and_tuple_storage(tmp_path):
+    assert_matches_python('''
+        def pair(value: bool | None) -> tuple[bool | None, bool | None]:
+            return value, True
+        def main() -> int:
+            values: dict[bool | None, bool | None] = {None: False}
+            values[True] = None
+            values[False] = True
+            assert values[False] is True
+            assert values[True] is None
+            assert values.get(None) is False
+            assert values.get(False, False) is True
+            assert pair(None) is not None
+            return 42
+    ''', tmp_path)
+
+
+def test_forwarded_native_constructor_boxes_boolean_reference(tmp_path):
+    native = tmp_path / "BooleanBase.java"
+    native.write_text('''
+        public class BooleanBase {
+            private final Boolean value;
+            public BooleanBase(Boolean value) { this.value = value; }
+            public boolean enabled() { return value.booleanValue(); }
+        }
+    ''')
+    compiled = subprocess.run(
+        [java(), "-Xmx128m", "-m", "jdk.compiler/com.sun.tools.javac.Main", str(native)],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert compiled.returncode == 0, compiled.stderr
+    actual = run_jvm('''
+        from typing import Annotated
+        from pyjs import jvm
+        from pyjs.java.primitives import Reference
+        BoxedBool = Annotated[bool, Reference("java/lang/Boolean")]
+        @jvm.native("BooleanBase")
+        class BooleanBase:
+            def __init__(self, value: BoxedBool): ...
+            def enabled(self) -> bool: ...
+        class Decision(BooleanBase):
+            def __init__(self, value: bool):
+                super().__init__(value)
+        def main() -> int:
+            assert Decision(True).enabled()
+            assert not Decision(False).enabled()
+            return 42
+    ''', tmp_path)
+    assert actual.returncode == 42, actual.stderr

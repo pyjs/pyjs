@@ -1029,6 +1029,12 @@ class JVMEmitter:
         )
         self.code.emit(0xB6, reference.to_bytes(2, "big"))
 
+    def box_boolean(self, code=None, class_file=None) -> None:
+        reference = (class_file or self.class_file).method_reference(
+            "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;",
+        )
+        (code or self.code).emit(0xB8, reference.to_bytes(2, "big"))
+
     def _expression(self, node) -> str:
         if isinstance(node, ContextExitCall):
             return self.context_exit(node)
@@ -1830,6 +1836,7 @@ class JVMEmitter:
                 item_type = self.list_item_type(semantic_receiver)
                 if not self.compatible(argument_types[1], item_type):
                     raise JVMUnsupported("JVM list insertion has an incompatible value", node)
+                self.convert_native_argument(argument_types[1], item_type, node.args[1])
                 reference = self.class_file.method_reference(
                     self.list_class_name(semantic_receiver), "insert", f"(J{item_type})V"
                 )
@@ -1862,6 +1869,7 @@ class JVMEmitter:
                         "JVM list assignment has an incompatible value",
                         node,
                     )
+                self.convert_native_argument(argument_types[1], item_type, node.args[1])
                 reference = self.class_file.method_reference(
                     self.list_class_name(list_type),
                     "set",
@@ -2268,12 +2276,16 @@ class JVMEmitter:
             self.code.emit(0x85)
             return "J"
         if target.name == "__setitem__" and len(node.args) == 2:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            if self.expression(node.args[1]) != value_descriptor:
+            self.convert_native_argument(actual_key, key_type, node.args[0])
+            actual_value = self.expression(node.args[1])
+            if not self.compatible(actual_value, value_descriptor):
                 raise JVMUnsupported(
                     "JVM dictionary value has an incompatible type", node
                 )
+            self.convert_native_argument(actual_value, value_descriptor, node.args[1])
             reference = self.class_file.method_reference(
                 "java/util/HashMap",
                 "put",
@@ -2283,8 +2295,10 @@ class JVMEmitter:
             self.code.emit(0x57)
             return "V"
         if target.name == "__getitem__" and len(node.args) == 1:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+            self.convert_native_argument(actual_key, key_type, node.args[0])
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2306,8 +2320,10 @@ class JVMEmitter:
             self.checkcast(value_descriptor)
             return value_descriptor
         if target.name == "get" and len(node.args) in {1, 2}:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+            self.convert_native_argument(actual_key, key_type, node.args[0])
             get = self.class_file.method_reference(
                 "java/util/HashMap",
                 "get",
@@ -2371,8 +2387,10 @@ class JVMEmitter:
         ):
             self.code.emit(0x59)
             descriptor = self.value_type(field_type)
-            if self.expression(element) != descriptor:
+            actual = self.expression(element)
+            if not self.compatible(actual, descriptor):
                 raise JVMUnsupported("JVM tuple literal changes item type", element)
+            self.convert_native_argument(actual, descriptor, element)
             reference = self.class_file.field_reference(
                 class_file.name,
                 f"_{index}",
@@ -2388,8 +2406,10 @@ class JVMEmitter:
         if self.expression(node.call.func.value) != descriptor:
             raise JVMUnsupported("JVM list append has incompatible receiver", node)
         item_type = self.list_item_type(list_type)
-        if self.expression(node.call.args[0]) != item_type:
+        actual = self.expression(node.call.args[0])
+        if not self.compatible(actual, item_type):
             raise JVMUnsupported("JVM list append has incompatible value", node)
+        self.convert_native_argument(actual, item_type, node.call.args[0])
         reference = self.class_file.method_reference(
             owner,
             "append",
@@ -3563,6 +3583,8 @@ class JVMEmitter:
                 code.emit(0x88)
             elif actual == "D" and wanted == "F":
                 code.emit(0x90)
+            elif actual == "Z" and wanted == "Ljava/lang/Boolean;":
+                self.box_boolean(code, class_file)
             elif not self.compatible(actual, wanted):
                 raise JVMUnsupported(
                     f"JVM native superclass constructor for "
@@ -4136,10 +4158,7 @@ class JVMEmitter:
         if actual == "N" and _is_reference_descriptor(expected):
             return
         if actual == "Z" and expected == "Ljava/lang/Boolean;":
-            reference = self.class_file.method_reference(
-                "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;",
-            )
-            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+            self.box_boolean()
             return
         if actual == "J" and expected in {"B", "C", "S"}:
             self.code.emit(0x88)
