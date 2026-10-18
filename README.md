@@ -171,7 +171,7 @@ accepts `-m package.module`, `-c 'print(42)'` and stdin (`-`). Native builds
 accept a file or module, optionally followed by `:entry_function`. Use
 `pyjs --target native --src primes.py` to inspect the LLVM IR.
 Default build output uses the source filename's stem (`__main__` for a package
-entry); use `-o app` to choose a package executable's name without colliding
+entry); use `-o build/app` to choose a package executable's name without colliding
 with the package's source directory.
 
 Clang also needs the host's linker and C runtime

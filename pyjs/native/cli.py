@@ -1,6 +1,7 @@
 """File-based native execution; compiler imports stay out of the JavaScript CLI."""
 
 import ctypes
+import errno
 import io
 import json
 import os
@@ -77,10 +78,30 @@ def _analysis_output():
         # catches os.write and inherited subprocess output, not just print().
         # This is process-wide, like the CLI's existing sys.path manipulation.
         with ExitStack() as stack:
+            # Reserve absent standard descriptors before allocating backups or
+            # temporary files: otherwise those files can accidentally become a
+            # missing stdin/stdout/stderr. Restore absence after capture too.
+            missing = []
+            for descriptor in (0, 1, 2):
+                try:
+                    os.get_inheritable(descriptor)
+                except OSError as error:
+                    if error.errno != errno.EBADF:
+                        raise
+                    missing.append(descriptor)
+            for descriptor in missing:
+                placeholder = os.open(os.devnull, os.O_RDWR)
+                if placeholder != descriptor:
+                    try:
+                        os.dup2(placeholder, descriptor)
+                    finally:
+                        os.close(placeholder)
+                stack.callback(os.close, descriptor)
             captures = {}
             for name, descriptor, redirect in (("stdout", 1, redirect_stdout), ("stderr", 2, redirect_stderr)):
                 previous = getattr(sys, name)
-                previous.flush()
+                if previous is not None:
+                    previous.flush()
                 inheritable = os.get_inheritable(descriptor)
                 saved = os.dup(descriptor)
                 stack.callback(os.close, saved)
@@ -98,7 +119,8 @@ def _analysis_output():
                 flush(None)
                 for name, (capture, previous) in captures.items():
                     # Cached Python streams may have buffered descriptor writes.
-                    previous.flush()
+                    if previous is not None:
+                        previous.flush()
                     original = getattr(sys, f"__{name}__")
                     if original is not None and original is not previous:
                         original.flush()
@@ -109,7 +131,7 @@ def _analysis_output():
             if value:
                 if isinstance(error, Exception):
                     error.add_note(f"Analysis {name}:\n{value}")
-                else:
+                elif sys.stderr is not None:
                     # argparse's SystemExit does not display exception notes.
                     print(value, file=sys.stderr, end="")
         raise
@@ -146,7 +168,8 @@ def build(args, load_program, command_parser, *, is_file, entry="main", wrap=Non
                 or (output.exists() and Path(program.filename).exists() and output.samefile(program.filename))):
             command_parser.error("the executable must not overwrite the Python source")
         ir = _emit(program, is_file=is_file, entry=entry, wrap=wrap)
-    print(output_text["stdout"] + output_text["stderr"], file=sys.stderr, end="")
+    if sys.stderr is not None:
+        print(output_text["stdout"] + output_text["stderr"], file=sys.stderr, end="")
     # Compile away from user files: neither the intermediate IR nor the linker
     # may overwrite a nearby source, and a failed build leaves the old binary.
     with TemporaryDirectory(prefix="pyjs-native-") as directory:
@@ -165,7 +188,7 @@ def run(args, load_program, command_parser):
         program = load_program()
         ir = _emit(program, is_file=args.source not in (None, "-"))
     stdout, stderr = output_text["stdout"], output_text["stderr"]
-    if not args.json:
+    if not args.json and sys.stderr is not None:
         print(stdout + stderr, file=sys.stderr, end="")
     if args.src or args.src_all:
         # LLVM emits one linked module, including its reachable dependencies.
@@ -183,7 +206,7 @@ def run(args, load_program, command_parser):
         }
         if args.perf:
             return _perf(args, program, executable, compilation)
-        if args.v and not args.json:
+        if args.v and not args.json and sys.stderr is not None:
             print(ir, file=sys.stderr)
         # Normal execution inherits stdin/stdout/stderr and has no test timeout.
         result = subprocess.run([executable], capture_output=args.json)

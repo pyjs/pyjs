@@ -478,7 +478,7 @@ def _compilation_error(error: Exception, args) -> int:
         if args.v:
             details["traceback"] = "".join(traceback.format_tb(error.__traceback__))
         print(json.dumps({"error": details}, indent=2))
-    else:
+    elif sys.stderr is not None:
         print(formatted, file=sys.stderr, end="")
         if getattr(args, "v", 0):
             print("Traceback (most recent call last):", file=sys.stderr)

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import sysconfig
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -216,6 +217,79 @@ def test_analysis_capture_restores_descriptors_and_streams(capfd, fail):
     os.write(1, b"outside\n")
     os.write(2, b"outside error\n")
     assert capfd.readouterr() == ("before\noutside\n", "outside error\n")
+
+
+@pytest.mark.parametrize("closed,mode", [
+    ((1,), "run"), ((2,), "run"), ((1, 2), "run"), ((0, 1, 2), "run"),
+    ((0, 1, 2), "error"), ((2,), "error"), ((2,), "build"),
+])
+def test_native_cli_preserves_absent_standard_streams(tmp_path, closed, mode):
+    source = tmp_path / "sample.py"
+    body = "missing_name()" if mode == "error" else "pass" if 1 in closed else "print('runtime')"
+    source.write_text(
+        "import sys\nprint('initialization')\nprint('initial error', file=sys.stderr)\n"
+        f"def main() -> None:\n    {body}\n", encoding="utf-8",
+    )
+    # Simulate CPython's missing-console streams in a separate process on every
+    # host. Keep the old wrappers alive until _exit so their finalizers cannot
+    # close reused descriptors; the extra error pipe preserves useful failures.
+    # Preload tooling before closing descriptors: lazy native-library imports
+    # can retain their own file handles in otherwise unused standard slots.
+    launcher = textwrap.dedent("""\
+        import errno, os, sys, traceback
+        from pyjs.cli import main
+        from pyjs.native.cli import _analysis_output
+        streams = [(name, getattr(sys, name), getattr(sys, f'__{name}__'))
+                   for name in ('stdin', 'stdout', 'stderr')]
+        report = os.dup(2)
+        closed = tuple(map(int, sys.argv[1].split(',')))
+        try:
+            for descriptor in closed:
+                name = ('stdin', 'stdout', 'stderr')[descriptor]
+                os.close(descriptor)
+                setattr(sys, name, None)
+                setattr(sys, f'__{name}__', None)
+            try:
+                with _analysis_output() as captured:
+                    print('probe')
+                    if sys.argv[2] == 'error':
+                        raise ValueError('probe')
+            except ValueError as error:
+                assert sys.argv[2] == 'error'
+                assert error.__notes__ == ['Analysis stdout:\\nprobe\\n']
+            assert captured == {'stdout': 'probe\\n', 'stderr': ''}
+            for descriptor in closed:
+                try:
+                    os.get_inheritable(descriptor)
+                except OSError as error:
+                    assert error.errno == errno.EBADF
+                else:
+                    raise AssertionError(f'descriptor {descriptor} was left open')
+                assert getattr(sys, ('stdin', 'stdout', 'stderr')[descriptor]) is None
+            result = main(sys.argv[3:])
+            assert all(getattr(sys, ('stdin', 'stdout', 'stderr')[fd]) is None for fd in closed)
+            for stream in (sys.stdout, sys.stderr):
+                if stream is not None:
+                    stream.flush()
+            os._exit(result)
+        except BaseException:
+            os.write(report, traceback.format_exc().encode('utf-8'))
+            os._exit(99)
+        """)
+    arguments = (["build", "--target", "native", str(source), "-o", "compiled"] if mode == "build"
+                 else ["--target", "native", str(source)])
+    result = subprocess.run(
+        [sys.executable, "-c", launcher, ",".join(map(str, closed)), mode, *arguments],
+        cwd=tmp_path, env=dict(os.environ, PYTHONPATH=str(Path(__file__).parents[2])),
+        capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert result.returncode == (2 if mode == "error" else 0), result.stderr
+    expected = f"Wrote compiled{binary_suffix()}\n" if mode == "build" else "runtime\n"
+    assert result.stdout == ("" if 1 in closed or mode == "error" else expected)
+    assert result.stderr == ("" if 2 in closed else "initialization\ninitial error\n")
+    if mode == "build":
+        native = subprocess.run([tmp_path / ("compiled" + binary_suffix())], capture_output=True, timeout=10)
+        assert (native.returncode, native.stdout, native.stderr) == (0, b"runtime\n", b"")
 
 
 @pytest.mark.parametrize("build", [False, True])
