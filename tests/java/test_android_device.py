@@ -94,7 +94,7 @@ def test_android_logcat_preserves_python_failure_lines(
             for index, line in enumerate(ANDROID_FAILURE.read_text().splitlines(), 1)
             if "value = 1 // 0" in line
         )
-        assert "java.lang.ArithmeticException" in errors
+        assert f"{application.app_id}.PyjsAndroid$exception$ZeroDivisionError" in errors
         assert f"android_failure.py:{failure_line}" in errors
 
     session.capture_artifacts(artifacts, "android-failure-lines")

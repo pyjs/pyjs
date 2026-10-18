@@ -7,7 +7,7 @@ from .classfile import Bytecode, ClassFile, Method
 
 def exception_type(value_type):
     value = getattr(value_type, "py_obj", None)
-    if isinstance(value, type) and issubclass(value, native_builtins._BaseException):
+    if isinstance(value, type) and issubclass(value, (native_builtins._BaseException, BaseException)):
         return value
     return None
 

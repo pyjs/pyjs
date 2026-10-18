@@ -11,7 +11,6 @@ from pyjs.analysis.ir import (
     validate_program_ir,
 )
 from pyjs.analysis.source import analyze_source
-from pyjs.java import transpile_jvm
 from pyjs.java.analysis import JVM_ENVIRONMENT
 from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.webassembly import transpile_webassembly
@@ -228,13 +227,13 @@ def main(value: list[int] | str) -> list[int] | str:
         ''').rstrip()
 
 
-@pytest.mark.parametrize("transpile", [transpile_jvm, transpile_webassembly])
-def test_context_managers_keep_other_backends_explicitly_gated(transpile):
+def test_webassembly_context_managers_remain_explicitly_gated():
     with pytest.raises(CompilationError, match="context-manager regions are not implemented"):
-        transpile(CONTEXT_MANAGER_CONTRACT.source)
+        transpile_webassembly(CONTEXT_MANAGER_CONTRACT.source)
 
 
-def test_context_manager_ir_preserves_entry_and_abrupt_cleanup_order():
+@pytest.mark.parametrize("environment", [NATIVE_ENVIRONMENT, JVM_ENVIRONMENT], ids=["llvm", "jvm"])
+def test_context_manager_ir_preserves_entry_and_abrupt_cleanup_order(environment):
     source = '''
 class Scope:
     def __enter__(self) -> int:
@@ -247,7 +246,7 @@ def main() -> int:
         return value
     return 0
 '''
-    with analyze_source(source, wrap=False, environment=NATIVE_ENVIRONMENT) as analysis:
+    with analyze_source(source, wrap=False, environment=environment) as analysis:
         validate_program_ir(build_program_ir(analysis.entry_point))
         assert analysis.types == dedent('''\
             class Scope:

@@ -2077,6 +2077,50 @@ def replace_error(events: list[int]) -> None:
 )
 
 
+RUNTIME_EXCEPTION_CONTRACT = _contract(
+    "from pyjs import js",
+    "runtime_exception_contract",
+    '''
+    score = 0
+    values = [1]
+    try:
+        values[2]
+    except IndexError:
+        score += 1
+    try:
+        values[-2] = 3
+    except LookupError:
+        score += 2
+    try:
+        "note"[5]
+    except IndexError:
+        score += 4
+    try:
+        1 // 0
+    except ZeroDivisionError:
+        score += 8
+    try:
+        1 % 0
+    except ArithmeticError:
+        score += 16
+    try:
+        for value in range(0, 2, 0):
+            score += value
+    except ValueError:
+        score += 32
+    try:
+        1 << -1
+    except ValueError:
+        score += 64
+    try:
+        int("not a number")
+    except ValueError:
+        score += 128
+    ''',
+    (("catchable Python runtime categories", "score != 255"),),
+)
+
+
 CONTEXT_MANAGER_CONTRACT = _contract(
     '''
 from pyjs import js

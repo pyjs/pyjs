@@ -2,19 +2,19 @@
 
 from functools import partial
 
-from .classfile import Bytecode, ClassFile, Method
+from .classfile import Bytecode, ClassFile, ExceptionHandler, Method
 
 
-def emit_string_helpers(class_file: ClassFile, required: set[str]) -> None:
+def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python) -> None:
     required = required | ({"length"} if "getitem" in required else set())
     if required & {"contains", "startswith", "endswith"}:
         required = required | {"boundary"}
     for name, factory in (
         ("length", string_length_method),
-        ("getitem", string_getitem_method),
-        ("repeat", string_repeat_method),
+        ("getitem", partial(string_getitem_method, throw_python=throw_python)),
+        ("repeat", partial(string_repeat_method, throw_python=throw_python)),
         ("strip", string_strip_method),
-        ("int", string_int_method),
+        ("int", partial(string_int_method, throw_python=throw_python)),
         ("boundary", string_boundary_method),
         ("contains", string_contains_method),
         ("startswith", partial(string_affix_method, suffix=False)),
@@ -53,7 +53,7 @@ def string_length_method(class_file: ClassFile) -> Method:
     )
 
 
-def string_getitem_method(class_file: ClassFile) -> Method:
+def string_getitem_method(class_file: ClassFile, *, throw_python) -> Method:
     code = Bytecode()
     positive = "string.index.positive"
     valid = "string.index.valid"
@@ -87,7 +87,7 @@ def string_getitem_method(class_file: ClassFile) -> Method:
     code.emit(0x94)
     code.branch(0x9B, valid)
     code.mark(invalid)
-    code.throw_new(class_file, "java/lang/IndexOutOfBoundsException")
+    throw_python("IndexError", "string index out of range", code, class_file)
     code.mark(valid)
     code.local(0x19, 0)
     code.emit(0x03)
@@ -176,7 +176,7 @@ def string_strip_method(class_file: ClassFile) -> Method:
     )
 
 
-def string_int_method(class_file: ClassFile) -> Method:
+def string_int_method(class_file: ClassFile, *, throw_python) -> Method:
     code = Bytecode()
     code.local(0x19, 0)
     whitespace = r"[\t\n\x0b\f\r \x85\p{Z}]"
@@ -190,7 +190,7 @@ def string_int_method(class_file: ClassFile) -> Method:
     )
     code.emit(0xB6, matches.to_bytes(2, "big"))
     code.branch(0x9A, "int.valid")
-    code.throw_new(class_file, "java/lang/NumberFormatException")
+    throw_python("ValueError", "invalid literal for int() with base 10", code, class_file)
     code.mark("int.valid")
     code.local(0x19, 0)
     separators = class_file.constants.string(whitespace + "|_")
@@ -258,11 +258,17 @@ def string_int_method(class_file: ClassFile) -> Method:
     parse = class_file.method_reference(
         "java/lang/Long", "parseLong", "(Ljava/lang/String;)J",
     )
+    start = len(code.code)
     code.emit(0xB8, parse.to_bytes(2, "big"))
+    end = len(code.code)
     code.emit(0xAD)
+    handler = len(code.code)
+    code.emit(0x57)
+    throw_python("OverflowError", "integer literal exceeds signed 64-bit range", code, class_file)
     return Method(
         0x0009, "pyjs_string_int", "(Ljava/lang/String;)J",
         code.render(), 3, 5,
+        exception_handlers=(ExceptionHandler(start, end, handler, "java/lang/NumberFormatException"),),
     )
 
 
@@ -380,7 +386,7 @@ def string_affix_method(class_file: ClassFile, *, suffix: bool) -> Method:
     )
 
 
-def string_repeat_method(class_file: ClassFile) -> Method:
+def string_repeat_method(class_file: ClassFile, *, throw_python) -> Method:
     code = Bytecode()
     empty_result = "string.repeat.empty"
     code.local(0x16, 1)
@@ -402,7 +408,7 @@ def string_repeat_method(class_file: ClassFile) -> Method:
     code.emit(0x6D)
     code.emit(0x94)
     code.branch(0x9E, "string.repeat.valid")
-    code.throw_new(class_file, "java/lang/OutOfMemoryError")
+    throw_python("MemoryError", "repeated string is too long", code, class_file)
     code.mark(empty_result)
     empty = class_file.constants.string("")
     if empty <= 255:

@@ -4,13 +4,14 @@ from textwrap import dedent
 
 import pytest
 
-from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
 from tests.backend_semantics import (
+    CONTEXT_MANAGER_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    RUNTIME_EXCEPTION_CONTRACT,
 )
 from tests.java.test_android import android_sdk
 from tests.java.test_jvm import java
@@ -35,7 +36,7 @@ def assert_matches_python(source, directory):
     assert actual.returncode == int(expected.stdout.strip())
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT], ids=["handlers", "cleanup"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["handlers", "cleanup", "runtime"])
 def test_shared_exception_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
 
@@ -408,10 +409,11 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-def test_exception_regions_compile_to_android_dex(tmp_path):
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["cleanup", "context", "runtime"])
+def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
-    transpile_jvm(EXCEPTION_CLEANUP_CONTRACT.source).write(classes)
+    transpile_jvm(contract.source).write(classes)
     dex = tmp_path / "dex"
     dex.mkdir()
     result = subprocess.run(
@@ -447,10 +449,41 @@ def test_non_string_payload_has_focused_diagnostic():
         ''')
 
 
-def test_context_managers_have_focused_diagnostic():
-    with pytest.raises(CompilationError, match="JVM context-manager regions are not implemented"):
-        transpile_jvm('''
-            def main() -> int:
-                with missing():
-                    return 1
-        ''')
+@pytest.mark.parametrize(("expression", "kind"), [
+    ("1 / 0", "ZeroDivisionError"),
+    ("1.0 / 0.0", "ZeroDivisionError"),
+    ("int64(1) // int64(0)", "ZeroDivisionError"),
+    ("int8(1) % int8(0)", "ZeroDivisionError"),
+    ("1 >> -1", "ValueError"),
+    ('"x"[-2]', "IndexError"),
+])
+def test_runtime_error_categories_match_python(tmp_path, expression, kind):
+    assert_matches_python(f'''
+        from pyjs import int8, int64
+        def main() -> int:
+            try:
+                {expression}
+            except {kind}:
+                return 42
+            return 1
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize(("expression", "kind"), [
+    ('int("9223372036854775808")', "OverflowError"),
+    ('int("-9223372036854775809")', "OverflowError"),
+    ("(-9223372036854775807 - 1) // -1", "OverflowError"),
+    ('"x" * 9223372036854775807', "MemoryError"),
+])
+def test_jvm_representation_limits_are_catchable(tmp_path, expression, kind):
+    # These deliberately exceed JVM storage limits; do not allocate the
+    # equivalent CPython values just to establish the JVM failure category.
+    actual = run_jvm(f'''
+        def main() -> int:
+            try:
+                {expression}
+            except {kind}:
+                return 42
+            return 1
+    ''', tmp_path)
+    assert actual.returncode == 42, actual.stderr

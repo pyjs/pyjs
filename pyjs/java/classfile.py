@@ -147,11 +147,15 @@ class Bytecode:
         self.emit(opcode, b"\x00\x00")
         self.branches.append((position, target))
 
-    def throw_new(self, class_file: ClassFile, class_name: str) -> None:
+    def throw_new(self, class_file: ClassFile, class_name: str, *, message: str | None = None) -> None:
         class_index = class_file.constants.class_(class_name)
         self.emit(0xBB, _u2(class_index))
         self.emit(0x59)
-        constructor = class_file.method_reference(class_name, "<init>", "()V")
+        if message is not None:
+            value = class_file.constants.string(message)
+            self.emit(0x13, _u2(value))
+        descriptor = "()V" if message is None else "(Ljava/lang/String;)V"
+        constructor = class_file.method_reference(class_name, "<init>", descriptor)
         self.emit(0xB7, _u2(constructor))
         self.emit(0xBF)
 

@@ -554,11 +554,20 @@ with `pyjs template`.
   Construct builtin exceptions directly in `raise`, with an optional string
   message. Caught values support `str()`, identity and `isinstance()`.
   Native Java exceptions retain their native category: `Exception` catches
-  Java exceptions, while `BaseException` also catches Java errors. Narrow
-  Python handlers do not yet translate native runtime failures. Context
-  managers, custom exceptions, chaining, `.args`, and `KeyError` or
-  `UnicodeDecodeError` payloads remain unsupported. Explicit reraising keeps
-  the original JVM stack trace rather than adding a Python traceback frame.
+  Java exceptions, while `BaseException` also catches Java errors. Declare
+  specific Java exception classes with `@jvm.native` to catch them directly.
+  Controlled Python operations raise Python categories for invalid indexing,
+  division by zero, negative shifts, invalid integer parsing and storage
+  limits; arbitrary Java API failures are not relabeled.
+- JVM synchronous context managers support nested cleanup, suppression and
+  abrupt exits. Exceptional `__exit__` calls receive a Java class token, the
+  actual throwable and a JVM stack-trace array, not Python traceback objects.
+  Normal exits receive three `None` values. Nullable Boolean results preserve
+  the distinction between `None`, `False` and `True`.
+  Custom exceptions, chaining, `.args`, native exception construction and
+  `KeyError` or `UnicodeDecodeError` payloads remain unsupported. Explicit
+  reraising keeps the original JVM stack trace rather than adding a Python
+  traceback frame. Async context managers remain unsupported.
 
 Run `pyjs skill` for the installed-version guidance and `pyjs template` for
 complete executable examples.

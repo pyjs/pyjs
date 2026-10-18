@@ -171,10 +171,10 @@ def main() -> int:
 '''
     compile = {"javascript": compile_source, "llvm": transpile_llvm,
                "jvm": transpile_jvm, "webassembly": transpile_webassembly}[backend]
-    # These targets reject With before reaching the declaration join. Retain
+    # WebAssembly rejects With before reaching the declaration join. Retain
     # that explicit capability boundary, not a claim of suppression support.
     message = ("context-manager regions are not implemented" if
-               backend in ("jvm", "webassembly") and else_body.startswith("with ")
+               backend == "webassembly" and else_body.startswith("with ")
                else "Operator.*not supported")
     with pytest.raises(CompilationError, match=message) as caught:
         compile(source)
