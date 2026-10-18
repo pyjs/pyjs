@@ -19,10 +19,6 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     numeric_domains = frozenset({"portable", "wgsl", "java"})
     lower_exception_regions = True
 
-    def visit_With(self, node):
-        self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
-                  "JVM context-manager regions are not implemented yet")
-
     def expand_static_call_keywords(self, node, call_target=None):
         if getattr(call_target, "py_obj", None) is native_builtins._dict and node.keywords:
             self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,

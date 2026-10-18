@@ -114,14 +114,14 @@ def test_integer_parsing_rejects_invalid_python_spellings(tmp_path, value):
         int(value)
     result = run_jvm(f"def main() -> int:\n    return int({value!r})\n", tmp_path)
     assert result.returncode != 0
-    assert "java.lang.NumberFormatException" in result.stderr
+    assert "PyjsProgram$exception$ValueError" in result.stderr
 
 
 @pytest.mark.parametrize("value", ["9223372036854775808", "-9223372036854775809"])
 def test_integer_parsing_rejects_out_of_range_values(tmp_path, value):
     result = run_jvm(f"def main() -> int:\n    return int({value!r})\n", tmp_path)
     assert result.returncode != 0
-    assert "java.lang.NumberFormatException" in result.stderr
+    assert "PyjsProgram$exception$OverflowError" in result.stderr
 
 
 @pytest.mark.parametrize(("value", "count"), [
@@ -132,7 +132,7 @@ def test_string_repetition_rejects_oversized_results_before_narrowing(
 ):
     result = run_jvm(f"def main() -> str:\n    return {value!r} * {count}\n", tmp_path)
     assert result.returncode != 0
-    assert "java.lang.OutOfMemoryError" in result.stderr
+    assert "PyjsProgram$exception$MemoryError" in result.stderr
     assert "Java heap space" not in result.stderr
 
 

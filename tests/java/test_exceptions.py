@@ -1,16 +1,17 @@
 import builtins
 import subprocess
-from textwrap import dedent
+from textwrap import dedent, indent
 
 import pytest
 
-from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
 from tests.backend_semantics import (
+    CONTEXT_MANAGER_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    RUNTIME_EXCEPTION_CONTRACT,
 )
 from tests.java.test_android import android_sdk
 from tests.java.test_jvm import java
@@ -35,7 +36,7 @@ def assert_matches_python(source, directory):
     assert actual.returncode == int(expected.stdout.strip())
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT], ids=["handlers", "cleanup"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["handlers", "cleanup", "runtime"])
 def test_shared_exception_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
 
@@ -232,6 +233,50 @@ def test_native_java_exception_crosses_cleanup_and_is_reraised(tmp_path):
     assert result.returncode == 15, result.stderr
 
 
+def test_reused_handler_name_keeps_unrelated_native_types(tmp_path):
+    assert_matches_python('''
+        from pyjs import jvm
+        from pyjs.java import i32
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            def getMessage(self) -> str | None:
+                return "invalid number"
+
+        @jvm.native("java/io/IOException")
+        class IOException(Exception):
+            def getMessage(self) -> str | None:
+                return "Stream closed"
+
+        @jvm.native("java/lang/Integer", name="parseInt")
+        def parse(value: str) -> i32:
+            raise NumberFormatException()
+
+        @jvm.native("java/io/StringReader")
+        class StringReader:
+            def __init__(self, value: str): pass
+            def close(self) -> None: pass
+            def read(self) -> i32:
+                raise IOException()
+
+        def main() -> int:
+            score = 0
+            try:
+                parse("invalid")
+            except NumberFormatException as error:
+                if error.getMessage() is not None:
+                    score += 1
+            reader = StringReader("value")
+            reader.close()
+            try:
+                reader.read()
+            except IOException as error:
+                if error.getMessage() == "Stream closed":
+                    score += 2
+            return score
+    ''', tmp_path)
+
+
 def test_native_interface_subclass_constructed_inside_try(tmp_path):
     assert_matches_python('''
         from pyjs import jvm
@@ -408,10 +453,11 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-def test_exception_regions_compile_to_android_dex(tmp_path):
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["cleanup", "context", "runtime"])
+def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
-    transpile_jvm(EXCEPTION_CLEANUP_CONTRACT.source).write(classes)
+    transpile_jvm(contract.source).write(classes)
     dex = tmp_path / "dex"
     dex.mkdir()
     result = subprocess.run(
@@ -439,6 +485,177 @@ def test_custom_exception_has_focused_diagnostic():
         ''')
 
 
+@pytest.mark.parametrize("body", [
+    "error = ValidationError(42)\nreturn error.code",
+    "return read(ValidationError(42))",
+    "return Holder(ValidationError(42)).error.code",
+    "error = validate(42)\nreturn error.code if error is not None else 0",
+], ids=["local", "argument", "field", "optional-return"])
+def test_exception_subclasses_used_as_ordinary_values_keep_their_layout(tmp_path, body):
+    source = '''
+class ValidationError(Exception):
+    def __init__(self, code: int):
+        self.code = code
+
+class Holder:
+    def __init__(self, error: ValidationError):
+        self.error = error
+
+def read(error: ValidationError) -> int:
+    return error.code
+
+def validate(code: int) -> ValidationError | None:
+    if code > 0:
+        return ValidationError(code)
+    return None
+
+def main() -> int:
+''' + indent(body, "    ")
+    assert_matches_python(source, tmp_path)
+
+
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+@pytest.mark.parametrize(("program", "message"), [
+    ('''
+def accept(error: BOUNDARY) -> int:
+    return 1
+def main() -> int:
+    return accept(ValidationError(2))
+''', "JVM call to accept has incompatible arguments"),
+    ('''
+def accept(error: BOUNDARY) -> int:
+    return 1
+def main() -> int:
+    if len("ab") == 5:
+        return accept(ValidationError(2))
+    return 42
+''', "JVM call to accept has incompatible arguments"),
+    ('''
+class Holder:
+    def __init__(self, error: BOUNDARY):
+        self.error = error
+def main() -> int:
+    holder = Holder(ValidationError(2))
+    return 42
+''', "JVM constructor for Holder has incompatible arguments"),
+], ids=["argument", "unexecuted-call", "constructor"])
+def test_ordinary_exception_values_cannot_cross_throwable_boundaries(boundary, program, message):
+    source = '''
+class ValidationError(Exception):
+    def __init__(self, code: int):
+        self.code = code
+''' + program.replace("BOUNDARY", boundary)
+    with pytest.raises(JVMUnsupported, match=message):
+        transpile_jvm(source)
+
+
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+def test_native_exception_values_can_cross_throwable_boundaries(tmp_path, boundary):
+    assert_matches_python(f'''
+        from pyjs import jvm
+        from pyjs.java import i32
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            pass
+
+        @jvm.native("java/lang/Integer", name="parseInt")
+        def parse(value: str) -> i32:
+            raise NumberFormatException("invalid")
+
+        def accept(error: {boundary}) -> int:
+            return 42 if len(str(error)) > 0 else 1
+
+        def main() -> int:
+            try:
+                parse("invalid")
+            except NumberFormatException as error:
+                return accept(error)
+            return 2
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+@pytest.mark.parametrize("derived", [False, True], ids=["direct", "inherited"])
+def test_application_native_throwable_subclasses_can_widen(tmp_path, boundary, derived):
+    assert_matches_python(f'''
+        from pyjs import jvm
+
+        @jvm.native("java/lang/RuntimeException")
+        class NativeError(Exception):
+            def __init__(self):
+                pass
+
+        class ApplicationError(NativeError):
+            pass
+
+        class DerivedError(ApplicationError):
+            pass
+
+        def accept(error: {boundary}) -> int:
+            return 42
+
+        def main() -> int:
+            return accept({"DerivedError" if derived else "ApplicationError"}())
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize(("result_type", "empty"), [
+    ("NumberFormatException", False),
+    ("NumberFormatException | None", False),
+    ("NumberFormatException | None", True),
+], ids=["native", "optional-native", "optional-none"])
+def test_native_factory_result_can_widen_without_a_class_layout(tmp_path, result_type, empty):
+    helper = ClassFile("ExceptionFactory")
+    code = Bytecode()
+    owner = "java/lang/NumberFormatException"
+    if empty:
+        code.emit(0x01)
+    else:
+        code.emit(0xBB, helper.constants.class_(owner).to_bytes(2, "big"))
+        code.emit(0x59)
+        constructor = helper.method_reference(owner, "<init>", "()V")
+        code.emit(0xB7, constructor.to_bytes(2, "big"))
+    code.emit(0xB0)
+    helper.add_method(Method(0x0009, "create", f"()L{owner};", code.render(), 2, 0))
+    (tmp_path / "ExceptionFactory.class").write_bytes(helper.render())
+    assert_matches_python(f'''
+        from pyjs import jvm
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            pass
+
+        @jvm.native("ExceptionFactory")
+        def create() -> {result_type}:
+            return {"None" if empty else "NumberFormatException()"}
+
+        def accept(error: BaseException | None) -> int:
+            return 3 if error is None else 42
+
+        def main() -> int:
+            return accept(create())
+    ''', tmp_path)
+
+
+def test_native_handler_local_cannot_widen_to_ordinary_exception_object():
+    with pytest.raises(JVMUnsupported, match="JVM local error changes type"):
+        transpile_jvm('''
+            class ValidationError(Exception):
+                def __init__(self, code: int):
+                    self.code = code
+
+            def main() -> int:
+                score = 0
+                try:
+                    raise ValueError("value")
+                except ValueError as error:
+                    score += 40
+                error = ValidationError(2)
+                return score + error.code
+        ''')
+
+
 def test_non_string_payload_has_focused_diagnostic():
     with pytest.raises(JVMUnsupported, match="exception messages must be strings"):
         transpile_jvm('''
@@ -447,10 +664,41 @@ def test_non_string_payload_has_focused_diagnostic():
         ''')
 
 
-def test_context_managers_have_focused_diagnostic():
-    with pytest.raises(CompilationError, match="JVM context-manager regions are not implemented"):
-        transpile_jvm('''
-            def main() -> int:
-                with missing():
-                    return 1
-        ''')
+@pytest.mark.parametrize(("expression", "kind"), [
+    ("1 / 0", "ZeroDivisionError"),
+    ("1.0 / 0.0", "ZeroDivisionError"),
+    ("int64(1) // int64(0)", "ZeroDivisionError"),
+    ("int8(1) % int8(0)", "ZeroDivisionError"),
+    ("1 >> -1", "ValueError"),
+    ('"x"[-2]', "IndexError"),
+])
+def test_runtime_error_categories_match_python(tmp_path, expression, kind):
+    assert_matches_python(f'''
+        from pyjs import int8, int64
+        def main() -> int:
+            try:
+                {expression}
+            except {kind}:
+                return 42
+            return 1
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize(("expression", "kind"), [
+    ('int("9223372036854775808")', "OverflowError"),
+    ('int("-9223372036854775809")', "OverflowError"),
+    ("(-9223372036854775807 - 1) // -1", "OverflowError"),
+    ('"x" * 9223372036854775807', "MemoryError"),
+])
+def test_jvm_representation_limits_are_catchable(tmp_path, expression, kind):
+    # These deliberately exceed JVM storage limits; do not allocate the
+    # equivalent CPython values just to establish the JVM failure category.
+    actual = run_jvm(f'''
+        def main() -> int:
+            try:
+                {expression}
+            except {kind}:
+                return 42
+            return 1
+    ''', tmp_path)
+    assert actual.returncode == 42, actual.stderr

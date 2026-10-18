@@ -1275,7 +1275,10 @@ class IRInferenceVisitor(InferenceVisitor):
             keywords=[],
         )
         set_analyzed_representation(enter_call, enter.return_representation)
-        if target is None or enter.return_type.generic_name == "NoneType":
+        if target is None or (
+            isinstance(enter.return_type, Class)
+            and enter.return_type.generic_name == "NoneType"
+        ):
             self.emit_statement(ast.Expr(value=enter_call))
             entered_value = ast.Constant(value=None)
         else:

@@ -10,6 +10,7 @@ from tests.backend_semantics import (
     ASSERT_NARROWING_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
+    RUNTIME_EXCEPTION_CONTRACT,
 )
 
 
@@ -65,7 +66,7 @@ def test_assert_narrows_generator_input_but_next_still_sends_none(tmp_path, opti
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT], ids=["handlers", "cleanup"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["handlers", "cleanup", "runtime"])
 def test_shared_exception_control_flow_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
         contract.source, directory=tmp_path, optimize=optimize,

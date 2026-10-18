@@ -1,5 +1,6 @@
 """Managed Python exception classes for JVM control-flow lowering."""
 
+from pyjs.decorators import is_declaration
 from pyjs.python import native as native_builtins
 
 from .classfile import Bytecode, ClassFile, Method
@@ -7,7 +8,10 @@ from .classfile import Bytecode, ClassFile, Method
 
 def exception_type(value_type):
     value = getattr(value_type, "py_obj", None)
-    if isinstance(value, type) and issubclass(value, native_builtins._BaseException):
+    if isinstance(value, type) and (
+        issubclass(value, native_builtins._BaseException)
+        or issubclass(value, BaseException) and is_declaration(value, "jvm")
+    ):
         return value
     return None
 

@@ -17,6 +17,7 @@ from pyjs.analysis.ir import (
     Branch,
     ClassIR,
     CollectionNew,
+    ContextExitCall,
     ExceptionCatch,
     ExceptionDispatch,
     ExceptionRaise,
@@ -280,6 +281,7 @@ class JVMEmitter:
         self.native_classes: set[Class] = set()
         self.native_interfaces: set[Class] = set()
         self.native_layouts: dict[Class, ClassIR] = {}
+        self.native_exception_types: dict[str, Class] = {}
         self.code = Bytecode()
         self.slots = {}
         self.slot_types = {}
@@ -432,7 +434,7 @@ class JVMEmitter:
             self.class_file.add_method(method)
         compiled_tests = self.emit_test_class(functions) if self.tests else ()
         self.class_file = self.class_files[self.main_class_name]
-        emit_string_helpers(self.class_file, self.string_helpers)
+        emit_string_helpers(self.class_file, self.string_helpers, self.throw_python)
         self.class_file.add_method(self.main_wrapper(program.entry_point))
         return JVMCompilation(
             self.main_class_name,
@@ -689,12 +691,18 @@ class JVMEmitter:
         object_index = 0
 
         def add(name: str, value_type: str) -> None:
+            if value_type == "V":
+                value_type = "N"
             if name in self.slots:
                 current = self.slot_types[name]
                 if current == value_type or self.compatible(value_type, current):
                     return
                 if self.compatible(current, value_type):
                     self.slot_types[name] = value_type
+                    return
+                if all(self.compatible(kind, "Ljava/lang/Throwable;")
+                       for kind in (current, value_type)):
+                    self.slot_types[name] = "Ljava/lang/Throwable;"
                     return
                 raise JVMUnsupported(f"JVM local {name} changes type")
             self.slots[name] = self.local_count
@@ -720,7 +728,7 @@ class JVMEmitter:
             for statement in block.body:
                 if isinstance(statement, ExceptionCatch):
                     if statement.target is not None:
-                        add(self.target_name(statement.target), "Ljava/lang/Throwable;")
+                        add(self.target_name(statement.target), self.expression_type(statement.target))
                 elif isinstance(statement, ast.AnnAssign):
                     if isinstance(statement.target, ast.Attribute):
                         field = self.native_field(statement.target)
@@ -851,7 +859,10 @@ class JVMEmitter:
         if isinstance(node, ExceptionCatch):
             if node.target is not None:
                 self.code.local(0x19, self.pending_exception_slot)
-                self.store(self.target_name(node.target), "Ljava/lang/Throwable;")
+                descriptor = self.expression_type(node.target)
+                if descriptor != "Ljava/lang/Throwable;":
+                    self.checkcast(descriptor)
+                self.store(self.target_name(node.target), descriptor)
             return
         if isinstance(node, ExceptionDispatch):
             for types, target in node.handlers:
@@ -889,6 +900,10 @@ class JVMEmitter:
                 self.code.emit(0xB1)
                 return
             value_type = self.expression(node.value)
+            if self.return_type == "V" and value_type == "N":
+                self.code.emit(0x57)
+                self.code.emit(0xB1)
+                return
             if not self.compatible(value_type, self.return_type):
                 raise JVMUnsupported(
                     f"cannot return {value_type} from {self.return_type} function",
@@ -966,7 +981,7 @@ class JVMEmitter:
             value_type = self.expression(node.value)
             if value_type in {"J", "D"}:
                 self.code.emit(0x58)
-            elif value_type != "V":
+            else:
                 self.code.emit(0x57)
             return
         if isinstance(node, ListAppend):
@@ -999,6 +1014,43 @@ class JVMEmitter:
         )
 
     def expression(self, node) -> str:
+        result = self._expression(node)
+        if _is_reference_descriptor(result) and (
+            hasattr(node, "obj") or hasattr(node, "value_obj")
+        ):
+            value = analyzed_value_object(node)
+            semantic = value.cls if isinstance(value, Instance) else value
+            for member in semantic.types if isinstance(semantic, UnionType) else (semantic,):
+                if exception_type(member) is not None:
+                    self.value_type(member)
+        if result == "V":
+            # JVM void is not a value; Python calls still produce None when
+            # assigned, returned, or compared, including __enter__ results.
+            self.code.emit(0x01)
+            return "N"
+        if (
+            result == "Ljava/lang/Boolean;"
+            and getattr(analyzed_value_type(node), "generic_name", None) == "bool"
+        ):
+            self.invoke_boolean_value()
+            return "Z"
+        return result
+
+    def invoke_boolean_value(self) -> None:
+        reference = self.class_file.method_reference(
+            "java/lang/Boolean", "booleanValue", "()Z",
+        )
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+
+    def box_boolean(self, code=None, class_file=None) -> None:
+        reference = (class_file or self.class_file).method_reference(
+            "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;",
+        )
+        (code or self.code).emit(0xB8, reference.to_bytes(2, "big"))
+
+    def _expression(self, node) -> str:
+        if isinstance(node, ContextExitCall):
+            return self.context_exit(node)
         if isinstance(node, AnalyzedAwait):
             return self.immediate_async_call(node.value, node)
         if isinstance(node, StaticCast):
@@ -1041,8 +1093,12 @@ class JVMEmitter:
             target = analyzed_value_object(node)
             if isinstance(target, Function):
                 raise JVMUnsupported("JVM function values are not implemented", node)
-            if isinstance(target, Class) and target in self.classes:
-                index = self.class_file.constants.class_(self.class_name(target))
+            if isinstance(target, Class) and (
+                target in self.classes or exception_type(target) is not None
+            ):
+                owner = (self.class_name(target) if target in self.classes
+                         else self.exception_class(target, node))
+                index = self.class_file.constants.class_(owner)
                 if index <= 255:
                     self.code.emit(0x12, index.to_bytes(1, "big"))
                 else:
@@ -1058,7 +1114,14 @@ class JVMEmitter:
                 raise JVMUnsupported("JVM module collection state is not implemented", node)
         if isinstance(node, (ast.Name, BlockArgument)):
             name = node.id if isinstance(node, ast.Name) else node.name
-            return self.load(name)
+            result = self.load(name)
+            semantic = analyzed_value_type(node)
+            if exception_type(semantic) is not None and is_declaration(semantic.py_obj, "jvm"):
+                narrowed = self.value_type(semantic)
+                if result != narrowed:
+                    self.checkcast(narrowed)
+                return narrowed
+            return result
         if isinstance(node, ast.UnaryOp):
             if (
                 isinstance(node.op, ast.USub)
@@ -1419,6 +1482,18 @@ class JVMEmitter:
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
             if target.name == "__dynamic_bool__":
+                if receiver_type == "Ljava/lang/Boolean;":
+                    missing = self.new_label("bool.none")
+                    done = self.new_label("bool.done")
+                    self.code.emit(0x59)
+                    self.code.branch(0xC6, missing)
+                    self.invoke_boolean_value()
+                    self.code.branch(0xA7, done)
+                    self.code.mark(missing)
+                    self.code.emit(0x57)
+                    self.code.emit(0x03)
+                    self.code.mark(done)
+                    return "Z"
                 raise JVMUnsupported("JVM optional truth tests require narrowing first", node)
             if (
                 target.py_func is native_builtins._object.__init__
@@ -1427,7 +1502,14 @@ class JVMEmitter:
             ):
                 self.code.emit(0x57)
                 return "V"
-            if target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
+            nullable_bool_equality = (
+                target.name in {"__eq__", "__ne__"}
+                and len(node.args) == 1
+                and "Ljava/lang/Boolean;" in {
+                    receiver_type, self.expression_type(node.args[0]),
+                }
+            )
+            if nullable_bool_equality or target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
                 native_builtins._object.__eq__, native_builtins._object.__ne__,
             }:
                 if len(node.args) != 1 or node.keywords:
@@ -1439,7 +1521,13 @@ class JVMEmitter:
                 self.validate_java_object_semantics(
                     analyzed_value_type(node.args[0]), node,
                 )
+                if receiver_type == "Z":
+                    self.convert_native_argument(receiver_type, "Ljava/lang/Boolean;", node.func.value)
+                    receiver_type = "Ljava/lang/Boolean;"
                 argument_type = self.expression(node.args[0])
+                if argument_type == "Z":
+                    self.convert_native_argument(argument_type, "Ljava/lang/Boolean;", node.args[0])
+                    argument_type = "Ljava/lang/Boolean;"
                 if not (
                     receiver_type == "N" or _is_reference_descriptor(receiver_type)
                 ) or not (
@@ -1460,7 +1548,13 @@ class JVMEmitter:
                     self.code.emit(0x82)
                 return "Z"
             if target.name in {"__is__", "__is_not__"} and len(node.args) == 1:
+                if receiver_type == "Z":
+                    self.convert_native_argument(receiver_type, "Ljava/lang/Boolean;", node.func.value)
+                    receiver_type = "Ljava/lang/Boolean;"
                 argument_type = self.expression(node.args[0])
+                if argument_type == "Z":
+                    self.convert_native_argument(argument_type, "Ljava/lang/Boolean;", node.args[0])
+                    argument_type = "Ljava/lang/Boolean;"
                 if not (
                     receiver_type == "N"
                     or _is_reference_descriptor(receiver_type)
@@ -1755,6 +1849,7 @@ class JVMEmitter:
                 item_type = self.list_item_type(semantic_receiver)
                 if not self.compatible(argument_types[1], item_type):
                     raise JVMUnsupported("JVM list insertion has an incompatible value", node)
+                self.convert_native_argument(argument_types[1], item_type, node.args[1])
                 reference = self.class_file.method_reference(
                     self.list_class_name(semantic_receiver), "insert", f"(J{item_type})V"
                 )
@@ -1787,6 +1882,7 @@ class JVMEmitter:
                         "JVM list assignment has an incompatible value",
                         node,
                     )
+                self.convert_native_argument(argument_types[1], item_type, node.args[1])
                 reference = self.class_file.method_reference(
                     self.list_class_name(list_type),
                     "set",
@@ -1835,8 +1931,9 @@ class JVMEmitter:
                         method,
                         "(JJ)J",
                     )
-                    if method == "floorDiv" and storage_format is None:
-                        self.checked_integer_division()
+                    self.checked_integer_division(
+                        check_overflow=method == "floorDiv" and storage_format is None,
+                    )
                     self.code.emit(0xB8, reference.to_bytes(2, "big"))
                     if storage_format is not None:
                         self.normalize_integer_result(node)
@@ -1937,7 +2034,7 @@ class JVMEmitter:
                 self.comparison(0x9A)
                 return "Z"
             if target.name == "__str__" and not argument_types:
-                if receiver_type == "Ljava/lang/Throwable;":
+                if receiver_type == "Ljava/lang/Throwable;" or exception_type(semantic_receiver) is not None:
                     self.exception_message()
                     return "Ljava/lang/String;"
                 elif receiver_type == "J":
@@ -2027,7 +2124,7 @@ class JVMEmitter:
             value_type = self.expression(node.args[0])
             if value_type == "Ljava/lang/String;":
                 return value_type
-            if value_type == "Ljava/lang/Throwable;":
+            if value_type == "Ljava/lang/Throwable;" or exception_type(analyzed_value_type(node.args[0])) is not None:
                 self.exception_message()
                 return "Ljava/lang/String;"
             if value_type == "J":
@@ -2192,12 +2289,16 @@ class JVMEmitter:
             self.code.emit(0x85)
             return "J"
         if target.name == "__setitem__" and len(node.args) == 2:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            if self.expression(node.args[1]) != value_descriptor:
+            self.convert_native_argument(actual_key, key_type, node.args[0])
+            actual_value = self.expression(node.args[1])
+            if not self.compatible(actual_value, value_descriptor):
                 raise JVMUnsupported(
                     "JVM dictionary value has an incompatible type", node
                 )
+            self.convert_native_argument(actual_value, value_descriptor, node.args[1])
             reference = self.class_file.method_reference(
                 "java/util/HashMap",
                 "put",
@@ -2207,8 +2308,10 @@ class JVMEmitter:
             self.code.emit(0x57)
             return "V"
         if target.name == "__getitem__" and len(node.args) == 1:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+            self.convert_native_argument(actual_key, key_type, node.args[0])
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2230,8 +2333,10 @@ class JVMEmitter:
             self.checkcast(value_descriptor)
             return value_descriptor
         if target.name == "get" and len(node.args) in {1, 2}:
-            if self.expression(node.args[0]) != key_type:
+            actual_key = self.expression(node.args[0])
+            if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+            self.convert_native_argument(actual_key, key_type, node.args[0])
             get = self.class_file.method_reference(
                 "java/util/HashMap",
                 "get",
@@ -2295,8 +2400,10 @@ class JVMEmitter:
         ):
             self.code.emit(0x59)
             descriptor = self.value_type(field_type)
-            if self.expression(element) != descriptor:
+            actual = self.expression(element)
+            if not self.compatible(actual, descriptor):
                 raise JVMUnsupported("JVM tuple literal changes item type", element)
+            self.convert_native_argument(actual, descriptor, element)
             reference = self.class_file.field_reference(
                 class_file.name,
                 f"_{index}",
@@ -2312,8 +2419,10 @@ class JVMEmitter:
         if self.expression(node.call.func.value) != descriptor:
             raise JVMUnsupported("JVM list append has incompatible receiver", node)
         item_type = self.list_item_type(list_type)
-        if self.expression(node.call.args[0]) != item_type:
+        actual = self.expression(node.call.args[0])
+        if not self.compatible(actual, item_type):
             raise JVMUnsupported("JVM list append has incompatible value", node)
+        self.convert_native_argument(actual, item_type, node.call.args[0])
         reference = self.class_file.method_reference(
             owner,
             "append",
@@ -2389,7 +2498,7 @@ class JVMEmitter:
             self.long_constant(0)
             self.code.emit(0x94)
             self.code.branch(0x9A, valid)
-            self.throw("java/lang/IllegalArgumentException")
+            self.throw_python("ValueError", "range() arg 3 must not be zero")
             self.code.mark(valid)
             return
         if self.expression(node.iterable) != source_type:
@@ -2734,8 +2843,44 @@ class JVMEmitter:
         arguments.extend(function.defaults[default_offset:])
         return arguments
 
+    def context_exit(self, node):
+        method = analyzed_value_object(node.func)
+        if method not in self.functions or len(method.params) != 3:
+            raise JVMUnsupported("JVM context exits require an application __exit__ method", node)
+        expected = [self.parameter_type(parameter) for parameter in method.params]
+        actual = ["Ljava/lang/Class;", "Ljava/lang/Throwable;", "Ljava/lang/Object;"]
+        if any(parameter not in {value, "Ljava/lang/Object;"}
+               for value, parameter in zip(actual, expected, strict=True)):
+            raise JVMUnsupported("JVM __exit__ requires reference-compatible exception details", node)
+        self.expression(node.func.value)
+        if node.exceptional:
+            self.expression(node.exception)
+            get_class = self.class_file.method_reference(
+                "java/lang/Object", "getClass", "()Ljava/lang/Class;",
+            )
+            self.code.emit(0xB6, get_class.to_bytes(2, "big"))
+            self.expression(node.exception)
+            self.expression(node.exception)
+            trace = self.class_file.method_reference(
+                "java/lang/Throwable", "getStackTrace", "()[Ljava/lang/StackTraceElement;",
+            )
+            self.code.emit(0xB6, trace.to_bytes(2, "big"))
+        else:
+            for _ in range(3):
+                self.code.emit(0x01)
+        reference = self.class_file.method_reference(
+            self.function_owner(method), self.function_name(method), self.descriptor(method),
+        )
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+        result = self.function_return_type(method)
+        storage = _numeric_descriptor(method.return_numeric_format) or result
+        self.convert_abi_result(storage, result, method.return_numeric_format)
+        return result
+
     def exception_class(self, value_type, node):
         value = exception_type(value_type)
+        if value is not None and is_declaration(value, "jvm"):
+            return self.native_class_name(value_type)
         if value is None or value.__module__ != native_builtins.__name__:
             raise JVMUnsupported("JVM exceptions require a supported builtin type", node)
         if value in {native_builtins._KeyError, native_builtins._UnicodeDecodeError}:
@@ -2771,6 +2916,11 @@ class JVMEmitter:
             self.expression(node.exception)
             self.code.emit(0xBF)
             return
+        if is_declaration(node.value_type.py_obj, "jvm"):
+            raise JVMUnsupported(
+                "JVM native exception construction in raise is not implemented; "
+                "catch native failures or raise a Python exception", node,
+            )
         name = self.exception_class(node.value_type, node)
         index = self.class_file.constants.class_(name)
         self.code.emit(0xBB, index.to_bytes(2, "big"))
@@ -2941,23 +3091,31 @@ class JVMEmitter:
         self.code.branch(0x9A, valid)
         self.code.emit(0x58)
         self.code.emit(0x58)
-        self.throw("java/lang/ArithmeticException")
+        self.throw_python("ZeroDivisionError", "division by zero")
         self.code.mark(valid)
         self.code.emit(0x6F)
 
-    def checked_integer_division(self) -> None:
+    def checked_integer_division(self, *, check_overflow: bool) -> None:
         valid = self.new_label("integer.division.valid")
+        nonzero = self.new_label("integer.division.nonzero")
         self.store("__integer.divisor", "J")
         self.store("__integer.dividend", "J")
-        self.load("__integer.dividend")
-        self.long_constant(-(2**63))
-        self.code.emit(0x94)
-        self.code.branch(0x9A, valid)
         self.load("__integer.divisor")
-        self.long_constant(-1)
+        self.long_constant(0)
         self.code.emit(0x94)
-        self.code.branch(0x9A, valid)
-        self.throw("java/lang/ArithmeticException")
+        self.code.branch(0x9A, nonzero)
+        self.throw_python("ZeroDivisionError", "integer division or modulo by zero")
+        self.code.mark(nonzero)
+        if check_overflow:
+            self.load("__integer.dividend")
+            self.long_constant(-(2**63))
+            self.code.emit(0x94)
+            self.code.branch(0x9A, valid)
+            self.load("__integer.divisor")
+            self.long_constant(-1)
+            self.code.emit(0x94)
+            self.code.branch(0x9A, valid)
+            self.throw_python("OverflowError", "integer division exceeds signed 64-bit range")
         self.code.mark(valid)
         self.load("__integer.dividend")
         self.load("__integer.divisor")
@@ -3006,7 +3164,7 @@ class JVMEmitter:
         self.code.emit(0x09)
         self.code.emit(0x94)
         self.code.branch(0x9A, valid)
-        self.throw("java/lang/ArithmeticException")
+        self.throw_python("ZeroDivisionError", "division by zero")
         self.code.mark(valid)
 
         owner = "java/math/BigDecimal"
@@ -3052,7 +3210,7 @@ class JVMEmitter:
         self.code.emit(0x09)
         self.code.emit(0x94)
         self.code.branch(0x9C, valid)
-        self.throw("java/lang/IllegalArgumentException")
+        self.throw_python("ValueError", "integer power requires a non-negative exponent")
         self.code.mark(valid)
         self.long_constant(1)
         self.store("__integer.power.result", "J")
@@ -3094,7 +3252,7 @@ class JVMEmitter:
         self.code.emit(0x09)
         self.code.emit(0x94)
         self.code.branch(0x9C, valid)
-        self.throw("java/lang/ArithmeticException")
+        self.throw_python("ValueError", "negative shift count")
         self.code.mark(valid)
         self.load("__integer.shift.count")
         self.long_constant(bits)
@@ -3438,6 +3596,8 @@ class JVMEmitter:
                 code.emit(0x88)
             elif actual == "D" and wanted == "F":
                 code.emit(0x90)
+            elif actual == "Z" and wanted == "Ljava/lang/Boolean;":
+                self.box_boolean(code, class_file)
             elif not self.compatible(actual, wanted):
                 raise JVMUnsupported(
                     f"JVM native superclass constructor for "
@@ -3667,7 +3827,7 @@ class JVMEmitter:
         code.emit(0x94)
         code.branch(0x9B, valid)
         code.mark(invalid)
-        self.throw("java/lang/IndexOutOfBoundsException", code, class_file)
+        self.throw_python("IndexError", "list index out of range", code, class_file)
         code.mark(valid)
         code.local(0x19, 0)
         code.emit(0xB4, data.to_bytes(2, "big"))
@@ -3713,7 +3873,7 @@ class JVMEmitter:
         code.emit(0x94)
         code.branch(0x9B, valid)
         code.mark(invalid)
-        self.throw("java/lang/IndexOutOfBoundsException", code, class_file)
+        self.throw_python("IndexError", "list assignment index out of range", code, class_file)
         code.mark(valid)
         code.local(0x19, 0)
         code.emit(0xB4, data.to_bytes(2, "big"))
@@ -3853,6 +4013,12 @@ class JVMEmitter:
         if opcode is None:
             raise JVMUnsupported(f"JVM array item type {item_type} is not implemented")
         return opcode
+
+    def throw_python(self, kind, message, code=None, class_file=None):
+        name = emit_exception_class(
+            self.class_files, self.main_class_name, getattr(native_builtins, f"_{kind}"),
+        )
+        (code or self.code).throw_new(class_file or self.class_file, name, message=message)
 
     def throw(
         self,
@@ -4004,6 +4170,9 @@ class JVMEmitter:
     ) -> None:
         if actual == "N" and _is_reference_descriptor(expected):
             return
+        if actual == "Z" and expected == "Ljava/lang/Boolean;":
+            self.box_boolean()
+            return
         if actual == "J" and expected in {"B", "C", "S"}:
             self.code.emit(0x88)
             self.code.emit({"B": 0x91, "C": 0x92, "S": 0x93}[expected])
@@ -4122,6 +4291,8 @@ class JVMEmitter:
             add(node)
             if len(members) == 1:
                 descriptor = self.annotation(members[0])
+                if descriptor == "Z":
+                    return "Ljava/lang/Boolean;"
                 if _is_reference_descriptor(descriptor):
                     return descriptor
         if (
@@ -4130,6 +4301,8 @@ class JVMEmitter:
             and node.value.id == "Optional"
         ):
             descriptor = self.annotation(node.slice)
+            if descriptor == "Z":
+                return "Ljava/lang/Boolean;"
             if _is_reference_descriptor(descriptor):
                 return descriptor
         if (
@@ -4174,6 +4347,11 @@ class JVMEmitter:
 
     def value_type(self, value_type, representation=None) -> str:
         if exception_type(value_type) is not None:
+            if is_declaration(value_type.py_obj, "jvm"):
+                descriptor = f"L{self.native_class_name(value_type)};"
+                # Catch-only declarations need no native ClassIR layout.
+                self.native_exception_types[descriptor] = value_type
+                return descriptor
             return "Ljava/lang/Throwable;"
         if (isinstance(value_type, RecursiveTypeAlias)
                 or isinstance(value_type, UnionType)
@@ -4192,6 +4370,8 @@ class JVMEmitter:
                 for member in value_type.types
                 if member.generic_name not in {"None", "NoneType"}
             ]
+            if len(concrete) > 1 and all(exception_type(member) is not None for member in concrete):
+                return "Ljava/lang/Throwable;"
             descriptors = [
                 self.value_type(member, member_representation)
                 for member, member_representation in zip(
@@ -4201,6 +4381,8 @@ class JVMEmitter:
             ]
             if len(concrete) == 1:
                 descriptor = descriptors[0]
+                if len(value_type.types) == 2 and descriptor == "Z":
+                    return "Ljava/lang/Boolean;"
                 if _is_reference_descriptor(descriptor):
                     return descriptor
             if descriptors and all(
@@ -4244,6 +4426,8 @@ class JVMEmitter:
             return "N"
         if value_type.generic_name == "object":
             return "Ljava/lang/Object;"
+        if value_type.generic_name == "type":
+            return "Ljava/lang/Class;"
         if value_type.generic_name in {"callable", "Callable"}:
             return "Ljava/lang/Runnable;"
         if value_type in self.classes:
@@ -4517,6 +4701,8 @@ class JVMEmitter:
     def compatible(self, actual: str, expected: str) -> bool:
         if actual == expected:
             return True
+        if actual == "Z" and expected == "Ljava/lang/Boolean;":
+            return True
         if actual == "N" and _is_reference_descriptor(expected):
             return True
         if not _is_reference_descriptor(actual) or not _is_reference_descriptor(expected):
@@ -4534,9 +4720,17 @@ class JVMEmitter:
                 )
                 == actual
             ),
-            None,
+            self.native_exception_types.get(actual),
         )
         while actual_type is not None:
+            # Only a declared Java base establishes Throwable inheritance.
+            # Ordinary Python exception bases still emit Object subclasses.
+            if (
+                expected == "Ljava/lang/Throwable;"
+                and is_declaration(actual_type.py_obj, "jvm")
+                and exception_type(actual_type) is not None
+            ):
+                return True
             layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
             if layout is None:
                 break

@@ -2007,7 +2007,7 @@ def test_jvm_tracebacks_report_python_source_functions_and_lines(tmp_path):
     )
 
     assert result.returncode != 0
-    assert "java.lang.ArithmeticException" in result.stderr
+    assert "PyjsProgram$exception$ZeroDivisionError" in result.stderr
     assert "PyjsProgram.divide(calculator_android.py:3)" in result.stderr
     assert "PyjsProgram.calculate(calculator_android.py:7)" in result.stderr
     assert "PyjsProgram.pyjs_main(calculator_android.py:11)" in result.stderr
@@ -2310,7 +2310,7 @@ def main() -> int:
         text=True,
     )
     assert result.returncode != 0
-    assert "ArithmeticException" in result.stderr
+    assert "PyjsProgram$exception$OverflowError" in result.stderr
 
 
 def test_jvm_writes_declared_writable_static_fields(tmp_path):

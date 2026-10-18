@@ -4,6 +4,11 @@
 
 ### Added
 
+- JVM synchronous context managers support nested cleanup, suppression,
+  failed entry/binding, and returns or loop exits. Application `bool | None`
+  values retain their distinct nullable representation, including `__exit__`
+  results. Declared native Java exception classes support typed catches,
+  narrowing and forwarding without losing the original throwable.
 - JVM compilation supports ordered exception handlers, reraising, lazy
   assertions, and `finally` cleanup across returns and loop exits. Supported
   builtin Python exceptions retain their hierarchy and string messages;
@@ -21,6 +26,9 @@
 
 ### Changed
 
+- JVM-controlled bounds, division, shifts, range steps and integer parsing
+  now raise catchable Python exception categories. Representation limits use
+  `OverflowError` or `MemoryError`; unrelated Java API errors remain native.
 - JVM-raised Python exceptions now use generated Python-hierarchy classes,
   replacing the previous Java `RuntimeException`, `IllegalArgumentException`,
   and `AssertionError` mappings. Java callers should catch `Exception` or the
@@ -29,6 +37,8 @@
 
 ### Fixed
 
+- JVM and LLVM context-manager entry results can be optional values without
+  crashing shared control-flow analysis.
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
 - Native output preserves UTF-8 and newline bytes across platforms; NaN
   formatting follows Python's sign and percentage rules on macOS too.
