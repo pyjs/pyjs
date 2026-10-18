@@ -1,5 +1,6 @@
 """Managed Python exception classes for JVM control-flow lowering."""
 
+from pyjs.analysis.objects import Class, UnionType
 from pyjs.decorators import is_declaration
 from pyjs.python import native as native_builtins
 
@@ -30,6 +31,23 @@ def builtin_exception(value):
 def managed_exception(value_type):
     value = exception_type(value_type)
     return value is not None and not any(is_declaration(base, "jvm") for base in value.__mro__)
+
+
+def contained_exception_types(value_type):
+    """Find exception members in a value, including typed container contents."""
+    pending = [value_type]
+    seen = set()
+    while pending:
+        value_type = pending.pop()
+        if value_type in seen:
+            continue
+        seen.add(value_type)
+        if isinstance(value_type, UnionType):
+            pending.extend(value_type.types)
+        elif exception_type(value_type) is not None:
+            yield value_type
+        elif isinstance(value_type, Class):
+            pending.extend((value_type.generic_types or {}).values())
 
 
 def emit_type_error(code, class_file, class_files, prefix, message):

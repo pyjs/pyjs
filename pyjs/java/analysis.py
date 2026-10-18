@@ -14,7 +14,7 @@ from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
 
 from .diagnostics import JVMUnsupported
-from .exceptions import managed_exception
+from .exceptions import contained_exception_types, managed_exception
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -116,19 +116,9 @@ def retain_native_exception_text(visitor, value):
     # including typed containers, rather than every constructed exception.
     if isinstance(value, ast.Constant):
         return  # Includes synthetic, untyped None returns from void callbacks.
-    pending = [analyzed_value_type(value)]
-    seen = set()
-    while pending:
-        value_type = pending.pop()
-        if value_type in seen:
-            continue
-        seen.add(value_type)
-        if isinstance(value_type, UnionType):
-            pending.extend(value_type.types)
-        elif managed_exception(value_type):
+    for value_type in contained_exception_types(analyzed_value_type(value)):
+        if managed_exception(value_type):
             visitor.retain_runtime_protocol(value_type, ("__str__",))
-        elif isinstance(value_type, Class):
-            pending.extend((value_type.generic_types or {}).values())
 
 
 def retain_native_field_text(visitor, target, value):

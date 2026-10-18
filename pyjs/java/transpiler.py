@@ -75,6 +75,7 @@ from .exceptions import (
     MESSAGE_GETTER,
     MESSAGE_SETTER,
     builtin_exception,
+    contained_exception_types,
     emit_exception_class,
     emit_exception_subclass,
     emit_type_error,
@@ -758,10 +759,19 @@ class JVMEmitter:
                     )
                     declared = analyzed_value_type(statement.target)
                     members = declared.types if isinstance(declared, UnionType) else (declared,)
-                    if any(getattr(member, "py_obj", None) is native_builtins._object
-                           for member in members):
-                        # Resolved exception/collection initializers must not
-                        # bypass the unsupported local-annotation boundary.
+                    inferred_storage = value_type is not None and (
+                        self.is_jvm_array_type(value_type)
+                        or isinstance(value_type, UnionType)
+                        or exception_type(value_type) is not None
+                        # Rendered annotations lose resolved collection items.
+                        or value_type.generic_name in {"dict", "list", "tuple"}
+                    )
+                    if (any(getattr(member, "py_obj", None) is native_builtins._object
+                            for member in members)
+                            and (not inferred_storage
+                                 or any(contained_exception_types(value_type)))):
+                        # Preserve existing inferred union/collection storage,
+                        # but do not erase an exception's formatting protocol.
                         raise JVMUnsupported(
                             "JVM object-annotated locals are not implemented", statement,
                         )
@@ -774,15 +784,7 @@ class JVMEmitter:
                     else:
                         semantic = (
                             self.expression_type(statement.value)
-                            if value_type is not None
-                            and (
-                                self.is_jvm_array_type(value_type)
-                                or isinstance(value_type, UnionType)
-                                or exception_type(value_type) is not None
-                                # Rendered collection annotations discard the
-                                # resolved identity of exception item types.
-                                or value_type.generic_name in {"dict", "list", "tuple"}
-                            )
+                            if inferred_storage
                             else self.annotation(statement.annotation)
                         )
                     storage_format = self.local_numeric_format(statement.target)
@@ -2121,7 +2123,7 @@ class JVMEmitter:
                 self.comparison(0x9A)
                 return "Z"
             if target.name == "__str__" and not argument_types:
-                if receiver_type == "Ljava/lang/Throwable;" or exception_type(semantic_receiver) is not None:
+                if self.is_exception_value(receiver_type, semantic_receiver):
                     if is_super and managed_exception(self.current_function.cls):
                         reference = self.class_file.method_reference(
                             self.exception_class(self.current_function.cls, node),
@@ -2201,7 +2203,7 @@ class JVMEmitter:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM str() takes one argument", node)
             value_type = self.expression(node.args[0])
-            if value_type == "Ljava/lang/Throwable;" or exception_type(analyzed_value_type(node.args[0])) is not None:
+            if self.is_exception_value(value_type, analyzed_value_type(node.args[0])):
                 self.exception_message(analyzed_value_type(node.args[0]))
             else:
                 self.scalar_string(value_type, node)
@@ -3080,6 +3082,14 @@ class JVMEmitter:
         return Method(
             0x0001, EXPLICIT_FORMATTER, "()Ljava/lang/String;", bridge.render(),
             3 + argument_slots, 1,
+        )
+
+    def is_exception_value(self, descriptor, semantic_type):
+        # A raw sibling union can use its custom common base, not Throwable.
+        # N is compatible with references but is not itself an exception ABI.
+        return exception_type(semantic_type) is not None or (
+            _is_reference_descriptor(descriptor)
+            and self.compatible(descriptor, "Ljava/lang/Throwable;")
         )
 
     def exception_message(self, value_type, *, explicit=False):

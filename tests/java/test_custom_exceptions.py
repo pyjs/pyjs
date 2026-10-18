@@ -123,6 +123,69 @@ def main() -> str:
 ''', tmp_path)
 
 
+SIBLING_EXCEPTION_PREFIX = '''
+class Failure(Exception):
+    def __str__(self) -> str:
+        return "base:" + super().__str__()
+
+class First(Failure):
+    pass
+
+class Second(Failure):
+    def __str__(self) -> str:
+        return "second:" + super().__str__()
+
+def fail(first: bool) -> None:
+    if first:
+        raise First("a")
+    raise Second("b")
+
+def main() -> str:
+    result = ""
+'''
+
+
+@pytest.mark.parametrize("body", [
+    '''
+    for first in [True, False]:
+        error = First("a") if first else Second("b")
+        result += FORMAT + "|"
+''',
+    '''
+    for error in [First("a"), Second("b")]:
+        result += FORMAT + "|"
+''',
+    '''
+    for first in [True, False]:
+        try:
+            fail(first)
+        except (First, Second) as error:
+            result += FORMAT + "|"
+''',
+], ids=["conditional-local", "list-item", "caught-union"])
+@pytest.mark.parametrize("formatting", ["str(error)", "error.__str__()", 'f"{error}"'],
+                         ids=["str", "explicit", "interpolation"])
+def test_raw_sibling_exception_unions_keep_virtual_formatting(tmp_path, body, formatting):
+    # Consume the actual union, not a helper's declared base-class return.
+    assert_text_matches_python(
+        SIBLING_EXCEPTION_PREFIX + body.replace("FORMAT", formatting)
+        + '    return result\n', tmp_path,
+    )
+
+
+def test_raw_sibling_exception_formatting_compiles_to_dex(tmp_path):
+    assert_compiles_to_android_dex(SIBLING_EXCEPTION_PREFIX + '''
+    for error in [First("a"), Second("b")]:
+        result += str(error)
+    for first in [True, False]:
+        try:
+            fail(first)
+        except (First, Second) as caught:
+            result += str(caught)
+    return result
+''', tmp_path)
+
+
 def test_conditional_sibling_exceptions_return_their_custom_base(tmp_path):
     assert_text_matches_python('''
 class Failure(Exception):

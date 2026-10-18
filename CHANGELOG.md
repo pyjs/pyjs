@@ -13,7 +13,9 @@
   native calls, fields, views and callbacks retain custom text without Python
   string calls, including exceptions stored in typed maps or cast to object
   and nullable native views. Conditional values keep their common custom
-  exception base; unsupported object-local annotations receive a diagnostic.
+  exception base, including formatting raw union locals, items and catches.
+  Unsafe exception-erasing object locals receive a diagnostic without
+  rejecting existing non-exception union and collection initializers.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.

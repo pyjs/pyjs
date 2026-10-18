@@ -315,6 +315,42 @@ def test_object_local_annotation_has_a_consistent_boundary(value, field, annotat
     )
 
 
+@pytest.mark.parametrize("value", [
+    "pick(True)", "pick(False)", "[1, 2]", '{"a": "b"}', '("a", "b")',
+], ids=["nullable-value", "nullable-none", "list", "dict", "tuple"])
+def test_existing_object_local_reference_initializers_remain_supported(tmp_path, value):
+    # Compare identity, not Java's collection toString with Python's repr.
+    assert_text_matches_python('''
+from pyjs import jvm
+
+@jvm.native("java/util/Objects", name="equals")
+def same(left: object, right: object) -> bool:
+    return left is right
+
+def pick(present: bool) -> str | None:
+    return "value" if present else None
+
+def main() -> str:
+''' + f'''
+    original = {value}
+    view: object = original
+    assert same(view, original)
+    return "preserved"
+''', tmp_path)
+
+
+@pytest.mark.parametrize("value", [
+    '[Failure("raw")]', '{"error": Failure("raw")}', '(Failure("raw"),)',
+])
+def test_object_local_cannot_erase_nested_exception_formatters(value):
+    with pytest.raises(JVMUnsupported, match="JVM object-annotated locals are not implemented"):
+        transpile_jvm(NATIVE_TEXT + f'''
+def main() -> str:
+    view: object = {value}
+    return native_text(view)
+''')
+
+
 def test_python_owned_field_on_native_subclass_does_not_retain_formatter(tmp_path):
     write_native_holder(tmp_path)
     result = run_jvm(NATIVE_HOLDER + '''
