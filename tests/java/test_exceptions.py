@@ -605,7 +605,7 @@ def test_application_native_throwable_subclasses_can_widen(tmp_path, boundary, d
     ("NumberFormatException | None", False),
     ("NumberFormatException | None", True),
 ], ids=["native", "optional-native", "optional-none"])
-def test_native_factory_result_can_widen_without_a_class_layout(tmp_path, result_type, empty):
+def test_native_factory_result_can_widen_to_base_exception(tmp_path, result_type, empty):
     helper = ClassFile("ExceptionFactory")
     code = Bytecode()
     owner = "java/lang/NumberFormatException"

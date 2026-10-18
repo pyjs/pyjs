@@ -1015,14 +1015,6 @@ class JVMEmitter:
 
     def expression(self, node) -> str:
         result = self._expression(node)
-        if _is_reference_descriptor(result) and (
-            hasattr(node, "obj") or hasattr(node, "value_obj")
-        ):
-            value = analyzed_value_object(node)
-            semantic = value.cls if isinstance(value, Instance) else value
-            for member in semantic.types if isinstance(semantic, UnionType) else (semantic,):
-                if exception_type(member) is not None:
-                    self.value_type(member)
         if result == "V":
             # JVM void is not a value; Python calls still produce None when
             # assigned, returned, or compared, including __enter__ results.
