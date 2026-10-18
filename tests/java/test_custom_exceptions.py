@@ -123,6 +123,35 @@ def main() -> str:
 ''', tmp_path)
 
 
+def test_conditional_sibling_exceptions_return_their_custom_base(tmp_path):
+    assert_text_matches_python('''
+class Failure(Exception):
+    def __init__(self, text: str):
+        self.text = text
+
+    def __str__(self) -> str:
+        return self.text
+
+class First(Failure):
+    pass
+
+class Second(Failure):
+    pass
+
+def choose(first: bool) -> Failure:
+    return First("first") if first else Second("second")
+
+def maybe(present: bool, first: bool) -> Failure | None:
+    return choose(first) if present else None
+
+def main() -> str:
+    assert maybe(False, True) is None
+    saved = maybe(True, False)
+    assert saved is not None
+    return str(choose(True)) + ":" + str(choose(False)) + ":" + saved.text
+''', tmp_path)
+
+
 def test_key_error_reinitialization_and_native_method_name_isolation(tmp_path):
     assert_text_matches_python('''
 class MissingRecord(KeyError):

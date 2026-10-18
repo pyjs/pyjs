@@ -160,9 +160,13 @@ def retain_native_boundary_text(visitor, function):
                     retain_native_field_text(visitor, target, node.value)
             elif isinstance(node, StaticCast):
                 target = analyzed_value_type(node)
-                if isinstance(target, Class) and is_declaration(target.py_obj, "jvm"):
+                members = target.types if isinstance(target, UnionType) else (target,)
+                if any(isinstance(member, Class) and (
+                        member.py_obj is native_builtins._object
+                        or is_declaration(member.py_obj, "jvm")) for member in members):
                     # A native view can be stored or passed through another
-                    # function before Java consumes it; retain before erasure.
+                    # function before Java consumes it. Nullable native and
+                    # plain object views erase the managed source type too.
                     retain_native_exception_text(visitor, node.value)
 
 

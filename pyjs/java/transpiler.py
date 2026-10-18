@@ -757,8 +757,16 @@ class JVMEmitter:
                         else None
                     )
                     declared = analyzed_value_type(statement.target)
-                    if isinstance(declared, UnionType) and any(
-                        exception_type(member) is not None for member in declared.types
+                    members = declared.types if isinstance(declared, UnionType) else (declared,)
+                    if any(getattr(member, "py_obj", None) is native_builtins._object
+                           for member in members):
+                        # Resolved exception/collection initializers must not
+                        # bypass the unsupported local-annotation boundary.
+                        raise JVMUnsupported(
+                            "JVM object-annotated locals are not implemented", statement,
+                        )
+                    elif isinstance(declared, UnionType) and any(
+                        exception_type(member) is not None for member in members
                     ):
                         # A None initializer still needs the declared exception
                         # storage; the rendered annotation has unbound names.
@@ -4682,8 +4690,6 @@ class JVMEmitter:
                 for member in value_type.types
                 if member.generic_name not in {"None", "NoneType"}
             ]
-            if len(concrete) > 1 and all(exception_type(member) is not None for member in concrete):
-                return "Ljava/lang/Throwable;"
             descriptors = [
                 self.value_type(member, member_representation)
                 for member, member_representation in zip(
@@ -4719,6 +4725,10 @@ class JVMEmitter:
                         for descriptor in descriptors
                     ):
                         return candidate
+                # Preserve a shared emitted base before falling back to the
+                # ABI common to otherwise unrelated Python/Java exceptions.
+                if all(exception_type(member) is not None for member in concrete):
+                    return "Ljava/lang/Throwable;"
                 return "Ljava/lang/Object;"
             raise JVMUnsupported("JVM union has incompatible runtime types")
         if self.is_jvm_array_type(value_type):

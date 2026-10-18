@@ -11,7 +11,9 @@
   Java logging preserves the original exception when formatting fails, and
   local `super()` aliases keep lexical parent dispatch. Exceptions crossing
   native calls, fields, views and callbacks retain custom text without Python
-  string calls, including exceptions stored in typed maps.
+  string calls, including exceptions stored in typed maps or cast to object
+  and nullable native views. Conditional values keep their common custom
+  exception base; unsupported object-local annotations receive a diagnostic.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.
