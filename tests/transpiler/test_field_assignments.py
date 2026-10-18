@@ -96,6 +96,41 @@ def test_inherited_factory_field_waits_for_effective_initializer(environment):
 
 @pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
                          ids=["js", "native", "jvm", "wasm"])
+@pytest.mark.parametrize("declared", [False, True], ids=["builtin-init", "inherited-init"])
+def test_missing_inherited_field_points_only_to_application_initializer(environment, declared):
+    initializer = "def __init__(self):\n        self.ready = True" if declared else "pass"
+    source = f'''
+from pyjs import js
+@js
+class Parent:
+    {initializer}
+@js
+class Child(Parent):
+    def read(self):
+        return self.missing
+def main():
+    return Child().read()
+'''
+    with pytest.raises(CompilationError) as caught:
+        with analyze_source(source, wrap=False, environment=environment, filename="inherited_missing.py"):
+            pass
+    diagnostic = caught.value.diagnostic
+    assert diagnostic.code == DiagnosticCode.UNDEFINED_ATTRIBUTE
+    assert diagnostic.message == "Attribute 'missing' is not defined on 'Child'"
+    assert diagnostic.help == ("Define self.missing in Child.__init__().",)
+    primary = diagnostic.primary.span
+    assert primary.source.filename.endswith("inherited_missing.py")
+    assert primary.source.lines[primary.start_position.line].strip() == "return self.missing"
+    assert len(diagnostic.secondary) == int(declared)
+    if declared:
+        note = diagnostic.secondary[0]
+        assert note.message == "initialize instance attributes here"
+        assert note.span.source.filename.endswith("inherited_missing.py")
+        assert note.span.source.lines[note.span.start_position.line].strip() == "def __init__(self):"
+
+
+@pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
+                         ids=["js", "native", "jvm", "wasm"])
 @pytest.mark.parametrize("method", ["__init__", "put"])
 @pytest.mark.parametrize("class_body", [False, True], ids=["initializer", "class-body"])
 @pytest.mark.parametrize("annotation, field_type, initial, value", [

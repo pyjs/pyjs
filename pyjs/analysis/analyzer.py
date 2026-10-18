@@ -5641,7 +5641,7 @@ class InferenceVisitor(ast.NodeVisitor):
                     self.attribute_names(value_obj),
                     ast.unparse(node.value),
                     value_init.py_func
-                    if can_define and value_init is not None
+                    if can_define and value_init is not None and not is_builtin_method(value_init)
                     else None,
                     can_define=can_define,
                 )
