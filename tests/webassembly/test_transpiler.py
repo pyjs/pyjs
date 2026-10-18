@@ -18,12 +18,15 @@ from tests.backend_semantics import (
     CALLABLE_INPUT_CONTRACT,
     CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
     COLLECTION_NAME_CONTRACT,
+    CUSTOM_EXCEPTION_CONTRACT,
     DATACLASS_NAN_IDENTITY_SOURCE,
     DIRECT_UNION_RESULT_CONTRACT,
+    EXCEPTION_OBJECT_CONTRACT,
     FIELD_ASSIGNMENT_CONTRACT,
     GENERATOR_CLEANUP_CONTRACT,
     GENERIC_OPERATOR_CONTRACT,
     GENERIC_UNION_ORDER_CONTRACT,
+    INHERITED_FACTORY_FIELD_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
@@ -194,6 +197,21 @@ def test_exception_raising_has_a_focused_unsupported_diagnostic(exception):
         transpile_webassembly(f'def main() -> int:\n    raise {exception}("missing")\n')
 
 
+@pytest.mark.parametrize("contract", [CUSTOM_EXCEPTION_CONTRACT, EXCEPTION_OBJECT_CONTRACT],
+                         ids=["custom", "owned"])
+def test_custom_exception_contract_keeps_wasm_handler_boundary(contract):
+    with pytest.raises(CompilationError) as caught:
+        transpile_webassembly(contract.source)
+    diagnostic = caught.value.diagnostic
+    assert diagnostic.code.value == "PYJS2001"
+    assert diagnostic.message == "native IR exception handlers are not implemented"
+    assert diagnostic.help == (
+        "Move exception handling outside this backend until it implements shared IR exception regions.",
+    )
+    span = diagnostic.primary.span
+    assert span.source.lines[span.start_position.line].strip() == "try:"
+
+
 def test_generic_fromkeys_reaches_the_mapping_storage_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="value type dict__int_int is not implemented"):
         transpile_webassembly('''
@@ -323,8 +341,9 @@ def test_shared_empty_literal_sibling_contract(tmp_path):
     assert result == 0, EMPTY_LITERAL_SIBLING_CONTRACT.failure(result)
 
 
-@pytest.mark.parametrize("contract", [INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT],
-                         ids=["initializer", "class-body"])
+@pytest.mark.parametrize("contract", [INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
+                                     INHERITED_FACTORY_FIELD_CONTRACT],
+                         ids=["initializer", "class-body", "inherited_factory"])
 def test_inherited_fields_have_an_explicit_webassembly_boundary(contract):
     with pytest.raises(WebAssemblyUnsupported, match="class inheritance is not implemented"):
         transpile_webassembly(contract.source)

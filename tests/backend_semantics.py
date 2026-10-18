@@ -2057,6 +2057,95 @@ def make_error() -> ValueError:
 )
 
 
+CUSTOM_EXCEPTION_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class InvalidRecord(ValueError):
+    pass
+
+@js
+class InvalidTitle(InvalidRecord):
+    pass
+
+@js
+def validate() -> None:
+    raise InvalidTitle("title")
+''',
+    "custom_exception_contract",
+    '''
+    message = ""
+    caught = False
+    try:
+        try:
+            validate()
+        except (TypeError, InvalidRecord) as error:
+            caught = str(error) == "title"
+            raise
+    except ValueError as saved:
+        message = str(saved)
+    empty = "unhandled"
+    try:
+        raise InvalidRecord()
+    except InvalidRecord as empty_error:
+        empty = str(empty_error)
+    ''',
+    (
+        ("custom inheritance, tuple matching, and reraising", 'not caught or message != "title"'),
+        ("inherited empty constructor", 'empty != ""'),
+    ),
+)
+
+
+EXCEPTION_OBJECT_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class RevisionConflict(Exception):
+    def __init__(self, record: str, revision: int = 0):
+        super().__init__(f"{record}:{revision}")
+        self.record = record
+        self.revision = revision
+
+    def next_revision(self) -> int:
+        return self.revision + 1
+
+@js
+class RetryConflict(RevisionConflict):
+    pass
+
+@js
+def pending_conflict() -> RevisionConflict:
+    return RetryConflict("record", revision=42)
+''',
+    "exception_object_contract",
+    '''
+    pending = pending_conflict()
+    saved: list[RevisionConflict] = [pending]
+    outcome = "unhandled"
+    identity = False
+    try:
+        raise saved[0]
+    except RevisionConflict as conflict:
+        identity = conflict is pending
+        outcome = str(conflict)
+        conflict.revision = conflict.next_revision()
+        try:
+            raise
+        except Exception as repeated:
+            identity = identity and repeated is pending
+    ''',
+    (
+        ("constructed message", 'outcome != "record:42"'),
+        ("owned identity survives reraising", "not identity"),
+        ("typed fields survive handler exit", 'pending.record != "record" or pending.revision != 43'),
+        ("inherited initializer keeps dynamic class", "not isinstance(pending, RetryConflict)"),
+    ),
+)
+
+
 SCALAR_EXCEPTION_MESSAGE_CONTRACT = _contract(
     '''
 from pyjs import js
@@ -2819,6 +2908,32 @@ MEMBERSHIP_ORDER_CONTRACT = _contract(
         ("mixed-representation results", "not wide_needle or not plain_needle or not mixed_missing"),
         ("coercion preserves needle-first order", "mixed_events != [1, 7, 7, 2, 3, 4]"),
     ),
+)
+
+
+INHERITED_FACTORY_FIELD_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class Parent:
+    def __init__(self, count: int):
+        self.count = count
+
+@js
+class Child(Parent):
+    pass
+
+@js
+def make() -> Child:
+    return Child(2)
+''',
+    "inherited_factory_field_contract",
+    '''
+    value = make()
+    value.count = 42
+    ''',
+    (("inherited initializer owns factory-result field", "value.count != 42"),),
 )
 
 

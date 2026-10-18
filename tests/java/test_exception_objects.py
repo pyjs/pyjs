@@ -110,6 +110,23 @@ def main() -> str:
 ''', tmp_path)
 
 
+@pytest.mark.parametrize("kind", ["ValueError", "KeyError", "SyntaxError"])
+def test_nullable_boolean_payload_keeps_python_spelling(tmp_path, kind):
+    assert_text_matches_python(f'''
+def main() -> str:
+    values: list[bool | None] = [None, False, True]
+    messages: list[str] = []
+    for value in values:
+        saved = {kind}(value)
+        try:
+            raise saved
+        except {kind} as error:
+            assert error is saved
+            messages.append(str(error))
+    return "|".join(messages)
+''', tmp_path)
+
+
 @pytest.mark.parametrize(("annotation", "argument", "check"), [
     ("list[int]", "[40, 2]", "failure.value[0] + failure.value[1] == 42"),
     ("Record", "Record(42)", "failure.value.code == 42"),

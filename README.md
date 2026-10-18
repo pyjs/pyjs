@@ -554,7 +554,7 @@ with `pyjs template`.
   Builtin exceptions can be constructed, stored in fields or collections,
   passed and returned, then raised repeatedly without losing identity. They
   accept an optional string, integer or Boolean message. A nullable string
-  containing `None` renders as `None`, distinct from an omitted message.
+  or Boolean containing `None` renders as `None`, distinct from omission.
   Integers retain their signed 64-bit value and
   Booleans use Python's `True`/`False` spelling. Assertion messages use the same
   conversion and are evaluated only on failure. Float and container messages
@@ -592,10 +592,39 @@ with `pyjs template`.
   declaration. Python's base-exception initializer does not specify Java
   overloads; inherited native declarations are trusted to describe the actual
   Java constructor signatures.
-  Custom Python exception raising, chaining, `.args`, literal `None` messages
+  Chaining, `.args`, builtin literal `None` messages
   and `UnicodeDecodeError` payloads remain unsupported. Explicit
   reraising keeps the original JVM stack trace rather than adding a Python
   traceback frame. Async context managers remain unsupported.
+- JVM custom Python exception classes retain inherited catches, typed fields,
+  owned identity, custom initializers and module-scoped class identity.
+  String/integer/Boolean positional arguments supply text without `super()`;
+  keywords and defaulted parameters do not become that original text.
+  `super().__init__(message)` can replace the text. Custom `__str__` methods
+  keep virtual dispatch through base-typed and union-typed references.
+  Field-only non-scalar arguments remain valid. Consuming their unsupported
+  default text raises a focused `TypeError`; replacing it with a scalar message
+  or providing a custom formatter avoids that unsupported operation.
+  Java logging preserves the exception and stack trace if formatting fails,
+  using `<exception str() failed>` as its message. Explicitly raised custom
+  exceptions retain their formatters even without a Python `str()` call.
+  The same applies to exceptions passed to native Java calls, exposed through
+  native views, stored in native fields, or returned by Java callbacks,
+  including typed map contents, `cast(object, ...)` and nullable native views.
+  Conditional values retain a shared custom exception base when returning
+  through that base. Raw sibling unions also retain formatting in conditional
+  locals, list items and multi-type exception handlers.
+  `object` locals retain existing inferred union/collection storage, but
+  cannot erase exception values or exception-bearing containers. Other plain
+  `object` initializers remain unsupported; use explicit casts to expose
+  supported reference values to Java.
+  Explicit `__str__()` calls through base views require compatible override
+  result types; narrow to the concrete type for a differently typed result.
+  Local `super()` aliases keep lexical dispatch; mixed or escaping proxies
+  receive a focused compilation diagnostic.
+  Python methods are isolated from native Throwable method names. Custom
+  `__new__`, unbound builtin initialization and multiple exception bases remain
+  unsupported. Construct a custom-initializer class before raising it.
 
 Run `pyjs skill` for the installed-version guidance and `pyjs template` for
 complete executable examples.

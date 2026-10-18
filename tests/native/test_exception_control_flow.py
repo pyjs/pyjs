@@ -8,8 +8,10 @@ from tests.backend_semantics import (
     ASSERT_CAPTURE_CONTRACT,
     ASSERT_FAILURE_CONTRACT,
     ASSERT_NARROWING_CONTRACT,
+    CUSTOM_EXCEPTION_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
+    EXCEPTION_OBJECT_CONTRACT,
     KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
     SCALAR_EXCEPTION_MESSAGE_CONTRACT,
@@ -68,13 +70,24 @@ def test_assert_narrows_generator_input_but_next_still_sends_none(tmp_path, opti
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["handlers", "cleanup", "runtime", "key-error", "scalar-message"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, CUSTOM_EXCEPTION_CONTRACT], ids=["handlers", "cleanup", "runtime", "key-error", "scalar-message", "custom"])
 def test_shared_exception_control_flow_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
         contract.source, directory=tmp_path, optimize=optimize,
         sanitizers=("address", "undefined"),
     )
     assert result.native.returncode == 0
+
+
+def test_owned_custom_exception_contract_keeps_llvm_identity_boundary():
+    with pytest.raises(CompilationError) as caught:
+        transpile_llvm(EXCEPTION_OBJECT_CONTRACT.source)
+    diagnostic = caught.value.diagnostic
+    assert diagnostic.code.value == "PYJS2001"
+    assert diagnostic.message == "native exception identity comparisons require None"
+    assert diagnostic.help == ()
+    span = diagnostic.primary.span
+    assert span.source.lines[span.start_position.line].strip() == "identity = conflict is pending"
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

@@ -1,16 +1,20 @@
 """Analysis configuration for direct JVM compilation."""
 
+import ast
 import inspect
 
-from pyjs.analysis import create_analysis_environment
-from pyjs.analysis.analyzer import CallGraphVisitor
+from pyjs.analysis import create_analysis_environment, super_proxy
+from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type, field_owner
 from pyjs.analysis.diagnostics import DiagnosticCode
-from pyjs.analysis.ir import IRInferenceVisitor
+from pyjs.analysis.ir import ExceptionRaise, FieldStore, IRInferenceVisitor, Return
 from pyjs.analysis.lifetime import refine_lifetimes
-from pyjs.analysis.objects import Class, Function, Instance, UnionType
+from pyjs.analysis.objects import Class, Function, Instance, StaticCast, UnionType
 from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
+
+from .diagnostics import JVMUnsupported
+from .exceptions import contained_exception_types, managed_exception
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -19,6 +23,54 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     numeric_domains = frozenset({"portable", "wgsl", "java"})
     lower_exception_regions = True
     lower_exception_objects = True
+
+    def visit_FunctionDef(self, node):
+        result = super().visit_FunctionDef(node)
+        if not self.pending_flow_widenings:
+            for value in super_proxy.prepare(self.func, JVMUnsupported, "JVM"):
+                if (isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute)
+                        and value.func.attr == "__str__"
+                        and super_proxy.is_receiver(value.func.value)):
+                    # Aliases acquire provenance after their calls are analyzed.
+                    # Lexical parent calls must not retain subclass overrides.
+                    added = getattr(value, "jvm_exception_protocols", ())
+                    value.runtime_protocols = tuple(
+                        protocol for protocol in value.runtime_protocols if protocol not in added
+                    )
+            for block in self.func.ir.blocks:
+                for value in ast.walk(block):
+                    if (isinstance(value, ExceptionRaise) and value.exception is not None
+                            and (not value.reraised or value.append_trace)):
+                        semantic = analyzed_value_type(value.exception)
+                        members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
+                        value.runtime_protocols = (
+                            *getattr(value, "runtime_protocols", ()),
+                            *((member, ("__str__",)) for member in members if managed_exception(member)),
+                        )
+        return result
+
+    def visit_Call(self, node):
+        result = super().visit_Call(node)
+        if not isinstance(result, ast.Call):
+            return result
+        target = getattr(result.func, "obj", None)
+        receiver = None
+        if getattr(target, "py_obj", None) is native_builtins._str and result.args:
+            receiver = result.args[0]
+        elif getattr(target, "name", None) == "__str__" and isinstance(result.func, ast.Attribute):
+            value = result.func.value
+            if not (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                    and value.func.id == "super"):
+                receiver = value
+        if receiver is not None:
+            semantic = analyzed_value_type(receiver)
+            members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
+            result.jvm_exception_protocols = tuple(
+                (member, ("__str__",)) for member in members if managed_exception(member)
+            )
+            result.runtime_protocols = (*getattr(result, "runtime_protocols", ()),
+                                        *result.jvm_exception_protocols)
+        return result
 
     def expand_static_call_keywords(self, node, call_target=None):
         if getattr(call_target, "py_obj", None) is native_builtins._dict and node.keywords:
@@ -50,6 +102,64 @@ def should_analyze_body(func) -> bool:
     )
 
 
+def native_callable(value) -> bool:
+    if isinstance(value, Class):
+        if is_declaration(value.py_obj, "jvm"):
+            return True
+        value = value.find_attrs("__init__", search_bases=True)
+    return isinstance(value, Function) and not should_analyze_body(value)
+
+
+def retain_native_exception_text(visitor, value):
+    # Java can call Throwable.toString/getMessage without an analyzed Python
+    # formatting call. Keep this dependency scoped to values crossing its ABI,
+    # including typed containers, rather than every constructed exception.
+    if isinstance(value, ast.Constant):
+        return  # Includes synthetic, untyped None returns from void callbacks.
+    for value_type in contained_exception_types(analyzed_value_type(value)):
+        if managed_exception(value_type):
+            visitor.retain_runtime_protocol(value_type, ("__str__",))
+
+
+def retain_native_field_text(visitor, target, value):
+    if not isinstance(target, ast.Attribute):
+        return
+    owner = field_owner(getattr(target, "obj", None))
+    if owner is not None and is_declaration(owner.py_obj, "jvm"):
+        # Use the declared field owner, not the receiver's class: an inherited
+        # native field crosses the ABI, but a Python-owned field on the same
+        # native subclass does not.
+        retain_native_exception_text(visitor, value)
+
+
+def retain_native_boundary_text(visitor, function):
+    if function.ir is None:
+        return
+    for block in function.ir.blocks:
+        for node in ast.walk(block):
+            if isinstance(node, ast.Call) and native_callable(getattr(node.func, "obj", None)):
+                values = [*node.args, *(keyword.value for keyword in node.keywords)]
+                if isinstance(node.func, ast.Attribute):
+                    values.append(node.func.value)
+                for value in values:
+                    retain_native_exception_text(visitor, value)
+            elif isinstance(node, (FieldStore, ast.AnnAssign)) and node.value is not None:
+                retain_native_field_text(visitor, node.target, node.value)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    retain_native_field_text(visitor, target, node.value)
+            elif isinstance(node, StaticCast):
+                target = analyzed_value_type(node)
+                members = target.types if isinstance(target, UnionType) else (target,)
+                if any(isinstance(member, Class) and (
+                        member.py_obj is native_builtins._object
+                        or is_declaration(member.py_obj, "jvm")) for member in members):
+                    # A native view can be stored or passed through another
+                    # function before Java consumes it. Nullable native and
+                    # plain object views erase the managed source type too.
+                    retain_native_exception_text(visitor, node.value)
+
+
 def finalize_jvm_analysis(entry_point: Function) -> None:
     """Retain callbacks invoked by a native runtime rather than Python code."""
 
@@ -66,22 +176,15 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
             yield value_type
 
     visitor = CallGraphVisitor(entry_point, entry_point)
-    pending = [
-        value for value in entry_point.compilation_objects if isinstance(value, Class)
-    ]
-    processed = set()
-    while pending:
-        value_type = pending.pop()
-        if value_type in processed:
-            continue
-        processed.add(value_type)
+
+    def retain_class(value_type):
         for field in value_type._self.attrs.values():
             if not isinstance(field, Instance):
                 continue
             for dependency in storage_classes(field.cls):
                 visitor.enter_class(dependency)
         if value_type.super is None:
-            continue
+            return
         native_base = value_type.super
         while native_base is not None and not is_declaration(
             native_base.py_obj,
@@ -89,7 +192,7 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
         ):
             native_base = native_base.super
         if native_base is None:
-            continue
+            return
         interface = backend_metadata(
             native_base.py_obj,
             "jvm",
@@ -110,12 +213,29 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
                 and implementation is not declaration
                 and not is_declaration(implementation.py_func, "jvm")
             ):
+                # A Java-only virtual call still needs its binding signature
+                # analyzed before override ABI validation.
+                visitor.enter(declaration)
                 CallGraphVisitor(implementation, entry_point).enter(implementation)
-        pending.extend(
+                if implementation.ir is not None:
+                    for block in implementation.ir.blocks:
+                        for node in ast.walk(block):
+                            if isinstance(node, Return) and node.value is not None:
+                                retain_native_exception_text(visitor, node.value)
+
+    processed = set()
+    while pending := [
             value
             for value in entry_point.compilation_objects
-            if isinstance(value, Class) and value not in processed
-        )
+            if isinstance(value, (Class, Function)) and value not in processed]:
+        # Newly reached formatter bodies can expose more native callbacks.
+        # Scan the graph once per batch, not once per function or dependency.
+        processed.update(pending)
+        for value in pending:
+            if isinstance(value, Function):
+                retain_native_boundary_text(visitor, value)
+            else:
+                retain_class(value)
     refine_lifetimes(entry_point)
 
 

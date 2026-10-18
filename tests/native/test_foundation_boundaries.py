@@ -14,6 +14,7 @@ from tests.backend_semantics import (
     CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
     EVALUATION_ORDER_CONTRACT,
     FIELD_ASSIGNMENT_CONTRACT,
+    INHERITED_FACTORY_FIELD_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     MAPPING_ASSIGNMENT_CONTRACT,
@@ -24,8 +25,9 @@ from tests.native.test_runtime_compiler import _consumer_increment
 
 @pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("contract", [FIELD_ASSIGNMENT_CONTRACT, MAPPING_ASSIGNMENT_CONTRACT,
-    LITERAL_FIELD_ASSIGNMENT_CONTRACT, INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT],
-    ids=["field", "mapping", "literal_field", "inherited_field", "class_declared_field"])
+    LITERAL_FIELD_ASSIGNMENT_CONTRACT, INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
+    INHERITED_FACTORY_FIELD_CONTRACT],
+    ids=["field", "mapping", "literal_field", "inherited_field", "class_declared_field", "inherited_factory"])
 def test_shared_assignment_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
         contract.source, directory=tmp_path, optimize=optimize,

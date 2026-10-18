@@ -4,6 +4,18 @@
 
 ### Added
 
+- JVM custom exception classes support inherited catches, initializers, typed
+  fields and retained identity. Default scalar text follows original positional
+  arguments; custom string methods preserve virtual dispatch. Python methods
+  cannot accidentally override native Throwable methods.
+  Java logging preserves the original exception when formatting fails, and
+  local `super()` aliases keep lexical parent dispatch. Exceptions crossing
+  native calls, fields, views and callbacks retain custom text without Python
+  string calls, including exceptions stored in typed maps or cast to object
+  and nullable native views. Conditional values keep their common custom
+  exception base, including formatting raw union locals, items and catches.
+  Unsafe exception-erasing object locals receive a diagnostic without
+  rejecting existing non-exception union and collection initializers.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.
