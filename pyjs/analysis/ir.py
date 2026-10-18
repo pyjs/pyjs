@@ -902,6 +902,7 @@ class IRInferenceVisitor(InferenceVisitor):
     """Run ordinary inference while constructing a typed control-flow graph."""
 
     lower_exception_regions = False
+    lower_exception_objects = False
     lower_generator_suspensions = False
 
     def analyze_isinstance(self, call):
@@ -1489,6 +1490,12 @@ class IRInferenceVisitor(InferenceVisitor):
                         DiagnosticCode.UNSUPPORTED_SYNTAX,
                         "native IR raise requires one concrete exception type",
                     )
+                if self.lower_exception_objects and not (
+                    isinstance(item.exc, AnalyzedName) and isinstance(item.exc.obj, Class)
+                ):
+                    raised = ExceptionRaise(value_type, None, exception=item.exc)
+                    self.ir.terminate(ast.copy_location(raised, item))
+                    continue
                 message = None
                 exception_call = (
                     item.exc.call if isinstance(item.exc, ObjectNew) else item.exc

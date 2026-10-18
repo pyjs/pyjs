@@ -424,6 +424,51 @@ def test_exception_chaining_has_a_focused_diagnostic():
     )
 
 
+def test_bare_raise_survives_reassignment_and_branch_visitors():
+    at(
+        '''
+        def main() -> int:
+            caught = False
+            try:
+                raise ValueError("bad")
+            except ValueError:
+                caught = True
+                if caught:
+                    raise
+            return 1
+        ''',
+        '''
+        def main() -> int:
+            caught: bool = False
+            try:
+                raise ValueError('bad')
+            except ValueError:
+                caught = True
+                if caught:
+                    raise
+            return 1
+        ''',
+        '''
+        export function main() {
+            var caught = false;
+            try {
+                throw new RangeError('bad');
+            } catch ($error0) {
+                if ($error0 instanceof RangeError) {
+                    caught = true;
+                    if (caught) {
+                        throw $error0;
+                    }
+                } else {
+                    throw $error0;
+                }
+            }
+            return 1;
+        }
+        ''',
+    )
+
+
 def test_bare_raise_outside_a_handler_has_a_focused_diagnostic():
     ad(
         """\

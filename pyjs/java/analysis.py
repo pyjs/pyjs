@@ -18,6 +18,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
 
     numeric_domains = frozenset({"portable", "wgsl", "java"})
     lower_exception_regions = True
+    lower_exception_objects = True
 
     def expand_static_call_keywords(self, node, call_target=None):
         if getattr(call_target, "py_obj", None) is native_builtins._dict and node.keywords:

@@ -4,6 +4,9 @@
 
 ### Added
 
+- JVM builtin exceptions can be stored, passed, returned and raised repeatedly
+  while preserving identity and messages. Declared native Java constructors
+  can also produce owned throwable values.
 - JVM builtin exceptions and assertions accept integer and Boolean messages.
   Fixed-width integer values retain their normalized value; Booleans render as
   `True` or `False`. Numeric `KeyError` messages are not quoted.
@@ -44,6 +47,9 @@
 
 ### Fixed
 
+- JVM nullable-string exception messages render a supplied `None` as Python
+  text rather than an empty native message.
+- Bare reraises remain valid after handler-local writes and branch narrowing.
 - JVM and LLVM context-manager entry results can be optional values without
   crashing shared control-flow analysis.
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.

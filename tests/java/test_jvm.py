@@ -100,7 +100,7 @@ def main() -> int:
 
 @pytest.mark.parametrize("target, message", [
     ("list[int8]", "JVM constructor list__int is not implemented"),
-    ("tuple[int8, ...]", "unsupported JVM type annotation"),
+    ("tuple[int8, ...]", "JVM constructor tuple__int__variadic is not implemented"),
 ])
 def test_explicit_sequence_constructor_has_a_jvm_capability_boundary(target, message):
     with pytest.raises(JVMUnsupported, match=message):

@@ -324,7 +324,7 @@ def test_void_call_is_evaluated_once_when_used_as_none(tmp_path):
 
 
 def test_native_exception_construction_does_not_guess_java_overloads():
-    with pytest.raises(JVMUnsupported, match="native exception construction in raise"):
+    with pytest.raises(JVMUnsupported, match="native exception construction requires an explicit"):
         transpile_jvm('''
             from pyjs import jvm
             @jvm.native("java/lang/AssertionError")

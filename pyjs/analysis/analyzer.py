@@ -3705,6 +3705,7 @@ class InferenceVisitor(ast.NodeVisitor):
         visitor.pending_finally_breaks = self.pending_finally_breaks
         visitor.flow_widenings = self.flow_widenings
         visitor.pending_flow_widenings = self.pending_flow_widenings
+        visitor.in_exception_handler = self.in_exception_handler
         return visitor
 
     def merge_branch_declarations(self, source, *visitors):

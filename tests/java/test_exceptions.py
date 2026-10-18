@@ -11,6 +11,7 @@ from tests.backend_semantics import (
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    EXCEPTION_VALUE_IDENTITY_CONTRACT,
     KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
     SCALAR_EXCEPTION_MESSAGE_CONTRACT,
@@ -38,7 +39,7 @@ def assert_matches_python(source, directory):
     assert actual.returncode == int(expected.stdout.strip())
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["handlers", "cleanup", "runtime", "scalar-message"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["handlers", "cleanup", "runtime", "scalar-message", "owned-value"])
 def test_shared_exception_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
 
@@ -455,7 +456,7 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message", "owned-value"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
