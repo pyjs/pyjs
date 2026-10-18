@@ -319,13 +319,13 @@ def test_object_local_annotation_has_a_consistent_boundary(value, field, annotat
     "pick(True)", "pick(False)", "[1, 2]", '{"a": "b"}', '("a", "b")',
 ], ids=["nullable-value", "nullable-none", "list", "dict", "tuple"])
 def test_existing_object_local_reference_initializers_remain_supported(tmp_path, value):
-    # Compare identity, not Java's collection toString with Python's repr.
+    # Exercise reference identity and a native call, not collection rendering.
     assert_text_matches_python('''
 from pyjs import jvm
 
 @jvm.native("java/util/Objects", name="equals")
 def same(left: object, right: object) -> bool:
-    return left is right
+    return left == right
 
 def pick(present: bool) -> str | None:
     return "value" if present else None
@@ -334,6 +334,7 @@ def main() -> str:
 ''' + f'''
     original = {value}
     view: object = original
+    assert view is original
     assert same(view, original)
     return "preserved"
 ''', tmp_path)
