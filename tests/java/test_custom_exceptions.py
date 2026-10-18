@@ -3,7 +3,7 @@ import sys
 import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
-from pyjs.java import transpile_jvm
+from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.backend_semantics import CUSTOM_EXCEPTION_CONTRACT, EXCEPTION_OBJECT_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
@@ -415,6 +415,135 @@ def main() -> str:
         "PyjsProgram", "PyjsProgram$Used", "PyjsProgram$Unused",
         "PyjsProgram$exception$Exception", "PyjsProgram$exception$TypeError",
     }
+
+
+@pytest.mark.parametrize("result_type, result", [("int", "42"), ("None", "None"),
+                                                ("str | None", "None")])
+@pytest.mark.parametrize("base", ["Exception", "Parent"])
+def test_explicit_base_view_rejects_incompatible_formatter_results(base, result_type, result):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''
+class Parent(Exception):
+    def __str__(self) -> str:
+        return "parent"
+class Failure({base}):
+    def __str__(self) -> {result_type}:
+        return {result}
+def message(error: {base}) -> str:
+    return str(error.__str__())
+def main() -> str:
+    return message(Failure())
+''')
+    expected = (
+        "JVM explicit exception __str__ calls require matching override result types; "
+        "narrow the receiver to its concrete exception type at line 2 "
+        "while compiling _pyjs_java_.message"
+    )
+    if base == "Parent" and result_type != "str | None":
+        # User-defined base methods already enforce their JVM descriptor before
+        # emitting any call. Nullable strings share a descriptor, not a type.
+        expected = "JVM override Failure.__str__ must preserve the base method signature"
+    assert str(caught.value) == expected
+
+
+def test_explicit_base_view_does_not_apply_the_implicit_string_result_guard(tmp_path):
+    assert_matches_python('''
+from typing import cast
+def nullable_text() -> str | None:
+    return None
+class Failure(Exception):
+    def __str__(self) -> str:
+        return cast(str, nullable_text())
+def check(error: Exception) -> bool:
+    return error.__str__() is None
+def main() -> int:
+    error = Failure()
+    assert check(error)
+    try:
+        str(error)
+    except TypeError:
+        return 42
+    return 0
+''', tmp_path)
+
+
+@pytest.mark.parametrize("body", [
+    'def __init__(self, values: list[int]):\n        self.values = values',
+    'def __str__(self) -> None:\n        return None',
+    'def __str__(self) -> str:\n        raise ValueError("formatter failed")',
+])
+def test_uncaught_exceptions_preserve_type_and_trace_when_text_fails(tmp_path, body):
+    argument = "[42]" if "__init__" in body else ""
+    result = run_jvm(f'''
+class Failure(Exception):
+    {body}
+def fail() -> None:
+    raise Failure({argument})
+def main() -> int:
+    fail()
+    return 0
+''', tmp_path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    # Java class prefixes and line numbers vary; assert the original error and
+    # its user frames, not the JVM uncaught-handler failure being fixed here.
+    assert "PyjsProgram$Failure: <exception str() failed>" in result.stderr
+    assert "at PyjsProgram.fail(" in result.stderr
+    assert "at PyjsProgram.pyjs_main(" in result.stderr
+    assert "thrown from the UncaughtExceptionHandler" not in result.stderr
+
+
+def test_uncaught_custom_formatter_is_reachable_without_a_python_string_call(tmp_path):
+    result = run_jvm('''
+class Failure(Exception):
+    def __str__(self) -> str:
+        return "custom text"
+def main() -> int:
+    raise Failure()
+''', tmp_path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "PyjsProgram$Failure: custom text" in result.stderr
+    assert "at PyjsProgram.pyjs_main(" in result.stderr
+
+
+def test_strict_formatting_and_safe_java_reporting_compile_to_dex(tmp_path):
+    assert_compiles_to_android_dex('''
+class Opaque(Exception):
+    def __init__(self, values: list[int]):
+        self.values = values
+class Invalid(Exception):
+    def __str__(self) -> None:
+        return None
+def main() -> int:
+    errors: list[Exception] = [Opaque([42]), Invalid()]
+    for error in errors:
+        try:
+            str(error)
+        except TypeError:
+            pass
+    raise errors[0]
+''', tmp_path)
+
+
+def test_union_exception_field_access_has_a_located_boundary():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm('''
+class First(Exception):
+    def __init__(self, code: int):
+        self.code = code
+class Second(Exception):
+    def __init__(self, code: int):
+        self.code = code
+def read(error: First | Second) -> int:
+    return error.code
+def main() -> int:
+    return read(First(42))
+''')
+    assert str(caught.value) == (
+        "JVM cannot resolve field code on First|Second at line 2 "
+        "while compiling _pyjs_java_.read"
+    )
 
 
 def test_custom_exception_identity_is_module_scoped(tmp_path, monkeypatch):

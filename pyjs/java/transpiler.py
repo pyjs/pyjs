@@ -47,6 +47,8 @@ from pyjs.analysis.objects import (
     UnionType,
 )
 from pyjs.analysis.source import analyze_source
+from pyjs.analysis.super_proxy import is_receiver as is_super_receiver
+from pyjs.analysis.type_relations import same_analyzer_type
 from pyjs.analysis.value_representation import (
     analyzed_numeric_format,
     analyzed_representation,
@@ -66,7 +68,10 @@ from .classfile import (
     Field,
     Method,
 )
+from .diagnostics import JVMUnsupported as JVMUnsupported
 from .exceptions import (
+    EXPLICIT_FORMATTER,
+    FORMATTER,
     MESSAGE_GETTER,
     MESSAGE_SETTER,
     builtin_exception,
@@ -229,18 +234,6 @@ class NativeField:
     static: bool
     writable: bool
     numeric_format: NumericFormat | None = None
-
-
-class JVMUnsupported(Exception):
-    """A program uses semantics not yet represented by the JVM backend."""
-
-    def __init__(self, message: str, node: ast.AST | None = None) -> None:
-        location = (
-            f" at line {node.lineno}"
-            if node is not None and hasattr(node, "lineno")
-            else ""
-        )
-        super().__init__(f"{message}{location}")
 
 
 class JVMEmitter:
@@ -1528,6 +1521,13 @@ class JVMEmitter:
                 self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
+            source = getattr(node, "python_node", None)
+            explicit_formatter = (target.name == "__str__" and not is_super
+                                  and isinstance(source, ast.Call)
+                                  and isinstance(source.func, ast.Attribute)
+                                  and source.func.attr == "__str__")
+            if explicit_formatter:
+                self.validate_explicit_exception_formatter(node, target, semantic_receiver)
             if (target.py_func is native_builtins._BaseException.__init__
                     and managed_exception(self.current_function.cls if is_super else semantic_receiver)):
                 concrete = self.current_function.cls if is_super else semantic_receiver
@@ -2121,7 +2121,7 @@ class JVMEmitter:
                         )
                         self.code.emit(0xB6, reference.to_bytes(2, "big"))
                     else:
-                        self.exception_message()
+                        self.exception_message(semantic_receiver, explicit=explicit_formatter)
                 else:
                     self.scalar_string(receiver_type, node)
                 return "Ljava/lang/String;"
@@ -2194,7 +2194,7 @@ class JVMEmitter:
                 raise JVMUnsupported("JVM str() takes one argument", node)
             value_type = self.expression(node.args[0])
             if value_type == "Ljava/lang/Throwable;" or exception_type(analyzed_value_type(node.args[0])) is not None:
-                self.exception_message()
+                self.exception_message(analyzed_value_type(node.args[0]))
             else:
                 self.scalar_string(value_type, node)
             return "Ljava/lang/String;"
@@ -3015,6 +3015,29 @@ class JVMEmitter:
             return "java/lang/Exception"
         return self.exception_class(value_type, node)
 
+    def validate_explicit_exception_formatter(self, node, target, receiver):
+        # Explicit calls have the analyzer's declared result representation;
+        # unlike str(error), they must not impose Python's implicit str guard.
+        # Conflicting override results cannot share that statically typed ABI.
+        members = receiver.types if isinstance(receiver, UnionType) else (receiver,)
+        for value_type in self.classes:
+            if not managed_exception(value_type):
+                continue
+            ancestor = value_type
+            while ancestor is not None and ancestor not in members:
+                ancestor = ancestor.super
+            if ancestor is None:
+                continue
+            formatter = value_type.find_attrs("__str__", search_bases=True)
+            if formatter not in self.functions:
+                continue
+            if (not same_analyzer_type(formatter.return_type, target.return_type)
+                    or formatter.return_numeric_format != target.return_numeric_format):
+                raise JVMUnsupported(
+                    "JVM explicit exception __str__ calls require matching override result types; "
+                    "narrow the receiver to its concrete exception type", node,
+                )
+
     def exception_formatter_bridge(self, class_file, formatter):
         """Keep Python formatting separate from native Throwable dispatch."""
         bridge = Bytecode()
@@ -3040,22 +3063,45 @@ class JVMEmitter:
                 class_file.name, self.function_name(formatter), self.descriptor(formatter),
             )
             bridge.emit(0xB6, target.to_bytes(2, "big"))
-            bridge.emit(0x59)
-            bridge.branch(0xC7, "valid")
-            bridge.emit(0x57)
-        emit_type_error(
-            bridge, class_file, self.class_files, self.main_class_name,
-            "Exception __str__ must accept no arguments and return str",
-        )
-        if supported:
-            bridge.mark("valid")
             bridge.emit(0xB0)
+        else:
+            emit_type_error(
+                bridge, class_file, self.class_files, self.main_class_name,
+                "Exception __str__ must accept no arguments and return str",
+            )
         return Method(
-            0x0001, "getMessage", "()Ljava/lang/String;", bridge.render(),
+            0x0001, EXPLICIT_FORMATTER, "()Ljava/lang/String;", bridge.render(),
             3 + argument_slots, 1,
         )
 
-    def exception_message(self):
+    def exception_message(self, value_type, *, explicit=False):
+        # An Exception/BaseException view can also contain a foreign Java
+        # throwable. Only managed roots expose the strict Python formatter.
+        members = value_type.types if isinstance(value_type, UnionType) else (value_type,)
+        roots = set()
+        for member in members:
+            if not managed_exception(member):
+                continue
+            value = exception_type(member)
+            if value in {BaseException, native_builtins._BaseException}:
+                roots.update((native_builtins._BaseException, native_builtins._Exception))
+            else:
+                roots.add(native_builtins._Exception if issubclass(
+                    value, (Exception, native_builtins._Exception),
+                ) else native_builtins._BaseException)
+        done = self.new_label("exception.text.done")
+        for root in sorted(roots, key=lambda value: value.__name__):
+            owner = emit_exception_class(self.class_files, self.main_class_name, root)
+            next_root = self.new_label("exception.text.next")
+            self.code.emit(0x59)
+            self.code.emit(0xC1, self.class_file.constants.class_(owner).to_bytes(2, "big"))
+            self.code.branch(0x99, next_root)
+            self.checkcast(f"L{owner};")
+            method = EXPLICIT_FORMATTER if explicit else FORMATTER
+            reference = self.class_file.method_reference(owner, method, "()Ljava/lang/String;")
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            self.code.branch(0xA7, done)
+            self.code.mark(next_root)
         reference = self.class_file.method_reference(
             "java/lang/Throwable", "getMessage", "()Ljava/lang/String;",
         )
@@ -3066,6 +3112,7 @@ class JVMEmitter:
         self.code.emit(0x57)
         self.expression(ast.Constant(value=""))
         self.code.mark(present)
+        self.code.mark(done)
 
     def raise_python_exception(self, node):
         if node.exception is not None:
@@ -3185,7 +3232,7 @@ class JVMEmitter:
         layout = self.classes.get(receiver_type)
         if layout is None:
             raise JVMUnsupported(
-                f"JVM cannot resolve field {attribute.attr} on {receiver_type.name}",
+                f"JVM cannot resolve field {attribute.attr} on {receiver_type.to_annotation_str()}",
                 attribute,
             )
         owner = receiver_type
@@ -3224,6 +3271,8 @@ class JVMEmitter:
             value_type = receiver.cls
             class_access = False
         else:
+            return None
+        if not isinstance(value_type, Class):
             return None
         field_value = getattr(attribute, "obj", None)
         if not isinstance(field_value, Instance):
@@ -5013,11 +5062,7 @@ class JVMEmitter:
 
     @staticmethod
     def is_super_call(node: ast.AST) -> bool:
-        return (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "super"
-        )
+        return is_super_receiver(node)
 
     @staticmethod
     def block_label(name: str) -> str:

@@ -8,6 +8,8 @@
   fields and retained identity. Default scalar text follows original positional
   arguments; custom string methods preserve virtual dispatch. Python methods
   cannot accidentally override native Throwable methods.
+  Java logging preserves the original exception when formatting fails, and
+  local `super()` aliases keep lexical parent dispatch.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.

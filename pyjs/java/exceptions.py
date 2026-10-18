@@ -3,10 +3,12 @@
 from pyjs.decorators import is_declaration
 from pyjs.python import native as native_builtins
 
-from .classfile import Bytecode, ClassFile, Field, Method
+from .classfile import Bytecode, ClassFile, ExceptionHandler, Field, Method
 
 MESSAGE_GETTER = "$pyjs$exception$base_text"
 MESSAGE_SETTER = "$pyjs$exception$set_message"
+FORMATTER = "$pyjs$exception$text"
+EXPLICIT_FORMATTER = "$pyjs$exception$explicit_text"
 
 
 def exception_type(value_type):
@@ -95,7 +97,39 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         getter.emit(0xB6, reference.to_bytes(2, "big"))
         getter.emit(0xB0)
         class_file.add_method(Method(
-            0x0001, "getMessage", "()Ljava/lang/String;", getter.render(), 1, 1,
+            0x0001, EXPLICIT_FORMATTER, "()Ljava/lang/String;", getter.render(), 1, 1,
+        ))
+        getter = Bytecode()
+        getter.local(0x19, 0)
+        reference = class_file.method_reference(name, EXPLICIT_FORMATTER, "()Ljava/lang/String;")
+        getter.emit(0xB6, reference.to_bytes(2, "big"))
+        getter.emit(0x59)
+        getter.branch(0xC7, "valid")
+        getter.emit(0x57)
+        emit_type_error(
+            getter, class_file, class_files, prefix,
+            "Exception __str__ must accept no arguments and return str",
+        )
+        getter.mark("valid")
+        getter.emit(0xB0)
+        class_file.add_method(Method(
+            0x0011, FORMATTER, "()Ljava/lang/String;", getter.render(), 3, 1,
+        ))
+        # Java loggers and uncaught handlers must not lose the original error
+        # when Python formatting fails. Python calls use FORMATTER directly.
+        getter = Bytecode()
+        getter.local(0x19, 0)
+        reference = class_file.method_reference(name, FORMATTER, "()Ljava/lang/String;")
+        getter.emit(0xB6, reference.to_bytes(2, "big"))
+        end = len(getter.code)
+        getter.emit(0xB0)
+        handler = len(getter.code)
+        getter.emit(0x57)
+        getter.emit(0x13, class_file.constants.string("<exception str() failed>").to_bytes(2, "big"))
+        getter.emit(0xB0)
+        class_file.add_method(Method(
+            0x0011, "getMessage", "()Ljava/lang/String;", getter.render(), 1, 1,
+            exception_handlers=(ExceptionHandler(0, end, handler, "java/lang/Throwable"),),
         ))
         setter = Bytecode()
         setter.local(0x19, 0)

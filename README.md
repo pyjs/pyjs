@@ -605,6 +605,13 @@ with `pyjs template`.
   Field-only non-scalar arguments remain valid. Consuming their unsupported
   default text raises a focused `TypeError`; replacing it with a scalar message
   or providing a custom formatter avoids that unsupported operation.
+  Java logging preserves the exception and stack trace if formatting fails,
+  using `<exception str() failed>` as its message. Explicitly raised custom
+  exceptions retain their formatters even without a Python `str()` call.
+  Explicit `__str__()` calls through base views require compatible override
+  result types; narrow to the concrete type for a differently typed result.
+  Local `super()` aliases keep lexical dispatch; mixed or escaping proxies
+  receive a focused compilation diagnostic.
   Python methods are isolated from native Throwable method names. Custom
   `__new__`, unbound builtin initialization and multiple exception bases remain
   unsupported. Construct a custom-initializer class before raising it.
