@@ -916,6 +916,17 @@ class IRInferenceVisitor(InferenceVisitor):
                           "exception chaining state is not implemented by this backend")
         return result
 
+    def visit_Raise(self, node):
+        if node.cause is None:
+            return super().visit_Raise(node)
+        # Both operands are evaluated by the terminator. A conditional cause
+        # must not emit blocks ahead of the still-deferred target expression.
+        self.expression_depth += 1
+        try:
+            return super().visit_Raise(node)
+        finally:
+            self.expression_depth -= 1
+
     def analyze_isinstance(self, call):
         # Native builtin declarations are shared by LLVM, JVM and WASM. Keep
         # the ordinary single-target contract unless a backend opts into more.

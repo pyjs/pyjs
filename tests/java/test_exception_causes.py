@@ -437,3 +437,144 @@ def main() -> int:
     assert "RuntimeError: first" in result.stderr
     assert "ValueError: second" in result.stderr
     assert "CIRCULAR REFERENCE" in result.stderr
+
+
+@pytest.mark.parametrize("fail_target", [False, True])
+@pytest.mark.parametrize("condition", [False, True])
+@pytest.mark.parametrize("conditional_target", [False, True])
+def test_conditional_cause_is_evaluated_after_the_target(
+        tmp_path, fail_target, condition, conditional_target):
+    target = f'target(events, {fail_target})'
+    if conditional_target:
+        target = f'({target} if choose(events, "target condition") else {target})'
+    assert_text_matches_python(f'''
+def target(events: list[str], fail: bool) -> ValueError:
+    events.append("target")
+    if fail:
+        raise TypeError("target failed")
+    return ValueError("wrapper")
+
+def choose(events: list[str], label: str) -> bool:
+    events.append(label)
+    return {condition}
+
+def cause(events: list[str], label: str) -> RuntimeError:
+    events.append(label)
+    return RuntimeError(label)
+
+def main() -> str:
+    events: list[str] = []
+    try:
+        raise {target} from (
+            cause(events, "yes") if choose(events, "cause condition")
+            else cause(events, "no")
+        )
+    except (ValueError, TypeError):
+        pass
+    return "|".join(events)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("annotation", ["NoneType", "NoneType | None", "ValueError | NoneType"])
+def test_application_nonetype_name_is_not_a_valid_cause(annotation):
+    source = f'''
+class NoneType:
+    pass
+
+def invalid() -> {annotation}:
+    return NoneType()
+
+def main() -> None:
+    raise RuntimeError("wrapper") from invalid()
+'''
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm(source)
+    error = caught.value
+    assert error.diagnostic.code == "PYJS1104"
+    assert error.diagnostic.message == "exception cause requires an exception instance or None"
+    assert error.diagnostic.help == ("Construct the cause exception or use 'from None'.",)
+    assert (error.lineno, error.offset) == (9, 40)
+
+
+def test_application_nonetype_instance_cannot_reach_bytecode_emission():
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm('''
+class NoneType:
+    pass
+def main() -> None:
+    raise RuntimeError("wrapper") from NoneType()
+''')
+    error = caught.value
+    assert error.diagnostic.code == "PYJS1104"
+    assert error.diagnostic.message == "exception cause requires an exception instance or None"
+    assert error.diagnostic.help == ("Construct the cause exception or use 'from None'.",)
+    assert (error.lineno, error.offset) == (5, 40)
+
+
+JAVA_CAUSE_ACCESS = '''
+from typing import cast
+from pyjs import jvm
+
+@jvm.native("java/lang/Throwable")
+class Throwable(BaseException):
+    def initCause(self, cause: BaseException) -> BaseException: ...
+    def getCause(self) -> BaseException | None: ...
+
+class CustomFailure(RuntimeError):
+    pass
+'''
+
+
+@pytest.mark.parametrize("kind", ["BaseException", "RuntimeError", "CustomFailure"])
+def test_java_cause_is_visible_until_python_explicitly_replaces_or_clears_it(tmp_path, kind):
+    result = run_jvm(JAVA_CAUSE_ACCESS + f'''
+def main() -> int:
+    original = ValueError("java")
+    error = {kind}("wrapper")
+    native = cast(Throwable, error)
+    assert native.initCause(original) is error
+    assert native.getCause() is original
+    assert error.__cause__ is original
+    assert not error.__suppress_context__
+    replacement = ValueError("python")
+    try:
+        raise error from replacement
+    except {kind}:
+        assert native.getCause() is replacement
+        assert error.__cause__ is replacement
+        assert error.__suppress_context__
+    try:
+        raise error from None
+    except {kind}:
+        assert native.getCause() is None
+        assert error.__cause__ is None
+        assert error.__suppress_context__
+    return 42
+''', tmp_path)
+    assert result.returncode == 42, result.stderr
+
+
+@pytest.mark.parametrize("kind", ["BaseException", "RuntimeError"])
+def test_java_cause_checks_and_uncaught_reporting_remain_native(tmp_path, kind):
+    result = run_jvm(JAVA_CAUSE_ACCESS + f'''
+def main() -> int:
+    error = {kind}("wrapper")
+    native = cast(Throwable, error)
+    try:
+        native.initCause(error)
+        return 1
+    except Exception:
+        assert native.getCause() is None
+    original = ValueError("java cause")
+    native.initCause(original)
+    try:
+        native.initCause(ValueError("second"))
+        return 2
+    except Exception:
+        assert native.getCause() is original
+    raise error
+''', tmp_path)
+    assert result.returncode != 0
+    # Java owns frame formatting, self-cycle and one-shot initCause checks.
+    assert "Caused by:" in result.stderr
+    assert "ValueError: java cause" in result.stderr

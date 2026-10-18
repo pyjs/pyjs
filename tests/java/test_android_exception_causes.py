@@ -1,5 +1,7 @@
 """Exercise chaining on Robolectric and the device's actual ART runtime."""
 
+from typing import cast
+
 import pytest
 
 from pyjs import jvm
@@ -97,3 +99,66 @@ def test_native_failure_is_preserved_but_cannot_receive_python_state() -> None:
             )
             return
     raise AssertionError("Expected native-target rejection")
+
+
+def ordered_target(events: list[str], fail: bool) -> SaveFailure:
+    events.append("target")
+    if fail:
+        raise TypeError("target failed")
+    return SaveFailure("wrapper")
+
+
+def choose_cause(events: list[str], choice: bool) -> bool:
+    events.append("condition")
+    return choice
+
+
+def ordered_cause(events: list[str], label: str) -> ValueError:
+    events.append(label)
+    return ValueError(label)
+
+
+def verify_conditional_cause_order(fail: bool, choice: bool) -> None:
+    events: list[str] = []
+    try:
+        raise ordered_target(events, fail) from (
+            ordered_cause(events, "yes") if choose_cause(events, choice)
+            else ordered_cause(events, "no")
+        )
+    except (SaveFailure, TypeError):
+        assert events[0] == "target"
+        if fail:
+            assert len(events) == 1
+        else:
+            assert len(events) == 3
+            assert events[1] == "condition"
+            assert events[2] == ("yes" if choice else "no")
+
+
+def test_conditional_cause_does_not_run_before_a_failing_target() -> None:
+    verify_conditional_cause_order(False, False)
+    verify_conditional_cause_order(False, True)
+    verify_conditional_cause_order(True, False)
+    verify_conditional_cause_order(True, True)
+
+
+@jvm.native("java/lang/Throwable")
+class Throwable(BaseException):
+    def initCause(self, cause: BaseException) -> BaseException: ...
+    def getCause(self) -> BaseException | None: ...
+
+
+def test_java_initcause_remains_visible_until_python_clears_it() -> None:
+    error = SaveFailure("wrapper")
+    original = ValueError("native cause")
+    native = cast(Throwable, error)
+    assert native.initCause(original) is error
+    assert native.getCause() is original
+    assert error.__cause__ is original
+    assert not error.__suppress_context__
+    try:
+        raise error from None
+    except SaveFailure:
+        assert native.getCause() is None
+        assert error.__cause__ is None
+        assert error.__suppress_context__

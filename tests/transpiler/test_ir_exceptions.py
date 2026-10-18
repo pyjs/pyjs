@@ -125,6 +125,20 @@ def main() -> int:
         ''').rstrip()
 
 
+def test_conditional_cause_stays_at_the_raise_operand_position():
+    source = '''
+def main(target: ValueError, choose: bool, first: RuntimeError, second: RuntimeError) -> None:
+    raise target from (first if choose else second)
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            def main(target: ValueError, choose: bool, first: RuntimeError, second: RuntimeError) -> None:
+                block entry:
+                    raise target from first if choose else second
+        ''').rstrip()
+
+
 @pytest.mark.parametrize("cause", ['ValueError("original")', "None"])
 @pytest.mark.parametrize("backend", ["javascript", "llvm", "webassembly"])
 def test_explicit_causes_remain_a_focused_unsupported_backend_boundary(cause, backend):

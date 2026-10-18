@@ -15044,7 +15044,7 @@ class InferenceVisitor(ast.NodeVisitor):
             exception_type = self.exception_base_class()
             if not all(
                 isinstance(member, Class) and (
-                    member.name == "NoneType" or is_subclass(member, exception_type)
+                    member is get_none_type() or is_subclass(member, exception_type)
                 )
                 for member in get_type_members(analyzed_value_type(cause))
             ):

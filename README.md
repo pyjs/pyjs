@@ -638,6 +638,8 @@ with `pyjs template`.
   receive Python-managed chaining state: concrete native targets are rejected
   at compile time, and widened targets raise `TypeError`. Foreign exceptions
   expose their existing Java cause and report no Python suppression flag.
+  On managed exceptions, Java `initCause()` remains visible until Python
+  explicitly sets or clears the cause; that Python state then takes priority.
   Use exception instances rather than classes for the raise/cause operands.
   Implicit context and assignment to chaining attributes remain unsupported.
   Explicit optional calls require string-compatible formatter results; narrow

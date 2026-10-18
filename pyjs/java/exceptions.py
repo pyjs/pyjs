@@ -199,6 +199,19 @@ def emit_cause_state(class_file):
         (SUPPRESSION_GETTER, suppress, "Z", 0xAC),
     ):
         getter = Bytecode()
+        if method == "getCause":
+            # Keep Java initCause visible until Python explicitly owns this
+            # link. Suppression marks an explicit Python cause, even None.
+            getter.local(0x19, 0)
+            getter.emit(0xB4, suppress.to_bytes(2, "big"))
+            getter.branch(0x9A, "python_cause")
+            getter.local(0x19, 0)
+            parent = class_file.method_reference(
+                class_file.super_name, "getCause", "()Ljava/lang/Throwable;",
+            )
+            getter.emit(0xB7, parent.to_bytes(2, "big"))
+            getter.emit(0xB0)
+            getter.mark("python_cause")
         getter.local(0x19, 0)
         getter.emit(0xB4, field.to_bytes(2, "big"))
         getter.emit(opcode)
