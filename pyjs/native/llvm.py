@@ -7264,9 +7264,10 @@ class FunctionEmitter:
             entry_point.return_numeric_format,
         )
         returns_string = collection_ops.builtin_name(entry_point.return_type) == "str"
-        if return_type != "i64" and not returns_string:
+        returns_none = return_storage_type == "void"
+        if return_type != "i64" and not returns_string and not returns_none:
             raise LLVMUnsupported(
-                "the LLVM executable entry point must return int or str"
+                "the LLVM executable entry point must return int, str or None"
             )
         result = []
         if returns_string and not self.module.uses_native and not self.module.uses_exceptions and not self.module.uses_print:
@@ -7316,7 +7317,7 @@ class FunctionEmitter:
         arguments = ", ".join(hidden_arguments)
         result.extend(
             [
-                f"  %result = call {return_storage_type} "
+                f"  {'' if returns_none else '%result = '}call {return_storage_type} "
                 f"@{self.function_name(entry_point)}"
                 f"({arguments})",
             ]
@@ -7339,8 +7340,8 @@ class FunctionEmitter:
             result.append("  call void @pyjs.arena.destroy(ptr %arena)")
         if self.module.uses_gc:
             result.append("  call void @pyjs.gc.destroy(ptr %heap)")
-        if returns_string:
-            result.append("  ret i32 %write.status")
+        if returns_string or returns_none:
+            result.append("  ret i32 " + ("%write.status" if returns_string else "0"))
             self.wrapper_exception_failure(result)
             result.append("}")
             return result
@@ -7738,6 +7739,7 @@ def transpile_llvm(
     entry_point: str = "main",
     target: str = "executable",
     direct: bool = False,
+    wrap: bool | None = False,
 ) -> str:
     """Analyze source and emit an executable or shared-library LLVM module."""
     return transpile_llvm_module(
@@ -7747,6 +7749,7 @@ def transpile_llvm(
         entry_point=entry_point,
         target=target,
         direct=direct,
+        wrap=wrap,
     ).llvm_ir
 
 
@@ -7758,6 +7761,7 @@ def transpile_llvm_module(
     entry_point: str = "main",
     target: str = "executable",
     direct: bool = False,
+    wrap: bool | None = False,
 ) -> LLVMModule:
     """Analyze source and retain the generated library's typed ABI."""
     source = textwrap.dedent(source)
@@ -7766,7 +7770,7 @@ def transpile_llvm_module(
         filename=filename,
         module_name=module_name,
         entry_point=entry_point,
-        wrap=False,
+        wrap=wrap,
         environment=NATIVE_ENVIRONMENT,
     ) as analysis:
         emitter = LLVMEmitter(entry_point, target, direct=direct)
