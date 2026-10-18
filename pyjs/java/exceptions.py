@@ -33,6 +33,19 @@ def managed_exception(value_type):
     return value is not None and not any(is_declaration(base, "jvm") for base in value.__mro__)
 
 
+def nullable_exception(value_type):
+    """Whether every non-None union member is an exception."""
+    if not isinstance(value_type, UnionType):
+        return False
+    members = value_type.types
+    exceptions = [member for member in members if exception_type(member) is not None]
+    return bool(exceptions) and len(exceptions) < len(members) and all(
+        exception_type(member) is not None
+        or isinstance(member, Class) and member.generic_name in {"None", "NoneType"}
+        for member in members
+    )
+
+
 def contained_exception_types(value_type):
     """Find exception members in a value, including typed container contents."""
     pending = [value_type]

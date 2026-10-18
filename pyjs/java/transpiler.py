@@ -81,6 +81,7 @@ from .exceptions import (
     emit_type_error,
     exception_type,
     managed_exception,
+    nullable_exception,
 )
 from .primitives import Reference, run_sync
 from .string_runtime import emit_string_helpers
@@ -1538,6 +1539,15 @@ class JVMEmitter:
                                   and source.func.attr == "__str__")
             if explicit_formatter:
                 self.validate_explicit_exception_formatter(node, target, semantic_receiver)
+            if (target.name == "__str__" and not is_super and not node.args
+                    and not node.keywords and nullable_exception(semantic_receiver)):
+                if self.function_return_type(target) != "Ljava/lang/String;":
+                    raise JVMUnsupported(
+                        "JVM nullable exception __str__ calls require a string result; "
+                        "narrow the receiver to its concrete exception type", node,
+                    )
+                self.exception_message(semantic_receiver, explicit=explicit_formatter)
+                return "Ljava/lang/String;"
             if (target.py_func is native_builtins._BaseException.__init__
                     and managed_exception(self.current_function.cls if is_super else semantic_receiver)):
                 concrete = self.current_function.cls if is_super else semantic_receiver
@@ -1783,7 +1793,7 @@ class JVMEmitter:
                     target.return_numeric_format,
                 )
                 return semantic
-            if semantic_receiver.generic_name == "dict":
+            if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "dict":
                 return self.dictionary_call(
                     node,
                     target,
@@ -3108,6 +3118,14 @@ class JVMEmitter:
                     value, (Exception, native_builtins._Exception),
                 ) else native_builtins._BaseException)
         done = self.new_label("exception.text.done")
+        if nullable_exception(value_type):
+            present = self.new_label("exception.text.present")
+            self.code.emit(0x59)
+            self.code.branch(0xC7, present)
+            self.code.emit(0x57)
+            self.expression(ast.Constant(value="None"))
+            self.code.branch(0xA7, done)
+            self.code.mark(present)
         for root in sorted(roots, key=lambda value: value.__name__):
             owner = emit_exception_class(self.class_files, self.main_class_name, root)
             next_root = self.new_label("exception.text.next")

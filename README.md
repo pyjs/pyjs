@@ -625,6 +625,10 @@ with `pyjs template`.
   Conditional values retain a shared custom exception base when returning
   through that base. Raw sibling unions also retain formatting in conditional
   locals, list items and multi-type exception handlers.
+  Optional exceptions format absent values as `None` through `str()`, f-strings
+  and no-argument `__str__()` calls; present values keep custom dispatch.
+  Explicit optional calls require string-compatible formatter results; narrow
+  the receiver before consuming a differently typed custom result.
   `object` locals retain existing inferred union/collection storage, but
   cannot erase exception values or exception-bearing containers. Other plain
   `object` initializers remain unsupported; use explicit casts to expose

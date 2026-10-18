@@ -8,13 +8,13 @@ from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type, field_
 from pyjs.analysis.diagnostics import DiagnosticCode
 from pyjs.analysis.ir import ExceptionRaise, FieldStore, IRInferenceVisitor, Return
 from pyjs.analysis.lifetime import refine_lifetimes
-from pyjs.analysis.objects import Class, Function, Instance, StaticCast, UnionType
+from pyjs.analysis.objects import Class, Function, Instance, Name, StaticCast, UnionType
 from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
 
 from .diagnostics import JVMUnsupported
-from .exceptions import contained_exception_types, managed_exception
+from .exceptions import contained_exception_types, managed_exception, nullable_exception
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -63,14 +63,30 @@ class JVMInferenceVisitor(IRInferenceVisitor):
                     and value.func.id == "super"):
                 receiver = value
         if receiver is not None:
-            semantic = analyzed_value_type(receiver)
-            members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
-            result.jvm_exception_protocols = tuple(
-                (member, ("__str__",)) for member in members if managed_exception(member)
-            )
-            result.runtime_protocols = (*getattr(result, "runtime_protocols", ()),
-                                        *result.jvm_exception_protocols)
+            self.retain_exception_formatter(result, receiver)
         return result
+
+    @staticmethod
+    def retain_exception_formatter(call, receiver):
+        semantic = analyzed_value_type(receiver)
+        members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
+        call.jvm_exception_protocols = tuple(
+            (member, ("__str__",)) for member in members if managed_exception(member)
+        )
+        call.runtime_protocols = (*getattr(call, "runtime_protocols", ()),
+                                  *call.jvm_exception_protocols)
+
+    def dispatch_dunder_call(self, builtin, method_name, args, keywords):
+        # Interpolation must use the same nullable runtime dispatch as str(),
+        # rather than select an exception method that cannot receive None.
+        if (method_name == "__str__" and len(args) == 1 and not keywords
+                and nullable_exception(analyzed_value_type(args[0]))):
+            call = self.call_node(
+                args[0], builtin, func=Name(builtin), args=args, keywords=[],
+            )
+            self.retain_exception_formatter(call, args[0])
+            return call
+        return super().dispatch_dunder_call(builtin, method_name, args, keywords)
 
     def expand_static_call_keywords(self, node, call_target=None):
         if getattr(call_target, "py_obj", None) is native_builtins._dict and node.keywords:
