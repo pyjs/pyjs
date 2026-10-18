@@ -466,7 +466,9 @@ def _compilation_error(error: Exception, args) -> int:
         message = str(error) or type(error).__name__
         details = {"type": type(error).__name__, "message": message}
         formatted = f"pyjs: error: {message}\n"
-        if notes:
+        if getattr(args, "v", 0):
+            formatted = "".join(traceback.format_exception_only(error))
+        elif notes:
             formatted += "\n".join(notes) + "\n"
     # Compilers attach captured diagnostics as exception notes, including
     # Python initialization output when analysis itself fails.
@@ -481,7 +483,6 @@ def _compilation_error(error: Exception, args) -> int:
         if getattr(args, "v", 0):
             print("Traceback (most recent call last):", file=sys.stderr)
             traceback.print_tb(error.__traceback__)
-            print("".join(traceback.format_exception_only(error)), file=sys.stderr, end="")
     return 2
 
 

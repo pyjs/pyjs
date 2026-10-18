@@ -140,13 +140,13 @@ every run, then reports paired process timings. A Linux x64 run with CPython
 3.14.4 and Clang 21 at `-O2` produced:
 
 ```text
-Compilation: 1.746 s
+Compilation: 1.818 s (Ubuntu clang version 21.1.8 (6ubuntu1), O2)
 Output matches: yes
 148933
 Median of 7 runs after 2 warmups (process startup included):
-  CPython 3.14.4: 174.523 ms
-  Native: 14.437 ms
-  Speedup: 12.09x (compilation excluded)
+  CPython 3.14.4: 183.171 ms
+  Native: 13.317 ms
+  Speedup: 13.75x (compilation excluded)
 ```
 
 These are measurements, not a universal speed guarantee. Compilation costs
@@ -170,6 +170,9 @@ On Windows the output is `primes.exe`; run `.\primes.exe`. Native execution also
 accepts `-m package.module`, `-c 'print(42)'` and stdin (`-`). Native builds
 accept a file or module, optionally followed by `:entry_function`. Use
 `pyjs --target native --src primes.py` to inspect the LLVM IR.
+Default build output uses the source filename's stem (`__main__` for a package
+entry); use `-o app` to choose a package executable's name without colliding
+with the package's source directory.
 
 Clang also needs the host's linker and C runtime
 development libraries: Xcode Command Line Tools on macOS, or MSVC Build Tools,
@@ -180,9 +183,11 @@ This compiles for the current host, not an arbitrary cross-compilation
 target. CI compiles and executes on Linux, macOS and Windows, each on x64 and
 arm64, including loading native libraries into Python. The executable entry
 point is a zero-argument `main()` returning `None` (success),
-`str` (written to stdout) or `int` (used as the process exit status). Top-level
-statements without a `main()` are wrapped automatically. Use the guarded
-`main()` pattern above for the same behavior under CPython and native execution;
+`str` (written to stdout) or `int` (used as the process exit status). Simple
+top-level statements can be wrapped automatically. For scripts with helpers or
+a `__name__` guard, use the guarded `main()` pattern above; pass configuration
+into helpers rather than reading unannotated module globals. This avoids shared
+analysis limitations and gives the same behavior under CPython and native execution;
 CPython normally ignores a function's returned value. Imports, decorators and
 module initialization execute in Python during analysis, so compile only code
 you trust. Program command-line arguments are not yet supported. Arbitrary

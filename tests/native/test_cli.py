@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -150,6 +151,80 @@ def test_package_discovery_output_is_compilation_output(tmp_path):
     assert result.stderr == "package initialization\n"
 
 
+@pytest.mark.parametrize("mode", ["json", "src", "error"])
+def test_analysis_capture_preserves_binary_descriptor_and_subprocess_writes(tmp_path, mode):
+    source = tmp_path / "streams.py"
+    source.write_text(
+        "import os, subprocess, sys\n"
+        "def main() -> None:\n    " + ("missing_name()" if mode == "error" else "print('runtime')") + "\n"
+        "for name, fd in [('stdout', 1), ('stderr', 2)]:\n"
+        "    stream = getattr(sys, name)\n"
+        "    print('text', file=stream, flush=True)\n"
+        "    stream.buffer.write(b'binary\\n')\n"
+        "    stream.flush()\n"
+        "    os.write(stream.fileno(), b'fileno\\n')\n"
+        "    os.write(fd, b'descriptor\\n')\n"
+        "subprocess.run([sys.executable, '-c', \"import os; os.write(1, b'child\\\\n'); os.write(2, b'child\\\\n')\"], check=True)\n",
+        encoding="utf-8",
+    )
+    expected = "text\nbinary\nfileno\ndescriptor\nchild\n"
+    result = cli("--target", "native", "--src" if mode == "src" else "--json", str(source), cwd=tmp_path)
+    if mode == "error":
+        assert result.returncode == 2
+        notes = json.loads(result.stdout)["error"]["notes"]
+        assert notes == [f"Analysis stdout:\n{expected}", f"Analysis stderr:\n{expected}"]
+        assert result.stderr == ""
+    elif mode == "json":
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["compilation"]["stdout"] == payload["compilation"]["stderr"] == expected
+        assert payload["stdout"] == "runtime\n"
+        assert payload["stderr"] == result.stderr == ""
+    else:
+        from pyjs.tooling.llvm import LLVM
+
+        assert result.returncode == 0, result.stderr
+        assert result.stderr == expected * 2
+        executable = LLVM().compile(result.stdout, tmp_path / "build")
+        native = subprocess.run([executable], capture_output=True, timeout=10)
+        assert (native.returncode, native.stdout, native.stderr) == (0, b"runtime\n", b"")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_analysis_capture_restores_descriptors_and_streams(capfd, fail):
+    from pyjs.native.cli import _analysis_output
+
+    stdout, stderr = sys.stdout, sys.stderr
+    try:
+        with _analysis_output() as output:
+            sys.stdout.buffer.write(b"inside\n")
+            os.write(2, b"inside error\n")
+            if fail:
+                raise ValueError("probe")
+    except ValueError as error:
+        assert fail
+        assert error.__notes__ == ["Analysis stdout:\ninside\n", "Analysis stderr:\ninside error\n"]
+    assert output == {"stdout": "inside\n", "stderr": "inside error\n"}
+    assert sys.stdout is stdout and sys.stderr is stderr
+    os.write(1, b"outside\n")
+    os.write(2, b"outside error\n")
+    assert capfd.readouterr() == ("outside\n", "outside error\n")
+
+
+@pytest.mark.parametrize("build", [False, True])
+def test_file_input_does_not_replace_stdlib_module(tmp_path, build):
+    # Use the console entry, not python -m: the latter adds cwd to sys.path
+    # before PyJS even starts and can shadow the interpreter's own imports.
+    script = Path(sysconfig.get_path("scripts")) / ("pyjs.exe" if sys.platform == "win32" else "pyjs")
+    (tmp_path / "math.py").write_text("def main() -> None: print('ok')\n", encoding="utf-8")
+    arguments = ["build", "--target", "native", "math.py", "-o", "program"] if build else ["--target", "native", "math.py"]
+    result = subprocess.run([script, *arguments], cwd=tmp_path, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    if build:
+        result = subprocess.run([tmp_path / ("program" + binary_suffix())], capture_output=True, timeout=10)
+    assert (result.returncode, result.stdout, result.stderr) == (0, b"ok\n", b"")
+
+
 @pytest.mark.parametrize("source,matches", [
     ("print(sum([1, 2, 3]))\n", True),
     ("print('héllo\\r\\nworld')\n", True),
@@ -227,6 +302,18 @@ def test_performance_retains_an_earlier_mismatch(monkeypatch, capsys):
         python_command = [sys.executable, "-c", _PYTHON_BINARY_STDIO, "-c", "pass"]
     assert commands[0] == commands[3] == python_command
     assert commands[1] == commands[2] == [Path("program")]
+
+
+def test_performance_reports_a_failed_reference_and_both_results(tmp_path):
+    source = tmp_path / "failure.py"
+    # Analysis succeeds; only the CPython reference executes this guarded raise.
+    source.write_text("def main() -> int: return 0\nif __name__ == '__main__':\n    raise ValueError('reference failed')\n", encoding="utf-8")
+    result = cli("--target", "native", "--perf", "--samples", "1", "--warmups", "0", str(source), cwd=tmp_path)
+    assert result.returncode == 1, result.stderr
+    assert "Validation failed: python exited with status 1" in result.stdout
+    assert "Output matches: NO" not in result.stdout
+    assert '"reason": "nonzero_exit"' in result.stdout
+    assert '"native": {\n    "exit_code": 0' in result.stdout
 
 
 @pytest.mark.parametrize("mode", ["file", "module", "command", "stdin"])

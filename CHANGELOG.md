@@ -26,7 +26,7 @@
   command snippets with `pyjs --target native`. `pyjs build --target native`
   keeps a standalone executable, and `--perf` compares matching CPython/native
   process runs while reporting compilation time separately. Executable entry
-  points may return `None`; scripts without `main()` are wrapped automatically.
+  points may return `None`; simple top-level statements can be wrapped automatically.
 - JVM custom exception classes support inherited catches, initializers, typed
   fields and retained identity. Default scalar text follows original positional
   arguments; custom string methods preserve virtual dispatch. Python methods

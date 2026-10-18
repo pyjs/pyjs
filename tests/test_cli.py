@@ -451,7 +451,8 @@ def test_internal_compilation_error_does_not_print_argument_usage(monkeypatch, c
 
 
 @pytest.mark.parametrize("as_json", [False, True])
-def test_diagnostics_keep_structured_and_exception_notes_once(capsys, as_json):
+@pytest.mark.parametrize("verbose", [0, 1])
+def test_diagnostics_keep_structured_and_exception_notes_once(capsys, as_json, verbose):
     from dataclasses import replace
 
     with pytest.raises(cli.CompilationError) as caught:
@@ -462,7 +463,7 @@ def test_diagnostics_keep_structured_and_exception_notes_once(capsys, as_json):
         secondary=(replace(diagnostic.primary, message="related location"),),
     ))
     error.add_note("analysis output")
-    assert cli._compilation_error(error, SimpleNamespace(json=as_json, v=0)) == 2
+    assert cli._compilation_error(error, SimpleNamespace(json=as_json, v=verbose)) == 2
     captured = capsys.readouterr()
     if as_json:
         details = json.loads(captured.out)["error"]
