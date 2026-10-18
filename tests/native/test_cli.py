@@ -66,6 +66,15 @@ def test_module_build_with_non_main_entry(tmp_path):
     assert (native.returncode, native.stdout, native.stderr) == (0, b"built", b"")
 
 
+@pytest.mark.parametrize("entry", ["main", "typo"])
+def test_explicit_missing_entry_is_not_replaced_with_an_empty_program(tmp_path, entry):
+    (tmp_path / "sample.py").write_text("def start() -> str: return 'built'\n", encoding="utf-8")
+    result = cli("build", "--target", "native", f"sample:{entry}", cwd=tmp_path)
+    assert result.returncode == 2
+    assert entry in result.stderr
+    assert not (tmp_path / ("sample" + binary_suffix())).exists()
+
+
 @pytest.mark.parametrize("body,code,stdout,stderr", [
     ("print('hello')", 0, "hello\n", ""),
     ("return 7", 7, "", ""),
@@ -99,6 +108,46 @@ def test_native_json_and_ir(tmp_path):
     assert ir.returncode == 0, ir.stderr
     assert "define i32 @main()" in ir.stdout
     assert "héllo\n" not in ir.stdout  # Printed IR, not an executed program.
+
+
+def test_initialization_output_does_not_corrupt_json_or_ir(tmp_path):
+    source = "def main() -> None:\n    print('runtime')\nprint('initialization')\n"
+    result = cli("--target", "native", "--json", "-c", source, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["stdout"] == "runtime\n"
+    assert payload["compilation"]["stdout"] == "initialization\n"
+    assert result.stderr == ""
+
+    result = cli("--target", "native", "--src", "-c", source, cwd=tmp_path)
+    assert result.returncode == 0
+    assert result.stderr == "initialization\n"
+    assert "initialization" not in result.stdout
+    assert "define i32 @main()" in result.stdout
+
+    result = cli("--target", "native", "--json", "-c",
+                 source.replace("print('runtime')", "missing_name()"), cwd=tmp_path)
+    assert result.returncode == 2
+    error = json.loads(result.stdout)["error"]
+    assert "missing_name" in error["message"]
+    assert error["notes"] == ["Analysis stdout:\ninitialization\n"]
+
+
+def test_package_discovery_output_is_compilation_output(tmp_path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "__init__.py").write_text("print('package initialization')\n", encoding="utf-8")
+    (package / "app.py").write_text("def main() -> None: print('runtime')\n", encoding="utf-8")
+    result = cli("--target", "native", "--json", "-m", "package.app", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["stdout"] == "runtime\n"
+    assert payload["compilation"]["stdout"] == "package initialization\n"
+    assert result.stderr == ""
+    result = cli("build", "--target", "native", "package.app", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"Wrote app{binary_suffix()}\n"
+    assert result.stderr == "package initialization\n"
 
 
 @pytest.mark.parametrize("source,matches", [
@@ -144,6 +193,7 @@ def test_build_does_not_overwrite_source_or_old_executable_on_failure(tmp_path):
     (["--samples", "0", "-c", "pass"], "--samples must be positive"),
     (["--json", "--src", "-c", "pass"], "cannot be combined"),
     (["--json", "-c", "def broken(:"], "SyntaxError"),
+    (["--json", "missing.py"], "cannot open"),
 ])
 def test_native_cli_diagnostics(tmp_path, arguments, message):
     result = cli("--target", "native", *arguments, cwd=tmp_path)

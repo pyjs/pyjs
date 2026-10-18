@@ -369,11 +369,11 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
         command_parser.error("--samples must be positive and --warmups cannot be negative")
 
     try:
-        program = _direct_input(args, command_parser)
         if args.target == "native":
             from pyjs.native.cli import run
 
-            return run(args, program, command_parser)
+            return run(args, lambda: _direct_input(args, command_parser), command_parser)
+        program = _direct_input(args, command_parser)
         compilation = _compile_direct(program)
     except Exception as error:
         return _compilation_error(error, args)
@@ -442,9 +442,15 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
 
 
 def _compilation_error(error: Exception, args) -> int:
+    notes = getattr(error, "__notes__", ())
     if isinstance(error, CompilationError):
         details = error.diagnostic.to_dict()
         formatted = format_compilation_error(error)
+        # CompilationError mirrors each structured secondary label/note/help
+        # into __notes__ for Python's traceback formatter. Only later notes
+        # (for example captured compiler output) belong in JSON's extra notes.
+        diagnostic = error.diagnostic
+        notes = notes[len(diagnostic.secondary) + len(diagnostic.notes) + len(diagnostic.help):]
     elif isinstance(error, SyntaxError):
         details = {
             "type": "SyntaxError",
@@ -460,11 +466,12 @@ def _compilation_error(error: Exception, args) -> int:
         message = str(error) or type(error).__name__
         details = {"type": type(error).__name__, "message": message}
         formatted = f"pyjs: error: {message}\n"
-        # Clang attaches its captured diagnostics as exception notes.
-        notes = getattr(error, "__notes__", ())
         if notes:
-            details["notes"] = list(notes)
             formatted += "\n".join(notes) + "\n"
+    # Compilers attach captured diagnostics as exception notes, including
+    # Python initialization output when analysis itself fails.
+    if notes:
+        details["notes"] = [*details.get("notes", ()), *notes]
     if getattr(args, "json", False):
         if args.v:
             details["traceback"] = "".join(traceback.format_tb(error.__traceback__))
@@ -749,9 +756,8 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
             code=None, module=None if is_file else target, source=target if is_file else None,
         )
         try:
-            program = _direct_input(inputs, command_parser)
-            return build(args, program, command_parser, is_file=is_file,
-                         entry=entry if separator else "main")
+            return build(args, lambda: _direct_input(inputs, command_parser), command_parser, is_file=is_file,
+                         entry=entry if separator else "main", wrap=False if separator else None)
         except Exception as error:
             return _compilation_error(error, args)
     if args.output is not None:

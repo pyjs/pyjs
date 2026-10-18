@@ -450,6 +450,32 @@ def test_internal_compilation_error_does_not_print_argument_usage(monkeypatch, c
     assert captured.err == "pyjs: error: bad source\n"
 
 
+@pytest.mark.parametrize("as_json", [False, True])
+def test_diagnostics_keep_structured_and_exception_notes_once(capsys, as_json):
+    from dataclasses import replace
+
+    with pytest.raises(cli.CompilationError) as caught:
+        cli.compile_source("print(missing)")
+    diagnostic = caught.value.diagnostic
+    error = cli.CompilationError(replace(
+        diagnostic, notes=("original diagnostic context",), help=("try this",),
+        secondary=(replace(diagnostic.primary, message="related location"),),
+    ))
+    error.add_note("analysis output")
+    assert cli._compilation_error(error, SimpleNamespace(json=as_json, v=0)) == 2
+    captured = capsys.readouterr()
+    if as_json:
+        details = json.loads(captured.out)["error"]
+        assert details["notes"] == ["original diagnostic context", "analysis output"]
+        assert details["help"] == ["try this"]
+        assert details["secondary"][0]["message"] == "related location"
+        assert captured.err == ""
+    else:
+        assert captured.out == ""
+        for text in ("original diagnostic context", "analysis output", "try this", "related location"):
+            assert captured.err.count(text) == 1
+
+
 def test_internal_compilation_error_never_has_an_empty_message(
     monkeypatch,
     capsys,

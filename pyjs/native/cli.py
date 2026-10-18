@@ -1,10 +1,11 @@
 """File-based native execution; compiler imports stay out of the JavaScript CLI."""
 
+import io
 import json
 import shutil
 import subprocess
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -58,34 +59,56 @@ def _source_path(program, *, is_file):
         sys.path[:] = previous
 
 
-def _emit(program, *, is_file, entry="main"):
+@contextmanager
+def _analysis_output():
+    stdout, stderr = io.StringIO(), io.StringIO()
+    try:
+        # Module discovery can import parent packages before analysis begins.
+        # Capture both stages, keeping initialization out of JSON/LLVM artifacts.
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            yield stdout, stderr
+    except BaseException as error:
+        for name, stream in (("stdout", stdout), ("stderr", stderr)):
+            if stream.getvalue():
+                if isinstance(error, Exception):
+                    error.add_note(f"Analysis {name}:\n{stream.getvalue()}")
+                else:
+                    # argparse's SystemExit does not display exception notes.
+                    print(stream.getvalue(), file=sys.stderr, end="")
+        raise
+
+
+def _emit(program, *, is_file, entry="main", wrap=None):
     with _source_path(program, is_file=is_file):
         return transpile_llvm(
             program.source,
             filename=program.filename,
-            # A file called __main__.py must not execute its guarded entry while
-            # analysis imports its definitions. Package module names are intact.
+            # A file called __main__.py must not execute its guarded entry
+            # during analysis. Package module names remain intact.
             module_name=("__pyjs_main__" if program.module_name == "__main__"
                          else program.module_name),
             entry_point=entry,
-            wrap=None,
+            wrap=wrap,
         )
 
 
-def build(args, program, command_parser, *, is_file, entry="main"):
+def build(args, load_program, command_parser, *, is_file, entry="main", wrap=None):
     if args.only_js or args.include_main or args.args is not None:
         command_parser.error("--only-js, --include-main and --args are browser build options")
-    output = args.output or Path(Path(program.filename).stem + binary_suffix())
-    if output.resolve() == Path(program.filename).resolve():
-        command_parser.error("the executable must not overwrite the Python source")
-    if sys.platform == "win32" and output.suffix.lower() != ".exe":
-        output = output.with_name(output.name + ".exe")
-    if output.is_dir():
-        command_parser.error("the executable output must be a file, not a directory")
-    if (output.resolve() == Path(program.filename).resolve()
-            or (output.exists() and Path(program.filename).exists() and output.samefile(program.filename))):
-        command_parser.error("the executable must not overwrite the Python source")
-    ir = _emit(program, is_file=is_file, entry=entry)
+    with _analysis_output() as (stdout, stderr):
+        program = load_program()
+        output = args.output or Path(Path(program.filename).stem + binary_suffix())
+        if output.resolve() == Path(program.filename).resolve():
+            command_parser.error("the executable must not overwrite the Python source")
+        if sys.platform == "win32" and output.suffix.lower() != ".exe":
+            output = output.with_name(output.name + ".exe")
+        if output.is_dir():
+            command_parser.error("the executable output must be a file, not a directory")
+        if (output.resolve() == Path(program.filename).resolve()
+                or (output.exists() and Path(program.filename).exists() and output.samefile(program.filename))):
+            command_parser.error("the executable must not overwrite the Python source")
+        ir = _emit(program, is_file=is_file, entry=entry, wrap=wrap)
+    print(stdout.getvalue() + stderr.getvalue(), file=sys.stderr, end="")
     # Compile away from user files: neither the intermediate IR nor the linker
     # may overwrite a nearby source, and a failed build leaves the old binary.
     with TemporaryDirectory(prefix="pyjs-native-") as directory:
@@ -96,11 +119,16 @@ def build(args, program, command_parser, *, is_file, entry="main"):
     return 0
 
 
-def run(args, program, command_parser):
+def run(args, load_program, command_parser):
     if args.loops is not None:
         command_parser.error("native --perf measures whole processes; use --samples, not --loops")
     started = perf_counter()
-    ir = _emit(program, is_file=args.source not in (None, "-"))
+    with _analysis_output() as (stdout, stderr):
+        program = load_program()
+        ir = _emit(program, is_file=args.source not in (None, "-"))
+    stdout, stderr = stdout.getvalue(), stderr.getvalue()
+    if not args.json:
+        print(stdout + stderr, file=sys.stderr, end="")
     if args.src or args.src_all:
         # LLVM emits one linked module, including its reachable dependencies.
         print(ir, end="" if ir.endswith("\n") else "\n")
@@ -112,6 +140,8 @@ def run(args, program, command_parser):
             "seconds": perf_counter() - started,
             "compiler": llvm.version,
             "optimization": "O2",
+            "stdout": stdout,
+            "stderr": stderr,
         }
         if args.perf:
             return _perf(args, program, executable, compilation)

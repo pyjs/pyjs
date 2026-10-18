@@ -187,6 +187,9 @@ CPython normally ignores a function's returned value. Imports, decorators and
 module initialization execute in Python during analysis, so compile only code
 you trust. Program command-line arguments are not yet supported. Arbitrary
 Python packages and dynamic Python features are not automatically supported.
+Initialization output is reported as compilation diagnostics on stderr, or
+under `compilation` with `--json`, rather than mixed into the native result or
+generated LLVM source.
 
 ## What makes PyJS different
 
