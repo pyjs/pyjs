@@ -1539,15 +1539,20 @@ class JVMEmitter:
                                   and source.func.attr == "__str__")
             if explicit_formatter:
                 self.validate_explicit_exception_formatter(node, target, semantic_receiver)
-            if (target.name == "__str__" and not is_super and not node.args
-                    and not node.keywords and nullable_exception(semantic_receiver)):
+            nullable_formatter = (
+                target.name == "__str__" and not is_super and not node.args
+                and not node.keywords and nullable_exception(semantic_receiver)
+            )
+            if nullable_formatter:
                 if self.function_return_type(target) != "Ljava/lang/String;":
                     raise JVMUnsupported(
                         "JVM nullable exception __str__ calls require a string result; "
                         "narrow the receiver to its concrete exception type", node,
                     )
-                self.exception_message(semantic_receiver, explicit=explicit_formatter)
-                return "Ljava/lang/String;"
+                if (managed_exception(target.cls)
+                        or not (target in self.functions and target.cls in self.classes)):
+                    self.exception_message(semantic_receiver, explicit=explicit_formatter)
+                    return "Ljava/lang/String;"
             if (target.py_func is native_builtins._BaseException.__init__
                     and managed_exception(self.current_function.cls if is_super else semantic_receiver)):
                 concrete = self.current_function.cls if is_super else semantic_receiver
@@ -1750,6 +1755,11 @@ class JVMEmitter:
                     )
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
+                done = self.new_label("nullable.formatter.done") if nullable_formatter else None
+                if done is not None:
+                    # Keep direct Python method dispatch, including overrides
+                    # on native Throwable subclasses without managed bridges.
+                    self.skip_none_formatter(done)
                 arguments = self.application_arguments(node, target)
                 expected_receiver = self.class_descriptor(target.cls)
                 if not self.compatible(receiver_type, expected_receiver) or len(
@@ -1792,6 +1802,8 @@ class JVMEmitter:
                     semantic,
                     target.return_numeric_format,
                 )
+                if done is not None:
+                    self.code.mark(done)
                 return semantic
             if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "dict":
                 return self.dictionary_call(
@@ -3119,13 +3131,7 @@ class JVMEmitter:
                 ) else native_builtins._BaseException)
         done = self.new_label("exception.text.done")
         if nullable_exception(value_type):
-            present = self.new_label("exception.text.present")
-            self.code.emit(0x59)
-            self.code.branch(0xC7, present)
-            self.code.emit(0x57)
-            self.expression(ast.Constant(value="None"))
-            self.code.branch(0xA7, done)
-            self.code.mark(present)
+            self.skip_none_formatter(done)
         for root in sorted(roots, key=lambda value: value.__name__):
             owner = emit_exception_class(self.class_files, self.main_class_name, root)
             next_root = self.new_label("exception.text.next")
@@ -3149,6 +3155,16 @@ class JVMEmitter:
         self.expression(ast.Constant(value=""))
         self.code.mark(present)
         self.code.mark(done)
+
+    def skip_none_formatter(self, done):
+        """Render None; leave a present receiver on the stack for dispatch."""
+        present = self.new_label("exception.text.present")
+        self.code.emit(0x59)
+        self.code.branch(0xC7, present)
+        self.code.emit(0x57)
+        self.expression(ast.Constant(value="None"))
+        self.code.branch(0xA7, done)
+        self.code.mark(present)
 
     def raise_python_exception(self, node):
         if node.exception is not None:

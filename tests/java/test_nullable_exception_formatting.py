@@ -136,6 +136,38 @@ def main() -> str:
 ''', tmp_path)
 
 
+@pytest.mark.parametrize("view", ["Failure", "Child"])
+def test_nullable_native_subclass_explicit_formatter_keeps_python_dispatch(tmp_path, view):
+    assert_text_matches_python(f'''
+from pyjs import jvm
+
+@jvm.native("java/lang/RuntimeException")
+class NativeError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+class Failure(NativeError):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return "custom"
+
+class Child(Failure):
+    def __str__(self) -> str:
+        return "child"
+
+def create(present: bool) -> {view} | None:
+    return Child("native message") if present else None
+
+def main() -> str:
+    result = ""
+    for present in [True, False]:
+        result += create(present).__str__() + "|"
+    return result
+''', tmp_path)
+
+
 @pytest.mark.parametrize("formatting", ["str(error)", 'f"{error}"'])
 def test_nullable_implicit_formatting_preserves_invalid_result_guard(tmp_path, formatting):
     assert_matches_python(f'''
@@ -247,6 +279,20 @@ def main() -> str:
 
 def test_nullable_formatting_compiles_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(EXCEPTION_TYPES + '''
+from pyjs import jvm
+
+@jvm.native("java/lang/RuntimeException")
+class NativeError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+class NativeChild(NativeError):
+    def __str__(self) -> str:
+        return "native override"
+
+def native(present: bool) -> NativeChild | None:
+    return NativeChild("native") if present else None
+
 def create(present: bool) -> Exception | None:
     return Child("saved") if present else None
 
@@ -260,6 +306,7 @@ def main() -> str:
         result += str(error) + f"{error}" + error.__str__()
         child = concrete(present)
         result += str(child) + f"{child}" + child.__str__()
+        result += native(present).__str__()
     return result
 ''', tmp_path)
 
