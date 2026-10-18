@@ -4,6 +4,9 @@
 
 ### Added
 
+- JVM supports membership in integer/Boolean lists and reference-key
+  dictionaries, including nullable keys. Membership syntax evaluates its
+  needle before its container; explicit methods retain receiver-first order.
 - JVM builtin exceptions can be stored, passed, returned and raised repeatedly
   while preserving identity and messages. Declared native Java constructors
   can also produce owned throwable values.

@@ -25,6 +25,7 @@ from tests.backend_semantics import (
     GENERIC_OPERATOR_CONTRACT,
     GENERIC_UNION_ORDER_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
+    INTEGER_LIST_MEMBERSHIP_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_SEQUENCE_REFLECTION_CONTRACT,
     MAPPING_LOOKUP_REPRESENTATION_CONTRACT,
@@ -39,6 +40,7 @@ from tests.backend_semantics import (
     RECURSIVE_TREE_CONTRACT,
     REVERSED_PROTOCOL_CONTRACT,
     SEQUENCE_REFLECTION_CONTRACT,
+    STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
     STRUCTURAL_OPERATOR_CONTRACT,
     UNION_KEY_REPRESENTATION_CONTRACT,
     UNPACK_FIELD_CONTRACT,
@@ -49,6 +51,16 @@ from tests.backend_semantics import (
 def test_boolean_arithmetic_has_an_explicit_wasm_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly call target __add__ is not implemented"):
         transpile_webassembly(BOOLEAN_NUMERIC_CONTRACT.source)
+
+
+@pytest.mark.parametrize(("contract", "message"), [
+    (INTEGER_LIST_MEMBERSHIP_CONTRACT, "WebAssembly call target __contains__ is not implemented"),
+    (STRING_DICTIONARY_MEMBERSHIP_CONTRACT, "WebAssembly value type dict__str_str is not implemented"),
+])
+def test_membership_contract_has_an_explicit_wasm_boundary(contract, message):
+    with pytest.raises(WebAssemblyUnsupported) as error:
+        transpile_webassembly(contract.source)
+    assert str(error.value) == message
 
 
 def test_range_lookup_keeps_the_wasm_first_class_range_boundary():

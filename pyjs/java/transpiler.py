@@ -1491,11 +1491,15 @@ class JVMEmitter:
             if target.is_classmethod:
                 raise JVMUnsupported("JVM Python classmethod calls are not implemented", node)
             is_super = self.is_super_call(node.func.value)
-            reflected_argument = None
-            if target in self.functions and target.cls in self.classes and getattr(node, "reverse", False):
+            leading_argument = None
+            if (isinstance(getattr(node, "operator", None), (ast.In, ast.NotIn))
+                    or target in self.functions and target.cls in self.classes
+                    and getattr(node, "reverse", False)):
+                # Syntax evaluates the left operand first, even when lowering
+                # invokes a method on the right. Explicit methods stay receiver-first.
                 actual = self.expression(node.args[0])
-                reflected_argument = self.allocate_temporary(actual, "reflected.argument")
-                self.store(reflected_argument, actual)
+                leading_argument = self.allocate_temporary(actual, "operator.left")
+                self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
             if target.name == "__dynamic_bool__":
@@ -1638,7 +1642,7 @@ class JVMEmitter:
                     # native superclass before Python's pyjs_init method runs.
                     self.code.emit(0x57)
                     return "V"
-                self.native_arguments(node, target)
+                self.native_arguments(node, target, leading_argument=leading_argument)
                 name = backend_metadata(
                     target.py_func,
                     "jvm",
@@ -1698,12 +1702,13 @@ class JVMEmitter:
                         f"JVM call to {target.name} has incompatible arguments",
                         node,
                     )
-                for argument, parameter in zip(
+                for index, (argument, parameter) in enumerate(zip(
                     arguments,
                     target.params,
                     strict=True,
-                ):
-                    actual = self.load(reflected_argument) if reflected_argument is not None else self.expression(argument)
+                )):
+                    actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
+                              else self.expression(argument))
                     semantic = self.parameter_type(parameter)
                     if not self.compatible(actual, semantic):
                         raise JVMUnsupported(
@@ -1737,8 +1742,28 @@ class JVMEmitter:
                     target,
                     semantic_receiver,
                     receiver_type,
+                    leading_argument,
                 )
-            argument_types = [self.expression(argument) for argument in node.args]
+            argument_types = (
+                [self.load(leading_argument)] if leading_argument is not None
+                else [self.expression(argument) for argument in node.args]
+            )
+            if (target.name == "__contains__"
+                    and semantic_receiver.generic_name == "list"
+                    and len(argument_types) == 1):
+                item_type = self.list_item_type(semantic_receiver)
+                if item_type not in {"J", "Z"} or argument_types[0] != item_type:
+                    raise JVMUnsupported(
+                        "JVM list membership requires matching integer or boolean items", node,
+                    )
+                list_class = self.list_class(semantic_receiver)
+                if not any(method.name == "contains" for method in list_class.methods):
+                    list_class.add_method(self.list_contains_method(list_class, item_type))
+                reference = self.class_file.method_reference(
+                    self.list_class_name(semantic_receiver), "contains", f"({item_type})Z",
+                )
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return "Z"
             if (
                 isinstance(semantic_receiver, Class)
                 and semantic_receiver.generic_name == "str"
@@ -2265,10 +2290,22 @@ class JVMEmitter:
         target: Function,
         value_type: Class,
         receiver_type: str,
+        leading_argument=None,
     ) -> str:
         if receiver_type != "Ljava/util/HashMap;":
             raise JVMUnsupported("JVM dictionary has an incompatible receiver", node)
         key_type, value_descriptor = self.dictionary_types(value_type, node)
+        if target.name == "__contains__" and len(node.args) == 1:
+            actual = (self.load(leading_argument) if leading_argument is not None
+                      else self.expression(node.args[0]))
+            if not self.compatible(actual, key_type):
+                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+            self.convert_native_argument(actual, key_type, node.args[0])
+            reference = self.class_file.method_reference(
+                "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z",
+            )
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            return "Z"
         if target.name == "__len__" and not node.args:
             reference = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -3698,6 +3735,36 @@ class JVMEmitter:
         class_file.add_method(self.default_constructor(class_file))
         return class_file
 
+    def list_contains_method(self, class_file: ClassFile, item_type: str) -> Method:
+        code = Bytecode()
+        data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
+        length = class_file.field_reference(class_file.name, "length", "I")
+        index = 3 if item_type == "J" else 2
+        code.emit(0x03)
+        code.local(0x36, index)
+        code.mark("loop")
+        code.local(0x15, index)
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.branch(0xA2, "missing")
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x15, index)
+        code.emit(self.array_load_opcode(item_type))
+        code.local(0x16 if item_type == "J" else 0x15, 1)
+        if item_type == "J":
+            code.emit(0x94)
+        code.branch(0x99 if item_type == "J" else 0x9F, "found")
+        code.emit(0x84, bytes((index, 1)))
+        code.branch(0xA7, "loop")
+        code.mark("missing")
+        code.emit(0x03)
+        code.emit(0xAC)
+        code.mark("found")
+        code.emit(0x04)
+        code.emit(0xAC)
+        return Method(0x0001, "contains", f"({item_type})Z", code.render(), 4, index + 1)
+
     def list_constructor(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
         code.local(0x19, 0)
@@ -4185,7 +4252,7 @@ class JVMEmitter:
                 f"semantics, not {semantic}"
             )
 
-    def native_arguments(self, call: ast.Call, function: Function) -> None:
+    def native_arguments(self, call: ast.Call, function: Function, *, leading_argument=None) -> None:
         if call.keywords:
             raise JVMUnsupported(
                 "JVM native calls do not yet support keyword arguments",
@@ -4201,8 +4268,9 @@ class JVMEmitter:
             )
         default_offset = len(arguments) - required
         values = [*arguments, *function.defaults[default_offset:]]
-        for argument, wanted in zip(values, expected, strict=True):
-            actual = self.expression(argument)
+        for index, (argument, wanted) in enumerate(zip(values, expected, strict=True)):
+            actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
+                      else self.expression(argument))
             self.convert_native_argument(actual, wanted, call)
 
     def convert_native_argument(
