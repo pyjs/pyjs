@@ -14,6 +14,18 @@ from tests.backend_semantics import (
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
+def test_global_narrowing_without_exception_handlers(tmp_path, optimize):
+    result = LLVM().assert_matches_python('''
+        VALUE: str | None = "value"
+        def main() -> int:
+            if isinstance(VALUE, str):
+                return 42
+            return 0
+    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    assert not result.native.stderr
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("contract", [ASSERT_NARROWING_CONTRACT, ASSERT_FAILURE_CONTRACT, ASSERT_CAPTURE_CONTRACT, ASSERT_BOOLEAN_FLOW_CONTRACT])
 def test_shared_assert_narrowing_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(

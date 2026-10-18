@@ -19,6 +19,14 @@
   Windows, on x64 and arm64. Shared tests cover executables and Python-loaded
   libraries; the README includes a runnable Python-to-native example.
 
+### Changed
+
+- JVM-raised Python exceptions now use generated Python-hierarchy classes,
+  replacing the previous Java `RuntimeException`, `IllegalArgumentException`,
+  and `AssertionError` mappings. Java callers should catch `Exception` or the
+  generated type; Python assertions now extend Java `Exception`, not `Error`.
+  Exception class names in JVM stack traces change accordingly.
+
 ### Fixed
 
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.

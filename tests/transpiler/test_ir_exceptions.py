@@ -88,6 +88,32 @@ def main() -> int:
         ''').rstrip()
 
 
+@pytest.mark.parametrize("environment", [NATIVE_ENVIRONMENT, JVM_ENVIRONMENT], ids=["llvm", "jvm"])
+def test_global_narrowing_does_not_require_a_local_exception_binding(environment):
+    source = '''
+VALUE: str | None = "value"
+def main() -> int:
+    if isinstance(VALUE, str):
+        return 42
+    return 0
+'''
+    with analyze_source(source, wrap=False, environment=environment) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            VALUE: __const__ = 'value'
+
+            def main() -> int:
+                block entry:
+                    branch isinstance(VALUE, str):
+                        true -> if_true
+                        false -> if_done
+                block if_true:
+                    return 42
+                block if_done:
+                    return 0
+        ''').rstrip()
+
+
 def test_assertion_message_control_flow_is_below_the_failure_edge():
     source = '''
 def main(test: bool, detail: bool) -> int:
