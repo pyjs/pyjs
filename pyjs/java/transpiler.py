@@ -2313,8 +2313,23 @@ class JVMEmitter:
             self.code.emit(0xB6, contains.to_bytes(2, "big"))
             present = self.new_label("dict.item.present")
             self.code.branch(0x9A, present)
-            self.code.emit(0x58)
-            self.throw("java/util/NoSuchElementException")
+            if key_type == "Ljava/lang/String;":
+                self.code.emit(0x5F)
+                self.code.emit(0x57)
+                self.string_repr()
+                name = emit_exception_class(
+                    self.class_files, self.main_class_name, native_builtins._KeyError,
+                )
+                index = self.class_file.constants.class_(name)
+                self.code.emit(0xBB, index.to_bytes(2, "big"))
+                self.code.emit(0x5A)
+                self.code.emit(0x5F)
+                constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
+                self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+                self.code.emit(0xBF)
+            else:
+                self.code.emit(0x58)
+                self.throw_python("KeyError", "key not found")
             self.code.mark(present)
             get = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2875,7 +2890,7 @@ class JVMEmitter:
             return self.native_class_name(value_type)
         if value is None or value.__module__ != native_builtins.__name__:
             raise JVMUnsupported("JVM exceptions require a supported builtin type", node)
-        if value in {native_builtins._KeyError, native_builtins._UnicodeDecodeError}:
+        if value is native_builtins._UnicodeDecodeError:
             raise JVMUnsupported(
                 f"JVM {value_type.name} construction and matching are not implemented", node,
             )
@@ -2924,9 +2939,18 @@ class JVMEmitter:
             message = ast.Constant(value="None" if syntax_error else "")
         if self.expression(message) != "Ljava/lang/String;":
             raise JVMUnsupported("JVM exception messages must be strings", message)
+        if node.message is not None and exception_type(node.value_type) is native_builtins._KeyError:
+            self.string_repr()
         constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
         self.code.emit(0xBF)
+
+    def string_repr(self):
+        self.string_helpers.add("repr")
+        reference = self.class_file.method_reference(
+            self.main_class_name, "pyjs_string_repr", "(Ljava/lang/String;)Ljava/lang/String;",
+        )
+        self.code.emit(0xB8, reference.to_bytes(2, "big"))
 
     def field(
         self, attribute

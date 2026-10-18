@@ -1275,7 +1275,7 @@ def main() -> int:
     )
 
     assert result.returncode != 0
-    assert "java.util.NoSuchElementException" in result.stderr
+    assert "$exception$KeyError: 'missing'" in result.stderr
 
 
 def test_jvm_dictionary_rejects_primitive_storage():

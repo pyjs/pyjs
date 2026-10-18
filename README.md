@@ -559,13 +559,20 @@ with `pyjs template`.
   Controlled Python operations raise Python categories for invalid indexing,
   division by zero, negative shifts, invalid integer parsing and storage
   limits; arbitrary Java API failures are not relabeled.
+- JVM dictionary subscription raises `KeyError` for missing keys without
+  evaluating the mapping or key twice. Present `None` values remain valid.
+  String and nullable-string keys retain Python-style quoted messages;
+  `KeyError()` and `KeyError("")` remain distinct. Formatting uses pinned
+  Unicode 16 printability rather than the host JDK's Unicode version.
+  Other reference-key lookups are catchable but currently use the generic
+  message `key not found`; original exception payloads remain unsupported.
 - JVM synchronous context managers support nested cleanup, suppression and
   abrupt exits. Exceptional `__exit__` calls receive a Java class token, the
   actual throwable and a JVM stack-trace array, not Python traceback objects.
   Normal exits receive three `None` values. Nullable Boolean results preserve
   the distinction between `None`, `False` and `True`.
-  Custom exceptions, chaining, `.args`, native exception construction and
-  `KeyError` or `UnicodeDecodeError` payloads remain unsupported. Explicit
+  Custom exception raising, chaining, `.args`, native exception construction
+  and `UnicodeDecodeError` payloads remain unsupported. Explicit
   reraising keeps the original JVM stack trace rather than adding a Python
   traceback frame. Async context managers remain unsupported.
 

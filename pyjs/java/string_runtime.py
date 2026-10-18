@@ -7,6 +7,8 @@ from .classfile import Bytecode, ClassFile, ExceptionHandler, Method
 
 def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python) -> None:
     required = required | ({"length"} if "getitem" in required else set())
+    if "repr" in required:
+        required = required | {"printable"}
     if required & {"contains", "startswith", "endswith"}:
         required = required | {"boundary"}
     for name, factory in (
@@ -15,6 +17,8 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("repeat", partial(string_repeat_method, throw_python=throw_python)),
         ("strip", string_strip_method),
         ("int", partial(string_int_method, throw_python=throw_python)),
+        ("printable", string_printable_method),
+        ("repr", string_repr_method),
         ("boundary", string_boundary_method),
         ("contains", string_contains_method),
         ("startswith", partial(string_affix_method, suffix=False)),
@@ -22,6 +26,166 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
     ):
         if name in required:
             class_file.add_method(factory(class_file))
+
+
+def string_printable_method(class_file: ClassFile) -> Method:
+    # Share the pinned Unicode data with LLVM, not the host JDK's version.
+    from pyjs.native.unicode_data import PRINTABLE_RANGES
+
+    code = Bytecode()
+
+    def emit_ranges(start, stop):
+        if start == stop:
+            code.branch(0xA7, "printable.false")
+            return
+        middle = (start + stop) // 2
+        lower, upper = PRINTABLE_RANGES[middle]
+        code.local(0x15, 0)
+        code.emit(0x13, class_file.constants.integer(lower).to_bytes(2, "big"))
+        code.branch(0xA1, f"printable.left.{middle}")
+        code.local(0x15, 0)
+        code.emit(0x13, class_file.constants.integer(upper).to_bytes(2, "big"))
+        code.branch(0xA4, "printable.true")
+        emit_ranges(middle + 1, stop)
+        code.mark(f"printable.left.{middle}")
+        emit_ranges(start, middle)
+
+    # A balanced decision tree avoids allocating a runtime range table.
+    emit_ranges(0, len(PRINTABLE_RANGES))
+    code.mark("printable.false")
+    code.emit(0x03)
+    code.emit(0xAC)
+    code.mark("printable.true")
+    code.emit(0x04)
+    code.emit(0xAC)
+    return Method(0x0009, "pyjs_string_printable", "(I)Z", code.render(), 2, 1)
+
+
+def string_repr_method(class_file: ClassFile) -> Method:
+    code = Bytecode()
+
+    def call(owner, name, descriptor, opcode=0xB6):
+        reference = class_file.method_reference(owner, name, descriptor)
+        code.emit(opcode, reference.to_bytes(2, "big"))
+
+    def integer(value):
+        code.emit(0x13, class_file.constants.integer(value).to_bytes(2, "big"))
+
+    def append(text):
+        code.local(0x19, 1)
+        code.emit(0x13, class_file.constants.string(text).to_bytes(2, "big"))
+        call("java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+        code.emit(0x57)
+
+    code.local(0x19, 0)
+    code.branch(0xC7, "repr.string")
+    code.emit(0x13, class_file.constants.string("None").to_bytes(2, "big"))
+    code.emit(0xB0)
+    code.mark("repr.string")
+    # Locals: source, builder, delimiter, UTF-16 index, code point, hex,
+    # padding. Iterate code points so astral characters stay intact.
+    builder = class_file.constants.class_("java/lang/StringBuilder")
+    code.emit(0xBB, builder.to_bytes(2, "big"))
+    code.emit(0x59)
+    call("java/lang/StringBuilder", "<init>", "()V", 0xB7)
+    code.local(0x3A, 1)
+    integer(ord("'"))
+    code.local(0x36, 2)
+    code.local(0x19, 0)
+    integer(ord("'"))
+    call("java/lang/String", "indexOf", "(I)I")
+    code.branch(0x9B, "repr.open")
+    code.local(0x19, 0)
+    integer(ord('"'))
+    call("java/lang/String", "indexOf", "(I)I")
+    code.branch(0x9C, "repr.open")
+    integer(ord('"'))
+    code.local(0x36, 2)
+    code.mark("repr.open")
+    code.local(0x19, 1)
+    code.local(0x15, 2)
+    call("java/lang/StringBuilder", "appendCodePoint", "(I)Ljava/lang/StringBuilder;")
+    code.emit(0x57)
+    integer(0)
+    code.local(0x36, 3)
+    code.mark("repr.loop")
+    code.local(0x15, 3)
+    code.local(0x19, 0)
+    call("java/lang/String", "length", "()I")
+    code.branch(0xA2, "repr.done")
+    code.local(0x19, 0)
+    code.local(0x15, 3)
+    call("java/lang/String", "codePointAt", "(I)I")
+    code.local(0x36, 4)
+    code.local(0x15, 4)
+    code.local(0x15, 2)
+    code.branch(0x9F, "repr.slash")
+    code.local(0x15, 4)
+    integer(ord("\\"))
+    code.branch(0x9F, "repr.slash")
+    for point, text in ((9, "\\t"), (10, "\\n"), (13, "\\r")):
+        code.local(0x15, 4)
+        integer(point)
+        code.branch(0xA0, f"repr.not.{point}")
+        append(text)
+        code.branch(0xA7, "repr.next")
+        code.mark(f"repr.not.{point}")
+    code.local(0x15, 4)
+    call(class_file.name, "pyjs_string_printable", "(I)Z", 0xB8)
+    code.branch(0x99, "repr.hex")
+    code.branch(0xA7, "repr.print")
+    code.mark("repr.slash")
+    append("\\")
+    code.mark("repr.print")
+    code.local(0x19, 1)
+    code.local(0x15, 4)
+    call("java/lang/StringBuilder", "appendCodePoint", "(I)Ljava/lang/StringBuilder;")
+    code.emit(0x57)
+    code.branch(0xA7, "repr.next")
+    code.mark("repr.hex")
+    code.local(0x15, 4)
+    call("java/lang/Integer", "toHexString", "(I)Ljava/lang/String;", 0xB8)
+    code.local(0x3A, 5)
+    for limit, prefix, width in ((256, "\\x", 2), (65536, "\\u", 4)):
+        code.local(0x15, 4)
+        integer(limit)
+        code.branch(0xA2, f"repr.wider.{width}")
+        append(prefix)
+        integer(width)
+        code.branch(0xA7, "repr.pad.start")
+        code.mark(f"repr.wider.{width}")
+    append("\\U")
+    integer(8)
+    code.mark("repr.pad.start")
+    code.local(0x19, 5)
+    call("java/lang/String", "length", "()I")
+    code.emit(0x64)
+    code.local(0x36, 6)
+    code.mark("repr.pad")
+    code.local(0x15, 6)
+    code.branch(0x9E, "repr.hex.append")
+    append("0")
+    code.emit(0x84, bytes((6, 255)))
+    code.branch(0xA7, "repr.pad")
+    code.mark("repr.hex.append")
+    code.local(0x19, 1)
+    code.local(0x19, 5)
+    call("java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+    code.emit(0x57)
+    code.mark("repr.next")
+    code.local(0x15, 3)
+    code.local(0x15, 4)
+    call("java/lang/Character", "charCount", "(I)I", 0xB8)
+    code.emit(0x60)
+    code.local(0x36, 3)
+    code.branch(0xA7, "repr.loop")
+    code.mark("repr.done")
+    code.local(0x19, 1)
+    code.local(0x15, 2)
+    call("java/lang/StringBuilder", "appendCodePoint", "(I)Ljava/lang/StringBuilder;")
+    call("java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(0x0009, "pyjs_string_repr", "(Ljava/lang/String;)Ljava/lang/String;", code.render(), 3, 7)
 
 
 def string_length_method(class_file: ClassFile) -> Method:

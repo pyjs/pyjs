@@ -11,6 +11,7 @@ from tests.backend_semantics import (
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
 )
 from tests.java.test_android import android_sdk
@@ -453,7 +454,7 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["cleanup", "context", "runtime"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT], ids=["cleanup", "context", "runtime", "key-error"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
@@ -469,7 +470,7 @@ def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     assert (dex / "classes.dex").is_file()
 
 
-@pytest.mark.parametrize("name", ["KeyError", "UnicodeDecodeError"])
+@pytest.mark.parametrize("name", ["UnicodeDecodeError"])
 def test_unsupported_exception_payloads_have_diagnostics(name):
     with pytest.raises(JVMUnsupported, match=f"{name} construction and matching"):
         transpile_jvm(f'def main() -> int:\n    raise {name}("error")\n')
