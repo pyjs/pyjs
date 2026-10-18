@@ -1,0 +1,161 @@
+"""Python exception formatting reached through Java, without Python str calls."""
+
+import pytest
+
+from tests.java.test_context_managers import assert_text_matches_python
+from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
+
+NATIVE_TEXT = '''
+from pyjs import jvm
+
+@jvm.native("java/lang/String", name="valueOf")
+def native_text(value: object) -> str:
+    return "PyjsProgram$Failure: " + str(value)
+
+class Failure(Exception):
+    def __str__(self) -> str:
+        return "custom:" + super().__str__()
+'''
+
+
+@pytest.mark.parametrize("entry", [
+    '''
+def main() -> str:
+    return native_text(Failure("raw"))
+''',
+    '''
+def report(error: Exception) -> str:
+    return native_text(error)
+
+def main() -> str:
+    return report(Failure("raw"))
+''',
+    '''
+def create() -> Failure:
+    return Failure("raw")
+
+def main() -> str:
+    return native_text(create())
+''',
+], ids=["direct", "base-parameter", "factory"])
+def test_native_arguments_retain_exception_text(tmp_path, entry):
+    assert_text_matches_python(NATIVE_TEXT + entry, tmp_path)
+
+
+def test_native_constructor_retains_exception_text(tmp_path):
+    assert_text_matches_python(NATIVE_TEXT + '''
+@jvm.native("java/lang/RuntimeException")
+class Wrapper(Exception):
+    def __init__(self, cause: BaseException):
+        super().__init__("PyjsProgram$Failure: " + str(cause))
+
+    def getMessage(self) -> str:
+        return str(self)
+
+def main() -> str:
+    return Wrapper(Failure("raw")).getMessage()
+''', tmp_path)
+
+
+@pytest.mark.parametrize("factory", [False, True], ids=["direct", "factory"])
+def test_native_view_retains_exception_text(tmp_path, factory):
+    result = run_jvm(NATIVE_TEXT + f'''
+from typing import cast
+
+@jvm.native("java/lang/Throwable")
+class Throwable:
+    def getMessage(self) -> str: ...
+
+def create() -> Failure:
+    return Failure("raw")
+
+def read(value: Throwable) -> str:
+    return value.getMessage()
+
+def main() -> str:
+    view = cast(Throwable, {"create()" if factory else 'Failure("raw")'})
+    return read(view)
+''', tmp_path)
+    # This is a native binding call, not a CPython Throwable API. No explicit
+    # Python formatting call may accidentally retain the tested method.
+    assert (result.returncode, result.stdout, result.stderr) == (0, "custom:raw", "")
+
+
+def test_native_callback_result_retains_exception_text(tmp_path):
+    result = run_jvm(NATIVE_TEXT + '''
+@jvm.native("java/lang/RuntimeException")
+class NativeError(Exception):
+    def __init__(self): ...
+    def getCause(self) -> BaseException | None: ...
+    def printStackTrace(self) -> None: ...
+
+class Source(NativeError):
+    def getCause(self) -> BaseException | None:
+        return Failure("raw")
+
+def main() -> int:
+    Source().printStackTrace()
+    return 0
+''', tmp_path)
+    assert result.returncode == 0
+    assert result.stdout == ""
+    # Java's printer invokes the Python override, then formats its result.
+    assert "Caused by: PyjsProgram$Failure: custom:raw\n" in result.stderr
+    assert "at PyjsProgram$Source.getCause(" in result.stderr
+
+
+def test_native_boundary_does_not_retain_unrelated_field_only_formatters(tmp_path):
+    assert_text_matches_python(NATIVE_TEXT + '''
+class Unused(Exception):
+    def __init__(self, code: int):
+        self.code = code
+
+    def __str__(self) -> str:
+        return not_defined
+
+def main() -> str:
+    unused = Unused(42)
+    return native_text(Failure("raw")) + str(unused.code)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("expression, expected", [
+    ('{"key": Failure("raw")}', "{key=PyjsProgram$Failure: custom:raw}"),
+    ('{"outer": {"key": Failure("raw")}}', "{outer={key=PyjsProgram$Failure: custom:raw}}"),
+], ids=["dictionary", "nested-dictionary"])
+def test_native_container_arguments_retain_exception_text(tmp_path, expression, expected):
+    result = run_jvm(NATIVE_TEXT + f'''
+def main() -> str:
+    return native_text({expression})
+''', tmp_path)
+    # Java map formatting differs from Python repr; verify the native
+    # representation and its callback into each managed exception's formatter.
+    assert (result.returncode, result.stdout, result.stderr) == (0, expected, "")
+
+
+def test_retained_formatter_can_expose_another_native_formatting_boundary(tmp_path):
+    assert_text_matches_python(NATIVE_TEXT.replace(
+        'return "custom:" + super().__str__()', 'return native_inner(Inner())',
+    ) + '''
+@jvm.native("java/lang/String", name="valueOf")
+def native_inner(value: object) -> str:
+    return "PyjsProgram$Inner: " + str(value)
+
+class Inner(Exception):
+    def __str__(self) -> str:
+        return "nested"
+
+def main() -> str:
+    return native_text(Failure("raw"))
+''', tmp_path)
+
+
+def test_native_exception_formatter_dependencies_compile_to_dex(tmp_path):
+    assert_compiles_to_android_dex(NATIVE_TEXT + '''
+def create() -> Failure:
+    return Failure("raw")
+
+def main() -> int:
+    assert native_text(create()) == "PyjsProgram$Failure: custom:raw"
+    return 42
+''', tmp_path)

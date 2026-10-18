@@ -6,9 +6,9 @@ import inspect
 from pyjs.analysis import create_analysis_environment, super_proxy
 from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type
 from pyjs.analysis.diagnostics import DiagnosticCode
-from pyjs.analysis.ir import ExceptionRaise, IRInferenceVisitor
+from pyjs.analysis.ir import ExceptionRaise, IRInferenceVisitor, Return
 from pyjs.analysis.lifetime import refine_lifetimes
-from pyjs.analysis.objects import Class, Function, Instance, UnionType
+from pyjs.analysis.objects import Class, Function, Instance, StaticCast, UnionType
 from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
@@ -102,6 +102,54 @@ def should_analyze_body(func) -> bool:
     )
 
 
+def native_callable(value) -> bool:
+    if isinstance(value, Class):
+        if is_declaration(value.py_obj, "jvm"):
+            return True
+        value = value.find_attrs("__init__", search_bases=True)
+    return isinstance(value, Function) and not should_analyze_body(value)
+
+
+def retain_native_exception_text(visitor, value):
+    # Java can call Throwable.toString/getMessage without an analyzed Python
+    # formatting call. Keep this dependency scoped to values crossing its ABI,
+    # including typed containers, rather than every constructed exception.
+    if isinstance(value, ast.Constant):
+        return  # Includes synthetic, untyped None returns from void callbacks.
+    pending = [analyzed_value_type(value)]
+    seen = set()
+    while pending:
+        value_type = pending.pop()
+        if value_type in seen:
+            continue
+        seen.add(value_type)
+        if isinstance(value_type, UnionType):
+            pending.extend(value_type.types)
+        elif managed_exception(value_type):
+            visitor.retain_runtime_protocol(value_type, ("__str__",))
+        elif isinstance(value_type, Class):
+            pending.extend((value_type.generic_types or {}).values())
+
+
+def retain_native_call_text(visitor, function):
+    if function.ir is None:
+        return
+    for block in function.ir.blocks:
+        for node in ast.walk(block):
+            if isinstance(node, ast.Call) and native_callable(getattr(node.func, "obj", None)):
+                values = [*node.args, *(keyword.value for keyword in node.keywords)]
+                if isinstance(node.func, ast.Attribute):
+                    values.append(node.func.value)
+                for value in values:
+                    retain_native_exception_text(visitor, value)
+            elif isinstance(node, StaticCast):
+                target = analyzed_value_type(node)
+                if isinstance(target, Class) and is_declaration(target.py_obj, "jvm"):
+                    # A native view can be stored or passed through another
+                    # function before Java consumes it; retain before erasure.
+                    retain_native_exception_text(visitor, node.value)
+
+
 def finalize_jvm_analysis(entry_point: Function) -> None:
     """Retain callbacks invoked by a native runtime rather than Python code."""
 
@@ -118,22 +166,15 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
             yield value_type
 
     visitor = CallGraphVisitor(entry_point, entry_point)
-    pending = [
-        value for value in entry_point.compilation_objects if isinstance(value, Class)
-    ]
-    processed = set()
-    while pending:
-        value_type = pending.pop()
-        if value_type in processed:
-            continue
-        processed.add(value_type)
+
+    def retain_class(value_type):
         for field in value_type._self.attrs.values():
             if not isinstance(field, Instance):
                 continue
             for dependency in storage_classes(field.cls):
                 visitor.enter_class(dependency)
         if value_type.super is None:
-            continue
+            return
         native_base = value_type.super
         while native_base is not None and not is_declaration(
             native_base.py_obj,
@@ -141,7 +182,7 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
         ):
             native_base = native_base.super
         if native_base is None:
-            continue
+            return
         interface = backend_metadata(
             native_base.py_obj,
             "jvm",
@@ -162,12 +203,29 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
                 and implementation is not declaration
                 and not is_declaration(implementation.py_func, "jvm")
             ):
+                # A Java-only virtual call still needs its binding signature
+                # analyzed before override ABI validation.
+                visitor.enter(declaration)
                 CallGraphVisitor(implementation, entry_point).enter(implementation)
-        pending.extend(
+                if implementation.ir is not None:
+                    for block in implementation.ir.blocks:
+                        for node in ast.walk(block):
+                            if isinstance(node, Return) and node.value is not None:
+                                retain_native_exception_text(visitor, node.value)
+
+    processed = set()
+    while pending := [
             value
             for value in entry_point.compilation_objects
-            if isinstance(value, Class) and value not in processed
-        )
+            if isinstance(value, (Class, Function)) and value not in processed]:
+        # Newly reached formatter bodies can expose more native callbacks.
+        # Scan the graph once per batch, not once per function or dependency.
+        processed.update(pending)
+        for value in pending:
+            if isinstance(value, Function):
+                retain_native_call_text(visitor, value)
+            else:
+                retain_class(value)
     refine_lifetimes(entry_point)
 
 

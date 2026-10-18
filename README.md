@@ -600,14 +600,16 @@ with `pyjs template`.
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;
   keywords and defaulted parameters do not become that original text.
-  `super().__init__(message)` can replace the text; custom `__str__` methods keep
-  virtual dispatch through base-typed and union-typed references.
+  `super().__init__(message)` can replace the text. Custom `__str__` methods
+  keep virtual dispatch through base-typed and union-typed references.
   Field-only non-scalar arguments remain valid. Consuming their unsupported
   default text raises a focused `TypeError`; replacing it with a scalar message
   or providing a custom formatter avoids that unsupported operation.
   Java logging preserves the exception and stack trace if formatting fails,
   using `<exception str() failed>` as its message. Explicitly raised custom
   exceptions retain their formatters even without a Python `str()` call.
+  The same applies to exceptions passed to native Java calls, exposed through
+  native views, or returned by Java callbacks, including typed map contents.
   Explicit `__str__()` calls through base views require compatible override
   result types; narrow to the concrete type for a differently typed result.
   Local `super()` aliases keep lexical dispatch; mixed or escaping proxies
