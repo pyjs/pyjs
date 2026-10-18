@@ -699,6 +699,10 @@ class JVMEmitter:
                 if self.compatible(current, value_type):
                     self.slot_types[name] = value_type
                     return
+                if all(self.compatible(kind, "Ljava/lang/Throwable;")
+                       for kind in (current, value_type)):
+                    self.slot_types[name] = "Ljava/lang/Throwable;"
+                    return
                 raise JVMUnsupported(f"JVM local {name} changes type")
             self.slots[name] = self.local_count
             self.slot_types[name] = value_type

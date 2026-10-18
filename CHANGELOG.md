@@ -37,6 +37,8 @@
 
 ### Fixed
 
+- JVM and LLVM context-manager entry results can be optional values without
+  crashing shared control-flow analysis.
 - JVM executable string results retain UTF-8 encoding on non-UTF-8 consoles.
 - Native output preserves UTF-8 and newline bytes across platforms; NaN
   formatting follows Python's sign and percentage rules on macOS too.

@@ -1,6 +1,6 @@
 import builtins
 import subprocess
-from textwrap import dedent
+from textwrap import dedent, indent
 
 import pytest
 
@@ -233,6 +233,50 @@ def test_native_java_exception_crosses_cleanup_and_is_reraised(tmp_path):
     assert result.returncode == 15, result.stderr
 
 
+def test_reused_handler_name_keeps_unrelated_native_types(tmp_path):
+    assert_matches_python('''
+        from pyjs import jvm
+        from pyjs.java import i32
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            def getMessage(self) -> str | None:
+                return "invalid number"
+
+        @jvm.native("java/io/IOException")
+        class IOException(Exception):
+            def getMessage(self) -> str | None:
+                return "Stream closed"
+
+        @jvm.native("java/lang/Integer", name="parseInt")
+        def parse(value: str) -> i32:
+            raise NumberFormatException()
+
+        @jvm.native("java/io/StringReader")
+        class StringReader:
+            def __init__(self, value: str): pass
+            def close(self) -> None: pass
+            def read(self) -> i32:
+                raise IOException()
+
+        def main() -> int:
+            score = 0
+            try:
+                parse("invalid")
+            except NumberFormatException as error:
+                if error.getMessage() is not None:
+                    score += 1
+            reader = StringReader("value")
+            reader.close()
+            try:
+                reader.read()
+            except IOException as error:
+                if error.getMessage() == "Stream closed":
+                    score += 2
+            return score
+    ''', tmp_path)
+
+
 def test_native_interface_subclass_constructed_inside_try(tmp_path):
     assert_matches_python('''
         from pyjs import jvm
@@ -439,6 +483,35 @@ def test_custom_exception_has_focused_diagnostic():
             def main() -> int:
                 raise InvalidNote("invalid")
         ''')
+
+
+@pytest.mark.parametrize("body", [
+    "error = ValidationError(42)\nreturn error.code",
+    "return read(ValidationError(42))",
+    "return Holder(ValidationError(42)).error.code",
+    "error = validate(42)\nreturn error.code if error is not None else 0",
+], ids=["local", "argument", "field", "optional-return"])
+def test_exception_subclasses_used_as_ordinary_values_keep_their_layout(tmp_path, body):
+    source = '''
+class ValidationError(Exception):
+    def __init__(self, code: int):
+        self.code = code
+
+class Holder:
+    def __init__(self, error: ValidationError):
+        self.error = error
+
+def read(error: ValidationError) -> int:
+    return error.code
+
+def validate(code: int) -> ValidationError | None:
+    if code > 0:
+        return ValidationError(code)
+    return None
+
+def main() -> int:
+''' + indent(body, "    ")
+    assert_matches_python(source, tmp_path)
 
 
 def test_non_string_payload_has_focused_diagnostic():

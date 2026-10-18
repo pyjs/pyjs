@@ -2155,6 +2155,31 @@ def decision(result: bool | None, fail: bool) -> str:
     except ValueError:
         return "raised"
     return "done"
+
+@js
+class OptionalScope:
+    def __init__(self, value: bool | None, events: list[str]):
+        self.value = value
+        self.events = events
+
+    def __enter__(self) -> bool | None:
+        self.events.append("enter")
+        return self.value
+
+    def __exit__(self, kind: object, value: object, traceback: object) -> None:
+        self.events.append("exit")
+
+@js
+def optional_entry(value: bool | None) -> str:
+    events: list[str] = []
+    with OptionalScope(value, events) as entered:
+        if entered is None:
+            events.append("none")
+        elif entered:
+            events.append("true")
+        else:
+            events.append("false")
+    return "|".join(events)
 ''',
     "context_manager_contract",
     '''
@@ -2166,7 +2191,10 @@ def decision(result: bool | None, fail: bool) -> str:
     (("captured return", 'value != "inner"'),
      ("reverse cleanup and suppression", '"|".join(events) != "enter:outer|enter:inner|exit:inner|exit:outer|enter:suppress|exit:suppress"'),
      ("normal exit ignores nullable truth", 'decision(None, False) + decision(False, False) + decision(True, False) != "donedonedone"'),
-     ("only true suppresses the active exception", 'decision(None, True) + decision(False, True) + decision(True, True) != "raisedraiseddone"')),
+     ("only true suppresses the active exception", 'decision(None, True) + decision(False, True) + decision(True, True) != "raisedraiseddone"'),
+     ("nullable enter binds None", 'optional_entry(None) != "enter|none|exit"'),
+     ("nullable enter binds false", 'optional_entry(False) != "enter|false|exit"'),
+     ("nullable enter binds true", 'optional_entry(True) != "enter|true|exit"')),
 )
 
 
