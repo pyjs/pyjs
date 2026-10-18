@@ -17,6 +17,9 @@ from pyjs.analysis.ir import (
     Branch,
     ClassIR,
     CollectionNew,
+    ExceptionCatch,
+    ExceptionDispatch,
+    ExceptionRaise,
     External,
     FieldLoad,
     FieldStore,
@@ -26,7 +29,6 @@ from pyjs.analysis.ir import (
     ListAppend,
     ObjectNew,
     ProgramIR,
-    Raise,
     Return,
     build_program_ir,
 )
@@ -59,9 +61,11 @@ from .classfile import (
     Bytecode,
     ClassAnnotationValue,
     ClassFile,
+    ExceptionHandler,
     Field,
     Method,
 )
+from .exceptions import emit_exception_class, exception_type
 from .primitives import Reference, run_sync
 from .string_runtime import emit_string_helpers
 
@@ -637,12 +641,22 @@ class JVMEmitter:
         self.code = Bytecode()
         self.line_offset = (function.lineno or 1) - 1
         block_map = {block.name: block for block in blocks}
+        protected = []
         for block in blocks:
             self.code.mark(self.block_label(block.name))
+            start = len(self.code.code)
             for statement in block.body:
                 line = self.source_line(statement)
                 self.code.line(line + self.line_offset if line is not None else None)
                 self.statement(statement, block_map)
+            if block.exception_target is not None and len(self.code.code) > start:
+                protected.append((start, len(self.code.code), block.exception_target))
+        landings = {}
+        for _start, _end, target in protected:
+            if target not in landings:
+                landings[target] = len(self.code.code)
+                self.code.local(0x3A, self.pending_exception_slot)
+                self.code.branch(0xA7, self.block_label(target))
         return Method(
             # Reachable module functions live on the root class, but generated
             # application classes call them as siblings rather than JVM nestmates.
@@ -655,6 +669,10 @@ class JVMEmitter:
             0xFFFF,
             self.local_count,
             tuple(self.code.line_numbers),
+            exception_handlers=tuple(
+                ExceptionHandler(start, end, landings[target])
+                for start, end, target in protected
+            ),
         )
 
     def prepare_locals(self, function, parameters) -> None:
@@ -700,7 +718,10 @@ class JVMEmitter:
                 if storage_format is not None:
                     self.slot_numeric_formats[argument.name] = storage_format
             for statement in block.body:
-                if isinstance(statement, ast.AnnAssign):
+                if isinstance(statement, ExceptionCatch):
+                    if statement.target is not None:
+                        add(self.target_name(statement.target), "Ljava/lang/Throwable;")
+                elif isinstance(statement, ast.AnnAssign):
                     if isinstance(statement.target, ast.Attribute):
                         field = self.native_field(statement.target)
                         if field is not None and field.static:
@@ -821,7 +842,37 @@ class JVMEmitter:
                     self.object_argument_slots[node] = slots
                     object_index += 1
 
+        self.pending_exception_slot = self.local_count
+        if any(block.exception_target is not None for block in function.ir.blocks
+               if isinstance(block, Block)):
+            self.local_count += 1
+
     def statement(self, node, blocks) -> None:
+        if isinstance(node, ExceptionCatch):
+            if node.target is not None:
+                self.code.local(0x19, self.pending_exception_slot)
+                self.store(self.target_name(node.target), "Ljava/lang/Throwable;")
+            return
+        if isinstance(node, ExceptionDispatch):
+            for types, target in node.handlers:
+                if not types:
+                    self.code.branch(0xA7, self.block_label(target))
+                    return
+                for value_type in types:
+                    name = self.exception_match_class(value_type, node)
+                    self.code.local(0x19, self.pending_exception_slot)
+                    index = self.class_file.constants.class_(name)
+                    self.code.emit(0xC1, index.to_bytes(2, "big"))
+                    self.code.branch(0x9A, self.block_label(target))
+            if node.unmatched is not None:
+                self.code.branch(0xA7, self.block_label(node.unmatched))
+            else:
+                self.code.local(0x19, self.pending_exception_slot)
+                self.code.emit(0xBF)
+            return
+        if isinstance(node, ExceptionRaise):
+            self.raise_python_exception(node)
+            return
         if isinstance(node, Return):
             if node.value is None or (
                 isinstance(node.value, ast.Constant) and node.value.value is None
@@ -859,38 +910,6 @@ class JVMEmitter:
                 if self.return_storage_type in {"B", "C", "S", "I", "Z"}
                 else 0xB0
             )
-            return
-        if isinstance(node, Raise):
-            self.raise_exception(node)
-            return
-        if isinstance(node, ast.Assert):
-            condition_type = self.expression(node.test)
-            if condition_type != "Z":
-                raise JVMUnsupported("JVM assertions require a bool condition", node)
-            passed = self.new_label("assert.passed")
-            self.code.branch(0x9A, passed)
-            class_name = "java/lang/AssertionError"
-            class_index = self.class_file.constants.class_(class_name)
-            self.code.emit(0xBB, class_index.to_bytes(2, "big"))
-            self.code.emit(0x59)
-            if node.msg is None:
-                descriptor = "()V"
-            else:
-                message_type = self.expression(node.msg)
-                if message_type != "Ljava/lang/String;":
-                    raise JVMUnsupported(
-                        "JVM assertion messages must be strings",
-                        node.msg,
-                    )
-                descriptor = "(Ljava/lang/Object;)V"
-            constructor = self.class_file.method_reference(
-                class_name,
-                "<init>",
-                descriptor,
-            )
-            self.code.emit(0xB7, constructor.to_bytes(2, "big"))
-            self.code.emit(0xBF)
-            self.code.mark(passed)
             return
         if isinstance(node, ast.AnnAssign):
             if node.value is not None:
@@ -1351,7 +1370,9 @@ class JVMEmitter:
                     "JVM isinstance requires one concrete class",
                     node.args[1],
                 )
-            if checked in self.classes:
+            if exception_type(checked) is not None:
+                owner = self.exception_match_class(checked, node)
+            elif checked in self.classes:
                 owner = self.class_name(checked)
             elif checked in self.native_classes:
                 owner = self.native_class_name(checked)
@@ -1657,14 +1678,14 @@ class JVMEmitter:
                     return "Z"
                 if target.name == "__str__" and not argument_types:
                     return "Ljava/lang/String;"
-                if target.name == "lower" and not argument_types:
+                if target.name in {"lower", "upper"} and not argument_types:
                     locale = self.class_file.field_reference(
                         "java/util/Locale", "ROOT", "Ljava/util/Locale;"
                     )
                     self.code.emit(0xB2, locale.to_bytes(2, "big"))
                     reference = self.class_file.method_reference(
                         "java/lang/String",
-                        "toLowerCase",
+                        "toLowerCase" if target.name == "lower" else "toUpperCase",
                         "(Ljava/util/Locale;)Ljava/lang/String;",
                     )
                     self.code.emit(0xB6, reference.to_bytes(2, "big"))
@@ -1916,7 +1937,10 @@ class JVMEmitter:
                 self.comparison(0x9A)
                 return "Z"
             if target.name == "__str__" and not argument_types:
-                if receiver_type == "J":
+                if receiver_type == "Ljava/lang/Throwable;":
+                    self.exception_message()
+                    return "Ljava/lang/String;"
+                elif receiver_type == "J":
                     owner, descriptor = "java/lang/Long", "(J)Ljava/lang/String;"
                 elif receiver_type == "Z":
                     self.bool_string()
@@ -2003,6 +2027,9 @@ class JVMEmitter:
             value_type = self.expression(node.args[0])
             if value_type == "Ljava/lang/String;":
                 return value_type
+            if value_type == "Ljava/lang/Throwable;":
+                self.exception_message()
+                return "Ljava/lang/String;"
             if value_type == "J":
                 owner, descriptor = "java/lang/Long", "(J)Ljava/lang/String;"
             else:
@@ -2707,48 +2734,51 @@ class JVMEmitter:
         arguments.extend(function.defaults[default_offset:])
         return arguments
 
-    def raise_exception(self, node: Raise) -> None:
-        if not isinstance(node.exception, ast.Call):
+    def exception_class(self, value_type, node):
+        value = exception_type(value_type)
+        if value is None or value.__module__ != native_builtins.__name__:
+            raise JVMUnsupported("JVM exceptions require a supported builtin type", node)
+        if value in {native_builtins._KeyError, native_builtins._UnicodeDecodeError}:
             raise JVMUnsupported(
-                "JVM raise requires an Exception, ValueError, or AssertionError instance",
-                node,
+                f"JVM {value_type.name} construction and matching are not implemented", node,
             )
-        exception = node.exception
-        target = analyzed_value_object(exception.func)
-        exception_types = {
-            native_builtins._Exception: "java/lang/RuntimeException",
-            native_builtins._ValueError: "java/lang/IllegalArgumentException",
-            native_builtins._AssertionError: "java/lang/AssertionError",
-        }
-        class_name = exception_types.get(getattr(target, "py_obj", None))
-        if class_name is None or exception.keywords or len(exception.args) > 1:
-            raise JVMUnsupported(
-                "JVM raise supports Exception, ValueError, and AssertionError "
-                "with an optional string message",
-                node,
-            )
-        class_index = self.class_file.constants.class_(class_name)
-        self.code.emit(0xBB, class_index.to_bytes(2, "big"))
-        self.code.emit(0x59)
-        if exception.args:
-            message_type = self.expression(exception.args[0])
-            if message_type != "Ljava/lang/String;":
-                raise JVMUnsupported(
-                    "JVM exception messages must be strings",
-                    exception.args[0],
-                )
-            descriptor = (
-                "(Ljava/lang/Object;)V"
-                if class_name == "java/lang/AssertionError"
-                else "(Ljava/lang/String;)V"
-            )
-        else:
-            descriptor = "()V"
-        constructor = self.class_file.method_reference(
-            class_name,
-            "<init>",
-            descriptor,
+        return emit_exception_class(self.class_files, self.main_class_name, value)
+
+    def exception_match_class(self, value_type, node):
+        value = exception_type(value_type)
+        if value is native_builtins._BaseException:
+            return "java/lang/Throwable"
+        if value is native_builtins._Exception:
+            return "java/lang/Exception"
+        return self.exception_class(value_type, node)
+
+    def exception_message(self):
+        reference = self.class_file.method_reference(
+            "java/lang/Throwable", "getMessage", "()Ljava/lang/String;",
         )
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+        present = self.new_label("exception.message")
+        self.code.emit(0x59)
+        self.code.branch(0xC7, present)
+        self.code.emit(0x57)
+        self.expression(ast.Constant(value=""))
+        self.code.mark(present)
+
+    def raise_python_exception(self, node):
+        if node.reraised:
+            if node.exception is None:
+                raise JVMUnsupported("JVM bare raise requires an active handler", node)
+            self.expression(node.exception)
+            self.code.emit(0xBF)
+            return
+        name = self.exception_class(node.value_type, node)
+        index = self.class_file.constants.class_(name)
+        self.code.emit(0xBB, index.to_bytes(2, "big"))
+        self.code.emit(0x59)
+        message = node.message if node.message is not None else ast.Constant(value="")
+        if self.expression(message) != "Ljava/lang/String;":
+            raise JVMUnsupported("JVM exception messages must be strings", message)
+        constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
         self.code.emit(0xBF)
 
@@ -4139,6 +4169,8 @@ class JVMEmitter:
         raise JVMUnsupported("unsupported JVM type annotation", node)
 
     def value_type(self, value_type, representation=None) -> str:
+        if exception_type(value_type) is not None:
+            return "Ljava/lang/Throwable;"
         if (isinstance(value_type, RecursiveTypeAlias)
                 or isinstance(value_type, UnionType)
                 and any(isinstance(member, RecursiveTypeAlias) for member in value_type._types.values())):

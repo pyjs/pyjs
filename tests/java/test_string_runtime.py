@@ -28,6 +28,22 @@ def test_optional_truth_has_a_located_diagnostic():
         ''')
 
 
+@pytest.mark.parametrize("method", ["lower", "upper"])
+@pytest.mark.parametrize("value", ["", "Ii", "Straße ÉΣΑ 😀"])
+def test_case_conversion_is_independent_of_default_locale(tmp_path, method, value):
+    source = f"def main() -> str:\n    return {value!r}.{method}()\n"
+    expected = run_python(source + "\nprint(main(), end='')\n")
+    assert expected.returncode == 0, expected.stderr
+    transpile_jvm(source).write(tmp_path)
+    result = subprocess.run(
+        [java(), "-Xmx128m", "-Xverify:all", "-Duser.language=tr",
+         "-Duser.country=TR", "-cp", str(tmp_path), "PyjsProgram"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected.stdout
+
+
 def test_multiple_concrete_members_reach_jvm_isinstance_boundary():
     # Shared analysis now passes the multi-member None guard. JVM's builtin
     # isinstance lowering remains a separate, explicit unsupported boundary.

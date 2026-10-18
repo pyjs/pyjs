@@ -1993,6 +1993,60 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
 )
 
 
+EXCEPTION_CLEANUP_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def saved_return(events: list[int]) -> str:
+    value = "saved"
+    try:
+        try:
+            return value
+        finally:
+            value = "changed"
+            events.append(1)
+    finally:
+        events.append(2)
+
+@js
+def replace_error(events: list[int]) -> None:
+    try:
+        try:
+            raise ValueError("original")
+        finally:
+            events.append(3)
+            raise TypeError("replacement")
+    finally:
+        events.append(4)
+''',
+    "exception_cleanup_contract",
+    '''
+    events: list[int] = []
+    result = saved_return(events)
+    try:
+        replace_error(events)
+    except TypeError as error:
+        if str(error) == "replacement":
+            events.append(5)
+    for value in range(3):
+        try:
+            if value == 0:
+                continue
+            break
+        finally:
+            events.append(6 + value)
+    sequence = 0
+    for event in events:
+        sequence = sequence * 10 + event
+    ''',
+    (
+        ("return evaluated before cleanup", 'result != "saved"'),
+        ("nested cleanup, replacement, break, and continue", "sequence != 1234567"),
+    ),
+)
+
+
 CONTEXT_MANAGER_CONTRACT = _contract(
     '''
 from pyjs import js

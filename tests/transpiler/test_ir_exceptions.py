@@ -12,6 +12,7 @@ from pyjs.analysis.ir import (
 )
 from pyjs.analysis.source import analyze_source
 from pyjs.java import transpile_jvm
+from pyjs.java.analysis import JVM_ENVIRONMENT
 from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.webassembly import transpile_webassembly
 from tests.backend_semantics import (
@@ -28,10 +29,9 @@ def main() -> int:
 '''
 
 
-@pytest.mark.parametrize("transpile", [transpile_jvm, transpile_webassembly])
-def test_backends_without_exception_regions_keep_a_focused_diagnostic(transpile):
+def test_webassembly_exception_regions_keep_a_focused_diagnostic():
     with pytest.raises(CompilationError, match="exception handlers are not implemented"):
-        transpile(EXCEPTION_CONTROL_FLOW_CONTRACT.source)
+        transpile_webassembly(EXCEPTION_CONTROL_FLOW_CONTRACT.source)
 
 
 def test_exception_ir_preserves_handlers_and_protected_edges():
@@ -50,6 +50,41 @@ def test_exception_ir_preserves_handlers_and_protected_edges():
                 block except:
                     catch __caught_exception
                     return 7
+        ''').rstrip()
+
+
+def test_narrowed_caught_exception_retains_reraise_metadata():
+    source = '''
+def main() -> int:
+    try:
+        raise ValueError("failed")
+    except Exception as error:
+        if isinstance(error, ValueError):
+            raise error
+        return 1
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            def main() -> int:
+                block entry:
+                    jump try_body
+                block exception_dispatch:
+                    dispatch_exception:
+                        Exception -> except
+                        unmatched -> caller
+                block try_body except -> exception_dispatch:
+                    raise ValueError('failed')
+                block except:
+                    catch __caught_exception
+                    error = __caught_exception
+                    branch isinstance(error, ValueError):
+                        true -> if_true
+                        false -> if_done
+                block if_true:
+                    raise error
+                block if_done:
+                    return 1
         ''').rstrip()
 
 

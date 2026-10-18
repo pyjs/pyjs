@@ -549,6 +549,16 @@ with `pyjs template`.
 - Android uses direct JVM bytecode and native framework/AndroidX APIs.
   Calculator and Notes demonstrate the supported subset; Notes editor parity
   and broader platform coverage remain in progress.
+- JVM exception handling supports ordered handlers, reraising, assertions,
+  and `finally`, including cleanup across returns, breaks and continues.
+  Construct builtin exceptions directly in `raise`, with an optional string
+  message. Caught values support `str()`, identity and `isinstance()`.
+  Native Java exceptions retain their native category: `Exception` catches
+  Java exceptions, while `BaseException` also catches Java errors. Narrow
+  Python handlers do not yet translate native runtime failures. Context
+  managers, custom exceptions, chaining, `.args`, and `KeyError` or
+  `UnicodeDecodeError` payloads remain unsupported. Explicit reraising keeps
+  the original JVM stack trace rather than adding a Python traceback frame.
 
 Run `pyjs skill` for the installed-version guidance and `pyjs template` for
 complete executable examples.

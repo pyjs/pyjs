@@ -4,6 +4,12 @@
 
 ### Added
 
+- JVM compilation supports ordered exception handlers, reraising, lazy
+  assertions, and `finally` cleanup across returns and loop exits. Supported
+  builtin Python exceptions retain their hierarchy and string messages;
+  native Java failures remain catchable through `Exception`/`BaseException`.
+- JVM strings support locale-independent `upper()` alongside `lower()`.
+
 - Introduced this changelog. Future releases will record notable features,
   compatibility changes and fixes here.
 - Pull-request CI covers Linux, Windows and macOS, including parallel LLVM,

@@ -933,6 +933,14 @@ class IRInferenceVisitor(InferenceVisitor):
         self.lowering = IRLoweringTransformer()
         self.expression_depth = 0
 
+    def narrow(self, value_node, value_type):
+        narrowed = super().narrow(value_node, value_type)
+        if isinstance(value_node, ast.Name):
+            original = self.scope.lookup(value_node.id)
+            if getattr(original, "native_exception_binding", False):
+                narrowed.scope.lookup(value_node.id).native_exception_binding = True
+        return narrowed
+
     def visit(self, node):
         expression = isinstance(node, ast.expr)
         self.expression_depth += expression

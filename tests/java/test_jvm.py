@@ -1046,7 +1046,7 @@ def main() -> int:
     )
 
     assert result.returncode != 0
-    assert "java.lang.AssertionError: expected a true value" in result.stderr
+    assert "PyjsProgram$exception$AssertionError: expected a true value" in result.stderr
     assert "PyjsProgram.check(assertions.py:2)" in result.stderr
 
 
@@ -1090,17 +1090,13 @@ def main() -> int:
     assert result.returncode == 8
 
 
-def test_attribute_error_has_a_focused_unsupported_diagnostic():
-    with pytest.raises(JVMUnsupported, match="JVM raise supports Exception, ValueError, and AssertionError"):
-        transpile_jvm('def main() -> int:\n    raise AttributeError("missing")\n')
-
-
 @pytest.mark.parametrize(
     ("python_name", "jvm_name"),
     [
-        ("Exception", "RuntimeException"),
-        ("ValueError", "IllegalArgumentException"),
+        ("Exception", "Exception"),
+        ("ValueError", "ValueError"),
         ("AssertionError", "AssertionError"),
+        ("AttributeError", "AttributeError"),
     ],
 )
 def test_jvm_raises_python_exception_types(tmp_path, python_name, jvm_name):
@@ -1118,7 +1114,7 @@ def main() -> int:
     )
 
     assert result.returncode != 0
-    assert f"java.lang.{jvm_name}: invalid note" in result.stderr
+    assert f"PyjsProgram$exception${jvm_name}: invalid note" in result.stderr
     assert "PyjsProgram.pyjs_main(model.py:2)" in result.stderr
 
 
