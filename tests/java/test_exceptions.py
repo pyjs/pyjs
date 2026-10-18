@@ -100,6 +100,24 @@ def test_explicit_reraise_and_empty_message(tmp_path):
     ''', tmp_path)
 
 
+@pytest.mark.parametrize(("kind", "expected"), [
+    ("ValueError", "retained"), ("KeyError", "'retained'"),
+])
+@pytest.mark.parametrize("reraise", ["raise error", "raise", "if isinstance(error, {kind}): raise"])
+def test_tuple_handler_reraises_keep_caught_union(tmp_path, kind, expected, reraise):
+    assert_matches_python(f'''
+def main() -> int:
+    try:
+        try:
+            raise {kind}("retained")
+        except (KeyError, ValueError) as error:
+            {reraise.format(kind=kind)}
+    except {kind} as caught:
+        return 42 if str(caught) == {expected!r} else 1
+    return 2
+''', tmp_path)
+
+
 def test_else_errors_skip_own_handlers(tmp_path):
     assert_matches_python('''
         def main() -> int:

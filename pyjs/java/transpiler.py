@@ -726,7 +726,8 @@ class JVMEmitter:
                 if storage_format is not None:
                     self.slot_numeric_formats[argument.name] = storage_format
             for statement in block.body:
-                if isinstance(statement, ExceptionRaise) and statement.exception is not None:
+                if (isinstance(statement, ExceptionRaise)
+                        and statement.exception is not None and not statement.reraised):
                     self.exception_class(analyzed_value_type(statement.exception), statement)
                 if isinstance(statement, ExceptionCatch):
                     if statement.target is not None:
@@ -741,19 +742,27 @@ class JVMEmitter:
                         if statement.value is not None
                         else None
                     )
-                    semantic = (
-                        self.expression_type(statement.value)
-                        if value_type is not None
-                        and (
-                            self.is_jvm_array_type(value_type)
-                            or isinstance(value_type, UnionType)
-                            or exception_type(value_type) is not None
-                            # Rendered collection annotations discard the
-                            # resolved identity of exception item types.
-                            or value_type.generic_name in {"list", "tuple"}
+                    declared = analyzed_value_type(statement.target)
+                    if isinstance(declared, UnionType) and any(
+                        exception_type(member) is not None for member in declared.types
+                    ):
+                        # A None initializer still needs the declared exception
+                        # storage; the rendered annotation has unbound names.
+                        semantic = self.value_type(declared)
+                    else:
+                        semantic = (
+                            self.expression_type(statement.value)
+                            if value_type is not None
+                            and (
+                                self.is_jvm_array_type(value_type)
+                                or isinstance(value_type, UnionType)
+                                or exception_type(value_type) is not None
+                                # Rendered collection annotations discard the
+                                # resolved identity of exception item types.
+                                or value_type.generic_name in {"dict", "list", "tuple"}
+                            )
+                            else self.annotation(statement.annotation)
                         )
-                        else self.annotation(statement.annotation)
-                    )
                     storage_format = self.local_numeric_format(statement.target)
                     add(
                         self.target_name(statement.target),
@@ -4503,7 +4512,7 @@ class JVMEmitter:
             value_descriptor
         ):
             raise JVMUnsupported(
-                "JVM dictionaries currently require reference key and value types",
+                "JVM dictionaries require reference key and value types",
                 source,
             )
         return key_type, value_descriptor

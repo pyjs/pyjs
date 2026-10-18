@@ -849,7 +849,7 @@ def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
 
 
 def test_union_key_representation_contract_has_explicit_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="dictionaries require reference key and value types"):
         transpile_jvm(UNION_KEY_REPRESENTATION_CONTRACT.source)
 
 

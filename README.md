@@ -582,7 +582,9 @@ with `pyjs template`.
   Normal exits receive three `None` values. Nullable Boolean results preserve
   the distinction between `None`, `False` and `True`.
   Native exception construction requires an explicit Java constructor
-  declaration; Python's inherited initializer does not specify Java overloads.
+  declaration. Python's base-exception initializer does not specify Java
+  overloads; inherited native declarations are trusted to describe the actual
+  Java constructor signatures.
   Custom Python exception raising, chaining, `.args`, literal `None` messages
   and `UnicodeDecodeError` payloads remain unsupported. Explicit
   reraising keeps the original JVM stack trace rather than adding a Python

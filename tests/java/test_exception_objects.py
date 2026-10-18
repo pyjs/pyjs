@@ -48,6 +48,51 @@ def main() -> str:
 ''', tmp_path)
 
 
+@pytest.mark.parametrize(("declaration", "initial"), [
+    ("errors", '{"first": saved}'),
+    ("errors: dict[str, ValueError]", '{"first": saved}'),
+    ("errors: dict[str, ValueError]", "{}"),
+])
+def test_owned_exception_dictionary_locals_keep_resolved_types(tmp_path, declaration, initial):
+    assert_text_matches_python(f'''
+def main() -> str:
+    saved = ValueError("saved")
+    {declaration} = {initial}
+    errors["second"] = saved
+    messages: list[str] = []
+    for attempt in range(2):
+        try:
+            raise errors["second"]
+        except ValueError as error:
+            assert error is saved
+            messages.append(str(error))
+    return "|".join(messages)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("annotation", ["ValueError | None", "Optional[ValueError]", "BaseException | None"])
+def test_optional_owned_exception_local_starts_and_resets_to_none(tmp_path, annotation):
+    assert_text_matches_python(f'''
+from typing import Optional
+
+def main() -> str:
+    pending: {annotation} = None
+    messages: list[str] = []
+    for message in ["first", "second"]:
+        assert pending is None
+        pending = ValueError(message)
+        if pending is not None:
+            try:
+                raise pending
+            except ValueError as error:
+                assert error is pending
+                messages.append(str(error))
+        pending = None
+    assert pending is None
+    return "|".join(messages)
+''', tmp_path)
+
+
 @pytest.mark.parametrize("kind", ["ValueError", "KeyError", "SyntaxError"])
 def test_nullable_string_payload_distinguishes_none_from_omission(tmp_path, kind):
     assert_text_matches_python(f'''
