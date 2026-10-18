@@ -576,6 +576,13 @@ with `pyjs template`.
   that distinction. Isolated surrogates are escaped.
   Other reference-key lookups are catchable but currently use the generic
   message `key not found`; original exception payloads remain unsupported.
+- JVM list membership supports matching integer or Boolean items; strings,
+  floats and mixed item domains remain explicit unsupported boundaries.
+  Dictionary membership checks keys, including nullable strings/Booleans,
+  independently of their values. Existing reference-key storage restrictions
+  still apply. Membership syntax evaluates the needle before the container,
+  including application and declared native `__contains__` methods. Explicit
+  method calls retain receiver-first evaluation order.
 - JVM synchronous context managers support nested cleanup, suppression and
   abrupt exits. Exceptional `__exit__` calls receive a Java class token, the
   actual throwable and a JVM stack-trace array, not Python traceback objects.

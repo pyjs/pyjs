@@ -2728,6 +2728,39 @@ EMPTY_LITERAL_SUM_CONTRACT = _contract(
 )
 
 
+INTEGER_LIST_MEMBERSHIP_CONTRACT = _contract(
+    "from pyjs import js",
+    "integer_list_membership_contract",
+    '''
+    values = [-12, 0, 42, 999]
+    empty: list[int] = []
+    flags = [False]
+    ''',
+    (
+        ("values across the list", "-12 not in values or 999 not in values"),
+        ("missing items and empty lists", "7 in values or 0 in empty"),
+        ("boolean storage", "False not in flags or True in flags"),
+        ("explicit method", "not values.__contains__(42)"),
+    ),
+)
+
+
+STRING_DICTIONARY_MEMBERSHIP_CONTRACT = _contract(
+    "from pyjs import js",
+    "string_dictionary_membership_contract",
+    '''
+    values: dict[str, str] = {"present": "", "other": "value"}
+    empty: dict[str, str] = {}
+    ''',
+    (
+        ("empty values still have keys", '"present" not in values'),
+        ("membership inspects keys, not values", '"value" in values'),
+        ("empty dictionaries", '"present" in empty'),
+        ("explicit method", 'not values.__contains__("other")'),
+    ),
+)
+
+
 MEMBERSHIP_ORDER_CONTRACT = _contract(
     """
     from pyjs import int64, js

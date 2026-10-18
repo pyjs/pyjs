@@ -476,9 +476,13 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
 
 @pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message", "owned-value"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
+    assert_compiles_to_android_dex(contract.source, tmp_path)
+
+
+def assert_compiles_to_android_dex(source, tmp_path):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
-    transpile_jvm(contract.source).write(classes)
+    transpile_jvm(source).write(classes)
     dex = tmp_path / "dex"
     dex.mkdir()
     result = subprocess.run(
