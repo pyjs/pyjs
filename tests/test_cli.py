@@ -255,7 +255,7 @@ def test_version_prints_installed_version(capsys):
 
 
 def test_command_string_runs_generated_javascript(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,
@@ -480,7 +480,7 @@ def test_json_compilation_error_is_structured(monkeypatch, capsys):
 
 
 def test_verbose_mode_labels_source_and_node_output(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,
@@ -498,7 +498,7 @@ def test_verbose_mode_labels_source_and_node_output(monkeypatch, capsys):
 
 
 def test_direct_json_contains_runtime_result(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,
@@ -513,7 +513,7 @@ def test_direct_json_contains_runtime_result(monkeypatch, capsys):
     assert result["node"] == {
         "version": node.version,
         "path": str(node.executable),
-        "selection": "managed",
+        "selection": "argument",
     }
     assert result["stdout"] == "hello\n"
     assert "console.log('hello')" in result["sources"][".js"]
@@ -521,7 +521,7 @@ def test_direct_json_contains_runtime_result(monkeypatch, capsys):
 
 
 def test_browser_module_node_failure_has_an_actionable_hint(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,
@@ -543,7 +543,7 @@ def test_browser_module_node_failure_has_an_actionable_hint(monkeypatch, capsys)
 
 
 def test_successful_node_execution_does_not_reinterpret_stderr(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     stderr = "ReferenceError: document is not defined\n"
     monkeypatch.setattr(
@@ -558,7 +558,7 @@ def test_successful_node_execution_does_not_reinterpret_stderr(monkeypatch, caps
 
 
 def test_verbose_browser_module_failure_retains_node_stderr(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     stderr = "ReferenceError: HTMLElement is not defined\n    at app.js:2:1\n"
     monkeypatch.setattr(
@@ -578,7 +578,7 @@ def test_verbose_browser_module_failure_retains_node_stderr(monkeypatch, capsys)
 
 
 def test_json_browser_module_failure_retains_stderr_and_hint(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     stderr = "ReferenceError: window is not defined\n    at app.js:3:1\n"
     monkeypatch.setattr(
@@ -598,7 +598,7 @@ def test_json_browser_module_failure_retains_stderr_and_hint(monkeypatch, capsys
 
 
 def test_perf_json_compares_python_and_javascript(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     calls = []
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
@@ -630,7 +630,7 @@ def test_perf_json_compares_python_and_javascript(monkeypatch, capsys):
 
 
 def test_perf_auto_calibration_uses_one_common_loop_count(monkeypatch, capsys):
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     calls = []
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(cli, "calibrate_python", lambda function: 20)
@@ -669,7 +669,7 @@ def test_perf_auto_calibration_uses_one_common_loop_count(monkeypatch, capsys):
 def test_python_file_runs_as_javascript(tmp_path, monkeypatch, capsys):
     source = tmp_path / "example.py"
     source.write_text("def main():\n    print(7)\n", encoding="utf-8")
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     generated = {}
     monkeypatch.setattr(cli, "Node", lambda: node)
 
@@ -688,7 +688,7 @@ def test_python_file_runs_as_javascript(tmp_path, monkeypatch, capsys):
 def test_python_file_without_main_runs_as_a_script(tmp_path, monkeypatch, capsys):
     source = tmp_path / "example.py"
     source.write_text("print(9)\n", encoding="utf-8")
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,
@@ -706,7 +706,7 @@ def test_module_runs_as_javascript(tmp_path, monkeypatch, capsys):
         "def main():\n    print('module')\n", encoding="utf-8"
     )
     monkeypatch.syspath_prepend(tmp_path)
-    node = cli.Node()
+    node = cli.Node(executable="test-node")
     monkeypatch.setattr(cli, "Node", lambda: node)
     monkeypatch.setattr(
         node,

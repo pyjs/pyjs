@@ -1,15 +1,12 @@
 import os
 import platform
-import shutil
 import subprocess
-import tarfile
 import tempfile
-import urllib.request
-import zipfile
 from pathlib import Path
 
+from sdkmgr import Manager, SDKError
+
 from .command import CommandRunner
-from .download import verify_sha256
 
 NODE_VERSION = "24.18.1"
 MIN_NODE_MAJOR = 20
@@ -31,7 +28,7 @@ class Node:
         executable: str | Path | None = None,
     ):
         self.version = version
-        self.root = root or cache_root() / "tooling" / "node"
+        self.root = root
         self.runner = runner or CommandRunner()
         environment_executable = os.environ.get("PYJS_NODE")
         selected_executable = (
@@ -47,56 +44,52 @@ class Node:
         else:
             self.selection = "managed"
         self._override_checked = False
+        self._installation = None
 
-    @property
-    def platform_name(self) -> str:
-        system = platform.system()
-        machine = platform.machine().lower()
-        architectures = {
-            "x86_64": "x64",
-            "amd64": "x64",
-            "aarch64": "arm64",
-            "arm64": "arm64",
-        }
+    def _managed(self, *, install: bool = False):
+        if self._installation is not None:
+            return self._installation
+        if os.environ.get("PYJS_NODE_MIRROR"):
+            raise RuntimeError(
+                "PYJS_NODE_MIRROR is no longer used. Configure your mise/nvm "
+                "provider's mirror, or select an existing runtime with PYJS_NODE."
+            )
+        manager = Manager(self.root, interactive=False)
         try:
-            architecture = architectures[machine]
-        except KeyError:
-            raise RuntimeError(f"Node is not available for architecture {machine!r}.") from None
-        systems = {"Linux": "linux", "Darwin": "darwin", "Windows": "win"}
-        try:
-            return f"{systems[system]}-{architecture}"
-        except KeyError:
-            raise RuntimeError(f"Node is not available for {system!r}.") from None
+            self._installation = (manager.ensure if install else manager.find)(
+                "node", version=self.version,
+            )
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
+        if self._installation is None:
+            raise RuntimeError(
+                f"Node {self.version} is not installed. Call Node.ensure() or "
+                f"run sdkmgr install node@{self.version}."
+            )
+        return self._installation
 
     @property
     def home(self) -> Path:
         if self._executable is not None:
             return self._executable.parent
-        return self.root / f"v{self.version}-{self.platform_name}"
+        return self._managed().home
 
     @property
     def executable(self) -> Path:
         if self._executable is not None:
             return self._executable
-        name = "node.exe" if platform.system() == "Windows" else "node"
-        return self.home / ("node.exe" if platform.system() == "Windows" else f"bin/{name}")
+        return self._managed().executable()
 
     @property
     def npm_executable(self) -> Path:
         if self._executable is not None:
             name = "npm.cmd" if platform.system() == "Windows" else "npm"
             return self._executable.with_name(name)
-        if platform.system() == "Windows":
-            return self.home / "npm.cmd"
-        return self.home / "bin/npm"
+        return self._managed().executable("npm")
 
     @property
     def bin_directory(self) -> Path:
-        if self._executable is not None:
-            return self._executable.parent
-        if platform.system() == "Windows":
-            return self.home
-        return self.home / "bin"
+        return self.executable.parent
 
     def environment(self) -> dict[str, str]:
         return {"PATH": f"{self.bin_directory}{os.pathsep}{os.environ.get('PATH', '')}"}
@@ -104,38 +97,7 @@ class Node:
     def ensure(self) -> Path:
         if self._executable is not None:
             return self._ensure_override()
-        if self.executable.exists() and self.npm_executable.exists():
-            return self.home
-
-        self.root.mkdir(parents=True, exist_ok=True)
-        suffixes = {"Windows": "zip", "Darwin": "tar.gz", "Linux": "tar.xz"}
-        try:
-            suffix = suffixes[platform.system()]
-        except KeyError:
-            raise RuntimeError(f"Node is not available for {platform.system()!r}.") from None
-        archive_name = f"node-v{self.version}-{self.platform_name}.{suffix}"
-        base_url = self.download_base_url()
-
-        with tempfile.TemporaryDirectory(dir=self.root) as temporary:
-            temporary_path = Path(temporary)
-            archive = temporary_path / archive_name
-            checksums = temporary_path / "SHASUMS256.txt"
-            urllib.request.urlretrieve(f"{base_url}/{archive_name}", archive)
-            urllib.request.urlretrieve(f"{base_url}/SHASUMS256.txt", checksums)
-            verify_sha256(archive, checksums)
-            extracted = self._extract(archive, temporary_path)
-            if self.home.exists():
-                shutil.rmtree(self.home)
-            extracted.replace(self.home)
-        return self.home
-
-    def download_base_url(self) -> str:
-        mirror = (
-            os.environ.get("PYJS_NODE_MIRROR")
-            or os.environ.get("NODEJS_ORG_MIRROR")
-            or "https://nodejs.org/dist"
-        )
-        return f"{mirror.rstrip('/')}/v{self.version}"
+        return self._managed(install=True).home
 
     def _ensure_override(self) -> Path:
         if self._override_checked:
@@ -191,18 +153,6 @@ class Node:
                 capture_output=True,
                 check=False,
             )
-
-    def _extract(self, archive: Path, destination: Path) -> Path:
-        directory_name = (
-            archive.name.removesuffix(".zip").removesuffix(".tar.xz").removesuffix(".tar.gz")
-        )
-        if archive.suffix == ".zip":
-            with zipfile.ZipFile(archive) as source:
-                source.extractall(destination)
-        else:
-            with tarfile.open(archive) as source:
-                source.extractall(destination, filter="data")
-        return destination / directory_name
 
 
 class Npm:

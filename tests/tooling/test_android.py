@@ -10,6 +10,54 @@ from pyjs.tooling.android import AndroidDevice, AndroidSDK
 from pyjs.tooling.android_jvm import AndroidJVMApplication, AndroidJVMBuilder
 
 
+def test_java_discovery_uses_sdkmgr_without_installing(monkeypatch, tmp_path):
+    manager = Mock()
+    manager.find.return_value.home = tmp_path / "jdk"
+    factory = Mock(return_value=manager)
+    monkeypatch.setattr("pyjs.tooling.android.Manager", factory)
+
+    assert AndroidSDK.find_java_home() == tmp_path / "jdk"
+    factory.assert_called_once_with(interactive=False)
+    manager.find.assert_called_once_with("java", version="21")
+    manager.ensure.assert_not_called()
+
+
+def test_missing_java_provides_sdkmgr_instructions(monkeypatch):
+    manager = Mock()
+    manager.find.return_value = None
+    monkeypatch.setattr("pyjs.tooling.android.Manager", Mock(return_value=manager))
+    with pytest.raises(RuntimeError, match="sdkmgr install java@21"):
+        AndroidSDK.find_java_home()
+    manager.ensure.assert_not_called()
+
+
+def test_sdk_discovery_reuses_packages_without_a_management_cli(monkeypatch, tmp_path):
+    import sys
+
+    adb = tmp_path / "platform-tools" / ("adb.exe" if sys.platform == "win32" else "adb")
+    adb.parent.mkdir()
+    adb.touch()
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path))
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    assert AndroidSDK.find_root() == tmp_path
+    assert not (tmp_path / "cmdline-tools").exists()
+
+
+def test_conflicting_android_roots_are_not_silently_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path / "first"))
+    monkeypatch.setenv("ANDROID_SDK_ROOT", str(tmp_path / "second"))
+    with pytest.raises(RuntimeError, match="disagree"):
+        AndroidSDK.find_root()
+
+
+def test_missing_android_sdk_does_not_install_packages(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path / "missing"))
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    with pytest.raises(RuntimeError, match="sdkmgr android install"):
+        AndroidSDK.find_root()
+    assert not (tmp_path / "missing").exists()
+
+
 def test_android_sdk_parses_adb_devices():
     runner = Mock()
     runner.run.return_value = subprocess.CompletedProcess(
@@ -105,6 +153,33 @@ def test_android_sdk_starts_managed_headless_emulators_without_snapshots():
         "-no-audio",
         "-no-boot-anim",
     ]
+
+
+def test_existing_emulator_waits_for_boot_instead_of_only_adb(monkeypatch):
+    runner = Mock()
+    runner.run.side_effect = [
+        subprocess.CompletedProcess([], 0, stdout=""),
+        subprocess.CompletedProcess([], 0, stdout="1\n"),
+    ]
+    sdk = AndroidSDK(Path("/android"), Path("/java"), runner)
+    device = AndroidDevice("emulator-5554", "device")
+    sdk.devices = Mock(return_value=[device])
+    monkeypatch.setattr("pyjs.tooling.android.time.sleep", lambda _: None)
+    assert sdk.ensure_emulator() == device
+    assert runner.run.call_count == 2
+    assert all(call.args[0][1:5] == ["-s", device.identifier, "shell", "getprop"]
+               for call in runner.run.call_args_list)
+    runner.start.assert_not_called()
+
+
+def test_emulator_wait_does_not_select_physical_devices(monkeypatch):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("physical", "device")])
+    monkeypatch.setattr("pyjs.tooling.android.time.monotonic", Mock(side_effect=[0, 0, 0, 2]))
+    monkeypatch.setattr("pyjs.tooling.android.time.sleep", lambda _: None)
+    with pytest.raises(TimeoutError, match="did not finish booting"):
+        sdk.wait_for_emulator(timeout=1)
+    sdk.runner.run.assert_not_called()
 
 
 def test_android_jvm_application_derives_package_qualified_names():

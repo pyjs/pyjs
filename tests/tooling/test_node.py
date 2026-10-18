@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from sdkmgr import Installation, SDKError
+from sdkmgr.providers import Platform
 
 from pyjs.tooling.download import verify_sha256
 from pyjs.tooling.node import Node, Npm
@@ -27,16 +29,42 @@ def test_node_import_does_not_load_the_llvm_backend():
     assert result.stdout == "False\n"
 
 
-def test_node_uses_platform_archive_name(monkeypatch, tmp_path):
-    monkeypatch.setattr("platform.system", lambda: "Linux")
-    monkeypatch.setattr("platform.machine", lambda: "x86_64")
-
+@pytest.mark.parametrize("system", ["linux", "macos", "windows"])
+def test_node_delegates_provisioning_to_sdkmgr(monkeypatch, tmp_path, system):
+    installation = Installation("node", "24.18.1", tmp_path / "provider", Platform(system, "x64"))
+    manager = Mock()
+    manager.ensure.return_value = installation
+    factory = Mock(return_value=manager)
+    monkeypatch.setattr("pyjs.tooling.node.Manager", factory)
+    monkeypatch.delenv("PYJS_NODE", raising=False)
     node = Node(version="24.18.1", root=tmp_path)
+    factory.assert_not_called()
+    assert node.ensure() == installation.home
+    assert node.ensure() == installation.home
+    factory.assert_called_once_with(tmp_path, interactive=False)
+    manager.ensure.assert_called_once_with("node", version="24.18.1")
+    assert node.home == installation.home
+    assert node.executable == node.home / ("node.exe" if system == "windows" else "bin/node")
+    assert node.npm_executable == node.home / ("npm.cmd" if system == "windows" else "bin/npm")
 
-    assert node.platform_name == "linux-x64"
-    assert node.home == tmp_path / "v24.18.1-linux-x64"
-    assert node.executable == node.home / "bin/node"
-    assert node.npm_executable == node.home / "bin/npm"
+
+def test_node_path_discovery_never_installs(monkeypatch):
+    manager = Mock()
+    manager.find.return_value = None
+    monkeypatch.setattr("pyjs.tooling.node.Manager", Mock(return_value=manager))
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    with pytest.raises(RuntimeError, match="Call Node.ensure"):
+        Node().executable
+    manager.ensure.assert_not_called()
+
+
+def test_sdkmgr_failure_keeps_cli_runtime_error_contract(monkeypatch):
+    manager = Mock()
+    manager.ensure.side_effect = SDKError("provider failed")
+    monkeypatch.setattr("pyjs.tooling.node.Manager", Mock(return_value=manager))
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    with pytest.raises(RuntimeError, match="provider failed"):
+        Node().ensure()
 
 
 def test_download_verifies_published_checksum(tmp_path):
@@ -54,6 +82,7 @@ def test_download_verifies_published_checksum(tmp_path):
 
 
 def test_node_uses_an_explicit_environment_executable(monkeypatch, tmp_path):
+    monkeypatch.setattr("pyjs.tooling.node.Manager", lambda *a, **kw: pytest.fail("Explicit runtime"))
     executable = tmp_path / "bin/node"
     executable.parent.mkdir()
     executable.write_text("node", encoding="utf-8")
@@ -97,13 +126,11 @@ def test_node_rejects_an_old_explicit_version(tmp_path):
         Node(executable=executable, runner=runner).ensure()
 
 
-def test_node_download_mirror_prefers_the_pyjs_override(monkeypatch):
-    monkeypatch.setenv("NODEJS_ORG_MIRROR", "https://node.example/dist/")
-    node = Node(version="24.18.1")
-    assert node.download_base_url() == "https://node.example/dist/v24.18.1"
-
+def test_obsolete_pyjs_mirror_is_not_silently_ignored(monkeypatch):
+    monkeypatch.delenv("PYJS_NODE", raising=False)
     monkeypatch.setenv("PYJS_NODE_MIRROR", "https://pyjs.example/node")
-    assert node.download_base_url() == "https://pyjs.example/node/v24.18.1"
+    with pytest.raises(RuntimeError, match="provider's mirror"):
+        Node().ensure()
 
 
 def test_node_runs_javascript_as_an_ecmascript_module(tmp_path):
@@ -116,7 +143,7 @@ def test_node_runs_javascript_as_an_ecmascript_module(tmp_path):
         return runner.run.return_value
 
     runner.run.side_effect = capture_source
-    node = Node(root=tmp_path, runner=runner)
+    node = Node(executable=tmp_path / "node", runner=runner)
     node.ensure = Mock(return_value=node.home)
 
     result = node.run_javascript("console.log('hello');")
@@ -146,7 +173,7 @@ def test_node_checks_ecmascript_module_syntax():
 
 
 def test_npm_can_save_exact_project_dependencies(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()
@@ -162,7 +189,7 @@ def test_npm_can_save_exact_project_dependencies(tmp_path):
 
 
 def test_npm_syncs_an_existing_managed_project(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()
@@ -181,7 +208,7 @@ def test_npm_syncs_an_existing_managed_project(tmp_path):
 
 
 def test_npm_bundles_with_the_managed_esbuild(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()

@@ -4,6 +4,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from sdkmgr import Manager, SDKError
+from sdkmgr.android import sdk_root
+
 from .command import CommandRunner
 
 
@@ -26,30 +29,33 @@ class AndroidSDK:
 
     @staticmethod
     def find_root() -> Path:
-        configured = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
-        candidates = [
-            Path(configured) if configured else None,
-            Path.home() / "Android" / "Sdk",
-            Path.home() / "Library" / "Android" / "sdk",
-        ]
-        for candidate in candidates:
-            if candidate and (candidate / "platform-tools" / "adb").exists():
-                return candidate
-        raise RuntimeError("Android SDK not found. Set ANDROID_HOME or install the Android SDK.")
+        # Building/using an installed SDK does not require an installer CLI.
+        # In particular, keep SDKs provided by Android Studio and CI reusable.
+        manager = Manager(interactive=False)
+        try:
+            root = sdk_root(manager.platform)
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
+        suffix = ".exe" if manager.platform.system == "windows" else ""
+        if (root / "platform-tools" / f"adb{suffix}").is_file():
+            return root
+        raise RuntimeError(
+            "Android SDK not found. Install packages with sdkmgr android install "
+            "after accepting their licenses, or set ANDROID_HOME to an existing SDK."
+        )
 
     @staticmethod
     def find_java_home() -> Path:
-        configured = os.environ.get("JAVA_HOME")
-        candidates = [
-            Path(configured) if configured else None,
-            Path.home() / ".local/share/JetBrains/Toolbox/apps/android-studio/jbr",
-            Path("/opt/android-studio/jbr"),
-            Path("/Applications/Android Studio.app/Contents/jbr/Contents/Home"),
-        ]
-        for candidate in candidates:
-            if candidate and (candidate / "bin" / "javac").exists():
-                return candidate
-        raise RuntimeError("JDK not found. Set JAVA_HOME to a JDK containing javac.")
+        try:
+            installation = Manager(interactive=False).find("java", version="21")
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
+        if installation is not None:
+            return installation.home
+        raise RuntimeError(
+            "JDK 21 not found. Run sdkmgr install java@21, or set JAVA_HOME "
+            "to an existing JDK 21."
+        )
 
     @property
     def adb(self) -> Path:
@@ -99,11 +105,12 @@ class AndroidSDK:
             "PATH": os.pathsep.join(map(str, paths)) + os.pathsep + os.environ.get("PATH", ""),
         }
 
-    def devices(self) -> list[AndroidDevice]:
+    def devices(self, *, timeout: float = 10) -> list[AndroidDevice]:
         result = self.runner.run(
             [self.adb, "devices"],
             environment=self.environment(),
             capture_output=True,
+            timeout=timeout,
         )
         devices = []
         for line in result.stdout.splitlines()[1:]:
@@ -140,16 +147,18 @@ class AndroidSDK:
             detached=True,
         )
 
-    def wait_for_emulator(self, timeout: float = 180) -> AndroidDevice:
+    def wait_for_emulator(self, timeout: float = 180, *, identifier: str | None = None) -> AndroidDevice:
         deadline = time.monotonic() + timeout
-        self.runner.run([self.adb, "wait-for-device"], environment=self.environment())
         while time.monotonic() < deadline:
-            devices = [device for device in self.devices() if device.state == "device"]
+            devices = [device for device in self.devices(timeout=max(0.1, deadline - time.monotonic()))
+                       if device.state == "device" and device.identifier.startswith("emulator-")
+                       and (identifier is None or device.identifier == identifier)]
             for device in devices:
                 result = self.runner.run(
                     [self.adb, "-s", device.identifier, "shell", "getprop", "sys.boot_completed"],
                     environment=self.environment(),
                     capture_output=True,
+                    timeout=max(0.1, deadline - time.monotonic()),
                 )
                 if result.stdout.strip() == "1":
                     return device
@@ -164,7 +173,7 @@ class AndroidSDK:
     ) -> AndroidDevice:
         for device in self.devices():
             if device.state == "device" and device.identifier.startswith("emulator-"):
-                return device
+                return self.wait_for_emulator(identifier=device.identifier)
         avd = name or next(iter(self.avds()), None)
         if avd is None:
             raise RuntimeError("No Android virtual devices are configured.")

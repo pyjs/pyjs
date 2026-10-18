@@ -35,6 +35,46 @@ patch. Keep PR descriptions focused on purpose, behavior, and compatibility
 limits. Do not include local test commands, pass counts, environment reports,
 or CI summaries; GitHub checks provide the test evidence.
 
+## Java and Android setup
+
+PyJS depends on [sdkmgr](https://github.com/pyjs/sdkmgr) for toolchain discovery
+and provisioning. From the synced environment:
+
+```bash
+uv run sdkmgr install java@21
+uv run sdkmgr android list
+```
+
+After reviewing and accepting Google's SDK and requested package licenses:
+
+```bash
+uv run sdkmgr android install --accept-sdk-license \
+  platform-tools platforms/android-35 build-tools/35.0.0
+```
+
+This installs missing packages without replacing existing tools. For device
+tests, also install `emulator` and a matching system image (for example
+`system-images/android-35/google_apis/x86_64`), then create an AVD with Google's
+tools. Android CLI's device profiles may select a newer system image; use
+`avdmanager` with an explicit package to keep the device on a particular API.
+The CLI location is discoverable via `Manager().find_android().tools`.
+APK signing needs `~/.android/debug.keystore`, created by Android Studio or
+`keytool` with Android's standard debug credentials. sdkmgr does not create
+signing keys or start emulators.
+
+`AndroidSDK()` discovers JDK 21 through sdkmgr, including installations on
+`PATH`; it no longer requires Android Studio or a manually set `JAVA_HOME`.
+SDK roots follow sdkmgr's platform defaults and the `ANDROID_HOME` and
+`ANDROID_SDK_ROOT` variables. Conflicting roots are errors. Android builds and
+test discovery never provision Java/SDK packages or accept licenses; missing
+dependencies report setup instructions. Explicit
+`AndroidSDK(root=..., java_home=...)` paths remain supported.
+
+Keep GitHub's Java/Node setup actions and the existing Android setup/emulator
+actions for hosted runners. sdkmgr discovers their installed JDK/SDK tools;
+the Python integration is exercised by the same test suite. Do not replace
+runner caching or emulator lifecycle handling with another installer.
+
 ## Pull-request CI
 
 Every PR runs the full Linux corpus plus targeted Windows/macOS coverage on
