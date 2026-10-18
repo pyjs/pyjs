@@ -103,6 +103,7 @@ def test_native_json_and_ir(tmp_path):
 
 @pytest.mark.parametrize("source,matches", [
     ("print(sum([1, 2, 3]))\n", True),
+    ("print('héllo\\r\\nworld')\n", True),
     ("def main() -> str: return 'native return value'\n", False),
 ])
 def test_native_performance_compares_real_processes(tmp_path, source, matches):
@@ -153,7 +154,7 @@ def test_native_cli_diagnostics(tmp_path, arguments, message):
 def test_performance_retains_an_earlier_mismatch(monkeypatch, capsys):
     from types import SimpleNamespace
 
-    from pyjs.native.cli import _perf
+    from pyjs.native.cli import _PYTHON_BINARY_STDIO, _perf
 
     results = iter((b"good\n", b"bad\n", b"good\n", b"good\n"))
     commands = []
@@ -171,5 +172,33 @@ def test_performance_retains_an_earlier_mismatch(monkeypatch, capsys):
     assert (mismatch["run"], mismatch["target"], mismatch["actual"]["stdout"]) == (1, "native", "bad\n")
     assert mismatch["expected"]["stdout"] == "good\n"
     assert report["performance"]["python_to_native_ratio"] is None
-    assert commands[0] == commands[3] == [sys.executable, "-c", "pass"]
+    python_command = [sys.executable, "-c", "pass"]
+    if sys.platform == "win32":
+        python_command = [sys.executable, "-c", _PYTHON_BINARY_STDIO, "-c", "pass"]
+    assert commands[0] == commands[3] == python_command
     assert commands[1] == commands[2] == [Path("program")]
+
+
+@pytest.mark.parametrize("mode", ["file", "module", "command", "stdin"])
+def test_binary_stdio_launcher_preserves_source_modes_and_bytes(tmp_path, mode):
+    from pyjs.native.cli import _PYTHON_BINARY_STDIO
+
+    # Exercise the Windows launcher on every host, including imports from a
+    # different script directory. Raw CR/LF must survive, not be normalized.
+    text = "print('héllo\\r\\nworld')\n"
+    if mode == "file":
+        project = tmp_path / "sub directory"
+        project.mkdir()
+        (project / "helper.py").write_text(text, encoding="utf-8")
+        source = project / "program.py"
+        source.write_text("import helper\n", encoding="utf-8")
+        arguments = [str(source)]
+    elif mode == "module":
+        (tmp_path / "sample.py").write_text(text, encoding="utf-8")
+        arguments = ["-m", "sample"]
+    else:
+        arguments = ["-c", text] if mode == "command" else ["-"]
+    result = subprocess.run([sys.executable, "-c", _PYTHON_BINARY_STDIO, *arguments],
+                            cwd=tmp_path, capture_output=True, timeout=10,
+                            input=text.encode("utf-8") if mode == "stdin" else None)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "héllo\r\nworld\n".encode(), b"")

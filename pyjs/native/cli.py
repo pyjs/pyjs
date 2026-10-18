@@ -14,6 +14,36 @@ from pyjs.native.platform import binary_suffix
 from pyjs.tooling.llvm import LLVM
 from pyjs.tooling.perf import Benchmark
 
+# Windows CPython text streams otherwise translate LF to CRLF and can use a
+# legacy encoding; native streams are UTF-8/binary. Configure the reference
+# process, rather than normalizing captured bytes and hiding real differences.
+# This small launcher runs only on Windows; its startup is included in timing.
+_PYTHON_BINARY_STDIO = """\
+import sys
+sys.stdout.reconfigure(encoding="utf-8", newline="")
+sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace", newline="")
+arguments = sys.argv[1:]
+mode = arguments[0]
+if mode == "-m":
+    import runpy
+    sys.argv = arguments[1:]
+    runpy.run_module(sys.argv[0], run_name="__main__", alter_sys=True)
+elif mode in ("-c", "-"):
+    source = arguments[1] if mode == "-c" else sys.stdin.buffer.read().decode("utf-8")
+    filename = "<string>" if mode == "-c" else "<stdin>"
+    sys.argv = [mode]
+    namespace = {"__name__": "__main__", "__package__": None, "__spec__": None}
+    if mode == "-":
+        namespace["__file__"] = filename
+    exec(compile(source, filename, "exec"), namespace)
+else:
+    import os
+    import runpy
+    sys.argv = arguments
+    sys.path[0] = os.path.dirname(os.path.abspath(mode))
+    runpy.run_path(mode, run_name="__main__")
+"""
+
 
 @contextmanager
 def _source_path(program, *, is_file):
@@ -112,6 +142,8 @@ def _perf(args, program, executable, compilation):
         python_command = [sys.executable, "-c", program.source]
     else:
         python_command = [sys.executable, args.source]
+    if sys.platform == "win32":
+        python_command = [sys.executable, "-c", _PYTHON_BINARY_STDIO, *python_command[1:]]
     commands = {"python": python_command, "native": [executable]}
     samples = {"python": [], "native": []}
     outputs = {}
@@ -150,6 +182,7 @@ def _perf(args, program, executable, compilation):
             "python_to_native_ratio": ratio,
             "scope": "whole process, including startup and output; compilation excluded",
             "python_version": sys.version.split()[0],
+            "python_stdio": "UTF-8 without newline translation" if sys.platform == "win32" else "default",
         },
     }
     if args.json:
@@ -159,6 +192,8 @@ def _perf(args, program, executable, compilation):
         print(f"Output matches: {'yes' if matches else 'NO'}")
         if matches:
             print(outputs["python"]["stdout"], end="")
+            if sys.platform == "win32":
+                print("CPython launcher configures UTF-8/binary newlines; launcher startup included.")
             print(f"Median of {args.samples} runs after {args.warmups} warmups (process startup included):")
             print(f"  CPython {sys.version.split()[0]}: {statistics['python']['median'] * 1000:.3f} ms")
             print(f"  Native: {statistics['native']['median'] * 1000:.3f} ms")

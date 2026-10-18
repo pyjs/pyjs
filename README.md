@@ -155,6 +155,9 @@ when you reuse the binary or run a larger workload. `--perf` alternates which
 program runs first, includes process startup and captured output for both,
 and excludes compilation and the PyJS CLI's startup from execution timings.
 Use `--samples N`, `--warmups N` or `--json` to inspect your own results.
+On Windows a small CPython launcher configures UTF-8 output without newline
+translation to match native output; its startup is included. Captured output
+is compared byte-for-byte, not normalized after execution.
 
 Keep an executable to run repeatedly without recompiling:
 

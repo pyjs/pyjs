@@ -133,7 +133,8 @@ def test_readme_native_example(tmp_path):
     assert main(["build", "--target", "native", str(path), "-o", str(output)]) == 0
     python = subprocess.run([sys.executable, path], capture_output=True, timeout=30)
     native = subprocess.run([output], capture_output=True, timeout=30)
-    assert (python.returncode, python.stdout, python.stderr) == (0, b"148933\n", b"")
+    newline = b"\r\n" if sys.platform == "win32" else b"\n"
+    assert (python.returncode, python.stdout, python.stderr) == (0, b"148933" + newline, b"")
     assert (native.returncode, native.stdout, native.stderr) == (0, b"148933\n", b"")
 
 
