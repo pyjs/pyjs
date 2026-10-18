@@ -1,3 +1,4 @@
+import builtins
 import subprocess
 from textwrap import dedent
 
@@ -9,6 +10,7 @@ from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
 from tests.backend_semantics import (
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
+    EXCEPTION_HIERARCHIES,
 )
 from tests.java.test_android import android_sdk
 from tests.java.test_jvm import java
@@ -293,6 +295,29 @@ def test_base_exception_is_not_exception(tmp_path):
                 return 1
             except:
                 return 42
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize(("name", "parent", "sibling"), EXCEPTION_HIERARCHIES)
+@pytest.mark.parametrize("arguments", [(), ("",), ("message",)],
+                         ids=["omitted", "empty", "message"])
+def test_extended_builtin_hierarchy_and_messages(tmp_path, name, parent, sibling, arguments):
+    expected = str(getattr(builtins, name)(*arguments))
+    argument = repr(arguments[0]) if arguments else ""
+    assert_matches_python(f'''
+        def main() -> int:
+            try:
+                try:
+                    raise {name}({argument})
+                except {sibling}:
+                    return 1
+                except {parent} as error:
+                    if str(error) != {expected!r}:
+                        return 2
+                    raise
+            except {name} as saved:
+                return 0 if str(saved) == {expected!r} else 3
+            return 4
     ''', tmp_path)
 
 

@@ -2775,7 +2775,11 @@ class JVMEmitter:
         index = self.class_file.constants.class_(name)
         self.code.emit(0xBB, index.to_bytes(2, "big"))
         self.code.emit(0x59)
-        message = node.message if node.message is not None else ast.Constant(value="")
+        message = node.message
+        if message is None:
+            # SyntaxError distinguishes an omitted message from empty text.
+            syntax_error = issubclass(exception_type(node.value_type), native_builtins._SyntaxError)
+            message = ast.Constant(value="None" if syntax_error else "")
         if self.expression(message) != "Ljava/lang/String;":
             raise JVMUnsupported("JVM exception messages must be strings", message)
         constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")

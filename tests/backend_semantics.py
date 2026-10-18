@@ -1873,6 +1873,36 @@ EAGER_COLLECTION_CONTRACT = _contract(
 )
 
 
+# Each row tests the immediate parent and a sibling/child that must not catch it.
+EXCEPTION_HIERARCHIES = (
+    ("FloatingPointError", "ArithmeticError", "OverflowError"),
+    ("NotImplementedError", "RuntimeError", "RecursionError"),
+    ("ImportError", "Exception", "ModuleNotFoundError"),
+    ("ModuleNotFoundError", "ImportError", "NameError"),
+    ("SyntaxError", "Exception", "IndentationError"),
+    ("IndentationError", "SyntaxError", "TabError"),
+    ("TabError", "IndentationError", "NameError"),
+    ("EOFError", "Exception", "OSError"),
+    ("ReferenceError", "Exception", "RuntimeError"),
+    ("SystemError", "Exception", "RuntimeError"),
+    ("BlockingIOError", "OSError", "ChildProcessError"),
+    ("ChildProcessError", "OSError", "BlockingIOError"),
+    ("ConnectionError", "OSError", "BrokenPipeError"),
+    ("BrokenPipeError", "ConnectionError", "ConnectionResetError"),
+    ("ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError"),
+    ("ConnectionRefusedError", "ConnectionError", "ConnectionAbortedError"),
+    ("ConnectionResetError", "ConnectionError", "BrokenPipeError"),
+    ("FileExistsError", "OSError", "FileNotFoundError"),
+    ("FileNotFoundError", "OSError", "FileExistsError"),
+    ("InterruptedError", "OSError", "TimeoutError"),
+    ("IsADirectoryError", "OSError", "NotADirectoryError"),
+    ("NotADirectoryError", "OSError", "IsADirectoryError"),
+    ("PermissionError", "OSError", "ProcessLookupError"),
+    ("ProcessLookupError", "OSError", "PermissionError"),
+    ("TimeoutError", "OSError", "InterruptedError"),
+)
+
+
 EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
     '''
     from pyjs import js
