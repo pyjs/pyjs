@@ -6,7 +6,9 @@ from pyjs.tooling.llvm import LLVM
 
 @pytest.mark.parametrize("body", ["pass", "return None", "print('hello')"])
 def test_none_entry_returns_success(tmp_path, body):
-    result = LLVM().run_source(f"def main() -> None:\n    {body}\n", directory=tmp_path)
+    result = LLVM().assert_matches_python(
+        f"def main() -> None:\n    {body}\n", directory=tmp_path,
+    ).native
     assert result.returncode == 0
     assert result.stdout == ("hello\n" if "print" in body else "")
     assert result.stderr == ""
