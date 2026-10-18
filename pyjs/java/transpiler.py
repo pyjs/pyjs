@@ -281,6 +281,7 @@ class JVMEmitter:
         self.native_classes: set[Class] = set()
         self.native_interfaces: set[Class] = set()
         self.native_layouts: dict[Class, ClassIR] = {}
+        self.native_exception_types: dict[str, Class] = {}
         self.code = Bytecode()
         self.slots = {}
         self.slot_types = {}
@@ -1014,6 +1015,14 @@ class JVMEmitter:
 
     def expression(self, node) -> str:
         result = self._expression(node)
+        if _is_reference_descriptor(result) and (
+            hasattr(node, "obj") or hasattr(node, "value_obj")
+        ):
+            value = analyzed_value_object(node)
+            semantic = value.cls if isinstance(value, Instance) else value
+            for member in semantic.types if isinstance(semantic, UnionType) else (semantic,):
+                if exception_type(member) is not None:
+                    self.value_type(member)
         if result == "V":
             # JVM void is not a value; Python calls still produce None when
             # assigned, returned, or compared, including __enter__ results.
@@ -4339,7 +4348,10 @@ class JVMEmitter:
     def value_type(self, value_type, representation=None) -> str:
         if exception_type(value_type) is not None:
             if is_declaration(value_type.py_obj, "jvm"):
-                return f"L{self.native_class_name(value_type)};"
+                descriptor = f"L{self.native_class_name(value_type)};"
+                # Catch-only declarations need no native ClassIR layout.
+                self.native_exception_types[descriptor] = value_type
+                return descriptor
             return "Ljava/lang/Throwable;"
         if (isinstance(value_type, RecursiveTypeAlias)
                 or isinstance(value_type, UnionType)
@@ -4708,11 +4720,11 @@ class JVMEmitter:
                 )
                 == actual
             ),
-            None,
+            self.native_exception_types.get(actual),
         )
+        if expected == "Ljava/lang/Throwable;":
+            return exception_type(actual_type) is not None
         while actual_type is not None:
-            if expected == "Ljava/lang/Throwable;" and exception_type(actual_type) is not None:
-                return True
             layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
             if layout is None:
                 break

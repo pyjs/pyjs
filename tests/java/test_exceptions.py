@@ -514,6 +514,123 @@ def main() -> int:
     assert_matches_python(source, tmp_path)
 
 
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+@pytest.mark.parametrize(("program", "message"), [
+    ('''
+def accept(error: BOUNDARY) -> int:
+    return 1
+def main() -> int:
+    return accept(ValidationError(2))
+''', "JVM call to accept has incompatible arguments"),
+    ('''
+def accept(error: BOUNDARY) -> int:
+    return 1
+def main() -> int:
+    if len("ab") == 5:
+        return accept(ValidationError(2))
+    return 42
+''', "JVM call to accept has incompatible arguments"),
+    ('''
+class Holder:
+    def __init__(self, error: BOUNDARY):
+        self.error = error
+def main() -> int:
+    holder = Holder(ValidationError(2))
+    return 42
+''', "JVM constructor for Holder has incompatible arguments"),
+], ids=["argument", "unexecuted-call", "constructor"])
+def test_ordinary_exception_values_cannot_cross_throwable_boundaries(boundary, program, message):
+    source = '''
+class ValidationError(Exception):
+    def __init__(self, code: int):
+        self.code = code
+''' + program.replace("BOUNDARY", boundary)
+    with pytest.raises(JVMUnsupported, match=message):
+        transpile_jvm(source)
+
+
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+def test_native_exception_values_can_cross_throwable_boundaries(tmp_path, boundary):
+    assert_matches_python(f'''
+        from pyjs import jvm
+        from pyjs.java import i32
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            pass
+
+        @jvm.native("java/lang/Integer", name="parseInt")
+        def parse(value: str) -> i32:
+            raise NumberFormatException("invalid")
+
+        def accept(error: {boundary}) -> int:
+            return 42 if len(str(error)) > 0 else 1
+
+        def main() -> int:
+            try:
+                parse("invalid")
+            except NumberFormatException as error:
+                return accept(error)
+            return 2
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize(("result_type", "empty"), [
+    ("NumberFormatException", False),
+    ("NumberFormatException | None", False),
+    ("NumberFormatException | None", True),
+], ids=["native", "optional-native", "optional-none"])
+def test_native_factory_result_can_widen_without_a_class_layout(tmp_path, result_type, empty):
+    helper = ClassFile("ExceptionFactory")
+    code = Bytecode()
+    owner = "java/lang/NumberFormatException"
+    if empty:
+        code.emit(0x01)
+    else:
+        code.emit(0xBB, helper.constants.class_(owner).to_bytes(2, "big"))
+        code.emit(0x59)
+        constructor = helper.method_reference(owner, "<init>", "()V")
+        code.emit(0xB7, constructor.to_bytes(2, "big"))
+    code.emit(0xB0)
+    helper.add_method(Method(0x0009, "create", f"()L{owner};", code.render(), 2, 0))
+    (tmp_path / "ExceptionFactory.class").write_bytes(helper.render())
+    assert_matches_python(f'''
+        from pyjs import jvm
+
+        @jvm.native("java/lang/NumberFormatException")
+        class NumberFormatException(Exception):
+            pass
+
+        @jvm.native("ExceptionFactory")
+        def create() -> {result_type}:
+            return {"None" if empty else "NumberFormatException()"}
+
+        def accept(error: BaseException | None) -> int:
+            return 3 if error is None else 42
+
+        def main() -> int:
+            return accept(create())
+    ''', tmp_path)
+
+
+def test_native_handler_local_cannot_widen_to_ordinary_exception_object():
+    with pytest.raises(JVMUnsupported, match="JVM local error changes type"):
+        transpile_jvm('''
+            class ValidationError(Exception):
+                def __init__(self, code: int):
+                    self.code = code
+
+            def main() -> int:
+                score = 0
+                try:
+                    raise ValueError("value")
+                except ValueError as error:
+                    score += 40
+                error = ValidationError(2)
+                return score + error.code
+        ''')
+
+
 def test_non_string_payload_has_focused_diagnostic():
     with pytest.raises(JVMUnsupported, match="exception messages must be strings"):
         transpile_jvm('''
