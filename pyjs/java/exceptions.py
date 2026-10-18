@@ -33,6 +33,19 @@ def managed_exception(value_type):
     return value is not None and not any(is_declaration(base, "jvm") for base in value.__mro__)
 
 
+def nullable_exception(value_type):
+    """Whether every non-None union member is an exception."""
+    if not isinstance(value_type, UnionType):
+        return False
+    members = value_type.types
+    exceptions = [member for member in members if exception_type(member) is not None]
+    return bool(exceptions) and len(exceptions) < len(members) and all(
+        exception_type(member) is not None
+        or isinstance(member, Class) and member.generic_name in {"None", "NoneType"}
+        for member in members
+    )
+
+
 def contained_exception_types(value_type):
     """Find exception members in a value, including typed container contents."""
     pending = [value_type]
@@ -73,6 +86,26 @@ def emit_exception_class(class_files, prefix, value):
     else:
         parent = emit_exception_class(class_files, prefix, value.__bases__[0])
     return emit_exception_subclass(class_files, name, parent, prefix)
+
+
+def strict_formatter_bridge(class_file, class_files, prefix, *, final=True):
+    """Check implicit Python text without changing explicit or Java calls."""
+    code = Bytecode()
+    code.local(0x19, 0)
+    reference = class_file.method_reference(class_file.name, EXPLICIT_FORMATTER, "()Ljava/lang/String;")
+    code.emit(0xB6, reference.to_bytes(2, "big"))
+    code.emit(0x59)
+    code.branch(0xC7, "valid")
+    code.emit(0x57)
+    emit_type_error(
+        code, class_file, class_files, prefix,
+        "Exception __str__ must accept no arguments and return str",
+    )
+    code.mark("valid")
+    code.emit(0xB0)
+    return Method(
+        0x0011 if final else 0x0001, FORMATTER, "()Ljava/lang/String;", code.render(), 3, 1,
+    )
 
 
 def emit_exception_subclass(class_files, name, parent, prefix):
@@ -117,22 +150,7 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         class_file.add_method(Method(
             0x0001, EXPLICIT_FORMATTER, "()Ljava/lang/String;", getter.render(), 1, 1,
         ))
-        getter = Bytecode()
-        getter.local(0x19, 0)
-        reference = class_file.method_reference(name, EXPLICIT_FORMATTER, "()Ljava/lang/String;")
-        getter.emit(0xB6, reference.to_bytes(2, "big"))
-        getter.emit(0x59)
-        getter.branch(0xC7, "valid")
-        getter.emit(0x57)
-        emit_type_error(
-            getter, class_file, class_files, prefix,
-            "Exception __str__ must accept no arguments and return str",
-        )
-        getter.mark("valid")
-        getter.emit(0xB0)
-        class_file.add_method(Method(
-            0x0011, FORMATTER, "()Ljava/lang/String;", getter.render(), 3, 1,
-        ))
+        class_file.add_method(strict_formatter_bridge(class_file, class_files, prefix))
         # Java loggers and uncaught handlers must not lose the original error
         # when Python formatting fails. Python calls use FORMATTER directly.
         getter = Bytecode()

@@ -81,6 +81,8 @@ from .exceptions import (
     emit_type_error,
     exception_type,
     managed_exception,
+    nullable_exception,
+    strict_formatter_bridge,
 )
 from .primitives import Reference, run_sync
 from .string_runtime import emit_string_helpers
@@ -390,10 +392,18 @@ class JVMEmitter:
                     )
                 )
             initializer = layout.constructor
-            if managed_exception(layout.value_type):
+            if exception_type(layout.value_type) is not None:
                 formatter = layout.value_type.find_attrs("__str__", search_bases=True)
                 if formatter in self.functions and formatter.cls is layout.value_type:
                     class_file.add_method(self.exception_formatter_bridge(class_file, formatter))
+                    if not managed_exception(layout.value_type):
+                        # Foreign subclasses keep Java getMessage untouched.
+                        # Each authored override can inherit or replace these
+                        # Python-only virtual bridges without a final clash.
+                        class_file.add_method(strict_formatter_bridge(
+                            class_file, self.class_files, self.main_class_name, final=False,
+                        ))
+            if managed_exception(layout.value_type):
                 continue
             base = layout.base
             if (
@@ -1538,6 +1548,22 @@ class JVMEmitter:
                                   and source.func.attr == "__str__")
             if explicit_formatter:
                 self.validate_explicit_exception_formatter(node, target, semantic_receiver)
+            nullable_formatter = (
+                target.name == "__str__" and not is_super and not node.args
+                and not node.keywords and nullable_exception(semantic_receiver)
+            )
+            if nullable_formatter:
+                if self.function_return_type(target) != "Ljava/lang/String;":
+                    raise JVMUnsupported(
+                        "JVM nullable exception __str__ calls require a string result; "
+                        "narrow the receiver to its concrete exception type", node,
+                    )
+            if (target.name == "__str__" and not is_super and not node.args
+                    and not node.keywords
+                    and self.is_exception_value(receiver_type, semantic_receiver)
+                    and self.function_return_type(target) == "Ljava/lang/String;"):
+                self.exception_message(semantic_receiver, explicit=explicit_formatter)
+                return "Ljava/lang/String;"
             if (target.py_func is native_builtins._BaseException.__init__
                     and managed_exception(self.current_function.cls if is_super else semantic_receiver)):
                 concrete = self.current_function.cls if is_super else semantic_receiver
@@ -1783,7 +1809,7 @@ class JVMEmitter:
                     target.return_numeric_format,
                 )
                 return semantic
-            if semantic_receiver.generic_name == "dict":
+            if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "dict":
                 return self.dictionary_call(
                     node,
                     target,
@@ -2130,6 +2156,8 @@ class JVMEmitter:
                             MESSAGE_GETTER, "()Ljava/lang/String;",
                         )
                         self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                    elif is_super:
+                        self.native_exception_message()
                     else:
                         self.exception_message(semantic_receiver, explicit=explicit_formatter)
                 else:
@@ -3025,13 +3053,11 @@ class JVMEmitter:
             return "java/lang/Exception"
         return self.exception_class(value_type, node)
 
-    def validate_explicit_exception_formatter(self, node, target, receiver):
-        # Explicit calls have the analyzer's declared result representation;
-        # unlike str(error), they must not impose Python's implicit str guard.
-        # Conflicting override results cannot share that statically typed ABI.
+    def exception_formatters(self, receiver):
+        """Reached Python formatters applicable to the static receiver view."""
         members = receiver.types if isinstance(receiver, UnionType) else (receiver,)
         for value_type in self.classes:
-            if not managed_exception(value_type):
+            if exception_type(value_type) is None:
                 continue
             ancestor = value_type
             while ancestor is not None and ancestor not in members:
@@ -3039,8 +3065,14 @@ class JVMEmitter:
             if ancestor is None:
                 continue
             formatter = value_type.find_attrs("__str__", search_bases=True)
-            if formatter not in self.functions:
-                continue
+            if formatter in self.functions:
+                yield value_type, formatter
+
+    def validate_explicit_exception_formatter(self, node, target, receiver):
+        # Explicit calls have the analyzer's declared result representation;
+        # unlike str(error), they must not impose Python's implicit str guard.
+        # Conflicting override results cannot share that statically typed ABI.
+        for _, formatter in self.exception_formatters(receiver):
             if (not same_analyzer_type(formatter.return_type, target.return_type)
                     or formatter.return_numeric_format != target.return_numeric_format):
                 raise JVMUnsupported(
@@ -3093,8 +3125,8 @@ class JVMEmitter:
         )
 
     def exception_message(self, value_type, *, explicit=False):
-        # An Exception/BaseException view can also contain a foreign Java
-        # throwable. Only managed roots expose the strict Python formatter.
+        # Managed roots and authored foreign subclasses expose Python-only
+        # bridges. Other foreign values retain their native message fallback.
         members = value_type.types if isinstance(value_type, UnionType) else (value_type,)
         roots = set()
         for member in members:
@@ -3108,8 +3140,15 @@ class JVMEmitter:
                     value, (Exception, native_builtins._Exception),
                 ) else native_builtins._BaseException)
         done = self.new_label("exception.text.done")
-        for root in sorted(roots, key=lambda value: value.__name__):
-            owner = emit_exception_class(self.class_files, self.main_class_name, root)
+        if nullable_exception(value_type):
+            self.skip_none_formatter(done)
+        owners = [emit_exception_class(self.class_files, self.main_class_name, root)
+                  for root in sorted(roots, key=lambda value: value.__name__)]
+        owners.extend(sorted({
+            self.class_name(formatter.cls) for member, formatter in self.exception_formatters(value_type)
+            if not managed_exception(member)
+        }))
+        for owner in owners:
             next_root = self.new_label("exception.text.next")
             self.code.emit(0x59)
             self.code.emit(0xC1, self.class_file.constants.class_(owner).to_bytes(2, "big"))
@@ -3120,6 +3159,11 @@ class JVMEmitter:
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             self.code.branch(0xA7, done)
             self.code.mark(next_root)
+        self.native_exception_message()
+        self.code.mark(done)
+
+    def native_exception_message(self):
+        """Native fallback and lexical foreign super calls bypass Python text."""
         reference = self.class_file.method_reference(
             "java/lang/Throwable", "getMessage", "()Ljava/lang/String;",
         )
@@ -3130,7 +3174,16 @@ class JVMEmitter:
         self.code.emit(0x57)
         self.expression(ast.Constant(value=""))
         self.code.mark(present)
-        self.code.mark(done)
+
+    def skip_none_formatter(self, done):
+        """Render None; leave a present receiver on the stack for dispatch."""
+        present = self.new_label("exception.text.present")
+        self.code.emit(0x59)
+        self.code.branch(0xC7, present)
+        self.code.emit(0x57)
+        self.expression(ast.Constant(value="None"))
+        self.code.branch(0xA7, done)
+        self.code.mark(present)
 
     def raise_python_exception(self, node):
         if node.exception is not None:

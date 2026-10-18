@@ -76,6 +76,13 @@
 
 ### Fixed
 
+- JVM optional exceptions format absent values as `None` without dereferencing
+  null. `str()`, f-strings and no-argument `__str__()` preserve present-value
+  custom dispatch, single evaluation and implicit string-result validation.
+  Python-authored formatters on native Throwable subclasses also participate
+  through base views and mixed managed/native unions, without changing Java's
+  native message methods.
+
 - JVM nullable-string exception messages render a supplied `None` as Python
   text rather than an empty native message.
 - Bare reraises remain valid after handler-local writes and branch narrowing.
