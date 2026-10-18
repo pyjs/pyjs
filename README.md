@@ -102,36 +102,87 @@ cd pyjs
 uv sync
 ```
 
-Save this as `try_native.py` in the checkout:
+Save this as `primes.py` in the checkout. It counts primes with a sieve,
+exercising list allocation, indexing, loops, branches and a reduction:
 
 ```python
-from pathlib import Path
+def count_primes(limit: int) -> int:
+    prime = [True] * (limit + 1)
+    prime[0] = prime[1] = False
+    factor = 2
+    while factor * factor <= limit:
+        if prime[factor]:
+            for multiple in range(factor * factor, limit + 1, factor):
+                prime[multiple] = False
+        factor += 1
+    return sum(prime)
 
-from pyjs.tooling.llvm import LLVM
 
-result = LLVM().run_source('''
-def main() -> str:
-    squares = [number * number for number in range(6)]
-    return "Squares: " + str(squares) + "\\n"
-''', directory=Path("native-build"))
+def main() -> None:
+    print(count_primes(2_000_000))
 
-print(result.stdout, end="")
-if result.returncode:
-    raise RuntimeError(result.stderr)
+
+if __name__ == "__main__":
+    main()
 ```
 
-Run `uv run python try_native.py`. It prints
-`Squares: [0, 1, 4, 9, 16, 25]` and retains the generated `program.ll` and native
-executable in `native-build/`. Clang also needs the host's linker and C runtime
+Run the same file with either interpreter or compiler—no decorators or source
+strings are needed. Both print `148933`:
+
+```bash
+uv run python primes.py
+uv run pyjs --target native primes.py
+uv run pyjs --target native --perf primes.py
+```
+
+The last command compiles once, checks matching output and successful exits on
+every run, then reports paired process timings. A Linux x64 run with CPython
+3.14.4 and Clang 21 at `-O2` produced:
+
+```text
+Compilation: 1.746 s
+Output matches: yes
+148933
+Median of 7 runs after 2 warmups (process startup included):
+  CPython 3.14.4: 174.523 ms
+  Native: 14.437 ms
+  Speedup: 12.09x (compilation excluded)
+```
+
+These are measurements, not a universal speed guarantee. Compilation costs
+more than a single interpreted run of this example; native execution pays off
+when you reuse the binary or run a larger workload. `--perf` alternates which
+program runs first, includes process startup and captured output for both,
+and excludes compilation and the PyJS CLI's startup from execution timings.
+Use `--samples N`, `--warmups N` or `--json` to inspect your own results.
+
+Keep an executable to run repeatedly without recompiling:
+
+```bash
+uv run pyjs build --target native primes.py -o primes
+./primes
+```
+
+On Windows the output is `primes.exe`; run `.\primes.exe`. Native execution also
+accepts `-m package.module`, `-c 'print(42)'` and stdin (`-`). Native builds
+accept a file or module, optionally followed by `:entry_function`. Use
+`pyjs --target native --src primes.py` to inspect the LLVM IR.
+
+Clang also needs the host's linker and C runtime
 development libraries: Xcode Command Line Tools on macOS, or MSVC Build Tools,
 the Windows SDK and Clang's compiler-rt on Windows. Use matching 64-bit Python
 and compiler architectures. Set `PYJS_CLANG` to a compiler path if it is not on PATH.
 
-This API compiles for the current host, not an arbitrary cross-compilation
+This compiles for the current host, not an arbitrary cross-compilation
 target. CI compiles and executes on Linux, macOS and Windows, each on x64 and
 arm64, including loading native libraries into Python. The executable entry
-point is a zero-argument `main()` returning
-`str` (written to stdout) or `int` (used as the process exit status). Arbitrary
+point is a zero-argument `main()` returning `None` (success),
+`str` (written to stdout) or `int` (used as the process exit status). Top-level
+statements without a `main()` are wrapped automatically. Use the guarded
+`main()` pattern above for the same behavior under CPython and native execution;
+CPython normally ignores a function's returned value. Imports, decorators and
+module initialization execute in Python during analysis, so compile only code
+you trust. Program command-line arguments are not yet supported. Arbitrary
 Python packages and dynamic Python features are not automatically supported.
 
 ## What makes PyJS different

@@ -121,14 +121,20 @@ def test_shared_library_exports_public_functions_and_data(tmp_path):
         unload(library._handle)
 
 
-def test_readme_native_example(tmp_path, capsys):
+def test_readme_native_example(tmp_path):
+    from pyjs.cli import main
+
     readme = (Path(__file__).parents[2] / "README.md").read_text(encoding="utf-8")
-    section = readme.split("Save this as `try_native.py`", 1)[1]
+    section = readme.split("Save this as `primes.py`", 1)[1]
     source = section.split("```python\n", 1)[1].split("```", 1)[0]
-    source = source.replace('Path("native-build")', f"Path({str(tmp_path)!r})")
-    exec(compile(source, "README.md native example", "exec"), {})
-    assert capsys.readouterr().out == "Squares: [0, 1, 4, 9, 16, 25]\n"
-    assert (tmp_path / ("program" + binary_suffix())).is_file()
+    path = tmp_path / "primes.py"
+    path.write_text(source, encoding="utf-8")
+    output = tmp_path / ("primes" + binary_suffix())
+    assert main(["build", "--target", "native", str(path), "-o", str(output)]) == 0
+    python = subprocess.run([sys.executable, path], capture_output=True, timeout=30)
+    native = subprocess.run([output], capture_output=True, timeout=30)
+    assert (python.returncode, python.stdout, python.stderr) == (0, b"148933\n", b"")
+    assert (native.returncode, native.stdout, native.stderr) == (0, b"148933\n", b"")
 
 
 def test_python_comparison_preserves_unencodable_exception_diagnostics(tmp_path):

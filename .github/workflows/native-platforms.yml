@@ -56,6 +56,8 @@ jobs:
           tests/tooling/test_llvm_exceptions.py
           tests/tooling/test_llvm.py
           tests/native/test_llvm.py
+          tests/native/test_executable_entry.py
+          tests/native/test_cli.py
           tests/native/test_gc_layouts.py
           tests/native/test_exceptions.py
           tests/native/test_exception_payload.py

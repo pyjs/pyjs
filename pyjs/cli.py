@@ -73,6 +73,7 @@ class DirectInput:
 
 def _add_direct_options(command: argparse.ArgumentParser) -> None:
     execution = command.add_argument_group("Python-like direct execution")
+    execution.add_argument("--target", choices=("js", "native"), default="js")
     input_group = execution.add_mutually_exclusive_group()
     input_group.add_argument(
         "-c",
@@ -111,7 +112,7 @@ def _add_direct_options(command: argparse.ArgumentParser) -> None:
     execution.add_argument(
         "--perf",
         action="store_true",
-        help="compare Python and JavaScript speed",
+        help="compare Python and compiled execution speed",
     )
     execution.add_argument(
         "--loops",
@@ -136,7 +137,7 @@ def parser() -> argparse.ArgumentParser:
     version = version_string()
     command = argparse.ArgumentParser(
         prog="pyjs",
-        description="Run Python as JavaScript, build web applications, and create PyJS projects.",
+        description="Run Python as JavaScript or native code, build applications, and create projects.",
         epilog=(
             "Direct execution: pyjs app.py, pyjs -m package.module, or pyjs -c 'print(1)'. "
             "Use --src to print JavaScript without running it."
@@ -146,10 +147,12 @@ def parser() -> argparse.ArgumentParser:
     _add_direct_options(command)
     subcommands = command.add_subparsers(dest="command")
 
-    build = subcommands.add_parser("build", help="build a Python entry point for the browser")
+    build = subcommands.add_parser("build", help="build a browser application or native executable")
+    build.add_argument("--target", choices=("js", "native"), default="js")
+    build.add_argument("-o", "--output", type=Path, help="native executable destination")
     build.add_argument(
         "module",
-        help="module containing the entry point, optionally followed by :function",
+        help="module (or native Python file), optionally followed by :function",
     )
     build.add_argument("--only-js", action="store_true", help="only generate JavaScript")
     build.add_argument(
@@ -265,7 +268,7 @@ def parser() -> argparse.ArgumentParser:
 def direct_parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(
         prog="pyjs",
-        description="Transpile Python and run the result with PyJS-managed Node.",
+        description="Compile Python and run it with Node or as a native executable.",
     )
     _add_direct_options(command)
     command.add_argument("source", nargs="?", help="Python file, or - to read standard input")
@@ -276,6 +279,7 @@ def _is_direct_invocation(argv: list[str]) -> bool:
     if argv and argv[0] in SUBCOMMANDS:
         return False
     direct_options = {
+        "--target",
         "-c",
         "-m",
         "--src",
@@ -366,57 +370,13 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
 
     try:
         program = _direct_input(args, command_parser)
+        if args.target == "native":
+            from pyjs.native.cli import run
+
+            return run(args, program, command_parser)
         compilation = _compile_direct(program)
-    except CompilationError as error:
-        if args.json:
-            details = error.diagnostic.to_dict()
-            if args.v:
-                details["traceback"] = "".join(
-                    traceback.format_tb(error.__traceback__)
-                )
-            print(json.dumps({"error": details}, indent=2))
-        else:
-            print(format_compilation_error(error), file=sys.stderr, end="")
-            if args.v:
-                print("Traceback (most recent call last):", file=sys.stderr)
-                traceback.print_tb(error.__traceback__)
-        return 2
-    except SyntaxError as error:
-        if args.json:
-            details = {
-                "type": "SyntaxError",
-                "message": error.msg,
-                "file": error.filename,
-                "line": error.lineno,
-                "column": error.offset,
-                "end_line": error.end_lineno,
-                "end_column": error.end_offset,
-            }
-            print(json.dumps({"error": details}, indent=2))
-        else:
-            formatted = "".join(traceback.format_exception_only(error))
-            print(formatted, file=sys.stderr, end="")
-            if args.v:
-                print("Traceback (most recent call last):", file=sys.stderr)
-                traceback.print_tb(error.__traceback__)
-        return 2
     except Exception as error:
-        message = str(error) or type(error).__name__
-        if args.json:
-            details = {
-                "type": type(error).__name__,
-                "message": message,
-            }
-            if args.v:
-                details["traceback"] = traceback.format_exc()
-            print(json.dumps({"error": details}, indent=2))
-            return 2
-        if args.v:
-            traceback.print_exc()
-            print(f"pyjs: error: {message}", file=sys.stderr)
-            return 2
-        print(f"pyjs: error: {message}", file=sys.stderr)
-        return 2
+        return _compilation_error(error, args)
 
     javascript = _executable_javascript(compilation)
     if source_only:
@@ -479,6 +439,43 @@ def _direct(args, command_parser: argparse.ArgumentParser) -> int:
     else:
         print(f"pyjs: error: {hint}", file=sys.stderr)
     return result.returncode
+
+
+def _compilation_error(error: Exception, args) -> int:
+    if isinstance(error, CompilationError):
+        details = error.diagnostic.to_dict()
+        formatted = format_compilation_error(error)
+    elif isinstance(error, SyntaxError):
+        details = {
+            "type": "SyntaxError",
+            "message": error.msg,
+            "file": error.filename,
+            "line": error.lineno,
+            "column": error.offset,
+            "end_line": error.end_lineno,
+            "end_column": error.end_offset,
+        }
+        formatted = "".join(traceback.format_exception_only(error))
+    else:
+        message = str(error) or type(error).__name__
+        details = {"type": type(error).__name__, "message": message}
+        formatted = f"pyjs: error: {message}\n"
+        # Clang attaches its captured diagnostics as exception notes.
+        notes = getattr(error, "__notes__", ())
+        if notes:
+            details["notes"] = list(notes)
+            formatted += "\n".join(notes) + "\n"
+    if getattr(args, "json", False):
+        if args.v:
+            details["traceback"] = "".join(traceback.format_tb(error.__traceback__))
+        print(json.dumps({"error": details}, indent=2))
+    else:
+        print(formatted, file=sys.stderr, end="")
+        if getattr(args, "v", 0):
+            print("Traceback (most recent call last):", file=sys.stderr)
+            traceback.print_tb(error.__traceback__)
+            print("".join(traceback.format_exception_only(error)), file=sys.stderr, end="")
+    return 2
 
 
 def _node_runtime_hint(stderr: str) -> str | None:
@@ -739,6 +736,26 @@ def _benchmark_javascript(
 
 
 def _build(args, command_parser: argparse.ArgumentParser) -> int:
+    if args.target == "native":
+        from pyjs.native.cli import build
+
+        target, separator, entry = args.module.rpartition(":")
+        # Only an identifier can be an entry suffix. In particular, do not
+        # split the drive letter from a Windows Python filename.
+        if not separator or not entry.isidentifier() or Path(args.module).is_file():
+            target, separator, entry = args.module, "", ""
+        is_file = target.endswith(".py") or Path(target).is_file()
+        inputs = argparse.Namespace(
+            code=None, module=None if is_file else target, source=target if is_file else None,
+        )
+        try:
+            program = _direct_input(inputs, command_parser)
+            return build(args, program, command_parser, is_file=is_file,
+                         entry=entry if separator else "main")
+        except Exception as error:
+            return _compilation_error(error, args)
+    if args.output is not None:
+        command_parser.error("--output is only supported for native builds")
     if args.module.endswith(".py"):
         suggestion = f"perhaps try: {Path(args.module).stem}"
         command_parser.error(
