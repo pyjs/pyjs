@@ -3,39 +3,10 @@ from textwrap import dedent
 import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
-from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.native.llvm import transpile_llvm
 from pyjs.tooling.llvm import LLVM
 from pyjs.webassembly.transpiler import WebAssemblyUnsupported, transpile_webassembly
-
-# Each row tests the immediate parent and a sibling/child that must not catch it.
-HIERARCHIES = (
-    ("FloatingPointError", "ArithmeticError", "OverflowError"),
-    ("NotImplementedError", "RuntimeError", "RecursionError"),
-    ("ImportError", "Exception", "ModuleNotFoundError"),
-    ("ModuleNotFoundError", "ImportError", "NameError"),
-    ("SyntaxError", "Exception", "IndentationError"),
-    ("IndentationError", "SyntaxError", "TabError"),
-    ("TabError", "IndentationError", "NameError"),
-    ("EOFError", "Exception", "OSError"),
-    ("ReferenceError", "Exception", "RuntimeError"),
-    ("SystemError", "Exception", "RuntimeError"),
-    ("BlockingIOError", "OSError", "ChildProcessError"),
-    ("ChildProcessError", "OSError", "BlockingIOError"),
-    ("ConnectionError", "OSError", "BrokenPipeError"),
-    ("BrokenPipeError", "ConnectionError", "ConnectionResetError"),
-    ("ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError"),
-    ("ConnectionRefusedError", "ConnectionError", "ConnectionAbortedError"),
-    ("ConnectionResetError", "ConnectionError", "BrokenPipeError"),
-    ("FileExistsError", "OSError", "FileNotFoundError"),
-    ("FileNotFoundError", "OSError", "FileExistsError"),
-    ("InterruptedError", "OSError", "TimeoutError"),
-    ("IsADirectoryError", "OSError", "NotADirectoryError"),
-    ("NotADirectoryError", "OSError", "IsADirectoryError"),
-    ("PermissionError", "OSError", "ProcessLookupError"),
-    ("ProcessLookupError", "OSError", "PermissionError"),
-    ("TimeoutError", "OSError", "InterruptedError"),
-)
+from tests.backend_semantics import EXCEPTION_HIERARCHIES
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -43,7 +14,7 @@ def test_builtin_hierarchies_dispatch_and_reraise(tmp_path, optimize):
     # Compile the matrix once per optimization level; named source functions
     # and returned labels keep failures attributable to the individual class.
     source = "from pyjs.native import gc_collect, gc_set_threshold\n"
-    for name, parent, sibling in HIERARCHIES:
+    for name, parent, sibling in EXCEPTION_HIERARCHIES:
         source += dedent(f'''
             def case_{name}(size: int) -> str:
                 result = ""
@@ -61,7 +32,7 @@ def test_builtin_hierarchies_dispatch_and_reraise(tmp_path, optimize):
                     return result + ":" + str(outer)
                 return "not raised: {name}"
         ''')
-    calls = ", ".join(f"case_{name}(20)" for name, _, _ in HIERARCHIES)
+    calls = ", ".join(f"case_{name}(20)" for name, _, _ in EXCEPTION_HIERARCHIES)
     source += f'\ndef main() -> str:\n    gc_set_threshold(1)\n    return "|".join([{calls}])\n'
     comparison = LLVM().assert_matches_python(
         source, directory=tmp_path, optimize=optimize,
@@ -208,10 +179,8 @@ def test_rich_constructors_remain_an_explicit_boundary(expression):
     assert caught.value.lineno == 2
 
 
-@pytest.mark.parametrize("name", [row[0] for row in HIERARCHIES])
-def test_shared_declarations_keep_other_backend_boundaries(name):
+@pytest.mark.parametrize("name", [row[0] for row in EXCEPTION_HIERARCHIES])
+def test_shared_declarations_keep_webassembly_boundary(name):
     source = f'def main() -> int:\n    raise {name}("message")\n'
-    with pytest.raises(JVMUnsupported, match="JVM raise supports"):
-        transpile_jvm(source)
     with pytest.raises(WebAssemblyUnsupported, match="exception raising is not implemented"):
         transpile_webassembly(source)

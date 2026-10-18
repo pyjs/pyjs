@@ -8,8 +8,21 @@ from tests.backend_semantics import (
     ASSERT_CAPTURE_CONTRACT,
     ASSERT_FAILURE_CONTRACT,
     ASSERT_NARROWING_CONTRACT,
+    EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
 )
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_global_narrowing_without_exception_handlers(tmp_path, optimize):
+    result = LLVM().assert_matches_python('''
+        VALUE: str | None = "value"
+        def main() -> int:
+            if isinstance(VALUE, str):
+                return 42
+            return 0
+    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    assert not result.native.stderr
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
@@ -52,9 +65,10 @@ def test_assert_narrows_generator_input_but_next_still_sends_none(tmp_path, opti
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-def test_shared_exception_control_flow_contract(tmp_path, optimize):
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT], ids=["handlers", "cleanup"])
+def test_shared_exception_control_flow_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
-        EXCEPTION_CONTROL_FLOW_CONTRACT.source, directory=tmp_path, optimize=optimize,
+        contract.source, directory=tmp_path, optimize=optimize,
         sanitizers=("address", "undefined"),
     )
     assert result.native.returncode == 0

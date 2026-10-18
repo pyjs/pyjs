@@ -198,6 +198,16 @@ class TypeAnnotation:
 
 
 @dataclass(frozen=True)
+class ExceptionHandler:
+    """Half-open protected range and handler bytecode offset."""
+
+    start: int
+    end: int
+    handler: int
+    catch_type: str | None = None
+
+
+@dataclass(frozen=True)
 class Method:
     access: int
     name: str
@@ -208,6 +218,7 @@ class Method:
     line_numbers: tuple[tuple[int, int], ...] = ()
     annotations: tuple[Annotation, ...] = ()
     type_annotations: tuple[TypeAnnotation, ...] = ()
+    exception_handlers: tuple[ExceptionHandler, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -316,6 +327,18 @@ class ClassFile:
 
     def render_method(self, method: Method) -> bytes:
         code = method.code
+        handlers = []
+        for handler in method.exception_handlers:
+            if not (
+                0 <= handler.start < handler.end <= len(code)
+                and 0 <= handler.handler < len(code)
+            ):
+                raise ValueError("invalid JVM exception handler range")
+            catch_type = self.constants.class_(handler.catch_type) if handler.catch_type else 0
+            handlers.append(
+                _u2(handler.start) + _u2(handler.end)
+                + _u2(handler.handler) + _u2(catch_type)
+            )
         code_attributes = []
         line_numbers = tuple(
             (offset, line)
@@ -334,7 +357,8 @@ class ClassFile:
                 _u2(method.max_locals),
                 _u4(len(code)),
                 code,
-                _u2(0),
+                _u2(len(handlers)),
+                *handlers,
                 _u2(len(code_attributes)),
                 *code_attributes,
             ]

@@ -1873,6 +1873,36 @@ EAGER_COLLECTION_CONTRACT = _contract(
 )
 
 
+# Each row tests the immediate parent and a sibling/child that must not catch it.
+EXCEPTION_HIERARCHIES = (
+    ("FloatingPointError", "ArithmeticError", "OverflowError"),
+    ("NotImplementedError", "RuntimeError", "RecursionError"),
+    ("ImportError", "Exception", "ModuleNotFoundError"),
+    ("ModuleNotFoundError", "ImportError", "NameError"),
+    ("SyntaxError", "Exception", "IndentationError"),
+    ("IndentationError", "SyntaxError", "TabError"),
+    ("TabError", "IndentationError", "NameError"),
+    ("EOFError", "Exception", "OSError"),
+    ("ReferenceError", "Exception", "RuntimeError"),
+    ("SystemError", "Exception", "RuntimeError"),
+    ("BlockingIOError", "OSError", "ChildProcessError"),
+    ("ChildProcessError", "OSError", "BlockingIOError"),
+    ("ConnectionError", "OSError", "BrokenPipeError"),
+    ("BrokenPipeError", "ConnectionError", "ConnectionResetError"),
+    ("ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError"),
+    ("ConnectionRefusedError", "ConnectionError", "ConnectionAbortedError"),
+    ("ConnectionResetError", "ConnectionError", "BrokenPipeError"),
+    ("FileExistsError", "OSError", "FileNotFoundError"),
+    ("FileNotFoundError", "OSError", "FileExistsError"),
+    ("InterruptedError", "OSError", "TimeoutError"),
+    ("IsADirectoryError", "OSError", "NotADirectoryError"),
+    ("NotADirectoryError", "OSError", "IsADirectoryError"),
+    ("PermissionError", "OSError", "ProcessLookupError"),
+    ("ProcessLookupError", "OSError", "PermissionError"),
+    ("TimeoutError", "OSError", "InterruptedError"),
+)
+
+
 EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -1989,6 +2019,60 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
         ("return value is evaluated before field cleanup", 'close_twice() != 3'),
         ("else reads body writes and returns through finally", 'else_read("a", True) + else_read("b", False) + else_read(None, True) != "ANBb-"'),
         ("else field reads retain conditional body writes", 'Holder().observe_else(True) + Holder().observe_else(False) != "Nold"'),
+    ),
+)
+
+
+EXCEPTION_CLEANUP_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def saved_return(events: list[int]) -> str:
+    value = "saved"
+    try:
+        try:
+            return value
+        finally:
+            value = "changed"
+            events.append(1)
+    finally:
+        events.append(2)
+
+@js
+def replace_error(events: list[int]) -> None:
+    try:
+        try:
+            raise ValueError("original")
+        finally:
+            events.append(3)
+            raise TypeError("replacement")
+    finally:
+        events.append(4)
+''',
+    "exception_cleanup_contract",
+    '''
+    events: list[int] = []
+    result = saved_return(events)
+    try:
+        replace_error(events)
+    except TypeError as error:
+        if str(error) == "replacement":
+            events.append(5)
+    for value in range(3):
+        try:
+            if value == 0:
+                continue
+            break
+        finally:
+            events.append(6 + value)
+    sequence = 0
+    for event in events:
+        sequence = sequence * 10 + event
+    ''',
+    (
+        ("return evaluated before cleanup", 'result != "saved"'),
+        ("nested cleanup, replacement, break, and continue", "sequence != 1234567"),
     ),
 )
 

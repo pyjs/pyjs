@@ -4,6 +4,12 @@
 
 ### Added
 
+- JVM compilation supports ordered exception handlers, reraising, lazy
+  assertions, and `finally` cleanup across returns and loop exits. Supported
+  builtin Python exceptions retain their hierarchy and string messages;
+  native Java failures remain catchable through `Exception`/`BaseException`.
+- JVM strings support locale-independent `upper()` alongside `lower()`.
+
 - Introduced this changelog. Future releases will record notable features,
   compatibility changes and fixes here.
 - Pull-request CI covers Linux, Windows and macOS, including parallel LLVM,
@@ -12,6 +18,14 @@
 - Experimental native LLVM compilation and execution on Linux, macOS and
   Windows, on x64 and arm64. Shared tests cover executables and Python-loaded
   libraries; the README includes a runnable Python-to-native example.
+
+### Changed
+
+- JVM-raised Python exceptions now use generated Python-hierarchy classes,
+  replacing the previous Java `RuntimeException`, `IllegalArgumentException`,
+  and `AssertionError` mappings. Java callers should catch `Exception` or the
+  generated type; Python assertions now extend Java `Exception`, not `Error`.
+  Exception class names in JVM stack traces change accordingly.
 
 ### Fixed
 
