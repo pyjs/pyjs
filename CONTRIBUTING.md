@@ -30,8 +30,10 @@ The repository contains the complete product suite and example tests:
 uv run pytest -q examples extras
 ```
 
-Submit changes as pull requests to `pyjs/pyjs`. Include focused regressions,
-the checks you ran, and any platform coverage you could not exercise.
+Submit changes as pull requests to `pyjs/pyjs`, with focused regressions in the
+patch. Keep PR descriptions focused on purpose, behavior, and compatibility
+limits. Do not include local test commands, pass counts, environment reports,
+or CI summaries; GitHub checks provide the test evidence.
 
 ## Pull-request CI
 
