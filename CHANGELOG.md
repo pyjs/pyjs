@@ -4,6 +4,10 @@
 
 ### Added
 
+- JVM custom exception classes support inherited catches, initializers, typed
+  fields and retained identity. Default scalar text follows original positional
+  arguments; custom string methods preserve virtual dispatch. Python methods
+  cannot accidentally override native Throwable methods.
 - JVM supports membership in integer/Boolean lists and reference-key
   dictionaries, including nullable keys. Membership syntax evaluates its
   needle before its container; explicit methods retain receiver-first order.

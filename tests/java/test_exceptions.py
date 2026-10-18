@@ -500,11 +500,12 @@ def test_unsupported_exception_payloads_have_diagnostics(name):
         transpile_jvm(f'def main() -> int:\n    raise {name}("error")\n')
 
 
-def test_custom_exception_has_focused_diagnostic():
-    with pytest.raises(JVMUnsupported, match="exceptions require a supported builtin type"):
+def test_custom_exception_new_override_has_focused_diagnostic():
+    with pytest.raises(JVMUnsupported, match="exception subclasses cannot override __new__"):
         transpile_jvm('''
             class InvalidNote(ValueError):
-                pass
+                def __new__(cls, message: str):
+                    return super().__new__(cls)
             def main() -> int:
                 raise InvalidNote("invalid")
         ''')
@@ -540,38 +541,37 @@ def main() -> int:
 
 
 @pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
-@pytest.mark.parametrize(("program", "message"), [
-    ('''
+@pytest.mark.parametrize("program", [
+    '''
 def accept(error: BOUNDARY) -> int:
     return 1
 def main() -> int:
     return accept(ValidationError(2))
-''', "JVM call to accept has incompatible arguments"),
-    ('''
+''',
+    '''
 def accept(error: BOUNDARY) -> int:
     return 1
 def main() -> int:
     if len("ab") == 5:
         return accept(ValidationError(2))
     return 42
-''', "JVM call to accept has incompatible arguments"),
-    ('''
+''',
+    '''
 class Holder:
     def __init__(self, error: BOUNDARY):
         self.error = error
 def main() -> int:
     holder = Holder(ValidationError(2))
     return 42
-''', "JVM constructor for Holder has incompatible arguments"),
+''',
 ], ids=["argument", "unexecuted-call", "constructor"])
-def test_ordinary_exception_values_cannot_cross_throwable_boundaries(boundary, program, message):
+def test_custom_exception_values_can_cross_throwable_boundaries(tmp_path, boundary, program):
     source = '''
 class ValidationError(Exception):
     def __init__(self, code: int):
         self.code = code
 ''' + program.replace("BOUNDARY", boundary)
-    with pytest.raises(JVMUnsupported, match=message):
-        transpile_jvm(source)
+    assert_matches_python(source, tmp_path)
 
 
 @pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
@@ -663,9 +663,8 @@ def test_native_factory_result_can_widen_to_base_exception(tmp_path, result_type
     ''', tmp_path)
 
 
-def test_native_handler_local_cannot_widen_to_ordinary_exception_object():
-    with pytest.raises(JVMUnsupported, match="JVM local error changes type"):
-        transpile_jvm('''
+def test_builtin_handler_local_can_be_reused_for_custom_exception(tmp_path):
+    assert_matches_python('''
             class ValidationError(Exception):
                 def __init__(self, code: int):
                     self.code = code
@@ -678,7 +677,7 @@ def test_native_handler_local_cannot_widen_to_ordinary_exception_object():
                     score += 40
                 error = ValidationError(2)
                 return score + error.code
-        ''')
+        ''', tmp_path)
 
 
 @pytest.mark.parametrize(("expression", "kind"), [

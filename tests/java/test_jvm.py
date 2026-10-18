@@ -26,6 +26,7 @@ from tests.backend_semantics import (
     FIELD_ASSIGNMENT_CONTRACT,
     GENERATOR_CLEANUP_CONTRACT,
     GENERIC_OPERATOR_CONTRACT,
+    INHERITED_FACTORY_FIELD_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_SEQUENCE_REFLECTION_CONTRACT,
@@ -932,8 +933,9 @@ def test_jvm_union_reflection_has_an_explicit_representation_boundary():
 
 
 @pytest.mark.parametrize("contract", [FIELD_ASSIGNMENT_CONTRACT, MAPPING_ASSIGNMENT_CONTRACT,
-                                     INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT],
-                         ids=["field", "mapping", "inherited_field", "class_declared_field"])
+                                     INHERITED_FIELD_ASSIGNMENT_CONTRACT, CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
+                                     INHERITED_FACTORY_FIELD_CONTRACT],
+                         ids=["field", "mapping", "inherited_field", "class_declared_field", "inherited_factory"])
 def test_jvm_runs_shared_assignment_contract(tmp_path, contract):
     transpile_jvm(contract.source).write(tmp_path)
     result = subprocess.run([java(), "-cp", str(tmp_path), "PyjsProgram"], check=False)

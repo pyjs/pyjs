@@ -66,7 +66,16 @@ from .classfile import (
     Field,
     Method,
 )
-from .exceptions import emit_exception_class, exception_type
+from .exceptions import (
+    MESSAGE_GETTER,
+    MESSAGE_SETTER,
+    builtin_exception,
+    emit_exception_class,
+    emit_exception_subclass,
+    emit_type_error,
+    exception_type,
+    managed_exception,
+)
 from .primitives import Reference, run_sync
 from .string_runtime import emit_string_helpers
 
@@ -352,6 +361,9 @@ class JVMEmitter:
                 self.ensure_module_class(function.container)
         subclassed = {layout.base for layout in classes if layout.base in self.classes}
         for layout in classes:
+            if managed_exception(layout.value_type):
+                self.exception_class(layout.value_type, None)
+                continue
             base = layout.base
             interface = base if base in self.native_interfaces else None
             super_name = (
@@ -371,6 +383,9 @@ class JVMEmitter:
                 else (),
             )
             self.class_files[class_file.name] = class_file
+        for layout in classes:
+            class_file = self.class_files[self.class_name(layout.value_type)]
+            class_file.source_file = self.module_source_file(layout.value_type.container)
             for field in layout.fields:
                 class_file.add_field(
                     Field(
@@ -381,6 +396,12 @@ class JVMEmitter:
                     )
                 )
             initializer = layout.constructor
+            if managed_exception(layout.value_type):
+                formatter = layout.value_type.find_attrs("__str__", search_bases=True)
+                if formatter in self.functions and formatter.cls is layout.value_type:
+                    class_file.add_method(self.exception_formatter_bridge(class_file, formatter))
+                continue
+            base = layout.base
             if (
                 self.has_native_superclass(layout.value_type)
                 and initializer in self.functions
@@ -851,6 +872,10 @@ class JVMEmitter:
                         continue
                     if self.is_jvm_array_type(node.value_type):
                         continue
+                    if managed_exception(node.value_type):
+                        layout = self.classes.get(node.value_type)
+                        if layout is None or layout.constructor not in self.functions:
+                            continue
                     if (
                         node.value_type not in self.classes
                         and node.value_type not in self.native_classes
@@ -1131,7 +1156,7 @@ class JVMEmitter:
             name = node.id if isinstance(node, ast.Name) else node.name
             result = self.load(name)
             semantic = analyzed_value_type(node)
-            if exception_type(semantic) is not None and is_declaration(semantic.py_obj, "jvm"):
+            if exception_type(semantic) is not None:
                 narrowed = self.value_type(semantic)
                 if result != narrowed:
                     self.checkcast(narrowed)
@@ -1299,7 +1324,8 @@ class JVMEmitter:
 
     def call(self, node: ast.Call) -> str:
         target = getattr(node.func, "obj", None)
-        if isinstance(target, Class) and exception_type(target) is not None:
+        if (isinstance(target, Class) and exception_type(target) is not None
+                and not self.is_super_call(node)):
             return self.construct_simple_exception(target, node)
         if isinstance(target, Class) and target.py_obj is native_builtins._slice:
             raise JVMUnsupported("JVM first-class slice construction is not implemented", node)
@@ -1502,6 +1528,17 @@ class JVMEmitter:
                 self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
+            if (target.py_func is native_builtins._BaseException.__init__
+                    and managed_exception(self.current_function.cls if is_super else semantic_receiver)):
+                concrete = self.current_function.cls if is_super else semantic_receiver
+                if node.keywords or len(node.args) > 1:
+                    raise JVMUnsupported("JVM builtin exceptions take at most one positional message", node)
+                self.exception_payload(semantic_receiver, node.args, node)
+                reference = self.class_file.method_reference(
+                    self.exception_class(concrete, node), MESSAGE_SETTER, "(Ljava/lang/String;)V",
+                )
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return "V"
             if target.name == "__dynamic_bool__":
                 if receiver_type == "Ljava/lang/Boolean;":
                     missing = self.new_label("bool.none")
@@ -2077,7 +2114,14 @@ class JVMEmitter:
                 return "Z"
             if target.name == "__str__" and not argument_types:
                 if receiver_type == "Ljava/lang/Throwable;" or exception_type(semantic_receiver) is not None:
-                    self.exception_message()
+                    if is_super and managed_exception(self.current_function.cls):
+                        reference = self.class_file.method_reference(
+                            self.exception_class(self.current_function.cls, node),
+                            MESSAGE_GETTER, "()Ljava/lang/String;",
+                        )
+                        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                    else:
+                        self.exception_message()
                 else:
                     self.scalar_string(receiver_type, node)
                 return "Ljava/lang/String;"
@@ -2677,9 +2721,11 @@ class JVMEmitter:
 
     def object_new(self, node: ObjectNew) -> str:
         value_type = node.value_type
-        if (exception_type(value_type) is not None
-                and not is_declaration(value_type.py_obj, "jvm")):
-            return self.construct_simple_exception(value_type, node.call)
+        python_exception = managed_exception(value_type)
+        if python_exception:
+            layout = self.classes.get(value_type)
+            if layout is None or layout.constructor not in self.functions:
+                return self.construct_simple_exception(value_type, node.call)
         if self.is_jvm_array_type(value_type):
             if len(node.call.args) != 1 or node.call.keywords:
                 raise JVMUnsupported(
@@ -2714,8 +2760,21 @@ class JVMEmitter:
             self.has_native_superclass(value_type) and initializer in self.functions
         )
         constructor_descriptor = (
+            "(Ljava/lang/String;)V" if python_exception else
             self.descriptor(initializer) if native_subclass else "()V"
         )
+        if python_exception:
+            value = exception_type(value_type)
+            if issubclass(value, (SyntaxError, native_builtins._SyntaxError)):
+                self.string_constant("None")
+            elif issubclass(value, (OSError, native_builtins._OSError)):
+                self.string_constant("")
+            else:
+                self.exception_payload(
+                    value_type, node.call.args, node.call,
+                    slots=[slots[name] for name, _ in evaluation[:len(node.call.args)]],
+                    allow_opaque=True,
+                )
         if native_subclass:
             for name, parameter in zip(
                 ordered,
@@ -2926,21 +2985,75 @@ class JVMEmitter:
         value = exception_type(value_type)
         if value is not None and is_declaration(value, "jvm"):
             return self.native_class_name(value_type)
-        if value is None or value.__module__ != native_builtins.__name__:
+        if value_type in self.classes and not managed_exception(value_type):
+            return self.class_name(value_type)
+        if value is None:
             raise JVMUnsupported("JVM exceptions require a supported builtin type", node)
-        if value is native_builtins._UnicodeDecodeError:
+        builtin = builtin_exception(value)
+        if builtin is None:
+            definition = value_type.container.class_definitions.get(value.__name__, node)
+            if len(value.__bases__) != 1:
+                raise JVMUnsupported("JVM exception subclasses require a single exception base", definition)
+            if "__new__" in vars(value):
+                raise JVMUnsupported("JVM exception subclasses cannot override __new__ yet", definition)
+            base = value_type.super
+            return emit_exception_subclass(
+                self.class_files, self.class_name(value_type),
+                self.exception_class(base, definition), self.main_class_name,
+            )
+        if builtin is native_builtins._UnicodeDecodeError:
             raise JVMUnsupported(
                 f"JVM {value_type.name} construction and matching are not implemented", node,
             )
-        return emit_exception_class(self.class_files, self.main_class_name, value)
+        return emit_exception_class(self.class_files, self.main_class_name, builtin)
 
     def exception_match_class(self, value_type, node):
         value = exception_type(value_type)
-        if value is native_builtins._BaseException:
+        if value in {BaseException, native_builtins._BaseException}:
             return "java/lang/Throwable"
-        if value is native_builtins._Exception:
+        if value in {Exception, native_builtins._Exception}:
             return "java/lang/Exception"
         return self.exception_class(value_type, node)
+
+    def exception_formatter_bridge(self, class_file, formatter):
+        """Keep Python formatting separate from native Throwable dispatch."""
+        bridge = Bytecode()
+        supported = (self.function_return_type(formatter) == "Ljava/lang/String;"
+                     and len(formatter.params) == len(formatter.defaults))
+        argument_slots = 0
+        if supported:
+            bridge.local(0x19, 0)
+            previous_code, previous_class = self.code, self.class_file
+            self.code, self.class_file = bridge, class_file
+            try:
+                for parameter, default in zip(formatter.params, formatter.defaults, strict=True):
+                    if not self.is_immutable_default(default):
+                        raise JVMUnsupported("JVM function defaults must be immutable literals", default)
+                    descriptor = (_numeric_descriptor(analyzed_numeric_format(parameter))
+                                  or self.parameter_type(parameter))
+                    actual = self.expression(default)
+                    self.convert_native_argument(actual, descriptor, default)
+                    argument_slots += 2 if descriptor in {"J", "D"} else 1
+            finally:
+                self.code, self.class_file = previous_code, previous_class
+            target = class_file.method_reference(
+                class_file.name, self.function_name(formatter), self.descriptor(formatter),
+            )
+            bridge.emit(0xB6, target.to_bytes(2, "big"))
+            bridge.emit(0x59)
+            bridge.branch(0xC7, "valid")
+            bridge.emit(0x57)
+        emit_type_error(
+            bridge, class_file, self.class_files, self.main_class_name,
+            "Exception __str__ must accept no arguments and return str",
+        )
+        if supported:
+            bridge.mark("valid")
+            bridge.emit(0xB0)
+        return Method(
+            0x0001, "getMessage", "()Ljava/lang/String;", bridge.render(),
+            3 + argument_slots, 1,
+        )
 
     def exception_message(self):
         reference = self.class_file.method_reference(
@@ -2982,29 +3095,64 @@ class JVMEmitter:
         index = self.class_file.constants.class_(name)
         self.code.emit(0xBB, index.to_bytes(2, "big"))
         self.code.emit(0x59)
-        has_message = message is not None
-        if message is None:
-            # SyntaxError distinguishes an omitted message from empty text.
-            syntax_error = issubclass(exception_type(exception), native_builtins._SyntaxError)
-            message = ast.Constant(value="None" if syntax_error else "")
-        value_type = self.expression(message)
-        if value_type not in {"Ljava/lang/String;", "J", "Z"}:
+        self.exception_payload(exception, [] if message is None else [message], node)
+        constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
+        self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+
+    def exception_payload(self, exception, arguments, node, *, slots=(), allow_opaque=False):
+        if not arguments:
+            syntax_error = issubclass(exception_type(exception), (SyntaxError, native_builtins._SyntaxError))
+            self.string_constant("None" if syntax_error else "")
+            return
+        supported = {"Ljava/lang/String;", "Ljava/lang/Boolean;", "J", "Z"}
+        if allow_opaque:
+            # These original arguments were already evaluated into slots.
+            supported.add("N")
+        if any(self.expression_type(argument) not in supported for argument in arguments):
+            if allow_opaque:
+                self.code.emit(0x01)
+                return
             raise JVMUnsupported("JVM exception messages require str, int, or bool", node)
-        self.scalar_string(value_type, message)
-        if (has_message and value_type == "Ljava/lang/String;"
-                and exception_type(exception) is native_builtins._KeyError):
+        multiple = len(arguments) > 1
+        quote = multiple or issubclass(exception_type(exception), (KeyError, native_builtins._KeyError))
+        if multiple:
+            self.string_constant("(")
+        concat = self.class_file.method_reference(
+            "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;",
+        ) if multiple else None
+        for index, argument in enumerate(arguments):
+            if index:
+                self.string_constant(", ")
+                self.code.emit(0xB6, concat.to_bytes(2, "big"))
+            descriptor = self.load(slots[index]) if slots else self.expression(argument)
+            self.exception_scalar_text(descriptor, argument, quote=quote)
+            if multiple:
+                self.code.emit(0xB6, concat.to_bytes(2, "big"))
+        if multiple:
+            self.string_constant(")")
+            self.code.emit(0xB6, concat.to_bytes(2, "big"))
+
+    def exception_scalar_text(self, descriptor, node, *, quote):
+        if descriptor == "N":
+            self.code.emit(0x57)
+            self.string_constant("None")
+        elif descriptor == "Ljava/lang/String;" and quote:
             self.string_repr()
-        elif has_message and value_type == "Ljava/lang/String;":
-            # Python's supplied None is not Java's absent detail message.
-            # KeyError's repr helper already handles this distinction.
+        elif descriptor in {"Ljava/lang/String;", "Ljava/lang/Boolean;"}:
             present = self.new_label("exception.payload.present")
+            done = self.new_label("exception.payload.done")
             self.code.emit(0x59)
             self.code.branch(0xC7, present)
             self.code.emit(0x57)
             self.string_constant("None")
+            self.code.branch(0xA7, done)
             self.code.mark(present)
-        constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
-        self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+            if descriptor == "Ljava/lang/Boolean;":
+                self.invoke_boolean_value()
+                self.bool_string()
+            self.code.mark(done)
+        else:
+            self.scalar_string(descriptor, node)
 
     def string_repr(self):
         self.string_helpers.add("repr")
@@ -4465,6 +4613,8 @@ class JVMEmitter:
                 # Catch-only declarations need no native ClassIR layout.
                 self.native_exception_types[descriptor] = value_type
                 return descriptor
+            if value_type in self.classes:
+                return self.class_descriptor(value_type)
             return "Ljava/lang/Throwable;"
         if (isinstance(value_type, RecursiveTypeAlias)
                 or isinstance(value_type, UnionType)
@@ -4753,6 +4903,8 @@ class JVMEmitter:
                 "name",
                 declaration.name,
             )
+        if managed_exception(function.cls):
+            return "$pyjs$" + function.name
         return function.name
 
     def native_override(self, function: Function) -> Function | None:
@@ -4836,12 +4988,11 @@ class JVMEmitter:
             self.native_exception_types.get(actual),
         )
         while actual_type is not None:
-            # Only a declared Java base establishes Throwable inheritance.
-            # Ordinary Python exception bases still emit Object subclasses.
             if (
                 expected == "Ljava/lang/Throwable;"
-                and is_declaration(actual_type.py_obj, "jvm")
                 and exception_type(actual_type) is not None
+                and (managed_exception(actual_type)
+                     or is_declaration(actual_type.py_obj, "jvm"))
             ):
                 return True
             layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)

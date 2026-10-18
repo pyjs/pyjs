@@ -5569,13 +5569,13 @@ class InferenceVisitor(ast.NodeVisitor):
             value_init = None
             client_initializer = None
             if isinstance(value_obj, Instance):
-                value_init = value_obj.cls.init
+                value_init = value_obj.cls.find_attrs("__init__")
                 client_initializer = value_obj.cls.find_attrs(
                     "initialize",
                     search_bases=False,
                 )
             elif isinstance(value_obj, Class):
-                value_init = value_obj.init
+                value_init = value_obj.find_attrs("__init__")
                 client_initializer = value_obj.find_attrs(
                     "initialize",
                     search_bases=False,

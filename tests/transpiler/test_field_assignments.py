@@ -32,6 +32,70 @@ SOURCE = dedent("""
 
 @pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
                          ids=["js", "native", "jvm", "wasm"])
+def test_inherited_factory_field_waits_for_effective_initializer(environment):
+    source = '''
+        from pyjs import js
+        @js
+        class Parent:
+            def __init__(self, count: int):
+                self.count = count
+        @js
+        class Child(Parent):
+            pass
+        @js
+        def make() -> Child:
+            return Child(2)
+        def main() -> int:
+            value = make()
+            value.count = 42
+            return value.count
+    '''
+    with analyze_source(source, wrap=False, environment=environment) as analysis:
+        child = analysis.entry_point.scope.lookup("value").cls
+        field = child.super._self.find_attrs("count")
+        assert child._self.find_attrs("count") is field
+        assert field.cls.generic_name == "int"
+    if environment is None:
+        at(source, """
+            class Parent:
+
+                def __init__(count: int) -> None:
+                    self.count = count
+
+            class Child(Parent):
+
+            def make() -> Child:
+                return Child(2)
+
+            def main() -> int:
+                value: Child = make()
+                value.count = 42
+                return value.count
+        """, """
+            export class Parent {
+
+                constructor(count) {
+                    this.count = count;
+                }
+            }
+
+            export class Child extends Parent {
+            }
+
+            export function make() {
+                return new Child(2);
+            }
+
+            export function main() {
+                var value = make();
+                value.count = 42;
+                return value.count;
+            }
+        """)
+
+
+@pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
+                         ids=["js", "native", "jvm", "wasm"])
 @pytest.mark.parametrize("method", ["__init__", "put"])
 @pytest.mark.parametrize("class_body", [False, True], ids=["initializer", "class-body"])
 @pytest.mark.parametrize("annotation, field_type, initial, value", [

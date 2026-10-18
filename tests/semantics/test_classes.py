@@ -4,10 +4,15 @@ from pyjs.analysis.diagnostics import CompilationError
 from pyjs.javascript.source import compile_source
 from tests.backend_semantics import (
     APPLICATION_GENERIC_UNION_ORDER_CONTRACT,
+    INHERITED_FACTORY_FIELD_CONTRACT,
     PROPERTY_FIELD_OVERRIDE_CONTRACT,
 )
 
 from .helpers import assert_semantics, run_python
+
+
+def test_inherited_factory_field_contract():
+    assert_semantics(INHERITED_FACTORY_FIELD_CONTRACT.print_source + "\nmain()\n")
 
 
 @pytest.mark.parametrize("parameter", ["T", "T: Base"])

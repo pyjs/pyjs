@@ -1,9 +1,10 @@
 """Analysis configuration for direct JVM compilation."""
 
+import ast
 import inspect
 
 from pyjs.analysis import create_analysis_environment
-from pyjs.analysis.analyzer import CallGraphVisitor
+from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type
 from pyjs.analysis.diagnostics import DiagnosticCode
 from pyjs.analysis.ir import IRInferenceVisitor
 from pyjs.analysis.lifetime import refine_lifetimes
@@ -12,6 +13,8 @@ from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
 
+from .exceptions import managed_exception
+
 
 class JVMInferenceVisitor(IRInferenceVisitor):
     """JVM analysis policy."""
@@ -19,6 +22,28 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     numeric_domains = frozenset({"portable", "wgsl", "java"})
     lower_exception_regions = True
     lower_exception_objects = True
+
+    def visit_Call(self, node):
+        result = super().visit_Call(node)
+        if not isinstance(result, ast.Call):
+            return result
+        target = getattr(result.func, "obj", None)
+        receiver = None
+        if getattr(target, "py_obj", None) is native_builtins._str and result.args:
+            receiver = result.args[0]
+        elif getattr(target, "name", None) == "__str__" and isinstance(result.func, ast.Attribute):
+            value = result.func.value
+            if not (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                    and value.func.id == "super"):
+                receiver = value
+        if receiver is not None:
+            semantic = analyzed_value_type(receiver)
+            members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
+            result.runtime_protocols = (
+                *getattr(result, "runtime_protocols", ()),
+                *((member, ("__str__",)) for member in members if managed_exception(member)),
+            )
+        return result
 
     def expand_static_call_keywords(self, node, call_target=None):
         if getattr(call_target, "py_obj", None) is native_builtins._dict and node.keywords:
