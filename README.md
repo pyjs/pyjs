@@ -224,6 +224,17 @@ Use `--json` for structured results or `--perf` to compare Python and generated
 JavaScript timing. DOM, WebGPU, and other browser APIs still run through an
 application or browser test.
 
+Node provisioning uses [sdkmgr](https://github.com/pyjs/sdkmgr), which reuses
+mise or nvm and installs the requested version only when necessary. Explicit
+`Node(executable=...)` and `PYJS_NODE` selections still take precedence and
+require Node 20 or newer. Previous PyJS-managed Node caches are left untouched;
+new installations belong to the selected manager. Configure mirrors through
+that manager, not the retired `PYJS_NODE_MIRROR` setting. Constructing a `Node`
+does not install anything; `ensure()` provisions it before execution. Path
+properties only discover existing installations and report a missing runtime.
+The optional `root` argument now controls sdkmgr's manager-bootstrap storage,
+not the Node installation directory.
+
 ## Build an entry point
 
 The application server builds and serves browser assets automatically. To

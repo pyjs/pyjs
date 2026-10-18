@@ -10,6 +10,61 @@ from pyjs.tooling.android import AndroidDevice, AndroidSDK
 from pyjs.tooling.android_jvm import AndroidJVMApplication, AndroidJVMBuilder
 
 
+def test_java_discovery_uses_sdkmgr_without_installing(monkeypatch, tmp_path):
+    manager = Mock()
+    manager.find.return_value.home = tmp_path / "jdk"
+    factory = Mock(return_value=manager)
+    monkeypatch.setattr("sdkmgr.Manager", factory)
+
+    assert AndroidSDK.find_java_home() == tmp_path / "jdk"
+    factory.assert_called_once_with(interactive=False)
+    manager.find.assert_called_once_with("java", version="21")
+    manager.ensure.assert_not_called()
+
+
+def test_missing_java_provides_sdkmgr_instructions(monkeypatch):
+    manager = Mock()
+    manager.find.return_value = None
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
+    with pytest.raises(RuntimeError, match="sdkmgr install java@21"):
+        AndroidSDK.find_java_home()
+    manager.ensure.assert_not_called()
+
+
+@pytest.mark.parametrize("discover", [AndroidSDK.find_root, AndroidSDK.find_java_home])
+def test_android_manager_constructor_errors_are_runtime_errors(monkeypatch, discover):
+    monkeypatch.setattr("platform.machine", lambda: "riscv64")
+    with pytest.raises(RuntimeError, match="Unsupported platform: .* riscv64"):
+        discover()
+
+
+def test_sdk_discovery_reuses_packages_without_a_management_cli(monkeypatch, tmp_path):
+    import sys
+
+    adb = tmp_path / "platform-tools" / ("adb.exe" if sys.platform == "win32" else "adb")
+    adb.parent.mkdir()
+    adb.touch()
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path))
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    assert AndroidSDK.find_root() == tmp_path
+    assert not (tmp_path / "cmdline-tools").exists()
+
+
+def test_conflicting_android_roots_are_not_silently_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path / "first"))
+    monkeypatch.setenv("ANDROID_SDK_ROOT", str(tmp_path / "second"))
+    with pytest.raises(RuntimeError, match="disagree"):
+        AndroidSDK.find_root()
+
+
+def test_missing_android_sdk_does_not_install_packages(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANDROID_HOME", str(tmp_path / "missing"))
+    monkeypatch.delenv("ANDROID_SDK_ROOT", raising=False)
+    with pytest.raises(RuntimeError, match="sdkmgr android install"):
+        AndroidSDK.find_root()
+    assert not (tmp_path / "missing").exists()
+
+
 def test_android_sdk_parses_adb_devices():
     runner = Mock()
     runner.run.return_value = subprocess.CompletedProcess(
@@ -105,6 +160,92 @@ def test_android_sdk_starts_managed_headless_emulators_without_snapshots():
         "-no-audio",
         "-no-boot-anim",
     ]
+
+
+def test_existing_emulator_waits_for_boot_instead_of_only_adb(monkeypatch):
+    runner = Mock()
+    runner.run.side_effect = [
+        subprocess.CompletedProcess([], 0, stdout=""),
+        subprocess.CompletedProcess([], 0, stdout="1\n"),
+    ]
+    sdk = AndroidSDK(Path("/android"), Path("/java"), runner)
+    device = AndroidDevice("emulator-5554", "device")
+    sdk.devices = Mock(return_value=[device])
+    monkeypatch.setattr("pyjs.tooling.android.time.sleep", lambda _: None)
+    assert sdk.ensure_emulator() == device
+    assert runner.run.call_count == 2
+    assert all(call.args[0][1:5] == ["-s", device.identifier, "shell", "getprop"]
+               for call in runner.run.call_args_list)
+    runner.start.assert_not_called()
+
+
+def test_emulator_wait_does_not_select_physical_devices(monkeypatch):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("physical", "device")])
+    clock = [0]
+    monkeypatch.setattr("pyjs.tooling.android.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("pyjs.tooling.android.time.sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    with pytest.raises(TimeoutError, match="did not finish booting"):
+        sdk.wait_for_emulator(timeout=1)
+    sdk.runner.run.assert_not_called()
+
+
+@pytest.fixture
+def emulator_clock(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr("pyjs.tooling.android.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("pyjs.tooling.android.time.sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    return clock
+
+
+@pytest.mark.parametrize("failure", [subprocess.TimeoutExpired("adb", 5), subprocess.CalledProcessError(1, "adb")])
+@pytest.mark.parametrize("operation", ["devices", "getprop"])
+def test_emulator_poll_retries_transient_adb_failures(emulator_clock, failure, operation):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    device = AndroidDevice("emulator-5554", "device")
+    sdk.devices = Mock(return_value=[device])
+    sdk.runner.run.return_value = subprocess.CompletedProcess([], 0, stdout="1\n")
+    if operation == "devices":
+        sdk.devices.side_effect = [failure, [device]]
+    else:
+        sdk.runner.run.side_effect = [failure, sdk.runner.run.return_value]
+    assert sdk.wait_for_emulator(timeout=10) == device
+
+
+def test_hung_emulator_does_not_starve_ready_emulator(emulator_clock):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    first = AndroidDevice("emulator-5554", "device")
+    second = AndroidDevice("emulator-5556", "device")
+    sdk.devices = Mock(return_value=[first, second])
+
+    def poll(command, **options):
+        if command[2] == first.identifier:
+            emulator_clock[0] += options["timeout"]
+            raise subprocess.TimeoutExpired(command, options["timeout"])
+        return subprocess.CompletedProcess(command, 0, stdout="1\n")
+
+    sdk.runner.run.side_effect = poll
+    assert sdk.wait_for_emulator(timeout=10) == second
+    assert emulator_clock[0] == 5
+
+
+@pytest.mark.parametrize("operation", ["devices", "getprop"])
+def test_hung_adb_expires_at_boot_deadline(emulator_clock, operation):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("emulator-5554", "device")])
+
+    def hang(*args, timeout, **kwargs):
+        assert 0 < timeout <= 2
+        emulator_clock[0] += timeout
+        raise subprocess.TimeoutExpired("adb", timeout)
+
+    if operation == "devices":
+        sdk.devices.side_effect = hang
+    else:
+        sdk.runner.run.side_effect = hang
+    with pytest.raises(TimeoutError, match="did not finish booting"):
+        sdk.wait_for_emulator(timeout=2)
+    assert emulator_clock[0] == 2
 
 
 def test_android_jvm_application_derives_package_qualified_names():

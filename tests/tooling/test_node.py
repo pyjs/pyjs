@@ -6,37 +6,139 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from sdkmgr import Installation, SDKError
+from sdkmgr.providers import Platform
 
+from pyjs.tooling import node as node_module
 from pyjs.tooling.download import verify_sha256
 from pyjs.tooling.node import Node, Npm
 
 
-def test_node_import_does_not_load_the_llvm_backend():
+@pytest.fixture(autouse=True)
+def isolated_node_discovery():
+    node_module._managed_installations.clear()
+    yield
+    node_module._managed_installations.clear()
+
+
+def test_tooling_import_does_not_load_llvm_or_sdkmgr():
     result = subprocess.run(
         [
             sys.executable,
             "-c",
             "import sys; from pyjs.tooling.node import Node; "
-            "print('pyjs.native.llvm' in sys.modules)",
+            "from pyjs.tooling.android import AndroidSDK; "
+            "print('pyjs.native.llvm' in sys.modules, 'sdkmgr' in sys.modules)",
         ],
         check=True,
         capture_output=True,
         text=True,
     )
 
-    assert result.stdout == "False\n"
+    assert result.stdout == "False False\n"
 
 
-def test_node_uses_platform_archive_name(monkeypatch, tmp_path):
-    monkeypatch.setattr("platform.system", lambda: "Linux")
-    monkeypatch.setattr("platform.machine", lambda: "x86_64")
-
+@pytest.mark.parametrize("system", ["linux", "macos", "windows"])
+def test_node_delegates_provisioning_to_sdkmgr(monkeypatch, tmp_path, system):
+    installation = Installation("node", "24.18.1", tmp_path / "provider", Platform(system, "x64"))
+    manager = Mock()
+    manager.ensure.return_value = installation
+    factory = Mock(return_value=manager)
+    monkeypatch.setattr("sdkmgr.Manager", factory)
+    monkeypatch.delenv("PYJS_NODE", raising=False)
     node = Node(version="24.18.1", root=tmp_path)
+    factory.assert_not_called()
+    assert node.ensure() == installation.home
+    assert node.ensure() == installation.home
+    factory.assert_called_once_with(tmp_path, interactive=False)
+    manager.ensure.assert_called_once_with("node", version="24.18.1")
+    assert node.home == installation.home
+    assert node.executable == node.home / ("node.exe" if system == "windows" else "bin/node")
+    assert node.npm_executable == node.home / ("npm.cmd" if system == "windows" else "bin/npm")
 
-    assert node.platform_name == "linux-x64"
-    assert node.home == tmp_path / "v24.18.1-linux-x64"
-    assert node.executable == node.home / "bin/node"
-    assert node.npm_executable == node.home / "bin/npm"
+
+def test_node_path_discovery_never_installs(monkeypatch):
+    manager = Mock()
+    manager.find.return_value = None
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    with pytest.raises(RuntimeError, match="Call Node.ensure"):
+        _ = Node().executable
+    manager.ensure.assert_not_called()
+
+
+def test_sdkmgr_failure_keeps_cli_runtime_error_contract(monkeypatch):
+    manager = Mock()
+    manager.ensure.side_effect = SDKError("provider failed")
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    with pytest.raises(RuntimeError, match="provider failed"):
+        Node().ensure()
+
+
+@pytest.mark.parametrize("install", [False, True])
+def test_manager_constructor_failure_keeps_cli_error_contract(monkeypatch, install):
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    monkeypatch.setattr(platform, "machine", lambda: "riscv64")
+    with pytest.raises(RuntimeError, match="Unsupported platform: .* riscv64"):
+        node = Node()
+        node.ensure() if install else node.executable
+
+
+@pytest.fixture
+def managed_installation(monkeypatch, tmp_path):
+    installation = Installation("node", "24.18.1", tmp_path / "provider", Platform("linux", "x64"))
+    for tool in ("node", "npm", "npx"):
+        executable = installation.executable(tool)
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.touch()
+    manager = Mock()
+    manager.ensure.return_value = manager.find.return_value = installation
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
+    monkeypatch.delenv("PYJS_NODE", raising=False)
+    return installation, manager
+
+
+def test_managed_node_discovery_is_shared_across_instances(managed_installation):
+    installation, manager = managed_installation
+    assert Node().executable == installation.executable()
+    for _ in range(20):
+        assert Node().ensure() == installation.home
+    manager.find.assert_called_once()
+    manager.ensure.assert_not_called()
+
+
+@pytest.mark.parametrize("variable", ["PATH", "HOME", "MISE_DATA_DIR", "NVM_DIR", "XDG_DATA_HOME"])
+def test_managed_node_cache_respects_environment(monkeypatch, managed_installation, tmp_path, variable):
+    Node().ensure()
+    monkeypatch.setenv(variable, str(tmp_path / "changed"))
+    Node().ensure()
+    assert managed_installation[1].ensure.call_count == 2
+
+
+def test_managed_node_cache_respects_root_and_version(managed_installation, tmp_path):
+    Node(root=tmp_path).ensure()
+    Node(root=tmp_path / "other").ensure()
+    Node(root=tmp_path, version="22.14.0").ensure()
+    assert managed_installation[1].ensure.call_count == 3
+
+
+def test_managed_node_cache_rediscovers_removed_tools(managed_installation):
+    installation, manager = managed_installation
+    Node().ensure()
+    installation.executable("npm").unlink()
+    Node().ensure()
+    assert manager.ensure.call_count == 2
+
+
+def test_missing_discovery_is_not_cached(managed_installation):
+    installation, manager = managed_installation
+    manager.find.return_value = None
+    with pytest.raises(RuntimeError, match="Call Node.ensure"):
+        _ = Node().executable
+    assert Node().ensure() == installation.home
+    manager.find.assert_called_once()
+    manager.ensure.assert_called_once()
 
 
 def test_download_verifies_published_checksum(tmp_path):
@@ -54,6 +156,7 @@ def test_download_verifies_published_checksum(tmp_path):
 
 
 def test_node_uses_an_explicit_environment_executable(monkeypatch, tmp_path):
+    monkeypatch.setattr("sdkmgr.Manager", lambda *a, **kw: pytest.fail("Explicit runtime"))
     executable = tmp_path / "bin/node"
     executable.parent.mkdir()
     executable.write_text("node", encoding="utf-8")
@@ -97,13 +200,11 @@ def test_node_rejects_an_old_explicit_version(tmp_path):
         Node(executable=executable, runner=runner).ensure()
 
 
-def test_node_download_mirror_prefers_the_pyjs_override(monkeypatch):
-    monkeypatch.setenv("NODEJS_ORG_MIRROR", "https://node.example/dist/")
-    node = Node(version="24.18.1")
-    assert node.download_base_url() == "https://node.example/dist/v24.18.1"
-
+def test_obsolete_pyjs_mirror_is_not_silently_ignored(monkeypatch):
+    monkeypatch.delenv("PYJS_NODE", raising=False)
     monkeypatch.setenv("PYJS_NODE_MIRROR", "https://pyjs.example/node")
-    assert node.download_base_url() == "https://pyjs.example/node/v24.18.1"
+    with pytest.raises(RuntimeError, match="provider's mirror"):
+        Node().ensure()
 
 
 def test_node_runs_javascript_as_an_ecmascript_module(tmp_path):
@@ -116,7 +217,7 @@ def test_node_runs_javascript_as_an_ecmascript_module(tmp_path):
         return runner.run.return_value
 
     runner.run.side_effect = capture_source
-    node = Node(root=tmp_path, runner=runner)
+    node = Node(executable=tmp_path / "node", runner=runner)
     node.ensure = Mock(return_value=node.home)
 
     result = node.run_javascript("console.log('hello');")
@@ -146,7 +247,7 @@ def test_node_checks_ecmascript_module_syntax():
 
 
 def test_npm_can_save_exact_project_dependencies(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()
@@ -162,7 +263,7 @@ def test_npm_can_save_exact_project_dependencies(tmp_path):
 
 
 def test_npm_syncs_an_existing_managed_project(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()
@@ -181,7 +282,7 @@ def test_npm_syncs_an_existing_managed_project(tmp_path):
 
 
 def test_npm_bundles_with_the_managed_esbuild(tmp_path):
-    node = Node(root=tmp_path / "node")
+    node = Node(executable=tmp_path / "node" / "node")
     node.ensure = Mock(return_value=node.home)
     node.npm_executable.parent.mkdir(parents=True)
     node.npm_executable.touch()

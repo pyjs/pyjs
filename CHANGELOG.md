@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Changed
+
+- Node provisioning delegates to sdkmgr's mise/nvm providers instead of
+  downloading archives into PyJS's own cache. Explicit executable selections
+  remain supported; configure custom download mirrors through the provider.
+- Android tooling uses sdkmgr's SDK-root and JDK 21 discovery. Existing SDKs
+  remain usable without installing a new management CLI, and missing tools
+  produce setup instructions without starting installers during tests.
+  Automatic discovery requires JDK 21: other `JAVA_HOME` versions are skipped,
+  and Android Studio's bundled JBR is no longer searched implicitly. Set
+  `JAVA_HOME` to its JDK 21 directory to reuse it.
+- Tests wait for Android boot completion before reusing an existing emulator,
+  rather than treating ADB connectivity as installation readiness.
+
 ### Added
 
 - JVM custom exception classes support inherited catches, initializers, typed
