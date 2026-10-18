@@ -2028,23 +2028,8 @@ class JVMEmitter:
             if target.name == "__str__" and not argument_types:
                 if receiver_type == "Ljava/lang/Throwable;" or exception_type(semantic_receiver) is not None:
                     self.exception_message()
-                    return "Ljava/lang/String;"
-                elif receiver_type == "J":
-                    owner, descriptor = "java/lang/Long", "(J)Ljava/lang/String;"
-                elif receiver_type == "Z":
-                    self.bool_string()
-                    return "Ljava/lang/String;"
                 else:
-                    raise JVMUnsupported(
-                        f"unsupported JVM scalar operation {target.name}",
-                        node,
-                    )
-                reference = self.class_file.method_reference(
-                    owner,
-                    "toString",
-                    descriptor,
-                )
-                self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    self.scalar_string(receiver_type, node)
                 return "Ljava/lang/String;"
             raise JVMUnsupported(f"unsupported JVM scalar operation {target.name}", node)
         if isinstance(target, Function):
@@ -2114,22 +2099,10 @@ class JVMEmitter:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM str() takes one argument", node)
             value_type = self.expression(node.args[0])
-            if value_type == "Ljava/lang/String;":
-                return value_type
             if value_type == "Ljava/lang/Throwable;" or exception_type(analyzed_value_type(node.args[0])) is not None:
                 self.exception_message()
-                return "Ljava/lang/String;"
-            if value_type == "J":
-                owner, descriptor = "java/lang/Long", "(J)Ljava/lang/String;"
             else:
-                owner, descriptor = "java/lang/Boolean", "(Z)Ljava/lang/String;"
-            if value_type not in {"J", "Z"}:
-                raise JVMUnsupported("JVM str() conversion is not implemented", node)
-            if value_type == "Z":
-                self.bool_string()
-                return "Ljava/lang/String;"
-            reference = self.class_file.method_reference(owner, "toString", descriptor)
-            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                self.scalar_string(value_type, node)
             return "Ljava/lang/String;"
         if self.is_super_call(node):
             if node.args or node.keywords:
@@ -2937,9 +2910,12 @@ class JVMEmitter:
             # SyntaxError distinguishes an omitted message from empty text.
             syntax_error = issubclass(exception_type(node.value_type), native_builtins._SyntaxError)
             message = ast.Constant(value="None" if syntax_error else "")
-        if self.expression(message) != "Ljava/lang/String;":
-            raise JVMUnsupported("JVM exception messages must be strings", message)
-        if node.message is not None and exception_type(node.value_type) is native_builtins._KeyError:
+        value_type = self.expression(message)
+        if value_type not in {"Ljava/lang/String;", "J", "Z"}:
+            raise JVMUnsupported("JVM exception messages require str, int, or bool", node)
+        self.scalar_string(value_type, message)
+        if (node.message is not None and value_type == "Ljava/lang/String;"
+                and exception_type(node.value_type) is native_builtins._KeyError):
             self.string_repr()
         constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
@@ -3400,6 +3376,19 @@ class JVMEmitter:
         self.string_constant("True")
         self.code.mark(done)
 
+    def scalar_string(self, value_type: str, node) -> None:
+        if value_type == "Ljava/lang/String;":
+            return
+        if value_type == "Z":
+            self.bool_string()
+        elif value_type == "J":
+            reference = self.class_file.method_reference(
+                "java/lang/Long", "toString", "(J)Ljava/lang/String;",
+            )
+            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+        else:
+            raise JVMUnsupported("JVM string conversion requires str, int, or bool", node)
+
     def joined_string(self, node: ast.JoinedStr) -> str:
         self.string_constant("")
         concat = self.class_file.method_reference(
@@ -3412,17 +3401,7 @@ class JVMEmitter:
                 self.string_constant(value.value)
             elif isinstance(value, ast.FormattedValue) and value.format_spec is None:
                 value_type = self.expression(value.value)
-                if value_type == "J":
-                    reference = self.class_file.method_reference(
-                        "java/lang/Long",
-                        "toString",
-                        "(J)Ljava/lang/String;",
-                    )
-                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
-                elif value_type == "Z":
-                    self.bool_string()
-                elif value_type != "Ljava/lang/String;":
-                    raise JVMUnsupported("JVM formatted value is not implemented", value)
+                self.scalar_string(value_type, value)
             else:
                 raise JVMUnsupported(
                     "JVM formatted string spec is not implemented", value

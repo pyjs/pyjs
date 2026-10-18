@@ -551,8 +551,12 @@ with `pyjs template`.
   and broader platform coverage remain in progress.
 - JVM exception handling supports ordered handlers, reraising, assertions,
   and `finally`, including cleanup across returns, breaks and continues.
-  Construct builtin exceptions directly in `raise`, with an optional string
-  message. Caught values support `str()`, identity and `isinstance()`.
+  Construct builtin exceptions directly in `raise`, with an optional string,
+  integer or Boolean message. Integers retain their signed 64-bit value and
+  Booleans use Python's `True`/`False` spelling. Assertion messages use the same
+  conversion and are evaluated only on failure. Float and container messages
+  remain unsupported. Caught values support `str()`, identity and
+  `isinstance()`.
   Native Java exceptions retain their native category: `Exception` catches
   Java exceptions, while `BaseException` also catches Java errors. Declare
   specific Java exception classes with `@jvm.native` to catch them directly.
@@ -564,6 +568,9 @@ with `pyjs template`.
   String and nullable-string keys retain Python-style quoted messages;
   `KeyError()` and `KeyError("")` remain distinct. Formatting uses pinned
   Unicode 16 printability rather than the host JDK's Unicode version.
+  The existing UTF-16 representation conflates adjacent high/low surrogate
+  code points with the corresponding astral character; quoting cannot recover
+  that distinction. Isolated surrogates are escaped.
   Other reference-key lookups are catchable but currently use the generic
   message `key not found`; original exception payloads remain unsupported.
 - JVM synchronous context managers support nested cleanup, suppression and

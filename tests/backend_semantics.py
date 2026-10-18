@@ -2023,6 +2023,54 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
 )
 
 
+SCALAR_EXCEPTION_MESSAGE_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def message_revision(events: list[int]) -> int:
+    events.append(1)
+    return 42
+''',
+    "scalar_exception_message_contract",
+    '''
+    events: list[int] = []
+    integer_message = ""
+    try:
+        raise ValueError(message_revision(events))
+    except ValueError as invalid:
+        integer_message = str(invalid)
+    key_message = ""
+    try:
+        raise KeyError(-42)
+    except KeyError as missing:
+        key_message = str(missing)
+    true_message = ""
+    try:
+        raise RuntimeError(True)
+    except RuntimeError as failed:
+        true_message = str(failed)
+    false_message = ""
+    try:
+        raise KeyError(False)
+    except KeyError as false_key:
+        false_message = str(false_key)
+    assertion_message = ""
+    assert True, message_revision(events)
+    try:
+        assert False, message_revision(events)
+    except AssertionError as assertion:
+        assertion_message = str(assertion)
+    ''',
+    (
+        ("integer message", 'integer_message != "42"'),
+        ("numeric keys are not quoted", 'key_message != "-42"'),
+        ("Python boolean spelling", 'true_message != "True" or false_message != "False"'),
+        ("lazy single evaluation", 'len(events) != 2 or assertion_message != integer_message'),
+    ),
+)
+
+
 KEY_ERROR_CONTRACT = _contract(
     '''
 from pyjs import js

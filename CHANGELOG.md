@@ -4,6 +4,9 @@
 
 ### Added
 
+- JVM builtin exceptions and assertions accept integer and Boolean messages.
+  Fixed-width integer values retain their normalized value; Booleans render as
+  `True` or `False`. Numeric `KeyError` messages are not quoted.
 - JVM missing dictionary keys raise catchable `KeyError`. String keys and
   explicit string messages preserve Python quoting and Unicode escapes,
   including the distinction between no argument and an empty string.

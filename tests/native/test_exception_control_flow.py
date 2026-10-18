@@ -12,6 +12,7 @@ from tests.backend_semantics import (
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
+    SCALAR_EXCEPTION_MESSAGE_CONTRACT,
 )
 
 
@@ -67,7 +68,7 @@ def test_assert_narrows_generator_input_but_next_still_sends_none(tmp_path, opti
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT], ids=["handlers", "cleanup", "runtime", "key-error"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["handlers", "cleanup", "runtime", "key-error", "scalar-message"])
 def test_shared_exception_control_flow_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
         contract.source, directory=tmp_path, optimize=optimize,
