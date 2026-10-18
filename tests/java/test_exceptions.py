@@ -575,6 +575,31 @@ def test_native_exception_values_can_cross_throwable_boundaries(tmp_path, bounda
     ''', tmp_path)
 
 
+@pytest.mark.parametrize("boundary", ["Exception", "BaseException"])
+@pytest.mark.parametrize("derived", [False, True], ids=["direct", "inherited"])
+def test_application_native_throwable_subclasses_can_widen(tmp_path, boundary, derived):
+    assert_matches_python(f'''
+        from pyjs import jvm
+
+        @jvm.native("java/lang/RuntimeException")
+        class NativeError(Exception):
+            def __init__(self):
+                pass
+
+        class ApplicationError(NativeError):
+            pass
+
+        class DerivedError(ApplicationError):
+            pass
+
+        def accept(error: {boundary}) -> int:
+            return 42
+
+        def main() -> int:
+            return accept({"DerivedError" if derived else "ApplicationError"}())
+    ''', tmp_path)
+
+
 @pytest.mark.parametrize(("result_type", "empty"), [
     ("NumberFormatException", False),
     ("NumberFormatException | None", False),

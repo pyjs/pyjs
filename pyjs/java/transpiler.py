@@ -4722,9 +4722,15 @@ class JVMEmitter:
             ),
             self.native_exception_types.get(actual),
         )
-        if expected == "Ljava/lang/Throwable;":
-            return exception_type(actual_type) is not None
         while actual_type is not None:
+            # Only a declared Java base establishes Throwable inheritance.
+            # Ordinary Python exception bases still emit Object subclasses.
+            if (
+                expected == "Ljava/lang/Throwable;"
+                and is_declaration(actual_type.py_obj, "jvm")
+                and exception_type(actual_type) is not None
+            ):
+                return True
             layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
             if layout is None:
                 break
