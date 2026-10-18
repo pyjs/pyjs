@@ -627,6 +627,9 @@ with `pyjs template`.
   locals, list items and multi-type exception handlers.
   Optional exceptions format absent values as `None` through `str()`, f-strings
   and no-argument `__str__()` calls; present values keep custom dispatch.
+  Python-authored subclasses of native Java throwables keep their formatters
+  through these Python text operations, including mixed exception unions.
+  Their Java `getMessage()` behavior is unchanged.
   Explicit optional calls require string-compatible formatter results; narrow
   the receiver before consuming a differently typed custom result.
   `object` locals retain existing inferred union/collection storage, but

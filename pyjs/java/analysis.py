@@ -14,7 +14,12 @@ from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
 
 from .diagnostics import JVMUnsupported
-from .exceptions import contained_exception_types, managed_exception, nullable_exception
+from .exceptions import (
+    contained_exception_types,
+    exception_type,
+    managed_exception,
+    nullable_exception,
+)
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -71,16 +76,17 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         semantic = analyzed_value_type(receiver)
         members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
         call.jvm_exception_protocols = tuple(
-            (member, ("__str__",)) for member in members if managed_exception(member)
+            (member, ("__str__",)) for member in members if exception_type(member) is not None
         )
         call.runtime_protocols = (*getattr(call, "runtime_protocols", ()),
                                   *call.jvm_exception_protocols)
 
     def dispatch_dunder_call(self, builtin, method_name, args, keywords):
-        # Interpolation must use the same nullable runtime dispatch as str(),
-        # rather than select an exception method that cannot receive None.
+        # Python text consumers share runtime dispatch, including foreign
+        # subclasses and unions whose members have unrelated method owners.
         if (method_name == "__str__" and len(args) == 1 and not keywords
-                and nullable_exception(analyzed_value_type(args[0]))):
+                and (exception_type(analyzed_value_type(args[0])) is not None
+                     or nullable_exception(analyzed_value_type(args[0])))):
             call = self.call_node(
                 args[0], builtin, func=Name(builtin), args=args, keywords=[],
             )

@@ -88,6 +88,26 @@ def emit_exception_class(class_files, prefix, value):
     return emit_exception_subclass(class_files, name, parent, prefix)
 
 
+def strict_formatter_bridge(class_file, class_files, prefix, *, final=True):
+    """Check implicit Python text without changing explicit or Java calls."""
+    code = Bytecode()
+    code.local(0x19, 0)
+    reference = class_file.method_reference(class_file.name, EXPLICIT_FORMATTER, "()Ljava/lang/String;")
+    code.emit(0xB6, reference.to_bytes(2, "big"))
+    code.emit(0x59)
+    code.branch(0xC7, "valid")
+    code.emit(0x57)
+    emit_type_error(
+        code, class_file, class_files, prefix,
+        "Exception __str__ must accept no arguments and return str",
+    )
+    code.mark("valid")
+    code.emit(0xB0)
+    return Method(
+        0x0011 if final else 0x0001, FORMATTER, "()Ljava/lang/String;", code.render(), 3, 1,
+    )
+
+
 def emit_exception_subclass(class_files, name, parent, prefix):
     if name in class_files:
         return name
@@ -130,22 +150,7 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         class_file.add_method(Method(
             0x0001, EXPLICIT_FORMATTER, "()Ljava/lang/String;", getter.render(), 1, 1,
         ))
-        getter = Bytecode()
-        getter.local(0x19, 0)
-        reference = class_file.method_reference(name, EXPLICIT_FORMATTER, "()Ljava/lang/String;")
-        getter.emit(0xB6, reference.to_bytes(2, "big"))
-        getter.emit(0x59)
-        getter.branch(0xC7, "valid")
-        getter.emit(0x57)
-        emit_type_error(
-            getter, class_file, class_files, prefix,
-            "Exception __str__ must accept no arguments and return str",
-        )
-        getter.mark("valid")
-        getter.emit(0xB0)
-        class_file.add_method(Method(
-            0x0011, FORMATTER, "()Ljava/lang/String;", getter.render(), 3, 1,
-        ))
+        class_file.add_method(strict_formatter_bridge(class_file, class_files, prefix))
         # Java loggers and uncaught handlers must not lose the original error
         # when Python formatting fails. Python calls use FORMATTER directly.
         getter = Bytecode()
