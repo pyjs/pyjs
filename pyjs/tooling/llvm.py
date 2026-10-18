@@ -1121,9 +1121,9 @@ class LLVM:
                     sys.stdout.write(result)
                 elif isinstance(result, int):
                     raise SystemExit(result)
-                else:
+                elif result is not None:
                     raise TypeError(
-                        "LLVM comparison main() must return str or int, "
+                        "LLVM comparison main() must return str, int or None, "
                         f"not {{type(result).__name__}}"
                     )
                 """

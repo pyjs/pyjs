@@ -1,0 +1,422 @@
+"""Exercise the installed-command boundary with a real compiler on every host."""
+
+import json
+import os
+import subprocess
+import sys
+import sysconfig
+import textwrap
+from pathlib import Path
+
+import pytest
+
+from pyjs.native.platform import binary_suffix
+from tests.native.runtime_support import TRAP_RETURN_CODES
+
+
+def cli(*arguments, cwd, stdin=None):
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).parents[2]))
+    return subprocess.run(
+        [sys.executable, "-m", "pyjs", *arguments], cwd=cwd, env=env,
+        input=stdin, capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+
+
+@pytest.mark.parametrize("mode", ["file", "module", "package", "command", "stdin"])
+def test_native_input_modes(tmp_path, mode):
+    source = "print('hello')\n"
+    if mode in ("file", "module"):
+        (tmp_path / "hello.py").write_text(source, encoding="utf-8")
+        arguments = ["hello.py"] if mode == "file" else ["-m", "hello"]
+    elif mode == "package":
+        package = tmp_path / "hello"
+        package.mkdir()
+        (package / "__init__.py").touch()
+        (package / "greeting.py").write_text("def message() -> str: return 'hello'\n", encoding="utf-8")
+        (package / "__main__.py").write_text("from .greeting import message\nprint(message())\n", encoding="utf-8")
+        arguments = ["-m", "hello"]
+    else:
+        arguments = ["-c", source] if mode == "command" else ["-"]
+    result = cli("--target", "native", *arguments, cwd=tmp_path,
+                 stdin=source if mode == "stdin" else None)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "hello\n", "")
+
+
+def test_file_imports_guarded_main_and_retained_build(tmp_path):
+    project = tmp_path / "project with spaces"
+    project.mkdir()
+    (project / "helper.py").write_text("def value() -> int: return 23\n", encoding="utf-8")
+    source = project / "__main__.py"
+    source.write_text(
+        "from helper import value\n"
+        "def main() -> None:\n    print(value())\n"
+        "if __name__ == '__main__':\n    main()\n", encoding="utf-8")
+    binary = tmp_path / ("retained program" + binary_suffix())
+    result = cli("build", "--target", "native", str(source), "-o", str(binary), cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"Wrote {binary}\n"  # Compilation did not execute main.
+    assert sorted(path.name for path in project.glob("*.ll")) == []
+    native = subprocess.run([binary], capture_output=True, timeout=10)
+    assert (native.returncode, native.stdout, native.stderr) == (0, b"23\n", b"")
+
+
+def test_module_build_with_non_main_entry(tmp_path):
+    (tmp_path / "a.py").write_text("def start() -> str: return 'built'\n", encoding="utf-8")
+    result = cli("build", "--target", "native", "a:start", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    native = subprocess.run([tmp_path / ("a" + binary_suffix())], capture_output=True, timeout=10)
+    assert (native.returncode, native.stdout, native.stderr) == (0, b"built", b"")
+
+
+@pytest.mark.parametrize("entry", ["main", "typo"])
+def test_explicit_missing_entry_is_not_replaced_with_an_empty_program(tmp_path, entry):
+    (tmp_path / "sample.py").write_text("def start() -> str: return 'built'\n", encoding="utf-8")
+    result = cli("build", "--target", "native", f"sample:{entry}", cwd=tmp_path)
+    assert result.returncode == 2
+    assert entry in result.stderr
+    assert not (tmp_path / ("sample" + binary_suffix())).exists()
+
+
+@pytest.mark.parametrize("body,code,stdout,stderr", [
+    ("print('hello')", 0, "hello\n", ""),
+    ("return 7", 7, "", ""),
+    ("raise ValueError('bad value')", None, "", "ValueError: bad value"),
+])
+def test_native_process_streams_and_exit(tmp_path, body, code, stdout, stderr):
+    annotation = "int" if body.startswith("return") else "None"
+    result = cli("--target", "native", "-c", f"def main() -> {annotation}:\n    {body}\n",
+                 cwd=tmp_path, stdin="from stdin\n")
+    assert result.stdout == stdout
+    if code is None:
+        # Native uncaught exceptions currently print a traceback and trap. The
+        # command normalizes POSIX signals to their conventional shell status.
+        assert result.returncode in {128 - value if value < 0 else value for value in TRAP_RETURN_CODES}
+    else:
+        assert result.returncode == code, result.stderr
+    if stderr:
+        assert stderr in result.stderr
+    else:
+        assert result.stderr == ""
+
+
+def test_native_json_and_ir(tmp_path):
+    source = "print('héllo')\n"
+    result = cli("--target", "native", "--json", "-c", source, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert (payload["exit_code"], payload["stdout"], payload["stderr"]) == (0, "héllo\n", "")
+    assert payload["compilation"]["seconds"] > 0
+    ir = cli("--target", "native", "--src", "-c", source, cwd=tmp_path)
+    assert ir.returncode == 0, ir.stderr
+    assert "define i32 @main()" in ir.stdout
+    assert "héllo\n" not in ir.stdout  # Printed IR, not an executed program.
+
+
+def test_initialization_output_does_not_corrupt_json_or_ir(tmp_path):
+    source = "def main() -> None:\n    print('runtime')\nprint('initialization')\n"
+    result = cli("--target", "native", "--json", "-c", source, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["stdout"] == "runtime\n"
+    assert payload["compilation"]["stdout"] == "initialization\n"
+    assert result.stderr == ""
+
+    result = cli("--target", "native", "--src", "-c", source, cwd=tmp_path)
+    assert result.returncode == 0
+    assert result.stderr == "initialization\n"
+    assert "initialization" not in result.stdout
+    assert "define i32 @main()" in result.stdout
+
+    result = cli("--target", "native", "--json", "-c",
+                 source.replace("print('runtime')", "missing_name()"), cwd=tmp_path)
+    assert result.returncode == 2
+    error = json.loads(result.stdout)["error"]
+    assert "missing_name" in error["message"]
+    assert error["notes"] == ["Analysis stdout:\ninitialization\n"]
+
+
+def test_package_discovery_output_is_compilation_output(tmp_path):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "__init__.py").write_text("print('package initialization')\n", encoding="utf-8")
+    (package / "app.py").write_text("def main() -> None: print('runtime')\n", encoding="utf-8")
+    result = cli("--target", "native", "--json", "-m", "package.app", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["stdout"] == "runtime\n"
+    assert payload["compilation"]["stdout"] == "package initialization\n"
+    assert result.stderr == ""
+    result = cli("build", "--target", "native", "package.app", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"Wrote app{binary_suffix()}\n"
+    assert result.stderr == "package initialization\n"
+
+
+@pytest.mark.parametrize("mode", ["json", "src", "error"])
+def test_analysis_capture_preserves_binary_descriptor_and_subprocess_writes(tmp_path, mode):
+    source = tmp_path / "streams.py"
+    source.write_text(
+        "import ctypes, os, subprocess, sys\n"
+        "def main() -> None:\n    " + ("missing_name()" if mode == "error" else "print('runtime')") + "\n"
+        "for name, fd in [('stdout', 1), ('stderr', 2)]:\n"
+        "    stream = getattr(sys, name)\n"
+        "    print('text', file=stream, flush=True)\n"
+        "    stream.buffer.write(b'binary\\n')\n"
+        "    stream.flush()\n"
+        "    os.write(stream.fileno(), b'fileno\\n')\n"
+        "    os.write(fd, b'descriptor\\n')\n"
+        "subprocess.run([sys.executable, '-c', \"import os; os.write(1, b'child\\\\n'); os.write(2, b'child\\\\n')\"], check=True)\n"
+        "ctypes.CDLL('ucrtbase' if sys.platform == 'win32' else None).puts(b'cstdio')\n",
+        encoding="utf-8",
+    )
+    expected = "text\nbinary\nfileno\ndescriptor\nchild\n"
+    expected_stdout = expected + "cstdio\n"
+    result = cli("--target", "native", "--src" if mode == "src" else "--json", str(source), cwd=tmp_path)
+    if mode == "error":
+        assert result.returncode == 2
+        notes = json.loads(result.stdout)["error"]["notes"]
+        assert notes == [f"Analysis stdout:\n{expected_stdout}", f"Analysis stderr:\n{expected}"]
+        assert result.stderr == ""
+    elif mode == "json":
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["compilation"]["stdout"] == expected_stdout
+        assert payload["compilation"]["stderr"] == expected
+        assert payload["stdout"] == "runtime\n"
+        assert payload["stderr"] == result.stderr == ""
+    else:
+        from pyjs.tooling.llvm import LLVM
+
+        assert result.returncode == 0, result.stderr
+        assert result.stderr == expected_stdout + expected
+        executable = LLVM().compile(result.stdout, tmp_path / "build")
+        native = subprocess.run([executable], capture_output=True, timeout=10)
+        assert (native.returncode, native.stdout, native.stderr) == (0, b"runtime\n", b"")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_analysis_capture_restores_descriptors_and_streams(capfd, fail):
+    import ctypes
+
+    from pyjs.native.cli import _analysis_output
+
+    libc = ctypes.CDLL("ucrtbase" if sys.platform == "win32" else None)
+    libc.puts(b"before")
+    stdout, stderr = sys.stdout, sys.stderr
+    try:
+        with _analysis_output() as output:
+            sys.stdout.buffer.write(b"inside\n")
+            os.write(2, b"inside error\n")
+            if fail:
+                raise ValueError("probe")
+    except ValueError as error:
+        assert fail
+        assert error.__notes__ == ["Analysis stdout:\ninside\n", "Analysis stderr:\ninside error\n"]
+    assert output == {"stdout": "inside\n", "stderr": "inside error\n"}
+    assert sys.stdout is stdout and sys.stderr is stderr
+    os.write(1, b"outside\n")
+    os.write(2, b"outside error\n")
+    assert capfd.readouterr() == ("before\noutside\n", "outside error\n")
+
+
+@pytest.mark.parametrize("closed,mode", [
+    ((1,), "run"), ((2,), "run"), ((1, 2), "run"), ((0, 1, 2), "run"),
+    ((0, 1, 2), "error"), ((2,), "error"), ((2,), "build"),
+])
+def test_native_cli_preserves_absent_standard_streams(tmp_path, closed, mode):
+    source = tmp_path / "sample.py"
+    body = "missing_name()" if mode == "error" else "pass" if 1 in closed else "print('runtime')"
+    source.write_text(
+        "import sys\nprint('initialization')\nprint('initial error', file=sys.stderr)\n"
+        f"def main() -> None:\n    {body}\n", encoding="utf-8",
+    )
+    # Simulate CPython's missing-console streams in a separate process on every
+    # host. Keep the old wrappers alive until _exit so their finalizers cannot
+    # close reused descriptors; the extra error pipe preserves useful failures.
+    # Preload tooling before closing descriptors: lazy native-library imports
+    # can retain their own file handles in otherwise unused standard slots.
+    launcher = textwrap.dedent("""\
+        import errno, os, sys, traceback
+        from pyjs.cli import main
+        from pyjs.native.cli import _analysis_output
+        streams = [(name, getattr(sys, name), getattr(sys, f'__{name}__'))
+                   for name in ('stdin', 'stdout', 'stderr')]
+        report = os.dup(2)
+        closed = tuple(map(int, sys.argv[1].split(',')))
+        try:
+            for descriptor in closed:
+                name = ('stdin', 'stdout', 'stderr')[descriptor]
+                os.close(descriptor)
+                setattr(sys, name, None)
+                setattr(sys, f'__{name}__', None)
+            try:
+                with _analysis_output() as captured:
+                    print('probe')
+                    if sys.argv[2] == 'error':
+                        raise ValueError('probe')
+            except ValueError as error:
+                assert sys.argv[2] == 'error'
+                assert error.__notes__ == ['Analysis stdout:\\nprobe\\n']
+            assert captured == {'stdout': 'probe\\n', 'stderr': ''}
+            for descriptor in closed:
+                try:
+                    os.get_inheritable(descriptor)
+                except OSError as error:
+                    assert error.errno == errno.EBADF
+                else:
+                    raise AssertionError(f'descriptor {descriptor} was left open')
+                assert getattr(sys, ('stdin', 'stdout', 'stderr')[descriptor]) is None
+            result = main(sys.argv[3:])
+            assert all(getattr(sys, ('stdin', 'stdout', 'stderr')[fd]) is None for fd in closed)
+            for stream in (sys.stdout, sys.stderr):
+                if stream is not None:
+                    stream.flush()
+            os._exit(result)
+        except BaseException:
+            os.write(report, traceback.format_exc().encode('utf-8'))
+            os._exit(99)
+        """)
+    arguments = (["build", "--target", "native", str(source), "-o", "compiled"] if mode == "build"
+                 else ["--target", "native", str(source)])
+    result = subprocess.run(
+        [sys.executable, "-c", launcher, ",".join(map(str, closed)), mode, *arguments],
+        cwd=tmp_path, env=dict(os.environ, PYTHONPATH=str(Path(__file__).parents[2])),
+        capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert result.returncode == (2 if mode == "error" else 0), result.stderr
+    expected = f"Wrote compiled{binary_suffix()}\n" if mode == "build" else "runtime\n"
+    assert result.stdout == ("" if 1 in closed or mode == "error" else expected)
+    assert result.stderr == ("" if 2 in closed else "initialization\ninitial error\n")
+    if mode == "build":
+        native = subprocess.run([tmp_path / ("compiled" + binary_suffix())], capture_output=True, timeout=10)
+        assert (native.returncode, native.stdout, native.stderr) == (0, b"runtime\n", b"")
+
+
+@pytest.mark.parametrize("build", [False, True])
+def test_file_input_does_not_replace_stdlib_module(tmp_path, build):
+    # Use the console entry, not python -m: the latter adds cwd to sys.path
+    # before PyJS even starts and can shadow the interpreter's own imports.
+    script = Path(sysconfig.get_path("scripts")) / ("pyjs.exe" if sys.platform == "win32" else "pyjs")
+    (tmp_path / "math.py").write_text("def main() -> None: print('ok')\n", encoding="utf-8")
+    arguments = ["build", "--target", "native", "math.py", "-o", "program"] if build else ["--target", "native", "math.py"]
+    result = subprocess.run([script, *arguments], cwd=tmp_path, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    if build:
+        result = subprocess.run([tmp_path / ("program" + binary_suffix())], capture_output=True, timeout=10)
+    assert (result.returncode, result.stdout, result.stderr) == (0, b"ok\n", b"")
+
+
+@pytest.mark.parametrize("source,matches", [
+    ("print(sum([1, 2, 3]))\n", True),
+    ("print('héllo\\r\\nworld')\n", True),
+    ("def main() -> str: return 'native return value'\n", False),
+])
+def test_native_performance_compares_real_processes(tmp_path, source, matches):
+    path = tmp_path / "sample.py"
+    path.write_text(source, encoding="utf-8")
+    result = cli("--target", "native", "--perf", "--json", "--samples", "2", "--warmups", "1",
+                 str(path), cwd=tmp_path)
+    assert result.returncode == (0 if matches else 1), result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["correctness"]["matches"] is matches
+    assert (payload["correctness"]["first_mismatch"] is None) is matches
+    assert (payload["performance"]["python_to_native_ratio"] is not None) is matches
+    assert payload["compilation"]["seconds"] > 0
+    for target in ("python", "native"):
+        measurements = payload["performance"][target]
+        assert len(measurements["samples"]) == 2
+        assert measurements["median"] > 0
+
+
+def test_build_does_not_overwrite_source_or_old_executable_on_failure(tmp_path):
+    source = tmp_path / "broken.py"
+    text = "def main() -> None:\n    missing_name()\n"
+    source.write_text(text, encoding="utf-8")
+    result = cli("build", "--target", "native", str(source), "-o", str(source), cwd=tmp_path)
+    assert result.returncode == 2
+    assert "must not overwrite" in result.stderr
+    assert source.read_text(encoding="utf-8") == text
+    binary = tmp_path / ("previous" + binary_suffix())
+    binary.write_bytes(b"old build")
+    result = cli("build", "--target", "native", str(source), "-o", str(binary), cwd=tmp_path)
+    assert result.returncode == 2
+    assert "missing_name" in result.stderr
+    assert binary.read_bytes() == b"old build"
+
+
+@pytest.mark.parametrize("arguments,message", [
+    (["--loops", "1", "-c", "pass"], "use --samples, not --loops"),
+    (["--samples", "0", "-c", "pass"], "--samples must be positive"),
+    (["--json", "--src", "-c", "pass"], "cannot be combined"),
+    (["--json", "-c", "def broken(:"], "SyntaxError"),
+    (["--json", "missing.py"], "cannot open"),
+])
+def test_native_cli_diagnostics(tmp_path, arguments, message):
+    result = cli("--target", "native", *arguments, cwd=tmp_path)
+    assert result.returncode == 2
+    assert message in result.stdout + result.stderr
+
+
+def test_performance_retains_an_earlier_mismatch(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from pyjs.native.cli import _PYTHON_BINARY_STDIO, _perf
+
+    results = iter((b"good\n", b"bad\n", b"good\n", b"good\n"))
+    commands = []
+
+    def execute(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, next(results), b"")
+
+    monkeypatch.setattr(subprocess, "run", execute)
+    args = SimpleNamespace(module=None, code="pass", source=None, warmups=1, samples=1, json=True)
+    program = SimpleNamespace(source="pass", filename="<string>")
+    assert _perf(args, program, Path("program"), {"seconds": 1}) == 1
+    report = json.loads(capsys.readouterr().out)
+    mismatch = report["correctness"]["first_mismatch"]
+    assert (mismatch["run"], mismatch["target"], mismatch["actual"]["stdout"]) == (1, "native", "bad\n")
+    assert mismatch["expected"]["stdout"] == "good\n"
+    assert report["performance"]["python_to_native_ratio"] is None
+    python_command = [sys.executable, "-c", "pass"]
+    if sys.platform == "win32":
+        python_command = [sys.executable, "-c", _PYTHON_BINARY_STDIO, "-c", "pass"]
+    assert commands[0] == commands[3] == python_command
+    assert commands[1] == commands[2] == [Path("program")]
+
+
+def test_performance_reports_a_failed_reference_and_both_results(tmp_path):
+    source = tmp_path / "failure.py"
+    # Analysis succeeds; only the CPython reference executes this guarded raise.
+    source.write_text("def main() -> int: return 0\nif __name__ == '__main__':\n    raise ValueError('reference failed')\n", encoding="utf-8")
+    result = cli("--target", "native", "--perf", "--samples", "1", "--warmups", "0", str(source), cwd=tmp_path)
+    assert result.returncode == 1, result.stderr
+    assert "Validation failed: python exited with status 1" in result.stdout
+    assert "Output matches: NO" not in result.stdout
+    assert '"reason": "nonzero_exit"' in result.stdout
+    assert '"native": {\n    "exit_code": 0' in result.stdout
+
+
+@pytest.mark.parametrize("mode", ["file", "module", "command", "stdin"])
+def test_binary_stdio_launcher_preserves_source_modes_and_bytes(tmp_path, mode):
+    from pyjs.native.cli import _PYTHON_BINARY_STDIO
+
+    # Exercise the Windows launcher on every host, including imports from a
+    # different script directory. Raw CR/LF must survive, not be normalized.
+    text = "print('héllo\\r\\nworld')\n"
+    if mode == "file":
+        project = tmp_path / "sub directory"
+        project.mkdir()
+        (project / "helper.py").write_text(text, encoding="utf-8")
+        source = project / "program.py"
+        source.write_text("import helper\n", encoding="utf-8")
+        arguments = [str(source)]
+    elif mode == "module":
+        (tmp_path / "sample.py").write_text(text, encoding="utf-8")
+        arguments = ["-m", "sample"]
+    else:
+        arguments = ["-c", text] if mode == "command" else ["-"]
+    result = subprocess.run([sys.executable, "-c", _PYTHON_BINARY_STDIO, *arguments],
+                            cwd=tmp_path, capture_output=True, timeout=10,
+                            input=text.encode("utf-8") if mode == "stdin" else None)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "héllo\r\nworld\n".encode(), b"")

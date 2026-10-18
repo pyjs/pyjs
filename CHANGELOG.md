@@ -22,6 +22,11 @@
   cause/suppression state, identity-preserving replacement and Java cause
   reporting. Native failures can be retained as causes without mutating their
   Java state; foreign targets receive a focused diagnostic or `TypeError`.
+- Native compilation is available directly from Python files, modules and
+  command snippets with `pyjs --target native`. `pyjs build --target native`
+  keeps a standalone executable, and `--perf` compares matching CPython/native
+  process runs while reporting compilation time separately. Executable entry
+  points may return `None`; simple top-level statements can be wrapped automatically.
 - JVM custom exception classes support inherited catches, initializers, typed
   fields and retained identity. Default scalar text follows original positional
   arguments; custom string methods preserve virtual dispatch. Python methods

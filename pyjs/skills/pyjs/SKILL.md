@@ -58,6 +58,17 @@ dependency implementations are also relevant. Use `--json` for structured
 results and compilation errors. Browser-only APIs still require a browser test
 or a served application.
 
+For the experimental native target, install a host Clang/linker toolchain and
+use `pyjs --target native app.py` or `pyjs build --target native app.py -o app`.
+No decorator is required: reachable typed Python is compiled. Prefer a
+zero-argument `main() -> None` and an `if __name__ == "__main__": main()` guard
+so the file also runs under CPython without executing the entry during analysis.
+`--src` prints LLVM IR. `--perf` checks matching output and successful exits
+across repeated CPython/native processes, reporting compilation separately;
+startup and captured output count for both targets. It does not benchmark
+interactive input or pass program arguments. See the README for a complete
+copy/paste example and current native limitations.
+
 ## Documentation
 
 Run `pyjs --version`, then use the resources shipped with that installed
