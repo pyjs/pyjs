@@ -1,5 +1,6 @@
 """File-based native execution; compiler imports stay out of the JavaScript CLI."""
 
+import ctypes
 import io
 import json
 import os
@@ -63,6 +64,13 @@ def _source_path(program, *, is_file):
 @contextmanager
 def _analysis_output():
     output = {"stdout": "", "stderr": ""}
+    # C extensions can buffer stdout independently of Python. Flush the host C
+    # runtime at both descriptor boundaries, or its delayed writes can escape
+    # capture and corrupt JSON/LLVM output after descriptors have been restored.
+    flush = ctypes.CDLL("ucrtbase" if sys.platform == "win32" else None).fflush
+    flush.argtypes = [ctypes.c_void_p]
+    flush.restype = ctypes.c_int
+    flush(None)
     try:
         # Module discovery can import parent packages before analysis begins.
         # Real streams preserve .buffer/.fileno(); descriptor redirection also
@@ -87,6 +95,7 @@ def _analysis_output():
             try:
                 yield output
             finally:
+                flush(None)
                 for name, (capture, previous) in captures.items():
                     # Cached Python streams may have buffered descriptor writes.
                     previous.flush()

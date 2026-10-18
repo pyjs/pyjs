@@ -155,7 +155,7 @@ def test_package_discovery_output_is_compilation_output(tmp_path):
 def test_analysis_capture_preserves_binary_descriptor_and_subprocess_writes(tmp_path, mode):
     source = tmp_path / "streams.py"
     source.write_text(
-        "import os, subprocess, sys\n"
+        "import ctypes, os, subprocess, sys\n"
         "def main() -> None:\n    " + ("missing_name()" if mode == "error" else "print('runtime')") + "\n"
         "for name, fd in [('stdout', 1), ('stderr', 2)]:\n"
         "    stream = getattr(sys, name)\n"
@@ -164,27 +164,30 @@ def test_analysis_capture_preserves_binary_descriptor_and_subprocess_writes(tmp_
         "    stream.flush()\n"
         "    os.write(stream.fileno(), b'fileno\\n')\n"
         "    os.write(fd, b'descriptor\\n')\n"
-        "subprocess.run([sys.executable, '-c', \"import os; os.write(1, b'child\\\\n'); os.write(2, b'child\\\\n')\"], check=True)\n",
+        "subprocess.run([sys.executable, '-c', \"import os; os.write(1, b'child\\\\n'); os.write(2, b'child\\\\n')\"], check=True)\n"
+        "ctypes.CDLL('ucrtbase' if sys.platform == 'win32' else None).puts(b'cstdio')\n",
         encoding="utf-8",
     )
     expected = "text\nbinary\nfileno\ndescriptor\nchild\n"
+    expected_stdout = expected + "cstdio\n"
     result = cli("--target", "native", "--src" if mode == "src" else "--json", str(source), cwd=tmp_path)
     if mode == "error":
         assert result.returncode == 2
         notes = json.loads(result.stdout)["error"]["notes"]
-        assert notes == [f"Analysis stdout:\n{expected}", f"Analysis stderr:\n{expected}"]
+        assert notes == [f"Analysis stdout:\n{expected_stdout}", f"Analysis stderr:\n{expected}"]
         assert result.stderr == ""
     elif mode == "json":
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
-        assert payload["compilation"]["stdout"] == payload["compilation"]["stderr"] == expected
+        assert payload["compilation"]["stdout"] == expected_stdout
+        assert payload["compilation"]["stderr"] == expected
         assert payload["stdout"] == "runtime\n"
         assert payload["stderr"] == result.stderr == ""
     else:
         from pyjs.tooling.llvm import LLVM
 
         assert result.returncode == 0, result.stderr
-        assert result.stderr == expected * 2
+        assert result.stderr == expected_stdout + expected
         executable = LLVM().compile(result.stdout, tmp_path / "build")
         native = subprocess.run([executable], capture_output=True, timeout=10)
         assert (native.returncode, native.stdout, native.stderr) == (0, b"runtime\n", b"")
@@ -192,8 +195,12 @@ def test_analysis_capture_preserves_binary_descriptor_and_subprocess_writes(tmp_
 
 @pytest.mark.parametrize("fail", [False, True])
 def test_analysis_capture_restores_descriptors_and_streams(capfd, fail):
+    import ctypes
+
     from pyjs.native.cli import _analysis_output
 
+    libc = ctypes.CDLL("ucrtbase" if sys.platform == "win32" else None)
+    libc.puts(b"before")
     stdout, stderr = sys.stdout, sys.stderr
     try:
         with _analysis_output() as output:
@@ -208,7 +215,7 @@ def test_analysis_capture_restores_descriptors_and_streams(capfd, fail):
     assert sys.stdout is stdout and sys.stderr is stderr
     os.write(1, b"outside\n")
     os.write(2, b"outside error\n")
-    assert capfd.readouterr() == ("outside\n", "outside error\n")
+    assert capfd.readouterr() == ("before\noutside\n", "outside error\n")
 
 
 @pytest.mark.parametrize("build", [False, True])
