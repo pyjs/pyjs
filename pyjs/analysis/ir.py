@@ -194,15 +194,16 @@ class IteratorNext(Terminator):
 class ExceptionRaise(Terminator):
     """Raise one statically known exception through the active error edge."""
 
-    _fields = ("message", "exception")
+    _fields = ("message", "exception", "cause")
 
     def __init__(self, value_type: Class | None, message, *, reraised=False,
-                 exception=None, append_trace=False):
+                 exception=None, append_trace=False, cause=None):
         self.value_type = value_type
         self.message = message
         self.reraised = reraised
         self.exception = exception
         self.append_trace = append_trace
+        self.cause = cause
 
 
 class ExceptionDispatch(Terminator):
@@ -905,6 +906,27 @@ class IRInferenceVisitor(InferenceVisitor):
     lower_exception_objects = False
     lower_generator_suspensions = False
 
+    def visit_Attribute(self, node):
+        result = super().visit_Attribute(node)
+        if not self.supports_exception_causes and node.attr in {
+                "__cause__", "__suppress_context__"}:
+            if any(getter.cls is self.exception_base_class()
+                   for getter in getattr(result, "property_getters", ())):
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "exception chaining state is not implemented by this backend")
+        return result
+
+    def visit_Raise(self, node):
+        if node.cause is None:
+            return super().visit_Raise(node)
+        # Both operands are evaluated by the terminator. A conditional cause
+        # must not emit blocks ahead of the still-deferred target expression.
+        self.expression_depth += 1
+        try:
+            return super().visit_Raise(node)
+        finally:
+            self.expression_depth -= 1
+
     def analyze_isinstance(self, call):
         # Native builtin declarations are shared by LLVM, JVM and WASM. Keep
         # the ordinary single-target contract unless a backend opts into more.
@@ -1479,6 +1501,7 @@ class IRInferenceVisitor(InferenceVisitor):
                         None, None, reraised=True,
                         exception=item.exc if item.exc is not None else self.caught_exception,
                         append_trace=item.exc is not None,
+                        cause=item.cause,
                     )
                     ast.copy_location(raised, item)
                     self.ir.terminate(raised)
@@ -1493,7 +1516,8 @@ class IRInferenceVisitor(InferenceVisitor):
                 if self.lower_exception_objects and not (
                     isinstance(item.exc, AnalyzedName) and isinstance(item.exc.obj, Class)
                 ):
-                    raised = ExceptionRaise(value_type, None, exception=item.exc)
+                    raised = ExceptionRaise(value_type, None, exception=item.exc,
+                                            cause=item.cause)
                     self.ir.terminate(ast.copy_location(raised, item))
                     continue
                 message = None

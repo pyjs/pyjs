@@ -28,6 +28,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     numeric_domains = frozenset({"portable", "wgsl", "java"})
     lower_exception_regions = True
     lower_exception_objects = True
+    supports_exception_causes = True
 
     def visit_FunctionDef(self, node):
         result = super().visit_FunctionDef(node)
@@ -46,12 +47,18 @@ class JVMInferenceVisitor(IRInferenceVisitor):
                 for value in ast.walk(block):
                     if (isinstance(value, ExceptionRaise) and value.exception is not None
                             and (not value.reraised or value.append_trace)):
-                        semantic = analyzed_value_type(value.exception)
-                        members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
-                        value.runtime_protocols = (
-                            *getattr(value, "runtime_protocols", ()),
-                            *((member, ("__str__",)) for member in members if managed_exception(member)),
-                        )
+                        # Java's uncaught printer consumes both the wrapper
+                        # and its cause, even without a Python text call.
+                        for operand in (value.exception, value.cause):
+                            if operand is None:
+                                continue
+                            semantic = analyzed_value_type(operand)
+                            members = semantic.types if isinstance(semantic, UnionType) else (semantic,)
+                            value.runtime_protocols = (
+                                *getattr(value, "runtime_protocols", ()),
+                                *((member, ("__str__",)) for member in members
+                                  if managed_exception(member)),
+                            )
         return result
 
     def visit_Call(self, node):

@@ -2373,6 +2373,7 @@ def flow_source_site(statement):
 
 class InferenceVisitor(ast.NodeVisitor):
     numeric_domains: frozenset[str] | None = None
+    supports_exception_causes = False
 
     def __init__(self, func: Function, scope: LocalScope = None):
         self.func = func
@@ -15016,7 +15017,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 "bare raise requires an active exception handler",
                 help="Raise an explicit exception in this context.",
             )
-        if node.cause is not None:
+        if node.cause is not None and not self.supports_exception_causes:
             self.fail(
                 node.cause,
                 DiagnosticCode.UNSUPPORTED_SYNTAX,
@@ -15038,7 +15039,22 @@ class InferenceVisitor(ast.NodeVisitor):
                     "raise requires an exception instance",
                     help="Raise Exception or an instance of one of its subclasses.",
                 )
-        return ast.Raise(exc=exc, cause=None)
+        cause = self.visit(node.cause) if node.cause is not None else None
+        if cause is not None:
+            exception_type = self.exception_base_class()
+            if not all(
+                isinstance(member, Class) and (
+                    member is get_none_type() or is_subclass(member, exception_type)
+                )
+                for member in get_type_members(analyzed_value_type(cause))
+            ):
+                self.fail(
+                    node.cause,
+                    DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                    "exception cause requires an exception instance or None",
+                    help="Construct the cause exception or use 'from None'.",
+                )
+        return ast.Raise(exc=exc, cause=cause)
 
     # endregion
 

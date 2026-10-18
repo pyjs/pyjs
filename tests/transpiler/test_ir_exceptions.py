@@ -96,6 +96,62 @@ def main() -> int:
             pass
 
 
+def test_jvm_exception_ir_preserves_explicit_causes_and_from_none():
+    source = '''
+def main() -> int:
+    saved = ValueError("original")
+    try:
+        raise RuntimeError("wrapper") from saved
+    except RuntimeError as error:
+        raise error from None
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            def main() -> int:
+                block entry:
+                    saved: ValueError = ValueError('original')
+                    jump try_body
+                block exception_dispatch:
+                    dispatch_exception:
+                        RuntimeError -> except
+                        unmatched -> caller
+                block try_body except -> exception_dispatch:
+                    raise RuntimeError('wrapper') from saved
+                block except:
+                    catch __caught_exception
+                    error = __caught_exception
+                    raise error from None
+        ''').rstrip()
+
+
+def test_conditional_cause_stays_at_the_raise_operand_position():
+    source = '''
+def main(target: ValueError, choose: bool, first: RuntimeError, second: RuntimeError) -> None:
+    raise target from (first if choose else second)
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            def main(target: ValueError, choose: bool, first: RuntimeError, second: RuntimeError) -> None:
+                block entry:
+                    raise target from first if choose else second
+        ''').rstrip()
+
+
+@pytest.mark.parametrize("cause", ['ValueError("original")', "None"])
+@pytest.mark.parametrize("backend", ["javascript", "llvm", "webassembly"])
+def test_explicit_causes_remain_a_focused_unsupported_backend_boundary(cause, backend):
+    source = f'def main() -> int:\n    raise RuntimeError("wrapper") from {cause}\n'
+    with pytest.raises(CompilationError, match="exception chaining with 'raise .* from .*' is not supported"):
+        if backend == "webassembly":
+            transpile_webassembly(source)
+        else:
+            kwargs = {"environment": NATIVE_ENVIRONMENT} if backend == "llvm" else {}
+            with analyze_source(source, wrap=False, **kwargs):
+                pass
+
+
 def test_narrowed_caught_exception_retains_reraise_metadata():
     source = '''
 def main() -> int:
@@ -129,6 +185,42 @@ def main() -> int:
                 block if_done:
                     return 1
         ''').rstrip()
+
+
+@pytest.mark.parametrize("attribute", ["__cause__", "__suppress_context__"])
+@pytest.mark.parametrize("backend", ["llvm", "webassembly"])
+@pytest.mark.parametrize("caught_value", [False, True], ids=["parameter", "handler"])
+def test_chaining_properties_remain_an_explicit_backend_boundary(attribute, backend, caught_value):
+    from pyjs.webassembly.analysis import WEBASSEMBLY_ENVIRONMENT
+
+    source = f'''def main() -> bool:
+    try:
+        raise ValueError("failure")
+    except Exception as error:
+        return error.{attribute} is None
+    return False
+''' if caught_value else f'''def main(error: Exception) -> bool:
+    return error.{attribute} is None
+'''
+    environment = NATIVE_ENVIRONMENT if backend == "llvm" else WEBASSEMBLY_ENVIRONMENT
+    with pytest.raises(CompilationError) as caught:
+        with analyze_source(source, wrap=False, environment=environment):
+            pass
+    error = caught.value
+    assert error.diagnostic.code == "PYJS2001"
+    if caught_value:
+        if backend == "llvm":
+            assert error.diagnostic.message == (
+                "native exception details are borrowed: use str(value), compare with None, "
+                "or reraise a caught exception"
+            )
+            assert (error.lineno, error.offset) == (5, 16)
+        else:
+            assert error.diagnostic.message == "native IR exception handlers are not implemented"
+            assert (error.lineno, error.offset) == (2, 5)
+    else:
+        assert error.diagnostic.message == "exception chaining state is not implemented by this backend"
+        assert (error.lineno, error.offset) == (2, 12)
 
 
 @pytest.mark.parametrize("environment", [NATIVE_ENVIRONMENT, JVM_ENVIRONMENT], ids=["llvm", "jvm"])
