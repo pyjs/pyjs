@@ -630,6 +630,16 @@ with `pyjs template`.
   Python-authored subclasses of native Java throwables keep their formatters
   through these Python text operations, including mixed exception unions.
   Their Java `getMessage()` behavior is unchanged.
+  `raise error from cause` retains cause identity for Python-managed
+  exceptions; `from None` clears it and sets suppression. Read-only
+  `__cause__` and `__suppress_context__` expose this state. Replacing causes,
+  self-cycles, cleanup and reraising preserve Python semantics; Java stack
+  traces show explicit causes. Native Java failures may be causes, but cannot
+  receive Python-managed chaining state: concrete native targets are rejected
+  at compile time, and widened targets raise `TypeError`. Foreign exceptions
+  expose their existing Java cause and report no Python suppression flag.
+  Use exception instances rather than classes for the raise/cause operands.
+  Implicit context and assignment to chaining attributes remain unsupported.
   Explicit optional calls require string-compatible formatter results; narrow
   the receiver before consuming a differently typed custom result.
   `object` locals retain existing inferred union/collection storage, but

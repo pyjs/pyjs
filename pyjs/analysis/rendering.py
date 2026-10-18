@@ -121,14 +121,17 @@ class TypeWriter(_Unparser):
         if not node.reraised and node.exception is not None:
             self.fill("raise ")
             self.traverse(node.exception)
-            return
-        self.fill(("raise " if node.append_trace else "reraise ")
-                  if node.reraised else f"raise {node.value_type.name}")
-        if node.reraised:
-            self.traverse(node.exception)
-        elif node.message is not None:
-            with self.delimit("(", ")"):
-                self.traverse(node.message)
+        else:
+            self.fill(("raise " if node.append_trace else "reraise ")
+                      if node.reraised else f"raise {node.value_type.name}")
+            if node.reraised:
+                self.traverse(node.exception)
+            elif node.message is not None:
+                with self.delimit("(", ")"):
+                    self.traverse(node.message)
+        if node.cause is not None:
+            self.write(" from ")
+            self.traverse(node.cause)
 
     def visit_ExceptionDispatch(self, node: ExceptionDispatch):
         self.fill("dispatch_exception")

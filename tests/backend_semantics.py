@@ -2146,6 +2146,50 @@ def pending_conflict() -> RevisionConflict:
 )
 
 
+EXCEPTION_CAUSE_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class StorageFailure(RuntimeError):
+    pass
+
+@js
+def underlying_failure() -> ValueError:
+    return ValueError("invalid record")
+''',
+    "exception_cause_contract",
+    '''
+    saved = StorageFailure("could not save")
+    original = underlying_failure()
+    identity = False
+    cleanup = False
+    try:
+        try:
+            raise saved from original
+        finally:
+            cleanup = True
+    except RuntimeError as caught:
+        identity = caught is saved and caught.__cause__ is original
+        try:
+            raise
+        except Exception as repeated:
+            identity = identity and repeated is saved and repeated.__cause__ is original
+    suppressed = StorageFailure("hidden cause")
+    try:
+        raise suppressed from None
+    except StorageFailure:
+        pass
+    ''',
+    (
+        ("cause and wrapper identities survive cleanup and reraise", "not identity or not cleanup"),
+        ("explicit cause suppresses implicit context", "not saved.__suppress_context__"),
+        ("from None explicitly suppresses context", "not suppressed.__suppress_context__"),
+        ("from None has no cause", "suppressed.__cause__ is not None"),
+    ),
+)
+
+
 SCALAR_EXCEPTION_MESSAGE_CONTRACT = _contract(
     '''
 from pyjs import js

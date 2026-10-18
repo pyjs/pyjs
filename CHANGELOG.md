@@ -18,6 +18,10 @@
 
 ### Added
 
+- JVM supports explicit exception causes and `from None`, with read-only
+  cause/suppression state, identity-preserving replacement and Java cause
+  reporting. Native failures can be retained as causes without mutating their
+  Java state; foreign targets receive a focused diagnostic or `TypeError`.
 - JVM custom exception classes support inherited catches, initializers, typed
   fields and retained identity. Default scalar text follows original positional
   arguments; custom string methods preserve virtual dispatch. Python methods

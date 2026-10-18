@@ -8,6 +8,7 @@ from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
 from tests.backend_semantics import (
     CONTEXT_MANAGER_CONTRACT,
+    EXCEPTION_CAUSE_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
@@ -42,6 +43,10 @@ def assert_matches_python(source, directory):
 @pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["handlers", "cleanup", "runtime", "scalar-message", "owned-value"])
 def test_shared_exception_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
+
+
+def test_shared_exception_cause_contract(tmp_path):
+    assert_matches_python(EXCEPTION_CAUSE_CONTRACT.source, tmp_path)
 
 
 @pytest.mark.parametrize("caught", ["ValueError", "(TypeError, ValueError)", "Exception", "BaseException"])
@@ -477,6 +482,10 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
 @pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message", "owned-value"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     assert_compiles_to_android_dex(contract.source, tmp_path)
+
+
+def test_exception_causes_compile_to_android_dex(tmp_path):
+    assert_compiles_to_android_dex(EXCEPTION_CAUSE_CONTRACT.source, tmp_path)
 
 
 def assert_compiles_to_android_dex(source, tmp_path):

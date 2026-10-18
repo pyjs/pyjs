@@ -10,6 +10,8 @@ MESSAGE_GETTER = "$pyjs$exception$base_text"
 MESSAGE_SETTER = "$pyjs$exception$set_message"
 FORMATTER = "$pyjs$exception$text"
 EXPLICIT_FORMATTER = "$pyjs$exception$explicit_text"
+CAUSE_SETTER = "$pyjs$exception$set_cause"
+SUPPRESSION_GETTER = "$pyjs$exception$suppress_context"
 
 
 def exception_type(value_type):
@@ -175,8 +177,42 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         class_file.add_method(Method(
             0x0011, MESSAGE_SETTER, "(Ljava/lang/String;)V", setter.render(), 2, 2,
         ))
+        emit_cause_state(class_file)
     code.emit(0xB1)
     class_file.add_method(Method(
         0x0001, "<init>", "(Ljava/lang/String;)V", code.render(), 2, 2,
     ))
     return name
+
+
+def emit_cause_state(class_file):
+    # Throwable.initCause is one-shot and rejects self-cycles. Python permits
+    # both replacing a cause and self-cycles, including clearing it with None.
+    cause_name = "$pyjs$cause"
+    suppress_name = "$pyjs$suppress_context"
+    class_file.add_field(Field(0x0002, cause_name, "Ljava/lang/Throwable;"))
+    class_file.add_field(Field(0x0002, suppress_name, "Z"))
+    cause = class_file.field_reference(class_file.name, cause_name, "Ljava/lang/Throwable;")
+    suppress = class_file.field_reference(class_file.name, suppress_name, "Z")
+    for method, field, descriptor, opcode in (
+        ("getCause", cause, "Ljava/lang/Throwable;", 0xB0),
+        (SUPPRESSION_GETTER, suppress, "Z", 0xAC),
+    ):
+        getter = Bytecode()
+        getter.local(0x19, 0)
+        getter.emit(0xB4, field.to_bytes(2, "big"))
+        getter.emit(opcode)
+        class_file.add_method(Method(
+            0x0011, method, f"(){descriptor}", getter.render(), 1, 1,
+        ))
+    setter = Bytecode()
+    setter.local(0x19, 0)
+    setter.local(0x19, 1)
+    setter.emit(0xB5, cause.to_bytes(2, "big"))
+    setter.local(0x19, 0)
+    setter.emit(0x04)
+    setter.emit(0xB5, suppress.to_bytes(2, "big"))
+    setter.emit(0xB1)
+    class_file.add_method(Method(
+        0x0011, CAUSE_SETTER, "(Ljava/lang/Throwable;)V", setter.render(), 2, 2,
+    ))

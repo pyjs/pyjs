@@ -70,10 +70,12 @@ from .classfile import (
 )
 from .diagnostics import JVMUnsupported as JVMUnsupported
 from .exceptions import (
+    CAUSE_SETTER,
     EXPLICIT_FORMATTER,
     FORMATTER,
     MESSAGE_GETTER,
     MESSAGE_SETTER,
+    SUPPRESSION_GETTER,
     builtin_exception,
     contained_exception_types,
     emit_exception_class,
@@ -1316,6 +1318,20 @@ class JVMEmitter:
             self.convert_abi_result(field_type, semantic_type, storage_format)
             return semantic_type
         if isinstance(node, ast.Attribute):
+            getters = getattr(node, "property_getters", ())
+            target = getters[0] if getters and all(getter is getters[0] for getter in getters) else None
+            if isinstance(target, Function):
+                if target.py_func is native_builtins._BaseException.__cause__.fget:
+                    self.expression(node.value)
+                    reference = self.class_file.method_reference(
+                        "java/lang/Throwable", "getCause", "()Ljava/lang/Throwable;",
+                    )
+                    self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                    return "Ljava/lang/Throwable;"
+                if target.py_func is native_builtins._BaseException.__suppress_context__.fget:
+                    self.expression(node.value)
+                    self.exception_cause_state()
+                    return "Z"
             field = self.native_field(node)
             if field is not None and field.static:
                 reference = self.class_file.field_reference(
@@ -3187,13 +3203,60 @@ class JVMEmitter:
 
     def raise_python_exception(self, node):
         if node.exception is not None:
-            self.expression(node.exception)
+            receiver_type = self.expression(node.exception)
+            if node.cause is not None:
+                semantic_type = analyzed_value_type(node.exception)
+                if exception_type(semantic_type) is not None and not managed_exception(semantic_type):
+                    raise JVMUnsupported(
+                        "JVM explicit causes require a Python exception; wrap the native failure",
+                        node,
+                    )
+                saved = self.allocate_temporary(receiver_type, "exception.with_cause")
+                self.store(saved, receiver_type)
+                cause_type = self.expression(node.cause)
+                cause = self.allocate_temporary(cause_type, "exception.cause")
+                self.store(cause, cause_type)
+                self.load(saved)
+                self.exception_cause_state(cause_slot=cause)
+                self.load(saved)
             self.code.emit(0xBF)
             return
         if node.reraised:
             raise JVMUnsupported("JVM bare raise requires an active handler", node)
         self.new_exception(node.value_type, node.message, node)
         self.code.emit(0xBF)
+
+    def exception_cause_state(self, *, cause_slot=None):
+        """Consume a throwable; read suppression unless given a cause to store."""
+        # Managed BaseException and Exception have separate Java roots so
+        # native Java Exception handlers still catch ordinary Python errors.
+        done = self.new_label("exception.cause.done")
+        for root in (native_builtins._BaseException, native_builtins._Exception):
+            owner = emit_exception_class(self.class_files, self.main_class_name, root)
+            next_root = self.new_label("exception.cause.next")
+            self.code.emit(0x59)
+            index = self.class_file.constants.class_(owner)
+            self.code.emit(0xC1, index.to_bytes(2, "big"))
+            self.code.branch(0x99, next_root)
+            self.checkcast(f"L{owner};")
+            if cause_slot is not None:
+                self.load(cause_slot)
+                name, descriptor = CAUSE_SETTER, "(Ljava/lang/Throwable;)V"
+            else:
+                name, descriptor = SUPPRESSION_GETTER, "()Z"
+            reference = self.class_file.method_reference(owner, name, descriptor)
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            self.code.branch(0xA7, done)
+            self.code.mark(next_root)
+        self.code.emit(0x57)
+        if cause_slot is None:
+            self.code.emit(0x03)
+        else:
+            self.throw_python(
+                "TypeError",
+                "explicit causes require a Python exception; wrap the native failure",
+            )
+        self.code.mark(done)
 
     def construct_simple_exception(self, value_type, call):
         if call.keywords or len(call.args) > 1:
