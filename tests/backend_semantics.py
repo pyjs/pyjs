@@ -2023,6 +2023,40 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
 )
 
 
+EXCEPTION_VALUE_IDENTITY_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class Pending:
+    def __init__(self, error: ValueError):
+        self.error = error
+
+@js
+def make_error() -> ValueError:
+    return ValueError("saved")
+''',
+    "exception_value_identity_contract",
+    '''
+    saved = make_error()
+    pending = Pending(saved)
+    errors = [pending.error]
+    identical = True
+    messages = ""
+    for attempt in range(2):
+        try:
+            raise errors[0]
+        except ValueError as caught:
+            identical = identical and caught is saved
+            messages += str(caught)
+    ''',
+    (
+        ("retained identity across storage and repeated raises", "not identical"),
+        ("retained message", 'messages != "savedsaved"'),
+    ),
+)
+
+
 SCALAR_EXCEPTION_MESSAGE_CONTRACT = _contract(
     '''
 from pyjs import js

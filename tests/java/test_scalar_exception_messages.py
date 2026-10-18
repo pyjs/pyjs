@@ -78,3 +78,12 @@ def test_unsupported_payload_has_located_diagnostic(payload, statement):
         r"JVM exception messages require str, int, or bool at line 2"
     )):
         transpile_jvm(source)
+
+
+@pytest.mark.parametrize("expression", ["str(value)", "value.__str__()", 'f"{value}"'])
+def test_unsupported_scalar_conversion_has_located_diagnostic(expression):
+    source = f"def main() -> str:\n    value = 1.25\n    return {expression}\n"
+    with pytest.raises(JVMUnsupported, match=(
+        r"JVM string conversion requires str, int, or bool at line 3"
+    )):
+        transpile_jvm(source)

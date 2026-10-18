@@ -726,6 +726,9 @@ class JVMEmitter:
                 if storage_format is not None:
                     self.slot_numeric_formats[argument.name] = storage_format
             for statement in block.body:
+                if (isinstance(statement, ExceptionRaise)
+                        and statement.exception is not None and not statement.reraised):
+                    self.exception_class(analyzed_value_type(statement.exception), statement)
                 if isinstance(statement, ExceptionCatch):
                     if statement.target is not None:
                         add(self.target_name(statement.target), self.expression_type(statement.target))
@@ -739,15 +742,27 @@ class JVMEmitter:
                         if statement.value is not None
                         else None
                     )
-                    semantic = (
-                        self.expression_type(statement.value)
-                        if value_type is not None
-                        and (
-                            self.is_jvm_array_type(value_type)
-                            or isinstance(value_type, UnionType)
+                    declared = analyzed_value_type(statement.target)
+                    if isinstance(declared, UnionType) and any(
+                        exception_type(member) is not None for member in declared.types
+                    ):
+                        # A None initializer still needs the declared exception
+                        # storage; the rendered annotation has unbound names.
+                        semantic = self.value_type(declared)
+                    else:
+                        semantic = (
+                            self.expression_type(statement.value)
+                            if value_type is not None
+                            and (
+                                self.is_jvm_array_type(value_type)
+                                or isinstance(value_type, UnionType)
+                                or exception_type(value_type) is not None
+                                # Rendered collection annotations discard the
+                                # resolved identity of exception item types.
+                                or value_type.generic_name in {"dict", "list", "tuple"}
+                            )
+                            else self.annotation(statement.annotation)
                         )
-                        else self.annotation(statement.annotation)
-                    )
                     storage_format = self.local_numeric_format(statement.target)
                     add(
                         self.target_name(statement.target),
@@ -841,6 +856,14 @@ class JVMEmitter:
                         and node.value_type not in self.native_classes
                     ):
                         continue
+                    if (exception_type(node.value_type) is not None
+                            and is_declaration(node.value_type.py_obj, "jvm")
+                            and self.native_layouts[node.value_type].constructor.py_func
+                            is native_builtins._BaseException.__init__):
+                        raise JVMUnsupported(
+                            "JVM native exception construction requires an explicit "
+                            "Java constructor declaration", node,
+                        )
                     evaluation, _ordered = self.constructor_arguments(node)
                     slots = {}
                     for name, value in evaluation:
@@ -1276,6 +1299,8 @@ class JVMEmitter:
 
     def call(self, node: ast.Call) -> str:
         target = getattr(node.func, "obj", None)
+        if isinstance(target, Class) and exception_type(target) is not None:
+            return self.construct_simple_exception(target, node)
         if isinstance(target, Class) and target.py_obj is native_builtins._slice:
             raise JVMUnsupported("JVM first-class slice construction is not implemented", node)
         if isinstance(target, Function) and target.py_func is native_builtins._print:
@@ -2615,6 +2640,9 @@ class JVMEmitter:
 
     def object_new(self, node: ObjectNew) -> str:
         value_type = node.value_type
+        if (exception_type(value_type) is not None
+                and not is_declaration(value_type.py_obj, "jvm")):
+            return self.construct_simple_exception(value_type, node.call)
         if self.is_jvm_array_type(value_type):
             if len(node.call.args) != 1 or node.call.keywords:
                 raise JVMUnsupported(
@@ -2890,36 +2918,56 @@ class JVMEmitter:
         self.code.mark(present)
 
     def raise_python_exception(self, node):
-        if node.reraised:
-            if node.exception is None:
-                raise JVMUnsupported("JVM bare raise requires an active handler", node)
+        if node.exception is not None:
             self.expression(node.exception)
             self.code.emit(0xBF)
             return
-        if is_declaration(node.value_type.py_obj, "jvm"):
+        if node.reraised:
+            raise JVMUnsupported("JVM bare raise requires an active handler", node)
+        self.new_exception(node.value_type, node.message, node)
+        self.code.emit(0xBF)
+
+    def construct_simple_exception(self, value_type, call):
+        if call.keywords or len(call.args) > 1:
             raise JVMUnsupported(
-                "JVM native exception construction in raise is not implemented; "
-                "catch native failures or raise a Python exception", node,
+                "JVM builtin exceptions take at most one positional message", call,
             )
-        name = self.exception_class(node.value_type, node)
+        self.new_exception(value_type, call.args[0] if call.args else None, call)
+        return self.value_type(value_type)
+
+    def new_exception(self, exception, message, node):
+        if is_declaration(exception.py_obj, "jvm"):
+            raise JVMUnsupported(
+                "JVM native exception construction requires an explicit "
+                "Java constructor declaration", node,
+            )
+        name = self.exception_class(exception, node)
         index = self.class_file.constants.class_(name)
         self.code.emit(0xBB, index.to_bytes(2, "big"))
         self.code.emit(0x59)
-        message = node.message
+        has_message = message is not None
         if message is None:
             # SyntaxError distinguishes an omitted message from empty text.
-            syntax_error = issubclass(exception_type(node.value_type), native_builtins._SyntaxError)
+            syntax_error = issubclass(exception_type(exception), native_builtins._SyntaxError)
             message = ast.Constant(value="None" if syntax_error else "")
         value_type = self.expression(message)
         if value_type not in {"Ljava/lang/String;", "J", "Z"}:
             raise JVMUnsupported("JVM exception messages require str, int, or bool", node)
         self.scalar_string(value_type, message)
-        if (node.message is not None and value_type == "Ljava/lang/String;"
-                and exception_type(node.value_type) is native_builtins._KeyError):
+        if (has_message and value_type == "Ljava/lang/String;"
+                and exception_type(exception) is native_builtins._KeyError):
             self.string_repr()
+        elif has_message and value_type == "Ljava/lang/String;":
+            # Python's supplied None is not Java's absent detail message.
+            # KeyError's repr helper already handles this distinction.
+            present = self.new_label("exception.payload.present")
+            self.code.emit(0x59)
+            self.code.branch(0xC7, present)
+            self.code.emit(0x57)
+            self.string_constant("None")
+            self.code.mark(present)
         constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
-        self.code.emit(0xBF)
 
     def string_repr(self):
         self.string_helpers.add("repr")
@@ -4252,6 +4300,8 @@ class JVMEmitter:
                 return "V"
             value_type = getattr(node, "obj", None)
             if isinstance(value_type, Class):
+                if exception_type(value_type) is not None:
+                    return self.value_type(value_type)
                 if value_type in self.classes:
                     return self.class_descriptor(value_type)
                 if value_type in self.native_classes:
@@ -4462,7 +4512,7 @@ class JVMEmitter:
             value_descriptor
         ):
             raise JVMUnsupported(
-                "JVM dictionaries currently require reference key and value types",
+                "JVM dictionaries require reference key and value types",
                 source,
             )
         return key_type, value_descriptor

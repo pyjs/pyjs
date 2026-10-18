@@ -100,7 +100,7 @@ def main() -> int:
 
 @pytest.mark.parametrize("target, message", [
     ("list[int8]", "JVM constructor list__int is not implemented"),
-    ("tuple[int8, ...]", "unsupported JVM type annotation"),
+    ("tuple[int8, ...]", "JVM constructor tuple__int__variadic is not implemented"),
 ])
 def test_explicit_sequence_constructor_has_a_jvm_capability_boundary(target, message):
     with pytest.raises(JVMUnsupported, match=message):
@@ -849,7 +849,7 @@ def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
 
 
 def test_union_key_representation_contract_has_explicit_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="dictionaries require reference key and value types"):
         transpile_jvm(UNION_KEY_REPRESENTATION_CONTRACT.source)
 
 

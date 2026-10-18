@@ -11,6 +11,7 @@ from tests.backend_semantics import (
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    EXCEPTION_VALUE_IDENTITY_CONTRACT,
     KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
     SCALAR_EXCEPTION_MESSAGE_CONTRACT,
@@ -38,7 +39,7 @@ def assert_matches_python(source, directory):
     assert actual.returncode == int(expected.stdout.strip())
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["handlers", "cleanup", "runtime", "scalar-message"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["handlers", "cleanup", "runtime", "scalar-message", "owned-value"])
 def test_shared_exception_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
 
@@ -97,6 +98,24 @@ def test_explicit_reraise_and_empty_message(tmp_path):
                 return 42 if str(saved) == "" else 1
             return 2
     ''', tmp_path)
+
+
+@pytest.mark.parametrize(("kind", "expected"), [
+    ("ValueError", "retained"), ("KeyError", "'retained'"),
+])
+@pytest.mark.parametrize("reraise", ["raise error", "raise", "if isinstance(error, {kind}): raise"])
+def test_tuple_handler_reraises_keep_caught_union(tmp_path, kind, expected, reraise):
+    assert_matches_python(f'''
+def main() -> int:
+    try:
+        try:
+            raise {kind}("retained")
+        except (KeyError, ValueError) as error:
+            {reraise.format(kind=kind)}
+    except {kind} as caught:
+        return 42 if str(caught) == {expected!r} else 1
+    return 2
+''', tmp_path)
 
 
 def test_else_errors_skip_own_handlers(tmp_path):
@@ -455,7 +474,7 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT, SCALAR_EXCEPTION_MESSAGE_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["cleanup", "context", "runtime", "key-error", "scalar-message", "owned-value"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"

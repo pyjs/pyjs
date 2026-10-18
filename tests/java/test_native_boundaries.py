@@ -56,7 +56,9 @@ def test_inline_slice_construction_has_a_located_jvm_boundary(expression):
 
 def test_bounded_text_search_keeps_a_focused_jvm_boundary():
     from tests.backend_semantics import BOUNDED_TEXT_SEARCH_CONTRACT
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match=(
+        r"JVM constructor tuple__str__variadic is not implemented at line 4"
+    )):
         transpile_jvm(BOUNDED_TEXT_SEARCH_CONTRACT.source)
 
 

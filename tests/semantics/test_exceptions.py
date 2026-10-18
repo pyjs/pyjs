@@ -4,12 +4,13 @@ from tests.backend_semantics import (
     CONTEXT_MANAGER_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
+    EXCEPTION_VALUE_IDENTITY_CONTRACT,
 )
 
 from .helpers import assert_semantics
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT], ids=["handlers", "cleanup"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT], ids=["handlers", "cleanup", "owned-value"])
 def test_shared_exception_control_flow_contract(contract):
     assert_semantics(contract.print_source + "\nmain()\n")
 

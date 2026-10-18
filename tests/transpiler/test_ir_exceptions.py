@@ -52,6 +52,50 @@ def test_exception_ir_preserves_handlers_and_protected_edges():
         ''').rstrip()
 
 
+def test_jvm_owned_exception_ir_keeps_the_original_value():
+    source = '''
+def main() -> int:
+    saved = ValueError("retained")
+    try:
+        raise saved
+    except ValueError as error:
+        return 42 if error is saved else 1
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        assert analysis.types == dedent('''\
+            def main() -> int:
+                block entry:
+                    saved: ValueError = ValueError('retained')
+                    jump try_body
+                block exception_dispatch:
+                    dispatch_exception:
+                        ValueError -> except
+                        unmatched -> caller
+                block try_body except -> exception_dispatch:
+                    raise saved
+                block except:
+                    catch __caught_exception
+                    error = __caught_exception
+                    branch error.[object]__is__(saved):
+                        true -> conditional_true
+                        false -> conditional_false
+                block conditional_true:
+                    jump conditional_done(42)
+                block conditional_false:
+                    jump conditional_done(1)
+                block conditional_done(conditional: int):
+                    return conditional
+        ''').rstrip()
+    with pytest.raises(CompilationError, match="constructor or a caught exception"):
+        with analyze_source('''
+def main() -> int:
+    saved = ValueError("retained")
+    raise saved
+''', wrap=False, environment=NATIVE_ENVIRONMENT):
+            pass
+
+
 def test_narrowed_caught_exception_retains_reraise_metadata():
     source = '''
 def main() -> int:

@@ -551,8 +551,11 @@ with `pyjs template`.
   and broader platform coverage remain in progress.
 - JVM exception handling supports ordered handlers, reraising, assertions,
   and `finally`, including cleanup across returns, breaks and continues.
-  Construct builtin exceptions directly in `raise`, with an optional string,
-  integer or Boolean message. Integers retain their signed 64-bit value and
+  Builtin exceptions can be constructed, stored in fields or collections,
+  passed and returned, then raised repeatedly without losing identity. They
+  accept an optional string, integer or Boolean message. A nullable string
+  containing `None` renders as `None`, distinct from an omitted message.
+  Integers retain their signed 64-bit value and
   Booleans use Python's `True`/`False` spelling. Assertion messages use the same
   conversion and are evaluated only on failure. Float and container messages
   remain unsupported. Caught values support `str()`, identity and
@@ -578,7 +581,11 @@ with `pyjs template`.
   actual throwable and a JVM stack-trace array, not Python traceback objects.
   Normal exits receive three `None` values. Nullable Boolean results preserve
   the distinction between `None`, `False` and `True`.
-  Custom exception raising, chaining, `.args`, native exception construction
+  Native exception construction requires an explicit Java constructor
+  declaration. Python's base-exception initializer does not specify Java
+  overloads; inherited native declarations are trusted to describe the actual
+  Java constructor signatures.
+  Custom Python exception raising, chaining, `.args`, literal `None` messages
   and `UnicodeDecodeError` payloads remain unsupported. Explicit
   reraising keeps the original JVM stack trace rather than adding a Python
   traceback frame. Async context managers remain unsupported.

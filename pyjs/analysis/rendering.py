@@ -118,6 +118,10 @@ class TypeWriter(_Unparser):
             self.traverse(node.function.blocks)
 
     def visit_ExceptionRaise(self, node: ExceptionRaise):
+        if not node.reraised and node.exception is not None:
+            self.fill("raise ")
+            self.traverse(node.exception)
+            return
         self.fill(("raise " if node.append_trace else "reraise ")
                   if node.reraised else f"raise {node.value_type.name}")
         if node.reraised:
