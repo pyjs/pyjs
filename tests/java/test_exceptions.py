@@ -11,6 +11,7 @@ from tests.backend_semantics import (
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
+    KEY_ERROR_CONTRACT,
     RUNTIME_EXCEPTION_CONTRACT,
 )
 from tests.java.test_android import android_sdk
@@ -453,7 +454,7 @@ def test_classfile_rejects_invalid_exception_ranges(handler):
         helper.render()
 
 
-@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT], ids=["cleanup", "context", "runtime"])
+@pytest.mark.parametrize("contract", [EXCEPTION_CLEANUP_CONTRACT, CONTEXT_MANAGER_CONTRACT, RUNTIME_EXCEPTION_CONTRACT, KEY_ERROR_CONTRACT], ids=["cleanup", "context", "runtime", "key-error"])
 def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
@@ -469,7 +470,7 @@ def test_exception_regions_compile_to_android_dex(tmp_path, contract):
     assert (dex / "classes.dex").is_file()
 
 
-@pytest.mark.parametrize("name", ["KeyError", "UnicodeDecodeError"])
+@pytest.mark.parametrize("name", ["UnicodeDecodeError"])
 def test_unsupported_exception_payloads_have_diagnostics(name):
     with pytest.raises(JVMUnsupported, match=f"{name} construction and matching"):
         transpile_jvm(f'def main() -> int:\n    raise {name}("error")\n')
@@ -605,7 +606,7 @@ def test_application_native_throwable_subclasses_can_widen(tmp_path, boundary, d
     ("NumberFormatException | None", False),
     ("NumberFormatException | None", True),
 ], ids=["native", "optional-native", "optional-none"])
-def test_native_factory_result_can_widen_without_a_class_layout(tmp_path, result_type, empty):
+def test_native_factory_result_can_widen_to_base_exception(tmp_path, result_type, empty):
     helper = ClassFile("ExceptionFactory")
     code = Bytecode()
     owner = "java/lang/NumberFormatException"

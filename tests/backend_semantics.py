@@ -2023,6 +2023,43 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
 )
 
 
+KEY_ERROR_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+''',
+    "key_error_contract",
+    '''
+    missing = ""
+    try:
+        raise KeyError("note's title")
+    except LookupError as key_error:
+        missing = str(key_error)
+    empty = "unhandled"
+    try:
+        raise KeyError()
+    except KeyError as no_args:
+        empty = str(no_args)
+    empty_key = "unhandled"
+    try:
+        raise KeyError("")
+    except KeyError as empty_arg:
+        empty_key = str(empty_arg)
+    absent = "unhandled"
+    values = {"present": "value"}
+    try:
+        values["missing"]
+    except KeyError as lookup:
+        absent = str(lookup)
+    ''',
+    (
+        ("KeyError quoting", 'missing != \'"note\\\'s title"\''),
+        ("empty args and empty string differ", 'empty != "" or empty_key != "\'\'"'),
+        ("missing dictionary key", 'absent != "\'missing\'"'),
+    ),
+)
+
+
 EXCEPTION_CLEANUP_CONTRACT = _contract(
     '''
 from pyjs import js

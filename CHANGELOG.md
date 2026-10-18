@@ -4,6 +4,10 @@
 
 ### Added
 
+- JVM missing dictionary keys raise catchable `KeyError`. String keys and
+  explicit string messages preserve Python quoting and Unicode escapes,
+  including the distinction between no argument and an empty string.
+  Printability uses shared, pinned Unicode data across JVM and Android hosts.
 - JVM synchronous context managers support nested cleanup, suppression,
   failed entry/binding, and returns or loop exits. Application `bool | None`
   values retain their distinct nullable representation, including `__exit__`
