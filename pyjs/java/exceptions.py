@@ -12,6 +12,8 @@ FORMATTER = "$pyjs$exception$text"
 EXPLICIT_FORMATTER = "$pyjs$exception$explicit_text"
 CAUSE_SETTER = "$pyjs$exception$set_cause"
 SUPPRESSION_GETTER = "$pyjs$exception$suppress_context"
+CONTEXT_GETTER = "$pyjs$exception$get_context"
+CONTEXT_SETTER = "$pyjs$exception$set_context"
 
 
 def exception_type(value_type):
@@ -65,13 +67,15 @@ def contained_exception_types(value_type):
             pending.extend((value_type.generic_types or {}).values())
 
 
-def emit_type_error(code, class_file, class_files, prefix, message):
-    name = emit_exception_class(class_files, prefix, native_builtins._TypeError)
+def emit_runtime_error(code, class_file, class_files, prefix, kind, message):
+    name = emit_exception_class(class_files, prefix, kind)
     code.emit(0xBB, class_file.constants.class_(name).to_bytes(2, "big"))
     code.emit(0x59)
     code.emit(0x13, class_file.constants.string(message).to_bytes(2, "big"))
     constructor = class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
     code.emit(0xB7, constructor.to_bytes(2, "big"))
+    emit_context_call(code, class_file, class_files, prefix,
+                      "chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
     code.emit(0xBF)
 
 
@@ -99,8 +103,8 @@ def strict_formatter_bridge(class_file, class_files, prefix, *, final=True):
     code.emit(0x59)
     code.branch(0xC7, "valid")
     code.emit(0x57)
-    emit_type_error(
-        code, class_file, class_files, prefix,
+    emit_runtime_error(
+        code, class_file, class_files, prefix, native_builtins._TypeError,
         "Exception __str__ must accept no arguments and return str",
     )
     code.mark("valid")
@@ -135,8 +139,8 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         getter.emit(0x59)
         getter.branch(0xC7, "supported")
         getter.emit(0x57)
-        emit_type_error(
-            getter, class_file, class_files, prefix,
+        emit_runtime_error(
+            getter, class_file, class_files, prefix, native_builtins._TypeError,
             "JVM default exception text requires scalar positional arguments",
         )
         getter.mark("supported")
@@ -192,11 +196,14 @@ def emit_cause_state(class_file):
     suppress_name = "$pyjs$suppress_context"
     class_file.add_field(Field(0x0002, cause_name, "Ljava/lang/Throwable;"))
     class_file.add_field(Field(0x0002, suppress_name, "Z"))
+    class_file.add_field(Field(0x0002, "$pyjs$context", "Ljava/lang/Throwable;"))
     cause = class_file.field_reference(class_file.name, cause_name, "Ljava/lang/Throwable;")
     suppress = class_file.field_reference(class_file.name, suppress_name, "Z")
+    context = class_file.field_reference(class_file.name, "$pyjs$context", "Ljava/lang/Throwable;")
     for method, field, descriptor, opcode in (
         ("getCause", cause, "Ljava/lang/Throwable;", 0xB0),
         (SUPPRESSION_GETTER, suppress, "Z", 0xAC),
+        (CONTEXT_GETTER, context, "Ljava/lang/Throwable;", 0xB0),
     ):
         getter = Bytecode()
         if method == "getCause":
@@ -229,3 +236,133 @@ def emit_cause_state(class_file):
     class_file.add_method(Method(
         0x0011, CAUSE_SETTER, "(Ljava/lang/Throwable;)V", setter.render(), 2, 2,
     ))
+    setter = Bytecode()
+    setter.local(0x19, 0)
+    setter.local(0x19, 1)
+    setter.emit(0xB5, context.to_bytes(2, "big"))
+    setter.emit(0xB1)
+    class_file.add_method(Method(
+        0x0011, CONTEXT_SETTER, "(Ljava/lang/Throwable;)V", setter.render(), 2, 2,
+    ))
+
+
+def emit_context_call(code, class_file, class_files, prefix, method, descriptor):
+    owner = emit_context_runtime(class_files, prefix)
+    reference = class_file.method_reference(owner, method, descriptor)
+    code.emit(0xB8, reference.to_bytes(2, "big"))
+
+
+def emit_context_runtime(class_files, prefix):
+    name = f"{prefix}$exception$state"
+    if name in class_files:
+        return name
+    helper = ClassFile(name)
+    class_files[name] = helper
+    roots = [emit_exception_class(class_files, prefix, root) for root in (
+        native_builtins._BaseException, native_builtins._Exception,
+    )]
+    helper.add_field(Field(0x001A, "active", "Ljava/lang/ThreadLocal;"))
+    active = helper.field_reference(name, "active", "Ljava/lang/ThreadLocal;")
+    code = Bytecode()
+    code.emit(0xBB, helper.constants.class_("java/lang/ThreadLocal").to_bytes(2, "big"))
+    code.emit(0x59)
+    constructor = helper.method_reference("java/lang/ThreadLocal", "<init>", "()V")
+    code.emit(0xB7, constructor.to_bytes(2, "big"))
+    code.emit(0xB3, active.to_bytes(2, "big"))
+    code.emit(0xB1)
+    helper.add_method(Method(0x0008, "<clinit>", "()V", code.render(), 2, 0))
+
+    code = Bytecode()
+    code.emit(0xB2, active.to_bytes(2, "big"))
+    get = helper.method_reference("java/lang/ThreadLocal", "get", "()Ljava/lang/Object;")
+    code.emit(0xB6, get.to_bytes(2, "big"))
+    code.emit(0xC0, helper.constants.class_("java/lang/Throwable").to_bytes(2, "big"))
+    code.emit(0xB0)
+    helper.add_method(Method(0x0009, "current", "()Ljava/lang/Throwable;", code.render(), 1, 0))
+
+    code = Bytecode()
+    code.local(0x19, 0)
+    code.branch(0xC7, "present")
+    code.emit(0xB2, active.to_bytes(2, "big"))
+    remove = helper.method_reference("java/lang/ThreadLocal", "remove", "()V")
+    code.emit(0xB6, remove.to_bytes(2, "big"))
+    code.emit(0xB1)
+    code.mark("present")
+    code.emit(0xB2, active.to_bytes(2, "big"))
+    code.local(0x19, 0)
+    set_ = helper.method_reference("java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V")
+    code.emit(0xB6, set_.to_bytes(2, "big"))
+    code.emit(0xB1)
+    helper.add_method(Method(0x0009, "activate", "(Ljava/lang/Throwable;)V", code.render(), 2, 1))
+
+    for setting in (False, True):
+        code = Bytecode()
+        for index, root in enumerate(roots):
+            code.local(0x19, 0)
+            root_index = helper.constants.class_(root).to_bytes(2, "big")
+            code.emit(0xC1, root_index)
+            code.branch(0x99, f"next{index}")
+            code.local(0x19, 0)
+            code.emit(0xC0, root_index)
+            if setting:
+                code.local(0x19, 1)
+            method = CONTEXT_SETTER if setting else CONTEXT_GETTER
+            descriptor = "(Ljava/lang/Throwable;)V" if setting else "()Ljava/lang/Throwable;"
+            code.emit(0xB6, helper.method_reference(root, method, descriptor).to_bytes(2, "big"))
+            code.emit(0xB1 if setting else 0xB0)
+            code.mark(f"next{index}")
+        if not setting:
+            code.emit(0x01)
+        code.emit(0xB1 if setting else 0xB0)
+        descriptor = "(Ljava/lang/Throwable;Ljava/lang/Throwable;)V" if setting else "(Ljava/lang/Throwable;)Ljava/lang/Throwable;"
+        helper.add_method(Method(0x0009, "setContext" if setting else "context", descriptor,
+                                 code.render(), 2, 2 if setting else 1))
+
+    code = Bytecode()
+    for root in roots:
+        code.local(0x19, 0)
+        code.emit(0xC1, helper.constants.class_(root).to_bytes(2, "big"))
+        code.branch(0x9A, "managed")
+    code.branch(0xA7, "done")
+    code.mark("managed")
+    current = helper.method_reference(name, "current", "()Ljava/lang/Throwable;")
+    code.emit(0xB8, current.to_bytes(2, "big"))
+    code.local(0x3A, 1)
+    code.local(0x19, 1)
+    code.branch(0xC6, "done")
+    code.local(0x19, 1)
+    code.local(0x19, 0)
+    code.branch(0xA5, "done")
+    code.local(0x19, 1)
+    code.local(0x3A, 2)
+    code.mark("walk")
+    code.local(0x19, 2)
+    get_context = helper.method_reference(name, "context", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
+    code.emit(0xB8, get_context.to_bytes(2, "big"))
+    code.local(0x3A, 3)
+    code.local(0x19, 3)
+    code.branch(0xC6, "link")
+    code.local(0x19, 3)
+    code.local(0x19, 0)
+    code.branch(0xA6, "advance")
+    # Reusing an earlier error must break the back-edge before linking it to
+    # the active error. Unlike explicit causes, implicit context has no cycles.
+    set_context = helper.method_reference(name, "setContext", "(Ljava/lang/Throwable;Ljava/lang/Throwable;)V")
+    code.local(0x19, 2)
+    code.emit(0x01)
+    code.emit(0xB8, set_context.to_bytes(2, "big"))
+    code.branch(0xA7, "link")
+    code.mark("advance")
+    code.local(0x19, 3)
+    code.local(0x3A, 2)
+    code.branch(0xA7, "walk")
+    code.mark("link")
+    code.local(0x19, 0)
+    code.local(0x19, 1)
+    code.emit(0xB8, set_context.to_bytes(2, "big"))
+    code.mark("done")
+    code.local(0x19, 0)
+    code.emit(0xB0)
+    helper.add_method(Method(0x0009, "chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;",
+                             code.render(), 2, 4))
+    return name

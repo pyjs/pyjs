@@ -2146,6 +2146,44 @@ def pending_conflict() -> RevisionConflict:
 )
 
 
+EXCEPTION_CONTEXT_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def fail_in_helper() -> None:
+    raise RuntimeError("helper")
+''',
+    "exception_context_contract",
+    '''
+    original = ValueError("original")
+    inherited = False
+    suppressed_context = False
+    restored = False
+    try:
+        raise original
+    except ValueError:
+        try:
+            fail_in_helper()
+        except RuntimeError as error:
+            inherited = error.__context__ is original and error.__cause__ is None
+        try:
+            raise RuntimeError("suppressed") from None
+        except RuntimeError as hidden:
+            suppressed_context = hidden.__context__ is original and hidden.__suppress_context__
+    try:
+        raise RuntimeError("outside")
+    except RuntimeError as outside:
+        restored = outside.__context__ is None
+    ''',
+    (
+        ("calls inherit the handled error", "not inherited"),
+        ("suppression preserves context for inspection", "not suppressed_context"),
+        ("handler exit restores the previous state", "not restored"),
+    ),
+)
+
+
 EXCEPTION_CAUSE_CONTRACT = _contract(
     '''
 from pyjs import js

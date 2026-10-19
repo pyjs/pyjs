@@ -139,6 +139,40 @@ def main(target: ValueError, choose: bool, first: RuntimeError, second: RuntimeE
         ''').rstrip()
 
 
+def test_ir_tracks_handled_state_separately_from_exception_dispatch_edges():
+    source = '''
+def main() -> int:
+    try:
+        raise ValueError("outer")
+    except ValueError:
+        try:
+            raise RuntimeError("inner")
+        except RuntimeError:
+            pass
+        return 1
+    return 0
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        validate_program_ir(build_program_ir(analysis.entry_point))
+        states = [
+            (block.name, [
+                (type(statement).__name__, getattr(statement.handled_exception, "id", None))
+                for statement in block.body
+            ])
+            for block in analysis.entry_point.ir.blocks
+        ]
+        assert states == [
+            ("entry", [("Jump", None)]),
+            ("exception_dispatch", [("ExceptionDispatch", None)]),
+            ("try_body", [("ExceptionRaise", None)]),
+            ("except", [("ExceptionCatch", None), ("Jump", "__caught_exception")]),
+            ("exception_dispatch_2", [("ExceptionDispatch", "__caught_exception")]),
+            ("try_body_2", [("ExceptionRaise", "__caught_exception")]),
+            ("except_2", [("ExceptionCatch", "__caught_exception"), ("Jump", "__caught_exception")]),
+            ("try_done_2", [("Return", "__caught_exception")]),
+        ]
+
+
 @pytest.mark.parametrize("cause", ['ValueError("original")', "None"])
 @pytest.mark.parametrize("backend", ["javascript", "llvm", "webassembly"])
 def test_explicit_causes_remain_a_focused_unsupported_backend_boundary(cause, backend):
@@ -150,6 +184,18 @@ def test_explicit_causes_remain_a_focused_unsupported_backend_boundary(cause, ba
             kwargs = {"environment": NATIVE_ENVIRONMENT} if backend == "llvm" else {}
             with analyze_source(source, wrap=False, **kwargs):
                 pass
+
+
+def test_llvm_context_inspection_keeps_the_borrowed_exception_boundary():
+    with pytest.raises(CompilationError, match="native exception details are borrowed"):
+        with analyze_source('''
+def main() -> int:
+    try:
+        raise ValueError("original")
+    except ValueError as error:
+        return 1 if error.__context__ is None else 0
+''', wrap=False, environment=NATIVE_ENVIRONMENT):
+            pass
 
 
 def test_narrowed_caught_exception_retains_reraise_metadata():
@@ -187,7 +233,7 @@ def main() -> int:
         ''').rstrip()
 
 
-@pytest.mark.parametrize("attribute", ["__cause__", "__suppress_context__"])
+@pytest.mark.parametrize("attribute", ["__cause__", "__context__", "__suppress_context__"])
 @pytest.mark.parametrize("backend", ["llvm", "webassembly"])
 @pytest.mark.parametrize("caught_value", [False, True], ids=["parameter", "handler"])
 def test_chaining_properties_remain_an_explicit_backend_boundary(attribute, backend, caught_value):

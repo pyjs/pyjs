@@ -200,6 +200,9 @@ class _BaseException(_object):
     def __cause__(self) -> BaseException | None: ...
 
     @property
+    def __context__(self) -> BaseException | None: ...
+
+    @property
     def __suppress_context__(self) -> bool: ...
 
 
