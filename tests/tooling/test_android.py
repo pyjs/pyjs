@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock
@@ -8,6 +9,7 @@ import pytest
 
 from pyjs.tooling.android import AndroidDevice, AndroidSDK
 from pyjs.tooling.android_jvm import AndroidJVMApplication, AndroidJVMBuilder
+from pyjs.tooling.command import CommandRunner
 
 
 def test_java_discovery_uses_sdkmgr_without_installing(monkeypatch, tmp_path):
@@ -94,6 +96,26 @@ def test_android_environment_contains_sdk_and_jdk_paths():
     assert environment["PATH"].startswith(
         os.pathsep.join((str(java / "bin"), str(android / "platform-tools"))) + os.pathsep
     )
+
+
+def test_android_environment_preserves_runner_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANDROID_USER_HOME", "ambient")
+    runner = CommandRunner(environment={"ANDROID_USER_HOME": "isolated"})
+    sdk = AndroidSDK(tmp_path / "android", tmp_path / "java", runner)
+    environment = sdk.environment()
+
+    assert set(environment) == {"ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME", "PATH"}
+    result = runner.run(
+        [sys.executable, "-c",
+         "import os; print(os.environ['ANDROID_USER_HOME']); "
+         "print(os.environ['ANDROID_HOME']); print(os.environ['JAVA_HOME'])"],
+        environment=environment,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.stdout.splitlines() == ["isolated", str(sdk.root), str(sdk.java_home)]
+    assert runner.environment == {"ANDROID_USER_HOME": "isolated"}
+    assert os.environ["ANDROID_USER_HOME"] == "ambient"
 
 
 def test_android_sdk_installs_and_launches_an_application():

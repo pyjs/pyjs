@@ -24,8 +24,9 @@ def test_browser_discovery_never_installs(monkeypatch):
         browser_executable()
 
 
-def test_invalid_browser_override_is_diagnostic(monkeypatch, tmp_path):
-    monkeypatch.setenv("CHROME_BIN", str(tmp_path / "missing"))
+@pytest.mark.parametrize("override", ["missing", ""])
+def test_invalid_browser_override_is_diagnostic(monkeypatch, tmp_path, override):
+    monkeypatch.setenv("CHROME_BIN", str(tmp_path / override) if override else "")
     with pytest.raises(RuntimeError, match="Configured Chrome executable") as caught:
         browser_executable()
     assert isinstance(caught.value.__cause__, SDKError)

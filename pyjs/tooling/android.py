@@ -117,7 +117,7 @@ class AndroidSDK:
         return numbers[:3], int("-" not in version), numbers[3:]
 
     def environment(self) -> dict[str, str]:
-        environment = self._installation().environment()
+        environment = self._installation().environment({"PATH": os.environ.get("PATH", "")})
         environment["JAVA_HOME"] = str(self.java_home)
         environment["PATH"] = str(self.java_home / "bin") + os.pathsep + environment["PATH"]
         return environment

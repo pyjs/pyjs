@@ -85,6 +85,8 @@ the pinned Chrome for Testing build instead of a system browser, run
 `sdkmgr browser install --managed`, then set `CHROME_BIN` to the printed path.
 Browser profiles, CDP, process cleanup, and pytest remain owned by PyJS.
 OS browser libraries and sandbox prerequisites must already be configured.
+An empty `CHROME_BIN` is an invalid explicit override; unset it to enable
+automatic discovery.
 
 `PYJS_CLANG` overrides sdkmgr's `CLANG`/host discovery, and explicit
 `LLVM(executable=...)` overrides both. No OS packages are installed during
