@@ -583,7 +583,7 @@ requires-dist = [
     { name = "pyjs-extras", extras = ["stripe"], marker = "extra == 'stripe'", editable = "extras" },
     { name = "pytest" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "sdkmgr", specifier = ">=0.1.0,<0.2" },
+    { name = "sdkmgr", specifier = ">=0.3.1,<0.4" },
     { name = "websockets" },
     { name = "wgpu", marker = "extra == 'webgpu'", specifier = "==0.32.0" },
 ]
@@ -781,16 +781,16 @@ wheels = [
 
 [[package]]
 name = "sdkmgr"
-version = "0.1.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "httpx" },
     { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/35/d3a1b90f1cebeaac5eaf486ea0f3e29edd6c7192f073c8d1dfe8951e4e4c/sdkmgr-0.1.0.tar.gz", hash = "sha256:2a97e71b3001ac4765023a2c060e3c8c67a00ba9429c79c2d19e931e5fe848fa", size = 42030, upload-time = "2026-10-18T14:26:21.022Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/87/81/f010964ccbd1455149af9acbbadf8543a2cb45a6a5584ca988c6b6c46a5c/sdkmgr-0.3.1.tar.gz", hash = "sha256:90b712e8c18fcd0e9a2bbd88ca88c5acd65eedc4a9275349024e40a57f003200", size = 67393, upload-time = "2026-10-19T22:16:49.216Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/db/dc8097d0d7d833f95dd0f25e685e02fab91aa63583588b639f83ceefbefa/sdkmgr-0.1.0-py3-none-any.whl", hash = "sha256:723e3c6f54cf4fe87d0e9dd2705f5dd80622b5f858ca4ee704aa146071a12f69", size = 28480, upload-time = "2026-10-18T14:26:19.487Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/78/db7eb0e0b1a6201ed4d71b1859045d8bc8b7840e4291742adf4226b1d1b1/sdkmgr-0.3.1-py3-none-any.whl", hash = "sha256:a9e44d946260ca1966d2b6af718662f68f2c70ceab75074ca7b5a3af5c09ffad", size = 45077, upload-time = "2026-10-19T22:16:48.094Z" },
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock
@@ -8,6 +9,7 @@ import pytest
 
 from pyjs.tooling.android import AndroidDevice, AndroidSDK
 from pyjs.tooling.android_jvm import AndroidJVMApplication, AndroidJVMBuilder
+from pyjs.tooling.command import CommandRunner
 
 
 def test_java_discovery_uses_sdkmgr_without_installing(monkeypatch, tmp_path):
@@ -96,6 +98,26 @@ def test_android_environment_contains_sdk_and_jdk_paths():
     )
 
 
+def test_android_environment_preserves_runner_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANDROID_USER_HOME", "ambient")
+    runner = CommandRunner(environment={"ANDROID_USER_HOME": "isolated"})
+    sdk = AndroidSDK(tmp_path / "android", tmp_path / "java", runner)
+    environment = sdk.environment()
+
+    assert set(environment) == {"ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME", "PATH"}
+    result = runner.run(
+        [sys.executable, "-c",
+         "import os; print(os.environ['ANDROID_USER_HOME']); "
+         "print(os.environ['ANDROID_HOME']); print(os.environ['JAVA_HOME'])"],
+        environment=environment,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.stdout.splitlines() == ["isolated", str(sdk.root), str(sdk.java_home)]
+    assert runner.environment == {"ANDROID_USER_HOME": "isolated"}
+    assert os.environ["ANDROID_USER_HOME"] == "ambient"
+
+
 def test_android_sdk_installs_and_launches_an_application():
     runner = Mock()
     sdk = AndroidSDK(Path("/android"), Path("/java"), runner)
@@ -107,7 +129,7 @@ def test_android_sdk_installs_and_launches_an_application():
 
     assert [call.args[0] for call in runner.run.call_args_list] == [
         [
-            Path("/android/platform-tools/adb"),
+            sdk.adb,
             "-s",
             "emulator-5554",
             "install",
@@ -115,7 +137,7 @@ def test_android_sdk_installs_and_launches_an_application():
             package,
         ],
         [
-            Path("/android/platform-tools/adb"),
+            sdk.adb,
             "-s",
             "emulator-5554",
             "shell",
@@ -152,7 +174,7 @@ def test_android_sdk_starts_managed_headless_emulators_without_snapshots():
     sdk.start_emulator("Example_Test", headless=True)
 
     assert runner.start.call_args.args[0] == [
-        Path("/android/emulator/emulator"),
+        sdk.emulator,
         "@Example_Test",
         "-no-snapshot-save",
         "-no-snapshot-load",
@@ -322,7 +344,7 @@ def test_android_jvm_builder_selects_the_exact_compile_sdk(tmp_path):
     builder = AndroidJVMBuilder(sdk)
 
     assert builder._platform(35) == platform
-    with pytest.raises(RuntimeError, match="compile SDK 34 is not installed"):
+    with pytest.raises(RuntimeError, match="platforms/android-34 is missing android.jar"):
         builder._platform(34)
 
 

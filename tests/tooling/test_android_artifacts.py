@@ -10,12 +10,11 @@ from pyjs.tooling.android_artifacts import (
 )
 
 
-def cached_artifact(cache, group, name, version, filename, digest, content):
-    directory = cache / "artifacts" / group / name / version
+def cached_artifact(cache, filename, digest, content):
+    directory = cache / "artifacts" / digest
     directory.mkdir(parents=True)
     path = directory / filename
     path.write_bytes(content)
-    (directory / f"{filename}.sha256").write_text(digest + "\n")
     return path
 
 
@@ -59,18 +58,12 @@ def test_resolves_locked_jar_and_aar_classpath(tmp_path, explicit_artifacts):
     cache = tmp_path / "cache"
     cached_artifact(
         cache,
-        "sample",
-        "plain",
-        "1",
         "plain-1.jar",
         jar_digest,
         jar,
     )
     aar_path = cached_artifact(
         cache,
-        "sample",
-        "views",
-        "2",
         "views-2.aar",
         aar_digest,
         aar,

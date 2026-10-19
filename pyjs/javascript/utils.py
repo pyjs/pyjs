@@ -1,10 +1,6 @@
 import os
-import platform
 import subprocess
-import urllib.request
 from pathlib import Path
-
-from pyjs.tooling.download import verify_sha256
 
 
 class TailwindBuildError(RuntimeError):
@@ -34,73 +30,20 @@ class TailwindCSS:
             cache_root = Path.home() / ".cache"
         return Path(cache_root) / "pyjs" / "tailwindcss"
 
-    @staticmethod
-    def platform_asset():
-        system = platform.system().lower()
-        if system == "darwin":
-            system = "macos"
-        elif system == "windows":
-            system = "windows"
-        elif system != "linux":
-            raise RuntimeError(f"Tailwind CSS is not available for {platform.system()}.")
-
-        machine = platform.machine().lower()
-        if system == "windows":
-            architecture = "x64"
-        elif machine in ("amd64", "x86_64"):
-            architecture = "x64"
-        elif machine in ("aarch64", "arm64"):
-            architecture = "arm64"
-        else:
-            raise RuntimeError(f"Tailwind CSS is not available for {platform.machine()}.")
-
-        variant = ""
-        if system == "linux" and platform.libc_ver()[0].lower() == "musl":
-            variant = "-musl"
-        suffix = ".exe" if system == "windows" else ""
-        return f"tailwindcss-{system}-{architecture}{variant}{suffix}"
-
     def install(self):
-        asset = self.platform_asset()
-        executable = self.cache_directory / self.VERSION / asset
-        executable.parent.mkdir(parents=True, exist_ok=True)
-        checksums = executable.parent / "sha256sums.txt"
-        temporary = executable.with_suffix(f"{executable.suffix}.download")
-        temporary_checksums = checksums.with_suffix(".download")
-        base_url = (
-            "https://github.com/tailwindlabs/tailwindcss/releases/download/"
-            f"v{self.VERSION}"
-        )
-        if executable.exists() and checksums.exists():
-            verify_sha256(executable, checksums)
-            return executable
+        from sdkmgr import Manager, SDKError
 
-        print(f"Downloading Tailwind CSS {self.VERSION} for {platform.system()}...")
         try:
-            urllib.request.urlretrieve(f"{base_url}/sha256sums.txt", temporary_checksums)
-            if executable.exists():
-                verify_sha256(executable, temporary_checksums)
-                temporary_checksums.replace(checksums)
-                return executable
-            urllib.request.urlretrieve(f"{base_url}/{asset}", temporary)
-            verify_sha256(temporary, temporary_checksums, asset)
-            temporary.chmod(0o755)
-            temporary.replace(executable)
-            temporary_checksums.replace(checksums)
-        finally:
-            temporary.unlink(missing_ok=True)
-            temporary_checksums.unlink(missing_ok=True)
-        return executable
+            return Manager(self.cache_directory, interactive=False).ensure(
+                "tailwindcss", version=self.VERSION,
+            ).executable()
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
 
     def run(self, arguments, **kwargs):
-        command = [self.tailwindcss, *arguments]
-        try:
-            return subprocess.run(command, check=True, **kwargs)
-        except FileNotFoundError:
-            if self.tailwindcss != "tailwindcss":
-                raise
+        if self.tailwindcss == "tailwindcss":
             self.tailwindcss = str(self.install())
-            return subprocess.run([self.tailwindcss, *arguments], check=True, **kwargs)
+        return subprocess.run([self.tailwindcss, *arguments], check=True, **kwargs)
 
     def get_css(self, classes: set):
         candidates = " ".join(sorted(classes)).replace("\\", "\\\\").replace('"', '\\"')

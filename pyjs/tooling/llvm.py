@@ -720,28 +720,26 @@ class LLVM:
         executable: str | Path | None = None,
         runner: CommandRunner | None = None,
     ) -> None:
-        configured = executable or os.environ.get("PYJS_CLANG")
-        discovered = configured or shutil.which("clang")
-        self.executable = Path(discovered).expanduser() if discovered else None
+        self._configured = executable or os.environ.get("PYJS_CLANG")
+        self.executable: Path | None = None
         self.runner = runner or CommandRunner()
         self.version: str | None = None
 
     def ensure(self) -> Path:
-        if self.executable is None or not self.executable.is_file():
-            raise RuntimeError(
-                "Clang was not found; install it or set PYJS_CLANG to its executable."
-            )
+        from sdkmgr import Manager, SDKError
+
         if self.version is None:
-            result = self.runner.run(
-                [self.executable, "--version"],
-                capture_output=True,
-            )
-            first_line = (result.stdout or "").splitlines()
-            if not first_line:
+            try:
+                compiler = Manager(interactive=False).find_clang(executable=self._configured)
+            except SDKError as error:
+                raise RuntimeError(str(error)) from error
+            if compiler is None:
                 raise RuntimeError(
-                    f"Clang executable {self.executable} returned no version."
+                    "Clang was not found; run sdkmgr clang install or set PYJS_CLANG to its executable."
                 )
-            self.version = first_line[0]
+            self.executable = compiler.executable()
+            self.version = compiler.version
+        assert self.executable is not None
         return self.executable
 
     def compile(

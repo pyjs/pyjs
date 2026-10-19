@@ -137,10 +137,11 @@ uv run pyjs --target native --perf primes.py
 
 The last command compiles once, checks matching output and successful exits on
 every run, then reports paired process timings. A Linux x64 run with CPython
-3.14.4 and Clang 21 at `-O2` produced:
+3.14.4 and Clang 21 at `-O2` produced these timings (shown with the current
+compiler label):
 
 ```text
-Compilation: 1.818 s (Ubuntu clang version 21.1.8 (6ubuntu1), O2)
+Compilation: 1.818 s (21.1.8, O2)
 Output matches: yes
 148933
 Median of 7 runs after 2 warmups (process startup included):

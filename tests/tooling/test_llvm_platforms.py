@@ -14,17 +14,26 @@ from pyjs.native.platform import binary_suffix, errno_symbol
 from pyjs.tooling.llvm import LLVM, _windows_exported_ir
 
 
+@pytest.fixture
+def configured_compiler(tmp_path, monkeypatch):
+    compiler = tmp_path / "clang"
+    manager = Mock()
+    manager.find_clang.return_value.executable.return_value = compiler
+    manager.find_clang.return_value.version = "21.1.8"
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
+    return compiler
+
+
 @pytest.mark.parametrize("platform,suffix,shared_suffix,errno", [
     ("linux", "", ".so", "__errno_location"),
     ("darwin", "", ".dylib", "__error"),
     ("win32", ".exe", ".dll", "_errno"),
 ])
-def test_compilation_uses_host_linker_contract(tmp_path, monkeypatch, platform, suffix, shared_suffix, errno):
-    compiler = tmp_path / "clang"
-    compiler.touch()
+def test_compilation_uses_host_linker_contract(tmp_path, monkeypatch, configured_compiler,
+                                             platform, suffix, shared_suffix, errno):
     runner = Mock()
-    runner.run.return_value = subprocess.CompletedProcess([], 0, "clang version 21\n", "")
-    llvm = LLVM(compiler, runner)
+    runner.run.return_value = subprocess.CompletedProcess([], 0, "", "")
+    llvm = LLVM(configured_compiler, runner)
     monkeypatch.setattr(sys, "platform", platform)
     assert binary_suffix() == suffix
     assert binary_suffix(shared=True) == shared_suffix
@@ -71,14 +80,12 @@ def test_windows_exports_follow_tokens_not_lines_or_comments():
     assert _windows_exported_ir(expected) == expected
 
 
-def test_linker_stdout_is_retained_in_compile_diagnostics(tmp_path):
-    compiler = tmp_path / "clang"
-    compiler.touch()
+def test_linker_stdout_is_retained_in_compile_diagnostics(tmp_path, configured_compiler):
     runner = Mock()
-    runner.run.side_effect = [subprocess.CompletedProcess([], 0, "clang version 21\n", ""),
-                             subprocess.CalledProcessError(1, [], output="LINK: missing runtime library", stderr="link failed")]
+    runner.run.side_effect = subprocess.CalledProcessError(
+        1, [], output="LINK: missing runtime library", stderr="link failed")
     with pytest.raises(subprocess.CalledProcessError) as caught:
-        LLVM(compiler, runner).compile("define i32 @main() { ret i32 0 }", tmp_path)
+        LLVM(configured_compiler, runner).compile("define i32 @main() { ret i32 0 }", tmp_path)
     assert "LINK: missing runtime library" in caught.value.__notes__[0]
     assert "link failed" in caught.value.__notes__[0]
 

@@ -123,6 +123,31 @@ def test_managed_node_cache_respects_root_and_version(managed_installation, tmp_
     assert managed_installation[1].ensure.call_count == 3
 
 
+@pytest.mark.parametrize("install", [False, True])
+def test_removed_working_directory_disables_shared_cache(monkeypatch, managed_installation, install):
+    def missing_cwd():
+        raise FileNotFoundError("working directory was removed")
+
+    monkeypatch.setattr(Path, "cwd", missing_cwd)
+    installation, manager = managed_installation
+    for _ in range(2):
+        node = Node()
+        assert (node.ensure() if install else node.home) == installation.home
+    operation = manager.ensure if install else manager.find
+    assert operation.call_count == 2
+    assert not node_module._managed_installations
+
+
+def test_relative_root_cache_remains_isolated_by_directory(monkeypatch, managed_installation, tmp_path):
+    for name in ("first", "second"):
+        directory = tmp_path / name
+        directory.mkdir()
+        monkeypatch.chdir(directory)
+        Node(root=Path("tools")).ensure()
+        Node(root=Path("tools")).ensure()
+    assert managed_installation[1].ensure.call_count == 2
+
+
 def test_managed_node_cache_rediscovers_removed_tools(managed_installation):
     installation, manager = managed_installation
     Node().ensure()

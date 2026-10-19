@@ -28,18 +28,13 @@ class AndroidSDK:
     @staticmethod
     def find_root() -> Path:
         from sdkmgr import Manager, SDKError
-        from sdkmgr.android import sdk_root
 
-        # Building/using an installed SDK does not require an installer CLI.
-        # In particular, keep SDKs provided by Android Studio and CI reusable.
         try:
-            manager = Manager(interactive=False)
-            root = sdk_root(manager.platform)
+            sdk = Manager(interactive=False).inspect_android()
+            if sdk is not None and sdk.executable("adb").is_file():
+                return sdk.home
         except SDKError as error:
             raise RuntimeError(str(error)) from error
-        suffix = ".exe" if manager.platform.system == "windows" else ""
-        if (root / "platform-tools" / f"adb{suffix}").is_file():
-            return root
         raise RuntimeError(
             "Android SDK not found. Install packages with sdkmgr android install "
             "after accepting their licenses, or set ANDROID_HOME to an existing SDK."
@@ -62,29 +57,56 @@ class AndroidSDK:
 
     @property
     def adb(self) -> Path:
-        return self.root / "platform-tools" / "adb"
+        return self._installation().executable("adb")
 
     @property
     def emulator(self) -> Path:
-        return self.root / "emulator" / "emulator"
+        return self._installation().executable("emulator")
+
+    def _installation(self):
+        from sdkmgr import AndroidInstallation, Manager, SDKError
+
+        try:
+            manager = Manager(interactive=False)
+            return manager.inspect_android(sdk_root=self.root) or AndroidInstallation(
+                self.root, None, manager.platform,
+            )
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
 
     @property
     def avdmanager(self) -> Path:
-        return self.root / "cmdline-tools" / "latest" / "bin" / "avdmanager"
+        name = "avdmanager.bat" if os.name == "nt" else "avdmanager"
+        return self.root / "cmdline-tools" / "latest" / "bin" / name
 
     @property
     def sdkmanager(self) -> Path:
-        return self.root / "cmdline-tools" / "latest" / "bin" / "sdkmanager"
+        name = "sdkmanager.bat" if os.name == "nt" else "sdkmanager"
+        return self.root / "cmdline-tools" / "latest" / "bin" / name
 
     def build_tool(self, name: str) -> Path:
-        candidates = [
-            path
-            for path in (self.root / "build-tools").glob(f"*/{name}")
-            if path.is_file()
-        ]
+        from sdkmgr import SDKError
+
+        installation = self._installation()
+        candidates = []
+        for directory in (self.root / "build-tools").glob("*"):
+            if not re.fullmatch(r"\d+\.\d+\.\d+(?:-rc\d+)?", directory.name):
+                continue
+            try:
+                candidates.append(installation.build_tool(name, version=directory.name))
+            except SDKError:
+                continue
         if not candidates:
             raise RuntimeError(f"Android SDK build tool {name!r} is not installed.")
         return max(candidates, key=self._build_tools_version)
+
+    def platform_jar(self, api: int) -> Path:
+        from sdkmgr import SDKError
+
+        try:
+            return self._installation().platform_jar(api)
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
 
     @staticmethod
     def _build_tools_version(
@@ -95,18 +117,10 @@ class AndroidSDK:
         return numbers[:3], int("-" not in version), numbers[3:]
 
     def environment(self) -> dict[str, str]:
-        paths = [
-            self.java_home / "bin",
-            self.root / "platform-tools",
-            self.root / "emulator",
-            self.root / "cmdline-tools" / "latest" / "bin",
-        ]
-        return {
-            "ANDROID_HOME": str(self.root),
-            "ANDROID_SDK_ROOT": str(self.root),
-            "JAVA_HOME": str(self.java_home),
-            "PATH": os.pathsep.join(map(str, paths)) + os.pathsep + os.environ.get("PATH", ""),
-        }
+        environment = self._installation().environment({"PATH": os.environ.get("PATH", "")})
+        environment["JAVA_HOME"] = str(self.java_home)
+        environment["PATH"] = str(self.java_home / "bin") + os.pathsep + environment["PATH"]
+        return environment
 
     def devices(self, *, timeout: float = 10) -> list[AndroidDevice]:
         result = self.runner.run(

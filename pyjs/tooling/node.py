@@ -21,8 +21,13 @@ def _installation_key(root, version):
             "APPDATA", "LOCALAPPDATA",
         }
     ))
-    return (root.resolve() if root is not None else None, version,
-            Path.cwd(), Path.home(), platform.system(), platform.machine(), environment)
+    try:
+        root = root.resolve() if root is not None else None
+        cwd = Path.cwd()
+    except OSError:
+        # A removed working directory must not break otherwise valid discovery.
+        return None
+    return (root, version, cwd, Path.home(), platform.system(), platform.machine(), environment)
 
 
 class Node:
@@ -80,9 +85,10 @@ class Node:
                 f"Node {self.version} is not installed. Call Node.ensure() or "
                 f"run sdkmgr install node@{self.version}."
             )
-        if len(_managed_installations) >= 32:
-            _managed_installations.clear()
-        _managed_installations[key] = self._installation
+        if key is not None:
+            if len(_managed_installations) >= 32:
+                _managed_installations.clear()
+            _managed_installations[key] = self._installation
         return self._installation
 
     @property

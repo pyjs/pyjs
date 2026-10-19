@@ -52,22 +52,18 @@ class BrowserLaunchError(RuntimeError):
 
 
 def browser_executable() -> str:
-    candidates = [
-        os.environ.get("CHROME_BIN"),
-        "google-chrome",
-        "chromium",
-        "chromium-browser",
-        "/snap/bin/chromium",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    ]
-    for candidate in candidates:
-        if not candidate:
-            continue
-        if executable := shutil.which(candidate):
-            return executable
-    raise RuntimeError("Chrome or Chromium was not found. Set CHROME_BIN to its executable.")
+    from sdkmgr import Manager, SDKError
+
+    try:
+        browser = Manager(interactive=False).find_browser()
+    except SDKError as error:
+        raise RuntimeError(str(error)) from error
+    if browser is not None:
+        return str(browser.executable())
+    raise RuntimeError(
+        "Chrome or Chromium was not found. Run sdkmgr browser install, "
+        "or set CHROME_BIN to its executable."
+    )
 
 
 def free_port() -> int:
