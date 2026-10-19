@@ -30,11 +30,10 @@ from pyjs.tooling.android_artifacts import (
 
 
 def _cached_artifact(cache, artifact, content):
-    directory = cache / "artifacts" / artifact.group / artifact.name / artifact.version
+    directory = cache / "artifacts" / artifact.sha256
     directory.mkdir(parents=True)
     path = directory / artifact.filename
     path.write_bytes(content)
-    (directory / f"{artifact.filename}.sha256").write_text(artifact.sha256 + "\n")
     return path
 
 

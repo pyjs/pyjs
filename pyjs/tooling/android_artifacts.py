@@ -1,10 +1,7 @@
 """Resolve checksum-locked Android JAR and AAR artifacts."""
 
-import hashlib
 import json
 import re
-import tempfile
-import urllib.request
 import zipfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -101,47 +98,17 @@ class AndroidArtifactResolver:
         return AndroidArtifactClasspath(tuple(jars), tuple(aars))
 
     def _artifact(self, artifact: AndroidArtifact) -> Path:
-        directory = (
-            self.cache
-            / "artifacts"
-            / artifact.group
-            / artifact.name
-            / artifact.version
-        )
-        path = directory / artifact.filename
-        marker = directory / f"{artifact.filename}.sha256"
-        if (
-            path.is_file()
-            and marker.is_file()
-            and marker.read_text().strip() == artifact.sha256
-        ):
-            return path
-        directory.mkdir(parents=True, exist_ok=True)
-        self.progress(f"Downloading {artifact.group}:{artifact.name}:{artifact.version}")
-        digest = hashlib.sha256()
-        temporary_path = None
+        from sdkmgr import Artifact, ArtifactCache, SDKError
+
         try:
-            with tempfile.NamedTemporaryFile(dir=directory, delete=False) as temporary:
-                temporary_path = Path(temporary.name)
-                with urllib.request.urlopen(artifact.url, timeout=60) as response:
-                    while chunk := response.read(1024 * 1024):
-                        temporary.write(chunk)
-                        digest.update(chunk)
-        except BaseException:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
-            raise
-        assert temporary_path is not None
-        actual = digest.hexdigest()
-        if actual != artifact.sha256:
-            temporary_path.unlink(missing_ok=True)
-            raise RuntimeError(
-                f"Android artifact {artifact.filename} has SHA-256 {actual}; "
-                f"expected {artifact.sha256}"
-            )
-        temporary_path.replace(path)
-        marker.write_text(artifact.sha256 + "\n")
-        return path
+            cache = ArtifactCache(self.cache)
+            selected = Artifact(artifact.url, artifact.sha256, artifact.filename)
+            if existing := cache.find(selected):
+                return existing
+            self.progress(f"Downloading {artifact.group}:{artifact.name}:{artifact.version}")
+            return cache.ensure(selected)
+        except SDKError as error:
+            raise RuntimeError(str(error)) from error
 
     def _extract_aar(
         self,

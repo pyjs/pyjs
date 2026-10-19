@@ -73,24 +73,21 @@ def test_sanitized_execution_stops_on_recoverable_ubsan_report(tmp_path, monkeyp
 
 def test_llvm_uses_an_explicit_compiler(monkeypatch, tmp_path):
     executable = tmp_path / "clang"
-    executable.write_text("clang", encoding="utf-8")
     runner = Mock()
-    runner.run.return_value = subprocess.CompletedProcess(
-        [executable, "--version"],
-        0,
-        stdout="clang version 21.1.8\n",
-        stderr="",
-    )
+    manager = Mock()
+    manager.find_clang.return_value.executable.return_value = executable
+    manager.find_clang.return_value.version = "21.1.8"
+    monkeypatch.setattr("sdkmgr.Manager", Mock(return_value=manager))
     monkeypatch.setenv("PYJS_CLANG", str(executable))
 
     llvm = LLVM(runner=runner)
 
     assert llvm.ensure() == executable
-    assert llvm.version == "clang version 21.1.8"
-    runner.run.assert_called_once_with(
-        [executable, "--version"],
-        capture_output=True,
-    )
+    assert llvm.version == "21.1.8"
+    assert llvm.ensure() == executable
+    manager.find_clang.assert_called_once_with(executable=str(executable))
+    manager.ensure_clang.assert_not_called()
+    runner.run.assert_not_called()
 
 
 def test_llvm_compiles_and_executes_source(tmp_path):

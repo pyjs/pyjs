@@ -369,12 +369,7 @@ class AndroidJVMBuilder:
         self.sdk.runner.run(command, environment=self.sdk.environment())
 
     def _platform(self, api: int) -> Path:
-        platform = self.sdk.root / "platforms" / f"android-{api}" / "android.jar"
-        if not platform.is_file():
-            raise RuntimeError(
-                f"Android compile SDK {api} is not installed at {platform}."
-            )
-        return platform
+        return self.sdk.platform_jar(api)
 
     @staticmethod
     def _validate_activity_source(

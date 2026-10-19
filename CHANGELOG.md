@@ -4,6 +4,16 @@
 
 ### Changed
 
+- Tailwind provisioning and Clang/browser discovery delegate to sdkmgr 0.3.
+  Tailwind selects the exact supported release; explicit custom commands are
+  retained. Browser discovery never downloads implicitly and reports setup
+  instructions for pinned Chrome for Testing when no browser is installed.
+  Invalid `CHROME_BIN` overrides now fail instead of silently falling back.
+- Android build tools use host-correct executable suffixes, and locked JAR/AAR
+  downloads use sdkmgr's checksum-addressed cache. Cached artifact bytes are
+  reverified; the previous coordinate-based cache is left untouched.
+- Node discovery skips its shared cache when the working directory is no
+  longer accessible, while retaining relative-path cache isolation.
 - Node provisioning delegates to sdkmgr's mise/nvm providers instead of
   downloading archives into PyJS's own cache. Explicit executable selections
   remain supported; configure custom download mirrors through the provider.

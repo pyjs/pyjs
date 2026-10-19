@@ -77,6 +77,31 @@ actions for hosted runners. sdkmgr discovers their installed JDK/SDK tools;
 the Python integration is exercised by the same test suite. Do not replace
 runner caching or emulator lifecycle handling with another installer.
 
+## Other build tools
+
+Clang and Chrome/Chromium discovery use sdkmgr without implicit installation.
+Use `sdkmgr clang install` or `sdkmgr browser install` when missing. To select
+the pinned Chrome for Testing build instead of a system browser, run
+`sdkmgr browser install --managed`, then set `CHROME_BIN` to the printed path.
+Browser profiles, CDP, process cleanup, and pytest remain owned by PyJS.
+OS browser libraries and sandbox prerequisites must already be configured.
+
+`PYJS_CLANG` overrides sdkmgr's `CLANG`/host discovery, and explicit
+`LLVM(executable=...)` overrides both. No OS packages are installed during
+compilation. `LLVM.version` records the detected numeric compiler version.
+
+Tailwind builds ask sdkmgr for the exact supported standalone release,
+reusing a matching `TAILWINDCSS` or PATH executable before downloading. An
+invalid `TAILWINDCSS` override is an error. `TailwindCSS("custom-command")`
+retains explicit command execution without automatic provisioning. The
+optional cache directory is sdkmgr's root; old cache files are left untouched.
+
+Locked Android artifacts use checksum-addressed storage under the existing
+cache root and rehash bytes on lookup. Old coordinate-based downloads remain
+untouched and are not trusted via their checksum sidecars. The first build
+using the new layout may download its locked artifacts again. PyJS still owns
+dependency locks, AAR/classpath processing, and Android build/test execution.
+
 ## Pull-request CI
 
 Every PR runs the full Linux corpus plus targeted Windows/macOS coverage on

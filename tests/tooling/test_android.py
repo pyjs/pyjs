@@ -107,7 +107,7 @@ def test_android_sdk_installs_and_launches_an_application():
 
     assert [call.args[0] for call in runner.run.call_args_list] == [
         [
-            Path("/android/platform-tools/adb"),
+            sdk.adb,
             "-s",
             "emulator-5554",
             "install",
@@ -115,7 +115,7 @@ def test_android_sdk_installs_and_launches_an_application():
             package,
         ],
         [
-            Path("/android/platform-tools/adb"),
+            sdk.adb,
             "-s",
             "emulator-5554",
             "shell",
@@ -152,7 +152,7 @@ def test_android_sdk_starts_managed_headless_emulators_without_snapshots():
     sdk.start_emulator("Example_Test", headless=True)
 
     assert runner.start.call_args.args[0] == [
-        Path("/android/emulator/emulator"),
+        sdk.emulator,
         "@Example_Test",
         "-no-snapshot-save",
         "-no-snapshot-load",
@@ -322,7 +322,7 @@ def test_android_jvm_builder_selects_the_exact_compile_sdk(tmp_path):
     builder = AndroidJVMBuilder(sdk)
 
     assert builder._platform(35) == platform
-    with pytest.raises(RuntimeError, match="compile SDK 34 is not installed"):
+    with pytest.raises(RuntimeError, match="platforms/android-34 is missing android.jar"):
         builder._platform(34)
 
 
