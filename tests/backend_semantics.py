@@ -3568,6 +3568,49 @@ TEXT_EDIT_CONTRACT = _contract(
 )
 
 
+ASSERT_INSTANCE_STATE_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class State:
+    pass
+
+@js
+class ReadyState(State):
+    pass
+
+@js
+class StateOwner:
+    def __init__(self, state: State):
+        self.state = state
+
+@js
+def require_ready(state: State) -> None:
+    assert isinstance(state, ReadyState), "state is not ready"
+
+@js
+def require_ready_owner(owner: StateOwner) -> None:
+    assert isinstance(owner.state, ReadyState), "owner is not ready"
+''',
+    "assert_instance_state_result",
+    '''
+        require_ready(ReadyState())
+        require_ready_owner(StateOwner(ReadyState()))
+        caught = 0
+        try:
+            require_ready(State())
+        except AssertionError:
+            caught += 1
+        try:
+            require_ready_owner(StateOwner(State()))
+        except AssertionError:
+            caught += 2
+    ''',
+    (("local and field assertions execute at runtime", "caught != 3"),),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",

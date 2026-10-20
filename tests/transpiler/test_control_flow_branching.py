@@ -1,6 +1,65 @@
 from pyjs.testing.helpers import ad, at, diagnostic_text
 
 
+def test_class_instance_assertions_retain_local_and_field_checks():
+    at('''
+        @js
+        class State: pass
+        @js
+        class ReadyState(State): pass
+        @js
+        class Owner:
+            def __init__(self, state: State):
+                self.state = state
+        @js
+        def check(state: State, owner: Owner):
+            assert isinstance(state, ReadyState), "state"
+            assert isinstance(owner.state, ReadyState), "owner"
+        def main():
+            check(ReadyState(), Owner(ReadyState()))
+    ''', '''
+        class State:
+
+        class ReadyState(State):
+
+        class Owner:
+
+            def __init__(state: State) -> None:
+                self.state = state
+
+        def check(state: State, owner: Owner) -> None:
+            assert isinstance(state, ReadyState), 'state'
+            assert isinstance(owner.state, ReadyState), 'owner'
+
+        def main() -> None:
+            check(ReadyState(), Owner(ReadyState()))
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export class State {
+        }
+
+        export class ReadyState extends State {
+        }
+
+        export class Owner {
+
+            constructor(state) {
+                this.state = state;
+            }
+        }
+
+        export function check(state, owner) {
+            __pyjsAssert__((state instanceof ReadyState), () => 'state', $AssertionError);
+            __pyjsAssert__((owner.state instanceof ReadyState), () => 'owner', $AssertionError);
+        }
+
+        export function main() {
+            check(new ReadyState(), new Owner(new ReadyState()));
+        }
+    ''')
+
+
 def test_none_guard_narrows_a_union_with_multiple_concrete_members():
     at('''
         @js

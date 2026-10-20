@@ -31,6 +31,12 @@
 
 ### Added
 
+- Android Notes saves detached card-order snapshots on background threads.
+  Completed drops coalesce behind a single writer; newer edits remain dirty
+  until their own acknowledgement. Save failures retain retry diagnostics
+  through Activity recreation. Native `AtomicBoolean` safely publishes worker
+  results; the example's main-thread polling recovers them when posting a
+  callback is rejected.
 - Android packages can declare a process-scoped `Application` owner.
   Framework-created Activities and Applications reject inherited Python
   initializers as well as direct ones; initialize state in `onCreate`.

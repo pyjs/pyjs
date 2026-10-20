@@ -709,6 +709,11 @@ with `pyjs template`.
   acknowledge results on the main loop. These are not durable Android jobs.
   Compiled tests can use `pyjs.android.testing.run_on_main()` without a
   visible Activity.
+- Notes demonstrates serialized background saves, detached snapshots,
+  main-loop acknowledgements and Activity-scoped status observers.
+  `pyjs.java.concurrent.AtomicBoolean` provides release/acquire publication
+  for worker results; pending edits still require successful persistence to
+  survive process termination.
 - JVM `list(existing_list)` copies the list storage while retaining shared
   references to its items. Empty copies can grow normally. Source and result
   must have matching item storage and representation; converting other

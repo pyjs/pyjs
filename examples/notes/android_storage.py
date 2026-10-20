@@ -1,4 +1,5 @@
 from pyjs.java import format_exception
+from pyjs.java.errors import SecurityException
 from pyjs.java.io import File, IOException, RandomAccessFile, create_temp_file
 
 
@@ -85,17 +86,75 @@ class OrderFile:
                 self.cleanup_failed = not temporary.delete()
 
 
-class OrderSession:
-    def __init__(self, store: OrderFile) -> None:
+class OrderWrite:
+    """A detached snapshot; only its worker writes the result fields."""
+
+    def __init__(self, store: OrderFile, revision: int, order: list[int]) -> None:
         self.store = store
+        self.revision = revision
+        self.order = list(order)
+        self.message = ""
+        self.failure_report = ""
+
+    def failed(self, error: BaseException) -> None:
+        self.message = "Order not saved. Tap to retry. " + str(error)
+        self.failure_report = format_exception(error)
+
+    def run(self) -> None:
+        try:
+            self.store.write(self.order)
+        except (StorageError, SecurityException) as error:
+            self.failed(error)
+            if self.store.cleanup_failed:
+                self.message += " Temporary file cleanup also failed."
+
+
+class OrderObserver:
+    def storage_changed(self) -> None: ...
+
+
+class SaveDriver:
+    def poll(self, session: OrderSession) -> None: ...
+
+    def submit(self, session: OrderSession, write: OrderWrite) -> None:
+        write.run()
+        session.complete(write)
+
+
+class OrderSession:
+    """Main-thread state; drivers receive detached snapshots, not live lists."""
+
+    def __init__(self, store: OrderFile, driver: SaveDriver | None = None) -> None:
+        self.store = store
+        self.driver = driver if driver is not None else SaveDriver()
         self.can_save = False
         self.dirty = False
         self.message = ""
         self.failure_report = ""
         self.loaded = False
         self.pending_order: list[int] = []
+        self.revision = 0
+        self.requested_revision = 0
+        self.requested_order: list[int] = []
+        self.in_flight: OrderWrite | None = None
+        self.observer: OrderObserver | None = None
+
+    def attach(self, observer: OrderObserver) -> None:
+        self.observer = observer
+        self.driver.poll(self)
+        self.notify()
+
+    def detach(self, observer: OrderObserver) -> None:
+        if self.observer is observer:
+            self.observer = None
+
+    def notify(self) -> None:
+        observer = self.observer
+        if observer is not None:
+            observer.storage_changed()
 
     def restore(self, expected: list[int]) -> list[int]:
+        self.driver.poll(self)
         if not self.loaded:
             order = self.load(expected)
             self.pending_order = order if len(order) > 0 else list(expected)
@@ -104,13 +163,14 @@ class OrderSession:
 
     def changed(self, order: list[int]) -> None:
         self.pending_order = list(order)
+        self.revision += 1
         self.dirty = True
 
     def load(self, expected: list[int]) -> list[int]:
         self.can_save = False
         try:
             order = self.store.read(expected)
-        except (IOException, ValueError, OverflowError) as error:
+        except (IOException, ValueError, OverflowError, SecurityException) as error:
             self.message = "Could not load saved order: " + str(error)
             self.failure_report = format_exception(error)
             return []
@@ -120,17 +180,37 @@ class OrderSession:
         return order
 
     def save(self, order: list[int]) -> None:
+        self.driver.poll(self)
         if not self.dirty or not self.can_save:
             return
         self.pending_order = list(order)
-        try:
-            self.store.write(order)
-        except StorageError as error:
-            self.message = "Order not saved. Tap to retry. " + str(error)
-            self.failure_report = format_exception(error)
-            if self.store.cleanup_failed:
-                self.message += " Temporary file cleanup also failed."
+        self.requested_order = list(order)
+        self.requested_revision = self.revision
+        self.start()
+
+    def start(self) -> None:
+        if self.in_flight is not None:
             return
-        self.dirty = False
-        self.message = ""
-        self.failure_report = ""
+        write = OrderWrite(self.store, self.requested_revision, self.requested_order)
+        self.in_flight = write
+        self.message = "Saving…"
+        self.notify()
+        try:
+            self.driver.submit(self, write)
+        except (StorageError, SecurityException) as error:
+            write.failed(error)
+            self.complete(write)
+
+    def complete(self, write: OrderWrite) -> None:
+        # Object identity also rejects a late acknowledgement of a failed
+        # attempt after a retry of the same revision has started.
+        if self.in_flight is not write:
+            return
+        self.in_flight = None
+        self.message = write.message
+        self.failure_report = write.failure_report
+        if write.message == "":
+            self.dirty = self.revision != write.revision
+            if self.requested_revision > write.revision:
+                self.start()
+        self.notify()
