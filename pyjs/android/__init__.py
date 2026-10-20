@@ -4,6 +4,7 @@ from typing import Annotated, ClassVar
 
 from pyjs import jvm
 from pyjs.java import JVMArray, f32, i32
+from pyjs.java.io import File
 from pyjs.java.primitives import Reference
 
 from .api import AndroidAPI, AndroidAvailability, AndroidNullability
@@ -125,6 +126,8 @@ def _apply_dimension(unit: i32, value: f32, metrics: DisplayMetrics) -> f32:
 
 @jvm.native("android/content/Context")
 class Context:
+    def getFilesDir(self) -> File: ...
+
     @jvm.native(
         "android/content/Context",
         name="getSharedPreferences",

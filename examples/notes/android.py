@@ -7,7 +7,9 @@ from pyjs.android import (
     LayoutParams,
     LinearLayout,
     LinearLayoutParams,
+    OnClickListener,
     TextView,
+    View,
     ViewGroup,
     parse_color,
 )
@@ -22,6 +24,8 @@ from pyjs.android.recyclerview import (
     make_movement_flags,
 )
 from pyjs.java import f32, i32
+
+from .android_storage import OrderFile, OrderSession
 
 
 class NoteHolder(RecyclerViewViewHolder):
@@ -46,11 +50,15 @@ class NotesAdapter(RecyclerViewAdapter):
         notes: list[str],
         colors: list[str],
         note_ids: list[int],
+        session: OrderSession | None = None,
+        status: TextView | None = None,
     ) -> None:
         super().__init__()
         self.notes = notes
         self.colors = colors
         self.note_ids = note_ids
+        self.session = session
+        self.status = status
         self.set_has_stable_ids(True)
 
     def on_create_view_holder(
@@ -105,6 +113,37 @@ class NotesAdapter(RecyclerViewAdapter):
         self.colors[target] = color
         self.note_ids[target] = note_id
         self.notify_item_moved(source, target)
+        if self.session is not None and source != target:
+            self.session.dirty = True
+
+    def restore_order(self) -> None:
+        if self.session is not None:
+            order = self.session.load(self.note_ids)
+            for target in range(len(order)):
+                for source in range(target, len(self.note_ids)):
+                    if self.note_ids[source] == order[target]:
+                        self.move(source, target)
+                        break
+            self.session.dirty = False
+        self.show_storage_status()
+
+    def save_order(self) -> None:
+        if self.session is not None:
+            self.session.save(self.note_ids)
+        self.show_storage_status()
+
+    def show_storage_status(self) -> None:
+        if self.session is not None and self.status is not None:
+            self.status.setText(self.session.message)
+            self.status.setVisibility(0 if self.session.message != "" else 8)
+
+
+class RetrySave(OnClickListener):
+    def __init__(self, adapter: NotesAdapter) -> None:
+        self.adapter = adapter
+
+    def onClick(self, view: View) -> None:
+        self.adapter.save_order()
 
 
 class NotesTouch(ItemTouchCallback):
@@ -154,6 +193,11 @@ class NotesTouch(ItemTouchCallback):
     ) -> None:
         pass
 
+    def clear_view(self, recycler_view: RecyclerView,
+                   view_holder: RecyclerViewViewHolder) -> None:
+        super().clear_view(recycler_view, view_holder)
+        self.adapter.save_order()
+
 
 class NotesActivity(Activity):
     def onCreate(self, state: Bundle) -> None:
@@ -162,6 +206,7 @@ class NotesActivity(Activity):
 
         root = LinearLayout(self)
         root.setOrientation(LinearLayout.VERTICAL)
+        root.setFitsSystemWindows(True)
         root.setBackgroundColor(parse_color("#ffffff"))
 
         search = TextView(self)
@@ -218,7 +263,15 @@ class NotesActivity(Activity):
             )
         )
         recycler.set_has_fixed_size(False)
-        adapter = NotesAdapter(notes, colors, note_ids)
+        status = TextView(self)
+        status.setId(101)
+        status.setTextSize(14.0)
+        status.setPadding(40, 16, 40, 16)
+        session = OrderSession(OrderFile(self.getFilesDir().getPath() + "/notes-order.txt"))
+        adapter = NotesAdapter(notes, colors, note_ids, session, status)
+        adapter.restore_order()
+        status.setOnClickListener(RetrySave(adapter))
+        root.addView(status)
         recycler.set_adapter(adapter)
         ItemTouchHelper(NotesTouch(adapter)).attach_to_recycler_view(recycler)
         recycler.setLayoutParams(

@@ -691,6 +691,11 @@ with `pyjs template`.
   Erased numeric payloads compare with Python's numeric equality, but cannot
   be dictionary keys yet: numeric and reference-array keys through an `object`
   view raise `TypeError` instead of using incompatible Java hashing.
+- Native Java file bindings and Android `Context.getFilesDir()` support
+  app-private storage. The Notes example demonstrates bounded card-order
+  snapshots, checked replacement, failure reporting and retry without
+  overwriting an unreadable snapshot. See its README for durability and
+  host-platform limits.
 - JVM custom Python exception classes retain inherited catches, typed fields,
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;

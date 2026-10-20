@@ -31,6 +31,12 @@
 
 ### Added
 
+- Android Notes saves card order after completed drags and restores it on
+  launch. Save failures preserve the previous snapshot and provide a retry
+  action; invalid saved orders block automatic overwrites. Native Java file
+  bindings and app-private file-directory access support the example's
+  bounded, single-writer storage path, with preserved exception diagnostics.
+
 - Managed JVM exceptions expose read-only `.args`, retaining original
   positional values and missing dictionary keys independently of messages.
   Reinitialization replaces the tuple without changing saved references.
