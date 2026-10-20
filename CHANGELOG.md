@@ -151,6 +151,10 @@
 
 ### Fixed
 
+- Native SSR retains reached Python record layouts regardless of package name,
+  including navigation responses and dormant live-session fields. Partial
+  standard-library models no longer fail on unused unsupported imports, and
+  dialog trigger registration does not pull browser callbacks into SSR.
 - JVM and LLVM bare reraises in return-path `finally` blocks now use the
   enclosing handler after the departing inner handler has been popped.
 - JVM optional exceptions format absent values as `None` without dereferencing

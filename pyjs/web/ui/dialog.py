@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from pyjs import js
+from pyjs import js, llvm
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, div, p, ref, require_element, tag, tw
 from pyjs.web.domx import dialog as dialog_element
@@ -38,7 +38,9 @@ class DialogTrigger(ProxyElement):
             *children,
         )
 
-    def on_click(self, callback: callable):
+    # SSR cannot register browser callbacks; match Button.on_click semantics.
+    @llvm.inline("")
+    def on_click(self, callback: callable) -> None:
         self.element.addEventListener("click", callback)
 
     def set_expanded(self, expanded: bool):

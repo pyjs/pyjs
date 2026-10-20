@@ -71,7 +71,7 @@ from pyjs.analysis.value_representation import (
     analyzed_value_object,
     representation_for_member,
 )
-from pyjs.decorators import get_native_decoration
+from pyjs.decorators import get_native_decoration, is_declaration
 from pyjs.native.platform import errno_symbol
 from pyjs.numeric import NumericFormat, integer_literal
 from pyjs.python import native as native_builtins
@@ -377,7 +377,7 @@ class FunctionEmitter:
         classes = [
             layout
             for layout in program.classes
-            if (self.is_application_module(layout.value_type.container)
+            if (self.is_source_class(layout.value_type)
                 or models.is_model(layout.value_type.py_obj)
                 or self.is_custom_element_type(layout.value_type)
                 or self.is_proxy_element_type(layout.value_type))
@@ -1234,7 +1234,7 @@ class FunctionEmitter:
                 fields.extend(inherited_fields(layout.base))
             elif (
                 layout.base is not None
-                and self.is_application_module(layout.base.container)
+                and self.is_source_class(layout.base)
             ):
                 raise LLVMUnsupported(
                     f"LLVM cannot resolve base class {layout.base.name}"
@@ -7548,14 +7548,15 @@ class FunctionEmitter:
     def name(value: str, prefix: str) -> str:
         return f"{prefix}.{re.sub(r'[^A-Za-z0-9_$.-]', '_', value)}"
 
-    def is_application_module(self, module: Module) -> bool:
-        """Keep reached application and semantic-library Python bodies."""
-        return module.name in {"pyjs.native.math", "pyjs.native.uuid", "pyjs.native.pathlib",
-                               "pyjs.native.datetime"} or module is self.module.entry_module or (
-            not module.scope.is_builtins
-            and module.name != "pyjs"
-            and not module.name.startswith("pyjs.")
-        )
+    def is_source_class(self, value_type: Class) -> bool:
+        """Source ownership comes from declarations, not package spelling.
+
+        Reached Python records shipped with PyJS need the same layouts as
+        application records. Browser/native declarations still have no body.
+        """
+        return (not value_type.container.scope.is_builtins
+                and not is_declaration(value_type.py_obj, "native")
+                and not is_declaration(value_type.py_obj, "js"))
 
     def symbol_module(self, value: Class | Function) -> str:
         """Qualify imported symbols without changing established entry-module IR."""

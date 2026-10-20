@@ -3,6 +3,7 @@
 import ast
 import builtins
 import functools
+import importlib
 import inspect
 import operator
 import types
@@ -1777,7 +1778,13 @@ class NativeLibraryMappings(NativeProtocolMappings):
         if module == "dataclasses" and name == "replace":
             return "pyjs.native.dataclasses", name
         if module in {"datetime", "pathlib", "uuid"}:
-            return "pyjs.native." + module, name
+            replacement = "pyjs.native." + module
+            # These libraries implement a subset of the host API. Unused
+            # unsupported imports must remain lazy, not fail while scanning
+            # a module that also contains reachable records or helpers.
+            if name is None or hasattr(importlib.import_module(replacement), name):
+                return replacement, name
+            return None
         if module == "enum" and name in {None, "IntEnum", "StrEnum"}:
             return "pyjs.native.enum", name
         if module == "json" and name == "dumps":
