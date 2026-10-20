@@ -242,8 +242,9 @@ def test_android_notes_compiles_recycler_view_callbacks(tmp_path):
     parsed = read_jvm_class(adapter)
     string_list = "Lorg/pyjs/notes/jvm/PyjsAndroid$list$Ljava_lang_String_;"
     integer_list = "Lorg/pyjs/notes/jvm/PyjsAndroid$list$J;"
+    session = "Lorg/pyjs/notes/jvm/PyjsAndroid$module$pyjs_examples$notes$android_storage$OrderSession;"
     assert parsed.declared_methods("<init>")[0].descriptor == (
-        f"({string_list}{string_list}{integer_list})V"
+        f"({string_list}{string_list}{integer_list}{session}Landroid/widget/TextView;)V"
     )
     assert {
         (method.name, method.descriptor)
