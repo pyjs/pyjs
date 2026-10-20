@@ -719,6 +719,9 @@ with `pyjs template`.
   do not mutate exception relationships or stack traces. Native suppressed
   subtrees retain Java's cause traversal. Invalid managed formatters render
   `<exception str() failed>` without losing the original failure.
+  Reports use the host line separator and preserve PrintWriter auto-flush
+  settings. For uncaught chains, Java's thread prefix precedes the oldest
+  entry; the escaping exception appears last, following Python chain order.
   Assignment to chaining attributes remains unsupported.
   Explicit optional calls require string-compatible formatter results; narrow
   the receiver before consuming a differently typed custom result.

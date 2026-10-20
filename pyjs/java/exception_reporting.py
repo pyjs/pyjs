@@ -33,10 +33,22 @@ def emit_print_overrides(class_file, prefix):
             code.local(0x19, 1)
         code.local(0x19, 0)
         invoke(code, class_file, reporter, "format", "(Ljava/lang/Throwable;)Ljava/lang/String;", 0xB8)
-        invoke(code, class_file, output or "java/io/PrintStream", "print", "(Ljava/lang/String;)V")
+        if output == "java/io/PrintWriter":
+            # println honors the writer's auto-flush setting. Remove exactly
+            # the final host separator so it does not append an extra line.
+            code.emit(0x59)
+            invoke(code, class_file, "java/lang/String", "length", "()I")
+            invoke(code, class_file, "java/lang/System", "lineSeparator", "()Ljava/lang/String;", 0xB8)
+            invoke(code, class_file, "java/lang/String", "length", "()I")
+            code.emit(0x64)
+            code.emit(0x03)
+            code.emit(0x5F)
+            invoke(code, class_file, "java/lang/String", "substring", "(II)Ljava/lang/String;")
+        invoke(code, class_file, output or "java/io/PrintStream",
+               "println" if output == "java/io/PrintWriter" else "print", "(Ljava/lang/String;)V")
         code.emit(0xB1)
         descriptor = "()V" if output is None else f"(L{output};)V"
-        class_file.add_method(Method(0x0001, "printStackTrace", descriptor, code.render(), 2,
+        class_file.add_method(Method(0x0001, "printStackTrace", descriptor, code.render(), 4,
                                      1 if output is None else 2))
 
 
@@ -140,7 +152,7 @@ def emit_report_runtime(class_files, prefix):
     code.local(0x19, 6)
     code.branch(0xC6, "context")
     code.local(0x19, 3)
-    string(code, helper, "\n" + DIRECT_CAUSE + "\n\n")
+    string(code, helper, DIRECT_CAUSE)
     code.branch(0xA7, "record")
     code.mark("context")
     code.local(0x19, 0)
@@ -151,7 +163,7 @@ def emit_report_runtime(class_files, prefix):
     code.local(0x3A, 6)
     code.mark("context_done")
     code.local(0x19, 3)
-    string(code, helper, "\n" + IMPLICIT_CONTEXT + "\n\n")
+    string(code, helper, IMPLICIT_CONTEXT)
     code.mark("record")
     invoke(code, helper, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z")
     code.emit(0x57)
@@ -167,11 +179,15 @@ def emit_report_runtime(class_files, prefix):
     code.branch(0xA7, "error")
     code.mark("separator")
     code.local(0x19, 5)
+    code.emit(0x59)
+    invoke(code, helper, "java/io/PrintWriter", "println", "()V")
     code.local(0x19, 3)
     code.local(0x15, 7)
     invoke(code, helper, "java/util/ArrayList", "get", "(I)Ljava/lang/Object;")
     code.emit(0xC0, helper.constants.class_("java/lang/String").to_bytes(2, "big"))
-    invoke(code, helper, "java/io/PrintWriter", "print", "(Ljava/lang/String;)V")
+    invoke(code, helper, "java/io/PrintWriter", "println", "(Ljava/lang/String;)V")
+    code.local(0x19, 5)
+    invoke(code, helper, "java/io/PrintWriter", "println", "()V")
     code.mark("error")
     code.local(0x15, 7)
     code.branch(0x9B, "done")

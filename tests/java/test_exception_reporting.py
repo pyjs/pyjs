@@ -1,4 +1,5 @@
 import re
+import subprocess
 from textwrap import dedent, indent
 
 import pytest
@@ -7,6 +8,7 @@ from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import format_exception, transpile_jvm
 from tests.java.test_exception_causes import NATIVE_IO
 from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
+from tests.java.test_jvm import java
 from tests.semantics.helpers import run_python
 
 
@@ -425,3 +427,98 @@ def main() -> str:
             return sink.toString()
     return "not caught"
 ''', tmp_path)
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n"], ids=["lf", "crlf"])
+@pytest.mark.parametrize("output", ["format", "default", "writer", "stream"])
+def test_report_bytes_use_one_host_line_separator(tmp_path, separator, output):
+    render = {
+        "format": "return expected",
+        "default": "view.print_default()\nreturn expected",
+        "writer": "sink = StringWriter()\nview.print_writer(PrintWriter(sink))\nassert sink.toString() == expected\nreturn expected",
+        "stream": "sink = Bytes()\nview.print_stream(PrintStream(sink))\nassert sink.toString() == expected\nreturn expected",
+    }[output]
+    if output != "format":
+        render = "view = cast(Throwable, error)\n" + render
+    source = NATIVE_OUTPUTS + '''
+def main() -> str:
+    try:
+        raise ValueError("first")
+    except ValueError:
+        try:
+            raise TypeError("middle")
+        except TypeError as middle:
+            try:
+                raise RuntimeError("last") from middle
+            except RuntimeError as error:
+                expected = format_exception(error)
+''' + indent(render, "                ") + '\n    return "not caught"\n'
+    transpile_jvm(source, filename="newlines.py").write(tmp_path)
+    # Text-mode subprocess capture would normalize CRLF and hide this defect.
+    result = subprocess.run(
+        [java(), "-Xmx128m", "-Xverify:all", "-Dline.separator=" + separator,
+         "-cp", str(tmp_path), "PyjsProgram"],
+        capture_output=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == (result.stdout if output == "default" else b"")
+    remainder = result.stdout.replace(separator.encode(), b"")
+    assert b"\r" not in remainder and b"\n" not in remainder
+    assert result.stdout.endswith(separator.encode())
+    assert relationships(result.stdout.decode()) == [
+        "ValueError: first",
+        "During handling of the above exception, another exception occurred:",
+        "TypeError: middle",
+        "The above exception was the direct cause of the following exception:",
+        "RuntimeError: last",
+    ]
+
+
+@pytest.mark.parametrize("auto_flush", [False, True])
+@pytest.mark.parametrize("kind", ["RuntimeError", "NativeError"])
+def test_print_writer_preserves_configured_auto_flush(tmp_path, auto_flush, kind):
+    result = run_jvm(NATIVE_OUTPUTS + f'''
+@jvm.native("java/io/PrintWriter")
+class BufferedWriter:
+    def __init__(self, sink: OutputStream, auto_flush: bool) -> None: ...
+    def flush(self) -> None: ...
+
+@jvm.native("java/lang/Throwable")
+class Printable:
+    def printStackTrace(self, sink: BufferedWriter) -> None: ...
+
+@jvm.native("java/lang/RuntimeException")
+class NativeError(Exception):
+    def __init__(self, message: str) -> None: ...
+
+def main() -> str:
+    error = {kind}("original")
+    expected = format_exception(error)
+    sink = Bytes()
+    writer = BufferedWriter(sink, {auto_flush!r})
+    cast(Printable, error).printStackTrace(writer)
+    assert sink.toString() == {"expected" if auto_flush else '""'}
+    writer.flush()
+    assert sink.toString() == expected
+    return "preserved"
+''', tmp_path)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "preserved", "")
+
+
+def test_uncaught_host_prefix_precedes_oldest_entry_and_escaping_error_is_last(tmp_path):
+    result = run_jvm('''
+def main() -> int:
+    try:
+        raise ValueError("original")
+    except ValueError:
+        raise RuntimeError("escaping")
+''', tmp_path)
+    assert result.returncode == 1, result.stderr
+    assert result.stderr.splitlines()[0] == (
+        'Exception in thread "main" PyjsProgram$exception$ValueError: original'
+    )
+    assert relationships(result.stderr) == [
+        "ValueError: original",
+        "During handling of the above exception, another exception occurred:",
+        "RuntimeError: escaping",
+    ]
