@@ -3,6 +3,28 @@ import pytest
 from tests.java.test_exceptions import assert_matches_python, run_jvm
 
 
+def test_atomic_completion_flag_publishes_worker_result(tmp_path):
+    result = run_jvm('''
+        from pyjs.java.concurrent import AtomicBoolean, Runnable, Thread
+        class Task(Runnable):
+            def __init__(self):
+                self.finished = AtomicBoolean(False)
+                self.result = 0
+            def run(self) -> None:
+                self.result = 42
+                self.finished.set(True)
+        def main() -> int:
+            task = Task()
+            assert not task.finished.get()
+            thread = Thread(task)
+            thread.start()
+            thread.join()
+            assert task.finished.get()
+            return task.result
+    ''', tmp_path)
+    assert result.returncode == 42, result.stderr
+
+
 def test_native_thread_publishes_task_state_after_join(tmp_path):
     result = run_jvm('''
         from pyjs.java.concurrent import Runnable, Thread

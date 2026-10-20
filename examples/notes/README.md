@@ -48,7 +48,8 @@ exception as its cause/context, and its message in `.args`.
 of the short status message. Successful load/save clears that report.
 
 A failed save keeps the on-screen order and displays a tap-to-retry message.
-`NotesApplication` owns the session independently of Activity views. Activity
+`NotesApplication` owns the session. An Activity subscribes to status updates
+while alive and detaches its own observer when destroyed. Activity
 recreation or relaunch in that same process restores pending order, dirty
 state, and the failure report without reloading the old file. Only a new
 process loads the saved snapshot, or initial samples if no snapshot exists.
@@ -59,10 +60,21 @@ automatic saving. Repair or remove the snapshot and restart the app process;
 dragging cannot overwrite it. Validation rejects unknown, duplicate,
 noncanonical, incomplete and oversized saved orders.
 
-This is a bounded, single-writer example. It saves only IDs, synchronously
-after a drag, not during movement. It does not implement concurrent writers,
-general note storage, orphan recovery after process termination, or directory
-syncing for power-loss durability. Larger saves need a coordinated worker.
+`android_saves.py` runs writes on native Java threads. The main-thread session
+serializes detached snapshots and coalesces completed drops while a write is
+running. An acknowledgement only marks its own revision saved; later edits
+remain dirty. Movement during an unfinished drag is not submitted until drop.
+Failed writes stop automatic progression and expose a retry of the latest
+order. Stale or duplicate acknowledgements cannot complete a newer attempt.
+
+Results return through the main Handler. An atomic completion flag also
+allows reattachment or retry to recover a result if posting was rejected.
+The worker never updates views or the session directly. Initial bounded
+loading remains synchronous. Native threads are not durable Android jobs.
+
+This is a bounded, single-writer example. It does not implement concurrent
+process writers, general note storage, orphan recovery after process
+termination, or directory syncing for power-loss durability.
 Replacement uses Android's `File.renameTo` behavior, not a portable desktop
 storage abstraction. Hosts that refuse replacement of an existing destination
 (such as OpenJDK on Windows) report failure and retain the old snapshot.
@@ -82,11 +94,17 @@ pytest -q examples/notes/tests/test_android_ui.py \
 
 `test_android_model.py` checks note/color/ID movement in CPython.
 `test_android_storage.py` injects read, write, sync, close, replacement and
-cleanup failures to check preservation and retry. `test_android_ui.py` checks
+cleanup failures to check preservation and retry. Save-queue tests control
+completion explicitly to cover coalescing, detached snapshots, failed starts,
+late acknowledgements and observer lifetimes. Native-driver tests cover
+rejected callback recovery. `test_android_ui.py` checks
 the native grid, restored order, retry controls and invalid-file protection
 under Robolectric or on a device. Retained-session tests recreate the Activity
 after failed saves, then replace the process-owned session to distinguish
 in-memory recovery from disk restoration. That replacement is not a real OS
-process-death test. Its device-only test drags a card, recreates
+process-death test. Background tests use a bounded latch to keep a real worker
+in flight during recreation, then verify completion or failure and retry.
+Other injected-storage tests use the synchronous driver for precise outcomes.
+Its device-only test drags a card, recreates
 the activity to verify the saved order, then drags back with UI Automator.
 Assertions inspect stable IDs on Espresso's UI thread.

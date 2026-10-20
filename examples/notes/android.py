@@ -26,7 +26,8 @@ from pyjs.android.recyclerview import (
 )
 from pyjs.java import f32, i32
 
-from .android_storage import OrderFile, OrderSession
+from .android_saves import BackgroundSaveDriver
+from .android_storage import OrderFile, OrderObserver, OrderSession
 
 
 class NoteHolder(RecyclerViewViewHolder):
@@ -146,6 +147,14 @@ class RetrySave(OnClickListener):
         self.adapter.save_order()
 
 
+class StorageStatus(OrderObserver):
+    def __init__(self, adapter: NotesAdapter) -> None:
+        self.adapter = adapter
+
+    def storage_changed(self) -> None:
+        self.adapter.show_storage_status()
+
+
 class NotesTouch(ItemTouchCallback):
     def __init__(self, adapter: NotesAdapter) -> None:
         super().__init__()
@@ -204,12 +213,15 @@ class NotesApplication(Application):
 
     def onCreate(self) -> None:
         super().onCreate()
-        self.session = OrderSession(OrderFile(
-            self.getFilesDir().getPath() + "/notes-order.txt",
-        ))
+        self.session = OrderSession(
+            OrderFile(self.getFilesDir().getPath() + "/notes-order.txt"),
+            BackgroundSaveDriver(),
+        )
 
 
 class NotesActivity(Activity):
+    storage_observer: StorageStatus
+
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
         self.setTitle("Notes")
@@ -280,6 +292,8 @@ class NotesActivity(Activity):
         session = cast(NotesApplication, self.getApplicationContext()).session
         adapter = NotesAdapter(notes, colors, note_ids, session, status)
         adapter.restore_order()
+        self.storage_observer = StorageStatus(adapter)
+        session.attach(self.storage_observer)
         status.setOnClickListener(RetrySave(adapter))
         root.addView(status)
         recycler.set_adapter(adapter)
@@ -289,6 +303,12 @@ class NotesActivity(Activity):
         )
         root.addView(recycler)
         self.setContentView(root)
+
+    def onDestroy(self) -> None:
+        session = self.storage_observer.adapter.session
+        if session is not None:
+            session.detach(self.storage_observer)
+        super().onDestroy()
 
 
 def main() -> int:

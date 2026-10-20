@@ -16,10 +16,11 @@ from pyjs.android.testing import (
     run_on_main,
 )
 from pyjs.android.uiautomator import find_text
-from pyjs.java import format_exception
-from pyjs.java.concurrent import Runnable
+from pyjs.java import format_exception, i32
+from pyjs.java.concurrent import Runnable, Thread
 from pyjs.java.io import File, RandomAccessFile
 from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication
+from pyjs_examples.notes.android_saves import BackgroundSaveDriver
 from pyjs_examples.notes.android_storage import Closing, OrderFile, OrderSession, StorageError
 
 pytestmark = [
@@ -30,6 +31,31 @@ pytestmark = [
 
 @jvm.native("android/util/Log", name="getStackTraceString")
 def android_stack_trace(error: BaseException) -> str: ...
+
+
+@jvm.native("java/util/concurrent/TimeUnit")
+class TimeUnit:
+    pass
+
+
+@jvm.native("java/util/concurrent/TimeUnit", name="valueOf")
+def time_unit(name: str) -> TimeUnit: ...
+
+
+@jvm.native("java/util/concurrent/CountDownLatch")
+class Latch:
+    def __init__(self, count: i32) -> None: ...
+
+    def countDown(self) -> None: ...
+
+    @jvm.native(
+        "java/util/concurrent/CountDownLatch", name="await", invocation="virtual",
+    )
+    def await_timeout(self, timeout: int, unit: TimeUnit) -> bool: ...
+
+
+@jvm.native("java/lang/Thread", name="currentThread")
+def current_thread() -> Thread: ...
 
 
 def test_android_log_report_preserves_implicit_exception_context() -> None:
@@ -144,6 +170,95 @@ class UnsavedSession(ViewAssertion):
         assert adapter.session is owner.session
         assert owner.session.dirty and owner.session.can_save
         assert "Injected write failure" in owner.session.failure_report
+
+
+class GatedOrderFile(OrderFile):
+    def __init__(self, path: str, fail: bool) -> None:
+        super().__init__(path)
+        self.fail = fail
+        self.started = Latch(1)
+        self.release = Latch(1)
+        self.worker: Thread | None = None
+
+    def write(self, order: list[int]) -> None:
+        self.worker = current_thread()
+        self.started.countDown()
+        if not self.release.await_timeout(15, time_unit("SECONDS")):
+            raise StorageError("Background test gate timed out")
+        if self.fail:
+            raise StorageError("Injected write failure")
+        super().write(order)
+
+
+class InstallBackgroundSession(Runnable):
+    def __init__(self, store: GatedOrderFile) -> None:
+        self.store = store
+
+    def run(self) -> None:
+        owner = cast(NotesApplication, application_context())
+        owner.session = OrderSession(self.store, BackgroundSaveDriver())
+
+
+class PollBackgroundSession(Runnable):
+    def run(self) -> None:
+        session = cast(NotesApplication, application_context()).session
+        session.driver.poll(session)
+
+
+def finish_background_write(store: GatedOrderFile) -> None:
+    assert store.started.await_timeout(15, time_unit("SECONDS"))
+    worker = store.worker
+    assert worker is not None
+    assert worker is not current_thread()
+    store.release.countDown()
+    worker.join()
+    run_on_main(PollBackgroundSession())
+
+
+def check_background_recreation(fail: bool) -> None:
+    reset_order()
+    store = GatedOrderFile(order_path(), fail)
+    try:
+        run_on_main(InstallBackgroundSession(store))
+        launch(NotesActivity)
+        by_id(100).check(MoveAndSave(False))
+        assert store.started.await_timeout(15, time_unit("SECONDS"))
+        by_id(101).assert_text("Saving…")
+        recreate()
+        by_id(100).check(NoteOrder(
+            [1002, 1001, 1003, 1004, 1005, 1006, 1007], "background recreation",
+        ))
+        by_id(101).assert_text("Saving…")
+        finish_background_write(store)
+        if fail:
+            by_id(100).check(UnsavedSession())
+            by_id(101).assert_text("Order not saved. Tap to retry. Injected write failure")
+            assert not File(order_path()).exists()
+            store.fail = False
+            store.started = Latch(1)
+            by_id(101).click()
+            finish_background_write(store)
+        by_id(101).assert_text("")
+        run_on_main(NewProcessSession())
+        launch(NotesActivity)
+        by_id(100).check(NoteOrder(
+            [1002, 1001, 1003, 1004, 1005, 1006, 1007], "background saved order",
+        ))
+    finally:
+        store.release.countDown()
+        worker = store.worker
+        if worker is not None:
+            worker.join()
+        run_on_main(PollBackgroundSession())
+        reset_order()
+
+
+def test_background_write_completes_after_activity_recreation() -> None:
+    check_background_recreation(False)
+
+
+def test_background_write_failure_retries_after_activity_recreation() -> None:
+    check_background_recreation(True)
 
 
 def test_grid_displays_sample_cards_in_adapter_order() -> None:
