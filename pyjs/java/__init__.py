@@ -27,6 +27,7 @@ from .classpath import (
     read_jvm_class,
 )
 from .primitives import f32, f64, i32, run_sync
+from .reporting import format_exception
 from .transpiler import (
     JVMCompilation,
     JVMCompiledTest,
@@ -122,6 +123,7 @@ __all__ = [
     "double_to_string",
     "f32",
     "f64",
+    "format_exception",
     "i32",
     "parse_double",
     "parse_jvm_method_descriptor",

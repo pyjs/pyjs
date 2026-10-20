@@ -31,6 +31,11 @@
 
 ### Added
 
+- JVM applications can render Python-style exception chains with
+  `pyjs.java.format_exception()`. Reports select explicit causes or unsuppressed
+  context, preserve native frames and suppressed details, and safely handle
+  cycles and long chains. Managed exceptions use the same reports for Java
+  `printStackTrace()` overloads without changing their stored state.
 - JVM exceptions expose read-only implicit context across handlers, helper
   calls and cleanup. Runtime and formatting failures retain the handled error;
   returns and unwinding restore the caller's state, independently per thread.

@@ -710,8 +710,15 @@ with `pyjs template`.
   handlers restore their enclosing state on return and unwind, and separate
   threads never share active handlers. Reusing exceptions breaks implicit
   context cycles without altering explicit causes. Native Java failures may
-  be context values, but expose no Python context themselves. Java's default
-  stack traces still show only explicit causes, not implicit context.
+  be context values, but expose no Python context themselves.
+  `pyjs.java.format_exception(error)` renders causes or unsuppressed context
+  oldest-first, with Java frames, generated class names and native suppressed
+  details. Managed exceptions use that rendering in all Java `printStackTrace`
+  overloads too. Native roots keep Java's printer; use `format_exception` to
+  include Python context beneath them. Reports handle cycles iteratively and
+  do not mutate exception relationships or stack traces. Native suppressed
+  subtrees retain Java's cause traversal. Invalid managed formatters render
+  `<exception str() failed>` without losing the original failure.
   Assignment to chaining attributes remains unsupported.
   Explicit optional calls require string-compatible formatter results; narrow
   the receiver before consuming a differently typed custom result.

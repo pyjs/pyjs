@@ -214,6 +214,9 @@ def emit_exception_subclass(class_files, name, parent, prefix):
             0x0011, MESSAGE_SETTER, "(Ljava/lang/String;)V", setter.render(), 2, 2,
         ))
         emit_cause_state(class_file)
+        from .exception_reporting import emit_print_overrides
+
+        emit_print_overrides(class_file, prefix)
     code.emit(0xB1)
     class_file.add_method(Method(
         0x0001, "<init>", "(Ljava/lang/String;)V", code.render(), 2, 2,

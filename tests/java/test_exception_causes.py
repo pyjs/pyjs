@@ -272,7 +272,7 @@ def main() -> int:
     assert result.returncode != 0
     # Java stack trace paths and generated class names vary with the source.
     assert "RuntimeError: save failed" in result.stderr
-    assert "Caused by:" in result.stderr
+    assert "The above exception was the direct cause of the following exception:" in result.stderr
     assert "ValueError: underlying failure" in result.stderr
 
 
@@ -389,7 +389,7 @@ def main() -> int:
     assert result.returncode != 0
     # Java stack trace paths/class names vary; only the text is contractual.
     assert ": custom outer text" in result.stderr
-    assert "Caused by:" in result.stderr
+    assert "The above exception was the direct cause of the following exception:" in result.stderr
     assert ": custom underlying text" in result.stderr
     assert "raw cause" not in result.stderr
 
@@ -434,10 +434,11 @@ def main() -> int:
     raise second from first
 ''', tmp_path)
     assert result.returncode != 0
-    # Java's printer owns cycle detection; paths and stack frames vary.
-    assert "RuntimeError: first" in result.stderr
-    assert "ValueError: second" in result.stderr
-    assert "CIRCULAR REFERENCE" in result.stderr
+    # Python-style cycle truncation emits each error once, oldest first.
+    assert result.stderr.count("RuntimeError: first") == 1
+    assert result.stderr.count("ValueError: second") == 1
+    assert result.stderr.index("RuntimeError: first") < result.stderr.index("ValueError: second")
+    assert result.stderr.count("The above exception was the direct cause") == 1
 
 
 @pytest.mark.parametrize("fail_target", [False, True])
@@ -556,7 +557,7 @@ def main() -> int:
 
 
 @pytest.mark.parametrize("kind", ["BaseException", "RuntimeError"])
-def test_java_cause_checks_and_uncaught_reporting_remain_native(tmp_path, kind):
+def test_java_cause_checks_and_uncaught_reporting_preserve_cause(tmp_path, kind):
     result = run_jvm(JAVA_CAUSE_ACCESS + f'''
 def main() -> int:
     error = {kind}("wrapper")
@@ -577,5 +578,5 @@ def main() -> int:
 ''', tmp_path)
     assert result.returncode != 0
     # Java owns frame formatting, self-cycle and one-shot initCause checks.
-    assert "Caused by:" in result.stderr
+    assert "The above exception was the direct cause of the following exception:" in result.stderr
     assert "ValueError: java cause" in result.stderr

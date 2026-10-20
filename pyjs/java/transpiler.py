@@ -69,6 +69,7 @@ from .classfile import (
     Method,
 )
 from .diagnostics import JVMUnsupported as JVMUnsupported
+from .exception_reporting import emit_report_runtime
 from .exceptions import (
     CAUSE_SETTER,
     EXPLICIT_FORMATTER,
@@ -90,6 +91,7 @@ from .exceptions import (
     strict_formatter_bridge,
 )
 from .primitives import Reference, run_sync
+from .reporting import format_exception
 from .string_runtime import emit_string_helpers
 
 
@@ -466,6 +468,9 @@ class JVMEmitter:
         self.class_file = self.class_files[self.main_class_name]
         emit_string_helpers(self.class_file, self.string_helpers, self.throw_python)
         self.class_file.add_method(self.main_wrapper(program.entry_point))
+        if any(f"{self.main_class_name}$exception${root}" in self.class_files
+               for root in ("BaseException", "Exception")):
+            emit_report_runtime(self.class_files, self.main_class_name)
         return JVMCompilation(
             self.main_class_name,
             {name: class_file.render() for name, class_file in self.class_files.items()},
@@ -1387,6 +1392,16 @@ class JVMEmitter:
 
     def call(self, node: ast.Call) -> str:
         target = getattr(node.func, "obj", None)
+        if isinstance(target, Function) and target.py_func is format_exception:
+            if len(node.args) != 1 or node.keywords:
+                raise JVMUnsupported("format_exception() requires one positional exception", node)
+            self.expression(node.args[0])
+            owner = emit_report_runtime(self.class_files, self.main_class_name)
+            reference = self.class_file.method_reference(
+                owner, "format", "(Ljava/lang/Throwable;)Ljava/lang/String;",
+            )
+            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+            return "Ljava/lang/String;"
         if (isinstance(target, Class) and exception_type(target) is not None
                 and not self.is_super_call(node)):
             return self.construct_simple_exception(target, node)
