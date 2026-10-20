@@ -64,6 +64,32 @@ def main() -> bool:
     assert (caught.value.filename, caught.value.lineno) == ("argument_boundary.py", 4)
 
 
+def test_numeric_equality_does_not_enable_nullable_integer_storage():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm('''
+from pyjs import int64
+def compare(value: int64 | None) -> bool:
+    return value == 9007199254740993
+def main() -> bool:
+    return compare(None)
+''', filename="argument_boundary.py")
+    assert str(caught.value) == (
+        "JVM call to compare has incompatible arguments at line 2 "
+        "while compiling argument_boundary.main"
+    )
+
+
+@pytest.mark.parametrize("value", ["int64(0)", "int64(9007199254740993)"])
+def test_optional_integer_comparison_keeps_exact_nonnull_values(tmp_path, value):
+    assert_matches_python(f'''
+from pyjs import int64
+def compare(value: int64 | None) -> bool:
+    return value == 9007199254740993
+def main() -> int:
+    return int(compare({value}))
+''', tmp_path)
+
+
 def test_reset_to_no_arguments_does_not_modify_a_saved_tuple(tmp_path):
     assert_matches_python('''
 from typing import cast
