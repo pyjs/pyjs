@@ -214,6 +214,9 @@ class JVMCompilation:
     tests: tuple[JVMCompiledTest, ...] = ()
     resources: tuple[Path, ...] = ()
     test_modules: tuple[str, ...] = ()
+    # Includes inherited initializers even when no Python construction retains
+    # their bodies. Framework construction cannot execute these initializers.
+    python_initialized_classes: tuple[str, ...] = ()
 
     def write(self, directory: Path) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
@@ -480,6 +483,15 @@ class JVMEmitter:
             {name: class_file.render() for name, class_file in self.class_files.items()},
             compiled_tests,
             test_modules=tuple(dict.fromkeys(test.module_name for test in self.tests)),
+            python_initialized_classes=tuple(
+                self.class_name(layout.value_type) for layout in classes
+                if layout.constructor is not None
+                and not is_declaration(layout.constructor.py_func, "jvm")
+                and (
+                    layout.constructor.cls is None
+                    or layout.constructor.cls in self.classes
+                )
+            ),
         )
 
     def emit_test_class(
@@ -5362,7 +5374,11 @@ class JVMEmitter:
                 "name",
                 declaration.name,
             )
-        if managed_exception(function.cls):
+        if managed_exception(function.cls) or (
+            function.cls is not None
+            and function.name in {"notify", "notifyAll", "wait", "getClass"}
+        ):
+            # Python methods must not override Object's final monitor/type APIs.
             return "$pyjs$" + function.name
         return function.name
 

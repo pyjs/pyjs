@@ -191,14 +191,14 @@ class AndroidDeviceTestBuilder:
 
     @staticmethod
     def _validate_target_activities(manifest: str, classes: Path) -> None:
-        for activity in re.findall(
-            r'<activity\b[^>]*\bandroid:name="([^"]+)"',
+        for kind, activity in re.findall(
+            r'<(activity|application)\b[^>]*\bandroid:name="([^"]+)"',
             manifest,
         ):
             class_file = classes / f"{activity.replace('.', '/')}.class"
             if not class_file.is_file():
                 raise RuntimeError(
-                    f"Android activity {activity} is defined in a selected test "
+                    f"Android {kind} {activity} is defined in a selected test "
                     "module. Move it to an application module imported by the test."
                 )
 
@@ -286,8 +286,8 @@ class AndroidDeviceTestBuilder:
             'package="org.pyjs.testing"',
             f'package="{TARGET_PACKAGE}"',
         ).replace(
-            "  <application>",
-            "  <application android:debuggable=\"true\">",
+            "  <application",
+            "  <application android:debuggable=\"true\"",
         )
 
     def _test_manifest(self) -> str:

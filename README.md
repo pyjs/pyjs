@@ -696,6 +696,19 @@ with `pyjs template`.
   snapshots, checked replacement, failure reporting and retry without
   overwriting an unreadable snapshot. See its README for durability and
   host-platform limits.
+- Android packages can set `AndroidJVMApplication.application_class` to a
+  source-defined `Application` subclass. Initialize framework-owned state in
+  `onCreate`, not Python `__init__` (including inherited initializers).
+  Compiled tests select the single most-derived Application owner; unrelated
+  owners require separate test selections. Application state lasts only for
+  the current process, not across process termination.
+- `pyjs.java.concurrent` provides native `Runnable` and `Thread`;
+  `pyjs.android.dispatch` provides `Handler` and `main_looper()`.
+  `Handler.post()` reports queue acceptance, not completed or durable work.
+  Keep UI state on the main thread, pass detached snapshots to workers, and
+  acknowledge results on the main loop. These are not durable Android jobs.
+  Compiled tests can use `pyjs.android.testing.run_on_main()` without a
+  visible Activity.
 - JVM custom Python exception classes retain inherited catches, typed fields,
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;

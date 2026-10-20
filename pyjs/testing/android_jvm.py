@@ -6,6 +6,7 @@ from html import escape
 from pathlib import Path
 
 from pyjs.java import JVMCompilation, JVMTest, read_jvm_class, transpile_jvm
+from pyjs.tooling.android_jvm import validate_android_entrypoint
 
 from .builder import SelectedTest, fresh_project_imports
 from .espresso import espresso_android_class, espresso_view_class
@@ -86,12 +87,26 @@ class AndroidJVMSuiteBuilder:
             for name, content in compilation.classes.items()
         }
         activities = []
+        applications = []
         for name, value in metadata.items():
             current = value
             while current.super_name in metadata:
                 current = metadata[current.super_name]
             if current.super_name == "android/app/Activity":
+                validate_android_entrypoint(compilation, name, "Activity")
                 activities.append(name.replace("/", "."))
+            if current.super_name == "android/app/Application":
+                applications.append(name)
+        bases = {value.super_name for value in metadata.values()}
+        applications = [name for name in applications if name not in bases]
+        if len(applications) > 1:
+            raise ValueError("Android tests require at most one Application subclass")
+        owner = ""
+        if applications:
+            validate_android_entrypoint(compilation, applications[0], "Application")
+            owner = ' android:name="' + escape(
+                applications[0].replace("/", "."), quote=True,
+            ) + '"'
         declarations = "\n".join(
             f'    <activity android:name="{escape(name, quote=True)}" '
             'android:exported="false" />'
@@ -102,8 +117,8 @@ class AndroidJVMSuiteBuilder:
             """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.pyjs.testing">
-  <application>
 """
+            + "  <application" + owner + ">\n"
             + declarations
             + "\n  </application>\n</manifest>\n"
         )

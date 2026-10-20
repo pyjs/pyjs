@@ -4,11 +4,25 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from pyjs import jvm
-from pyjs.android import Activity, Bundle, Context, View
+from pyjs.android import Activity, Bundle, Context, Runnable, View
 from pyjs.java import i32
 from pyjs.java.primitives import Reference
 
 ActivityClass = Annotated[type[Activity], Reference("java/lang/Class")]
+
+
+@jvm.native("android/app/Instrumentation")
+class Instrumentation:
+    def runOnMainSync(self, task: Runnable) -> None: ...
+
+
+@jvm.native("androidx/test/platform/app/InstrumentationRegistry", name="getInstrumentation")
+def _instrumentation() -> Instrumentation: ...
+
+
+def run_on_main(task: Runnable) -> None:
+    """Run a test callback on the main thread without needing an Activity."""
+    _instrumentation().runOnMainSync(task)
 
 
 @jvm.native("androidx/test/espresso/NoMatchingViewException")
@@ -131,4 +145,5 @@ __all__ = [
     "press_back",
     "recreate",
     "resume",
+    "run_on_main",
 ]

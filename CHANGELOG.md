@@ -31,6 +31,17 @@
 
 ### Added
 
+- Android packages can declare a process-scoped `Application` owner.
+  Framework-created Activities and Applications reject inherited Python
+  initializers as well as direct ones; initialize state in `onCreate`.
+  Native threads, main-loop callbacks, synchronous preference commits and
+  Activity destruction callbacks support coordinated background work.
+  Compiled tests discover an unambiguous Application owner and can run
+  main-thread callbacks without launching an Activity.
+- Ordinary Python methods named `notify`, `notifyAll`, `wait` or `getClass`
+  no longer collide with Java's final Object methods. Explicit native
+  callback names retain their declared ABI.
+
 - Android Notes saves card order after completed drags and restores it on
   launch. Save failures preserve the previous snapshot and provide a retry
   action; invalid saved orders block automatic overwrites. Native Java file

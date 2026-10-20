@@ -9,10 +9,29 @@ from html import escape
 from pathlib import Path
 from xml.etree import ElementTree
 
-from pyjs.java import transpile_jvm
+from pyjs.java import JVMCompilation, read_jvm_class, transpile_jvm
 
 from .android import AndroidSDK
 from .android_artifacts import AndroidArtifactClasspath
+
+
+def validate_android_entrypoint(
+    compilation: JVMCompilation, name: str, kind: str,
+) -> None:
+    if name not in compilation.classes:
+        raise ValueError(f"Android {kind} class {name} is not reachable")
+    parent = name
+    visited = set()
+    while parent in compilation.classes and parent not in visited:
+        visited.add(parent)
+        parent = read_jvm_class(compilation.classes[parent]).super_name
+    if parent != f"android/app/{kind}":
+        raise ValueError(f"Android {kind} class {name} must extend {kind}")
+    if name in compilation.python_initialized_classes:
+        raise ValueError(
+            f"Android constructs {kind} {name} without calling Python __init__; "
+            "initialize state in onCreate(), including inherited state"
+        )
 
 
 @dataclass(frozen=True)
@@ -60,6 +79,7 @@ class AndroidJVMApplication:
     debuggable: bool = True
     resources: tuple[Path, ...] = ()
     components: tuple[AndroidManifestComponent, ...] = ()
+    application_class: str | None = None
 
     def __post_init__(self) -> None:
         identifier = r"[A-Za-z_][A-Za-z0-9_]*"
@@ -67,6 +87,10 @@ class AndroidJVMApplication:
             raise ValueError(f"invalid Android application ID: {self.app_id!r}")
         if re.fullmatch(identifier, self.activity) is None:
             raise ValueError(f"invalid Android activity name: {self.activity!r}")
+        if self.application_class is not None and re.fullmatch(
+            identifier, self.application_class,
+        ) is None:
+            raise ValueError("invalid Android application class name")
         if self.min_sdk <= 0:
             raise ValueError("Android minimum SDK must be positive")
         if self.compile_sdk < self.min_sdk:
@@ -268,6 +292,10 @@ class AndroidJVMBuilder:
                 f"Android activity {application.android_activity} is not reachable "
                 "from main()"
             )
+        validate_android_entrypoint(compilation, activity_class, "Activity")
+        if application.application_class is not None:
+            owner = f"{application.jvm_class}${application.application_class}"
+            validate_android_entrypoint(compilation, owner, "Application")
         for component in application.components:
             component_class = f"{application.jvm_class}${component.class_name}"
             if component_class not in compilation.classes:
@@ -413,6 +441,12 @@ class AndroidJVMBuilder:
         activity = escape(application.android_activity, quote=True)
         title = escape(application.title, quote=True)
         debuggable = str(application.debuggable).lower()
+        owner = ""
+        if application.application_class is not None:
+            owner = ' android:name="' + escape(
+                application.android_component(application.application_class),
+                quote=True,
+            ) + '"'
         components = "\n".join(
             AndroidJVMBuilder._manifest_component(application, component)
             for component in application.components
@@ -424,7 +458,7 @@ class AndroidJVMBuilder:
     package="{app_id}">
     <uses-sdk android:minSdkVersion="{application.min_sdk}"
         android:targetSdkVersion="{target_sdk}" />
-    <application android:allowBackup="false" android:debuggable="{debuggable}"
+    <application{owner} android:allowBackup="false" android:debuggable="{debuggable}"
         android:label="{title}"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
