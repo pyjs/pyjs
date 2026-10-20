@@ -1694,6 +1694,40 @@ def accept_narrow(callback: Callable[..., int8]) -> int:
 )
 
 
+REFERENCE_TUPLE_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def words(empty: bool) -> tuple[str, ...]:
+        if empty:
+            return ()
+        return ("first", "second", "third")
+
+    @js
+    def join_words(values: tuple[str, ...]) -> str:
+        result = ""
+        for value in values:
+            result += value + ";"
+        return result
+    ''',
+    "reference_tuple_contract",
+    '''
+    values = words(False)
+    empty = words(True)
+    alias = values
+    ''',
+    (
+        ("variable lengths", "len(values) != 3 or len(empty) != 0"),
+        ("signed indexing", 'values[0] != "first" or values[-1] != "third"'),
+        ("Boolean indexing", 'values[True] != "second" or values[False] != "first"'),
+        ("alias identity", "alias is not values"),
+        ("iteration order", 'join_words(values) != "first;second;third;"'),
+        ("empty iteration", 'join_words(empty) != ""'),
+    ),
+)
+
+
 TUPLE_INDEX_CONTRACT = _contract(
     "from pyjs import js, int8, int64",
     "tuple_index_contract",

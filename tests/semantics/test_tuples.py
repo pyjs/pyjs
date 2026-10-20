@@ -1,7 +1,11 @@
 from pyjs.testing.helpers import at
-from tests.backend_semantics import TUPLE_INDEX_CONTRACT
+from tests.backend_semantics import REFERENCE_TUPLE_CONTRACT, TUPLE_INDEX_CONTRACT
 
 from .helpers import assert_semantics
+
+
+def test_shared_reference_tuple_contract():
+    assert_semantics(REFERENCE_TUPLE_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_shared_tuple_index_contract():
