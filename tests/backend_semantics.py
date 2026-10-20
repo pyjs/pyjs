@@ -2339,6 +2339,20 @@ def replace_error(events: list[int]) -> None:
             raise TypeError("replacement")
     finally:
         events.append(4)
+
+@js
+def reraise_after_return() -> int:
+    try:
+        raise ValueError("outer")
+    except ValueError:
+        try:
+            try:
+                raise KeyError("inner")
+            except KeyError:
+                return 1
+        finally:
+            raise
+    return 0
 ''',
     "exception_cleanup_contract",
     '''
@@ -2359,10 +2373,18 @@ def replace_error(events: list[int]) -> None:
     sequence = 0
     for event in events:
         sequence = sequence * 10 + event
+    restored = "not raised"
+    try:
+        reraise_after_return()
+    except ValueError as outer:
+        restored = str(outer)
+    except KeyError:
+        restored = "wrong handler"
     ''',
     (
         ("return evaluated before cleanup", 'result != "saved"'),
         ("nested cleanup, replacement, break, and continue", "sequence != 1234567"),
+        ("return cleanup reraises enclosing handler", 'restored != "outer"'),
     ),
 )
 

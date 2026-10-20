@@ -76,12 +76,14 @@ from .exceptions import (
     MESSAGE_GETTER,
     MESSAGE_SETTER,
     SUPPRESSION_GETTER,
+    UNKNOWN_CONTEXT,
     builtin_exception,
     contained_exception_types,
     emit_context_call,
     emit_exception_class,
     emit_exception_subclass,
     emit_runtime_error,
+    exception_entry_contexts,
     exception_type,
     managed_exception,
     nullable_exception,
@@ -677,20 +679,21 @@ class JVMEmitter:
         function_start = len(self.code.code)
         self.line_offset = (function.lineno or 1) - 1
         block_map = {block.name: block for block in blocks}
+        entry_contexts = exception_entry_contexts(blocks) if self.inherited_context_slot is not None else {}
         protected = []
         for block in blocks:
             self.code.mark(self.block_label(block.name))
             start = len(self.code.code)
-            context = object()
+            self.active_exception_context = entry_contexts.get(block.name)
             for statement in block.body:
                 handled = getattr(statement, "handled_exception", None)
-                if self.inherited_context_slot is not None and handled is not context:
+                if self.inherited_context_slot is not None and handled is not self.active_exception_context:
                     if handled is None:
                         self.load(self.inherited_context_slot)
                     else:
                         self.expression(handled)
                     self.context_call("activate", "(Ljava/lang/Throwable;)V")
-                    context = handled
+                self.active_exception_context = handled
                 line = self.source_line(statement)
                 self.code.line(line + self.line_offset if line is not None else None)
                 self.statement(statement, block_map)
@@ -708,6 +711,7 @@ class JVMEmitter:
         ]
         if self.inherited_context_slot is not None:
             end = len(self.code.code)
+            self.active_exception_context = UNKNOWN_CONTEXT
             self.restore_exception_context()
             self.code.emit(0xBF)
             handlers.append(ExceptionHandler(function_start, end, end))
@@ -3266,7 +3270,7 @@ class JVMEmitter:
                           self.class_files, self.main_class_name, name, descriptor)
 
     def restore_exception_context(self):
-        if self.inherited_context_slot is not None:
+        if self.inherited_context_slot is not None and self.active_exception_context is not None:
             self.load(self.inherited_context_slot)
             self.context_call("activate", "(Ljava/lang/Throwable;)V")
 

@@ -1,5 +1,6 @@
 """Managed Python exception classes for JVM control-flow lowering."""
 
+from pyjs.analysis.ir import Branch, ExceptionDispatch, IteratorNext, Jump
 from pyjs.analysis.objects import Class, UnionType
 from pyjs.decorators import is_declaration
 from pyjs.python import native as native_builtins
@@ -14,6 +15,37 @@ CAUSE_SETTER = "$pyjs$exception$set_cause"
 SUPPRESSION_GETTER = "$pyjs$exception$suppress_context"
 CONTEXT_GETTER = "$pyjs$exception$get_context"
 CONTEXT_SETTER = "$pyjs$exception$set_context"
+UNKNOWN_CONTEXT = object()
+
+
+def exception_entry_contexts(blocks):
+    """Known dynamic state at normal joins; exceptional entries are uncertain."""
+    incoming = {block.name: set() for block in blocks}
+    incoming[blocks[0].name].add(None)
+    for block in blocks:
+        terminator = block.body[-1]
+        if isinstance(terminator, Jump):
+            targets = (terminator.target,)
+        elif isinstance(terminator, Branch):
+            targets = (terminator.true, terminator.false)
+        elif isinstance(terminator, IteratorNext):
+            targets = (terminator.body, terminator.exhausted)
+        elif isinstance(terminator, ExceptionDispatch):
+            targets = tuple(target for _types, target in terminator.handlers)
+            if terminator.unmatched is not None:
+                targets += (terminator.unmatched,)
+        else:
+            targets = ()
+        # Every emitted statement establishes its tagged state, so the last
+        # tag determines normal successors without an iterative dataflow pass.
+        context = getattr(terminator, "handled_exception", None)
+        for target in targets:
+            incoming[target].add(context)
+        if block.exception_target is not None:
+            # A throw can leave before or after a state transition in the block.
+            incoming[block.exception_target].add(UNKNOWN_CONTEXT)
+    return {name: next(iter(states)) if len(states) == 1 else UNKNOWN_CONTEXT
+            for name, states in incoming.items()}
 
 
 def exception_type(value_type):
