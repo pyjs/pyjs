@@ -37,7 +37,7 @@ def test_framework_entrypoints_reject_resolved_python_initializers(
     compilation = transpile_jvm(source)
     name = f"PyjsProgram${owner}"
     assert name in compilation.python_initialized_classes
-    if not construct:
+    if not construct and kind == "Application":
         root = read_jvm_class(compilation.classes["PyjsProgram$Root"])
         assert root.declared_methods("pyjs_init") == ()
     with pytest.raises(ValueError, match="including inherited state"):
@@ -61,6 +61,29 @@ def main() -> int:
     assert compilation.python_initialized_classes == ()
     base = read_jvm_class(compilation.classes["PyjsProgram$Base"])
     assert base.declared_methods("onCreate")[0].descriptor == "()V"
+
+
+def test_cast_only_application_owner_retains_its_field_and_native_callback():
+    compilation = transpile_jvm('''
+from typing import cast
+from pyjs.android import Application, Context
+from pyjs import jvm
+@jvm.native("androidx/test/core/app/ApplicationProvider", name="getApplicationContext")
+def context() -> Context: ...
+class Owner(Application):
+    value: int
+    def onCreate(self) -> None:
+        super().onCreate()
+        self.value = 42
+def main() -> int:
+    return cast(Owner, context()).value
+''')
+    owner = read_jvm_class(compilation.classes["PyjsProgram$Owner"])
+    assert owner.declared_methods("onCreate")[0].descriptor == "()V"
+    assert [(field.name, field.descriptor) for field in owner.fields] == [
+        ("value", "J"),
+    ]
+    validate_android_entrypoint(compilation, owner.name, "Application")
 
 
 def test_application_manifest_names_the_explicit_owner(tmp_path):

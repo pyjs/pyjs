@@ -8,13 +8,19 @@ from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.testing.helpers import analyze_module_source
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import EAGER_COLLECTION_CONTRACT
+from tests.backend_semantics import EAGER_COLLECTION_CONTRACT, LIST_COPY_CONTRACT
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
 def test_shared_eager_collection_contract(optimize):
     result = LLVM().assert_matches_python(EAGER_COLLECTION_CONTRACT.source, optimize=optimize)
     assert result.native.returncode == 0, EAGER_COLLECTION_CONTRACT.failure(result.native.returncode)
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_list_copy_contract(optimize):
+    result = LLVM().assert_matches_python(LIST_COPY_CONTRACT.source, optimize=optimize)
+    assert result.native.returncode == 0, LIST_COPY_CONTRACT.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

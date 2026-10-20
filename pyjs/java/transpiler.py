@@ -2375,6 +2375,32 @@ class JVMEmitter:
             self.load("self")
             return self.slot_types["self"]
         if isinstance(target, (Class, GenericClass)):
+            if (
+                getattr(target, "generic_name", None) == "list"
+                and target.container.scope.is_builtins
+                and len(node.args) == 1 and not node.keywords
+                and getattr(analyzed_value_type(node.args[0]), "generic_name", None) == "list"
+            ):
+                result = analyzed_value_type(node)
+                source = analyzed_value_type(node.args[0])
+                if (
+                    self.list_class_name(result) != self.list_class_name(source)
+                    or analyzed_representation(node) != analyzed_representation(node.args[0])
+                ):
+                    raise JVMUnsupported(
+                        "JVM list copying requires matching item storage and representation",
+                        node,
+                    )
+                owner = self.list_class(result)
+                if not any(method.name == "copy" for method in owner.methods):
+                    owner.add_method(self.list_copy_method(owner, self.list_item_type(result)))
+                self.expression(node.args[0])
+                descriptor = f"L{owner.name};"
+                reference = self.class_file.method_reference(
+                    owner.name, "copy", f"(){descriptor}",
+                )
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return descriptor
             # Unsupported builtin constructors are class-valued names. Asking
             # for their runtime type would create a late type[T] dependency.
             raise JVMUnsupported(f"JVM constructor {target.name} is not implemented", node)
@@ -4383,6 +4409,45 @@ class JVMEmitter:
         code.emit(0xB5, length.to_bytes(2, "big"))
         code.emit(0xB1)
         return Method(0x0001, "<init>", "()V", code.render(), 2, 1)
+
+    def list_copy_method(self, class_file: ClassFile, item_type: str) -> Method:
+        code = Bytecode()
+        owner = class_file.name
+        code.emit(0xBB, class_file.constants.class_(owner).to_bytes(2, "big"))
+        code.emit(0x59)
+        constructor = class_file.method_reference(owner, "<init>", "()V")
+        code.emit(0xB7, constructor.to_bytes(2, "big"))
+        code.local(0x3A, 1)
+        length = class_file.field_reference(owner, "length", "I")
+        data = class_file.field_reference(owner, "data", f"[{item_type}")
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.local(0x36, 2)
+        code.local(0x15, 2)
+        code.emit(0x07)
+        code.branch(0xA4, "copy")  # Preserve minimum capacity for an empty copy.
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        self.new_array(code, class_file, item_type)
+        code.emit(0xB5, data.to_bytes(2, "big"))
+        code.mark("copy")
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.emit(0x03)
+        code.local(0x19, 1)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.emit(0x03)
+        code.local(0x15, 2)
+        copy = class_file.method_reference(
+            "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V",
+        )
+        code.emit(0xB8, copy.to_bytes(2, "big"))
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        code.emit(0xB5, length.to_bytes(2, "big"))
+        code.local(0x19, 1)
+        code.emit(0xB0)
+        return Method(0x0001, "copy", f"()L{owner};", code.render(), 5, 3)
 
     def list_append_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
