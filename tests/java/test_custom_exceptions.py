@@ -507,6 +507,7 @@ def main() -> str:
         "PyjsProgram", "PyjsProgram$Used", "PyjsProgram$Unused",
         "PyjsProgram$exception$Exception", "PyjsProgram$exception$TypeError",
         "PyjsProgram$exception$BaseException", "PyjsProgram$exception$state",
+        "PyjsProgram$exception$report", "PyjsProgram$exception$report$snapshot",
     }
 
 
