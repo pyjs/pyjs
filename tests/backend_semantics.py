@@ -3568,6 +3568,36 @@ TEXT_EDIT_CONTRACT = _contract(
 )
 
 
+LIST_COPY_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_copy_result",
+    '''
+        values = [1, 2, 3, 4, 5]
+        copied = list(values)
+        copied[0] = 9
+        copied.append(6)
+        empty: list[int] = []
+        grown = list(empty)
+        grown.append(42)
+        nested = [[1]]
+        shallow = list(nested)
+        shallow[0].append(2)
+        represented = [int8(127)]
+        preserved = list[int8](represented)
+        floating = [float32(16777216)]
+        floating_copy = list(floating)
+    ''',
+    (
+        ("distinct list storage", "copied is values or values[0] != 1"),
+        ("growth is independent", "len(values) != 5 or len(copied) != 6"),
+        ("empty copies can grow", "len(empty) != 0 or grown[0] != 42"),
+        ("copy is shallow", "shallow is nested or len(nested[0]) != 2"),
+        ("represented items remain represented", "int(preserved[0] + 1) != -128"),
+        ("floating representation is retained", "int(floating_copy[0] + 1) != 16777216"),
+    ),
+)
+
+
 COLLECTION_EDIT_CONTRACT = _contract(
     "from pyjs import js, int8",
     "collection_edit_result",

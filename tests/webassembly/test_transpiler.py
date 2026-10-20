@@ -78,6 +78,15 @@ def test_reference_tuple_contract_keeps_the_wasm_collection_boundary():
     assert str(caught.value) == "WebAssembly value type tuple__str__variadic is not implemented"
 
 
+def test_list_copy_contract_keeps_the_wasm_constructor_boundary():
+    from tests.backend_semantics import LIST_COPY_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported) as caught:
+        transpile_webassembly(LIST_COPY_CONTRACT.source)
+    assert str(caught.value) == (
+        "WebAssembly call target list__int is not implemented at line 4"
+    )
+
+
 def test_extracted_union_result_reaches_the_wasm_value_boundary():
     from tests.backend_semantics import UNION_CALLBACK_RESULT_CONTRACT
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):

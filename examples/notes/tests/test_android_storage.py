@@ -112,6 +112,67 @@ def test_first_launch_then_save_restore_and_adapter_alignment(tmp_path, file_io)
     assert all(stream.closed for stream in file_io.streams)
 
 
+def test_reattached_adapter_preserves_failed_save_without_reading_again(
+    tmp_path, file_io, monkeypatch,
+):
+    session = session_at(tmp_path)
+    first = NotesAdapter(["one", "two"], ["red", "blue"], [1, 2], session)
+    first.restore_order()
+    first.move(0, 1)
+    file_io.stage = "write"
+    first.save_order()
+    assert session.dirty
+    report, message = session.failure_report, session.message
+
+    def unexpected_read(expected):
+        raise AssertionError("reattachment must not reload persisted state")
+
+    monkeypatch.setattr(session.store, "read", unexpected_read)
+    second = NotesAdapter(["one", "two"], ["red", "blue"], [1, 2], session)
+    second.restore_order()
+    assert second.note_ids == [2, 1]
+    assert second.notes == ["two", "one"]
+    assert second.colors == ["blue", "red"]
+    assert session.dirty
+    assert (session.failure_report, session.message) == (report, message)
+    file_io.stage = ""
+    second.save_order()
+    assert not session.dirty
+    assert (tmp_path / "order.txt").read_text() == "2\n1\n"
+
+
+def test_session_keeps_detached_order_and_only_new_session_reloads(tmp_path, file_io):
+    session = session_at(tmp_path)
+    expected = [1, 2]
+    assert session.restore(expected) == [1, 2]
+    expected[0] = 99
+    assert session.pending_order == [1, 2]
+    restored = session.restore([1, 2])
+    restored[0] = 99
+    assert session.pending_order == [1, 2]
+    moved = [2, 1]
+    session.changed(moved)
+    moved[0] = 99
+    assert session.restore([1, 2]) == [2, 1]
+    assert session_at(tmp_path).restore([1, 2]) == [1, 2]
+
+
+def test_invalid_snapshot_remains_protected_after_reattachment(tmp_path, file_io):
+    path = tmp_path / "order.txt"
+    path.write_text("1\n1\n")
+    session = session_at(tmp_path)
+    first = NotesAdapter(["one", "two"], ["red", "blue"], [1, 2], session)
+    first.restore_order()
+    first.move(0, 1)
+    second = NotesAdapter(["one", "two"], ["red", "blue"], [1, 2], session)
+    second.restore_order()
+    second.save_order()
+    assert second.note_ids == [2, 1]
+    assert session.dirty and not session.can_save
+    assert session.message.startswith("Could not load saved order:")
+    assert path.read_text() == "1\n1\n"
+
+
 def test_replace_failure_carries_operation_and_destination(tmp_path, file_io):
     destination = tmp_path / "order.txt"
     file_io.stage = "replace"

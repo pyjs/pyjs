@@ -214,6 +214,9 @@ class JVMCompilation:
     tests: tuple[JVMCompiledTest, ...] = ()
     resources: tuple[Path, ...] = ()
     test_modules: tuple[str, ...] = ()
+    # Includes inherited initializers even when no Python construction retains
+    # their bodies. Framework construction cannot execute these initializers.
+    python_initialized_classes: tuple[str, ...] = ()
 
     def write(self, directory: Path) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
@@ -480,6 +483,15 @@ class JVMEmitter:
             {name: class_file.render() for name, class_file in self.class_files.items()},
             compiled_tests,
             test_modules=tuple(dict.fromkeys(test.module_name for test in self.tests)),
+            python_initialized_classes=tuple(
+                self.class_name(layout.value_type) for layout in classes
+                if layout.constructor is not None
+                and not is_declaration(layout.constructor.py_func, "jvm")
+                and (
+                    layout.constructor.cls is None
+                    or layout.constructor.cls in self.classes
+                )
+            ),
         )
 
     def emit_test_class(
@@ -1057,12 +1069,24 @@ class JVMEmitter:
                 owner,
                 name,
                 field_type,
-                _semantic_type,
+                semantic_type,
                 writable,
                 _numeric_format,
             ) = self.field(node.target)
             if not writable:
                 raise JVMUnsupported(f"JVM field {owner}.{name} is read-only", node)
+            # Native declarations have explicit ABI overrides; generated
+            # fields must instead accept their declared semantic layout.
+            if owner in self.class_files and not (
+                self.compatible(value_type, semantic_type)
+                or semantic_type == "Ljava/lang/Object;"
+                and _is_reference_descriptor(value_type)
+            ):
+                raise JVMUnsupported(
+                    f"JVM field {owner}.{name} cannot store {value_type} "
+                    f"in {semantic_type}",
+                    node.target,
+                )
             actual_receiver = self.expression(node.target.value)
             if not self.compatible(actual_receiver, receiver_type):
                 if _is_reference_descriptor(actual_receiver) and (
@@ -2363,6 +2387,32 @@ class JVMEmitter:
             self.load("self")
             return self.slot_types["self"]
         if isinstance(target, (Class, GenericClass)):
+            if (
+                getattr(target, "generic_name", None) == "list"
+                and target.container.scope.is_builtins
+                and len(node.args) == 1 and not node.keywords
+                and getattr(analyzed_value_type(node.args[0]), "generic_name", None) == "list"
+            ):
+                result = analyzed_value_type(node)
+                source = analyzed_value_type(node.args[0])
+                if (
+                    self.list_class_name(result) != self.list_class_name(source)
+                    or analyzed_representation(node) != analyzed_representation(node.args[0])
+                ):
+                    raise JVMUnsupported(
+                        "JVM list copying requires matching item storage and representation",
+                        node,
+                    )
+                owner = self.list_class(result)
+                if not any(method.name == "copy" for method in owner.methods):
+                    owner.add_method(self.list_copy_method(owner, self.list_item_type(result)))
+                self.expression(node.args[0])
+                descriptor = f"L{owner.name};"
+                reference = self.class_file.method_reference(
+                    owner.name, "copy", f"(){descriptor}",
+                )
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return descriptor
             # Unsupported builtin constructors are class-valued names. Asking
             # for their runtime type would create a late type[T] dependency.
             raise JVMUnsupported(f"JVM constructor {target.name} is not implemented", node)
@@ -4372,6 +4422,45 @@ class JVMEmitter:
         code.emit(0xB1)
         return Method(0x0001, "<init>", "()V", code.render(), 2, 1)
 
+    def list_copy_method(self, class_file: ClassFile, item_type: str) -> Method:
+        code = Bytecode()
+        owner = class_file.name
+        code.emit(0xBB, class_file.constants.class_(owner).to_bytes(2, "big"))
+        code.emit(0x59)
+        constructor = class_file.method_reference(owner, "<init>", "()V")
+        code.emit(0xB7, constructor.to_bytes(2, "big"))
+        code.local(0x3A, 1)
+        length = class_file.field_reference(owner, "length", "I")
+        data = class_file.field_reference(owner, "data", f"[{item_type}")
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.local(0x36, 2)
+        code.local(0x15, 2)
+        code.emit(0x07)
+        code.branch(0xA4, "copy")  # Preserve minimum capacity for an empty copy.
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        self.new_array(code, class_file, item_type)
+        code.emit(0xB5, data.to_bytes(2, "big"))
+        code.mark("copy")
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.emit(0x03)
+        code.local(0x19, 1)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.emit(0x03)
+        code.local(0x15, 2)
+        copy = class_file.method_reference(
+            "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V",
+        )
+        code.emit(0xB8, copy.to_bytes(2, "big"))
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        code.emit(0xB5, length.to_bytes(2, "big"))
+        code.local(0x19, 1)
+        code.emit(0xB0)
+        return Method(0x0001, "copy", f"()L{owner};", code.render(), 5, 3)
+
     def list_append_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
         data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
@@ -5362,7 +5451,11 @@ class JVMEmitter:
                 "name",
                 declaration.name,
             )
-        if managed_exception(function.cls):
+        if managed_exception(function.cls) or (
+            function.cls is not None
+            and function.name in {"notify", "notifyAll", "wait", "getClass"}
+        ):
+            # Python methods must not override Object's final monitor/type APIs.
             return "$pyjs$" + function.name
         return function.name
 

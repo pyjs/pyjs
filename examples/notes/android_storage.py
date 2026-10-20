@@ -92,6 +92,19 @@ class OrderSession:
         self.dirty = False
         self.message = ""
         self.failure_report = ""
+        self.loaded = False
+        self.pending_order: list[int] = []
+
+    def restore(self, expected: list[int]) -> list[int]:
+        if not self.loaded:
+            order = self.load(expected)
+            self.pending_order = order if len(order) > 0 else list(expected)
+            self.loaded = True
+        return list(self.pending_order)
+
+    def changed(self, order: list[int]) -> None:
+        self.pending_order = list(order)
+        self.dirty = True
 
     def load(self, expected: list[int]) -> list[int]:
         self.can_save = False
@@ -109,6 +122,7 @@ class OrderSession:
     def save(self, order: list[int]) -> None:
         if not self.dirty or not self.can_save:
             return
+        self.pending_order = list(order)
         try:
             self.store.write(order)
         except StorageError as error:

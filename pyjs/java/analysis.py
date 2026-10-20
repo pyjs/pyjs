@@ -146,6 +146,19 @@ def native_callable(value) -> bool:
     return isinstance(value, Function) and not should_analyze_body(value)
 
 
+def storage_classes(value_type):
+    if isinstance(value_type, UnionType):
+        for member in value_type.types:
+            yield from storage_classes(member)
+        return
+    if not isinstance(value_type, Class):
+        return
+    for member in (value_type.generic_types or {}).values():
+        yield from storage_classes(member)
+    if not getattr(value_type.py_obj, "__builtin__", False):
+        yield value_type
+
+
 def retain_native_exception_text(visitor, value):
     # Java can call Throwable.toString/getMessage without an analyzed Python
     # formatting call. Keep this dependency scoped to values crossing its ABI,
@@ -168,7 +181,7 @@ def retain_native_field_text(visitor, target, value):
         retain_native_exception_text(visitor, value)
 
 
-def retain_native_boundary_text(visitor, function):
+def retain_native_boundary_dependencies(visitor, function):
     if function.ir is None:
         return
     for block in function.ir.blocks:
@@ -191,6 +204,8 @@ def retain_native_boundary_text(visitor, function):
                     retain_native_field_text(visitor, target, node.value)
             elif isinstance(node, StaticCast):
                 target = analyzed_value_type(node)
+                for dependency in storage_classes(target):
+                    visitor.enter_class(dependency)
                 members = target.types if isinstance(target, UnionType) else (target,)
                 if any(isinstance(member, Class) and (
                         member.py_obj is native_builtins._object
@@ -203,18 +218,6 @@ def retain_native_boundary_text(visitor, function):
 
 def finalize_jvm_analysis(entry_point: Function) -> None:
     """Retain callbacks invoked by a native runtime rather than Python code."""
-
-    def storage_classes(value_type):
-        if isinstance(value_type, UnionType):
-            for member in value_type.types:
-                yield from storage_classes(member)
-            return
-        if not isinstance(value_type, Class):
-            return
-        for member in (value_type.generic_types or {}).values():
-            yield from storage_classes(member)
-        if not getattr(value_type.py_obj, "__builtin__", False):
-            yield value_type
 
     visitor = CallGraphVisitor(entry_point, entry_point)
 
@@ -274,7 +277,7 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
         processed.update(pending)
         for value in pending:
             if isinstance(value, Function):
-                retain_native_boundary_text(visitor, value)
+                retain_native_boundary_dependencies(visitor, value)
             else:
                 retain_class(value)
     refine_lifetimes(entry_point)

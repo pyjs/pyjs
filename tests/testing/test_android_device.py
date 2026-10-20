@@ -108,3 +108,22 @@ def test_device_package_rejects_activities_defined_in_test_modules(tmp_path):
             manifest,
             tmp_path,
         )
+
+
+def test_device_target_manifest_preserves_application_owner(tmp_path):
+    manifest = """\
+<manifest package="org.pyjs.testing">
+  <application android:name="org.pyjs.testing.App" />
+</manifest>
+"""
+    builder = AndroidDeviceTestBuilder.__new__(AndroidDeviceTestBuilder)
+    target = builder._target_manifest(manifest)
+    assert f'package="{TARGET_PACKAGE}"' in target
+    assert '<application android:debuggable="true" android:name=' in target
+    assert 'android:name="org.pyjs.testing.App"' in target
+    with pytest.raises(RuntimeError, match="Android application"):
+        builder._validate_target_activities(target, tmp_path)
+    app = tmp_path / "org/pyjs/testing/App.class"
+    app.parent.mkdir(parents=True)
+    app.touch()
+    builder._validate_target_activities(target, tmp_path)

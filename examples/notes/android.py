@@ -2,6 +2,7 @@ from typing import cast
 
 from pyjs.android import (
     Activity,
+    Application,
     Bundle,
     GradientDrawable,
     LayoutParams,
@@ -95,7 +96,7 @@ class NotesAdapter(RecyclerViewAdapter):
     def get_item_id(self, position: i32) -> int:
         return self.note_ids[position]
 
-    def move(self, source: i32, target: i32) -> None:
+    def move(self, source: i32, target: i32, changed: bool = True) -> None:
         note = self.notes[source]
         color = self.colors[source]
         note_id = self.note_ids[source]
@@ -113,18 +114,17 @@ class NotesAdapter(RecyclerViewAdapter):
         self.colors[target] = color
         self.note_ids[target] = note_id
         self.notify_item_moved(source, target)
-        if self.session is not None and source != target:
-            self.session.dirty = True
+        if self.session is not None and source != target and changed:
+            self.session.changed(self.note_ids)
 
     def restore_order(self) -> None:
         if self.session is not None:
-            order = self.session.load(self.note_ids)
+            order = self.session.restore(self.note_ids)
             for target in range(len(order)):
                 for source in range(target, len(self.note_ids)):
                     if self.note_ids[source] == order[target]:
-                        self.move(source, target)
+                        self.move(source, target, False)
                         break
-            self.session.dirty = False
         self.show_storage_status()
 
     def save_order(self) -> None:
@@ -199,6 +199,16 @@ class NotesTouch(ItemTouchCallback):
         self.adapter.save_order()
 
 
+class NotesApplication(Application):
+    session: OrderSession
+
+    def onCreate(self) -> None:
+        super().onCreate()
+        self.session = OrderSession(OrderFile(
+            self.getFilesDir().getPath() + "/notes-order.txt",
+        ))
+
+
 class NotesActivity(Activity):
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
@@ -267,7 +277,7 @@ class NotesActivity(Activity):
         status.setId(101)
         status.setTextSize(14.0)
         status.setPadding(40, 16, 40, 16)
-        session = OrderSession(OrderFile(self.getFilesDir().getPath() + "/notes-order.txt"))
+        session = cast(NotesApplication, self.getApplicationContext()).session
         adapter = NotesAdapter(notes, colors, note_ids, session, status)
         adapter.restore_order()
         status.setOnClickListener(RetrySave(adapter))

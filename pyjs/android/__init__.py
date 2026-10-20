@@ -4,6 +4,7 @@ from typing import Annotated, ClassVar
 
 from pyjs import jvm
 from pyjs.java import JVMArray, f32, i32
+from pyjs.java.concurrent import Runnable
 from pyjs.java.io import File
 from pyjs.java.primitives import Reference
 
@@ -19,6 +20,8 @@ class BuildVersion:
 
 @jvm.native("android/content/SharedPreferences$Editor", interface=True)
 class SharedPreferencesEditor:
+    def commit(self) -> bool: ...
+
     @jvm.native(
         "android/content/SharedPreferences$Editor",
         name="putString",
@@ -127,6 +130,8 @@ def _apply_dimension(unit: i32, value: f32, metrics: DisplayMetrics) -> f32:
 @jvm.native("android/content/Context")
 class Context:
     def getFilesDir(self) -> File: ...
+
+    def getApplicationContext(self) -> Context: ...
 
     @jvm.native(
         "android/content/Context",
@@ -740,11 +745,6 @@ class ClipData:
     pass
 
 
-@jvm.native("java/lang/Runnable", interface=True)
-class Runnable:
-    def run(self) -> None: ...
-
-
 @jvm.native("android/view/View$DragShadowBuilder")
 class DragShadowBuilder:
     def __init__(self, view: View) -> None: ...
@@ -871,6 +871,11 @@ class Gravity:
     TOP: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 48
 
 
+@jvm.native("android/app/Application")
+class Application(Context):
+    def onCreate(self) -> None: ...
+
+
 @jvm.native("android/app/Activity")
 class Activity(Context):
     RESULT_CANCELED: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 0
@@ -887,6 +892,8 @@ class Activity(Context):
 
     def onStop(self) -> None:
         pass
+
+    def onDestroy(self) -> None: ...
 
     def onBackPressed(self) -> None:
         pass
@@ -931,6 +938,7 @@ def parse_color(value: str) -> i32:
 
 __all__ = [
     "Activity",
+    "Application",
     "AndroidAPI",
     "AndroidAvailability",
     "AndroidNullability",

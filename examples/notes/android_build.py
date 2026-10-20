@@ -15,6 +15,7 @@ def build_android(output: Path | None = None) -> Path:
         "NotesActivity",
         "PyJS Notes",
         compile_sdk=35,
+        application_class="NotesApplication",
     )
     return AndroidJVMBuilder().build(
         application,
