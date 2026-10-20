@@ -2,7 +2,13 @@ import pytest
 
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import TUPLE_INDEX_CONTRACT
+from tests.backend_semantics import REFERENCE_TUPLE_CONTRACT, TUPLE_INDEX_CONTRACT
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_reference_tuple_contract(optimize):
+    result = LLVM().assert_matches_python(REFERENCE_TUPLE_CONTRACT.source, optimize=optimize)
+    assert result.native.returncode == 0, REFERENCE_TUPLE_CONTRACT.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

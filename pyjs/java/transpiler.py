@@ -451,6 +451,7 @@ class JVMEmitter:
                         elif (
                             isinstance(node, CollectionNew)
                             and value_type.generic_name == "tuple"
+                            and not value_type.tuple_variadic
                         ):
                             self.tuple_class(value_type)
         for function in functions:
@@ -1495,6 +1496,11 @@ class JVMEmitter:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM len takes one positional argument", node)
             list_type = analyzed_value_type(node.args[0])
+            if list_type.generic_name == "tuple" and list_type.tuple_variadic:
+                self.expression(node.args[0])
+                self.code.emit(0xBE)
+                self.code.emit(0x85)
+                return "J"
             if self.is_jvm_array_type(list_type):
                 if not self.expression(node.args[0]).startswith("["):
                     raise JVMUnsupported("JVM len has an incompatible array", node)
@@ -1606,6 +1612,22 @@ class JVMEmitter:
                 self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
+            if (getattr(semantic_receiver, "generic_name", None) == "tuple"
+                    and semantic_receiver.tuple_variadic
+                    and target.name not in {"__is__", "__is_not__"}):
+                if target.name == "__len__" and not node.args and not node.keywords:
+                    self.code.emit(0xBE)
+                    self.code.emit(0x85)
+                    return "J"
+                if target.name == "__getitem__" and len(node.args) == 1 and not node.keywords:
+                    index_type = self.expression_type(node.args[0])
+                    if index_type not in {"J", "Z"}:
+                        raise JVMUnsupported("JVM variadic tuple indexing requires an integer", node)
+                    self.expression(node.args[0])
+                    if index_type == "Z":
+                        self.code.emit(0x85)
+                    return self.tuple_array_item(receiver_type)
+                raise JVMUnsupported(f"JVM variadic tuple {target.name} is not implemented", node)
             source = getattr(node, "python_node", None)
             explicit_formatter = (target.name == "__str__" and not is_super
                                   and isinstance(source, ast.Call)
@@ -1696,11 +1718,13 @@ class JVMEmitter:
                         "JVM dynamic equality requires reference values",
                         node,
                     )
-                reference = self.class_file.method_reference(
-                    "java/util/Objects",
-                    "equals",
-                    "(Ljava/lang/Object;Ljava/lang/Object;)Z",
-                )
+                if "Ljava/lang/Object;" in {receiver_type, argument_type}:
+                    reference = self.reference_equality()
+                else:
+                    reference = self.class_file.method_reference(
+                        "java/util/Objects", "equals",
+                        "(Ljava/lang/Object;Ljava/lang/Object;)Z",
+                    )
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
                 if target.name in {"__dynamic_ne__", "__ne__"}:
                     self.code.emit(0x04)
@@ -2571,6 +2595,21 @@ class JVMEmitter:
         )
 
     def tuple_new(self, node: CollectionNew) -> str:
+        if node.value_type.tuple_variadic:
+            descriptor = self.value_type(node.value_type)
+            self.long_constant(len(node.source.elts))
+            self.code.emit(0x88)
+            self.new_array(self.code, self.class_file, descriptor[1:])
+            for index, value in enumerate(node.source.elts):
+                self.code.emit(0x59)
+                self.long_constant(index)
+                self.code.emit(0x88)
+                actual = self.expression(value)
+                if not self.compatible(actual, descriptor[1:]):
+                    raise JVMUnsupported("JVM variadic tuple literal changes item type", value)
+                self.convert_native_argument(actual, descriptor[1:], value)
+                self.code.emit(0x53)
+            return descriptor
         class_file = self.tuple_class(node.value_type)
         descriptor = f"L{class_file.name};"
         class_index = self.class_file.constants.class_(class_file.name)
@@ -2601,6 +2640,70 @@ class JVMEmitter:
             )
             self.code.emit(0xB5, reference.to_bytes(2, "big"))
         return f"L{class_file.name};"
+
+    def tuple_array_item(self, descriptor):
+        offset = self.allocate_temporary("J", "tuple.index")
+        self.store(offset, "J")
+        array = self.allocate_temporary(descriptor, "tuple.items")
+        self.store(array, descriptor)
+        positive = self.new_label("tuple.positive")
+        invalid = self.new_label("tuple.invalid")
+        valid = self.new_label("tuple.valid")
+        self.load(offset)
+        self.long_constant(0)
+        self.code.emit(0x94)
+        self.code.branch(0x9C, positive)
+        self.load(offset)
+        self.load(array)
+        self.code.emit(0xBE)
+        self.code.emit(0x85)
+        self.code.emit(0x61)
+        self.store(offset, "J")
+        self.code.mark(positive)
+        self.load(offset)
+        self.long_constant(0)
+        self.code.emit(0x94)
+        self.code.branch(0x9B, invalid)
+        self.load(offset)
+        self.load(array)
+        self.code.emit(0xBE)
+        self.code.emit(0x85)
+        self.code.emit(0x94)
+        self.code.branch(0x9B, valid)
+        self.code.mark(invalid)
+        self.throw_python("IndexError", "tuple index out of range")
+        self.code.mark(valid)
+        self.load(array)
+        self.load(offset)
+        self.code.emit(0x88)
+        self.code.emit(0x32)
+        return descriptor[1:]
+
+    def reference_equality(self):
+        name = "$pyjs$object$equals"
+        descriptor = "(Ljava/lang/Object;Ljava/lang/Object;)Z"
+        owner = self.class_files[self.main_class_name]
+        if not any(method.name == name for method in owner.methods):
+            code = Bytecode()
+            # Erasing a tuple to object must not turn structural equality into
+            # Java array identity. Native reference arrays share this boundary.
+            for slot in (0, 1):
+                code.local(0x19, slot)
+                array = owner.constants.class_("[Ljava/lang/Object;")
+                code.emit(0xC1, array.to_bytes(2, "big"))
+                code.branch(0x99, f"next{slot}")
+                self.throw_python(
+                    "TypeError", "JVM reference-array equality is not implemented",
+                    code, owner,
+                )
+                code.mark(f"next{slot}")
+            code.local(0x19, 0)
+            code.local(0x19, 1)
+            reference = owner.method_reference("java/util/Objects", "equals", descriptor)
+            code.emit(0xB8, reference.to_bytes(2, "big"))
+            code.emit(0xAC)
+            owner.add_method(Method(0x0009, name, descriptor, code.render(), 3, 2))
+        return self.class_file.method_reference(owner.name, name, descriptor)
 
     def list_append(self, node: ListAppend) -> None:
         list_type = analyzed_value_type(node.call.func.value)
@@ -2633,6 +2736,9 @@ class JVMEmitter:
                 JVM_ENVIRONMENT.builtins.search("int"),
             )
         list_type = analyzed_value_type(node.iterable)
+        if list_type.generic_name == "tuple" and list_type.tuple_variadic:
+            item = next(iter(list_type.generic_types.values()))
+            return ("tuple", self.value_type(item), self.value_type(list_type), item)
         if list_type.generic_name != "list":
             raise JVMUnsupported(
                 f"JVM cannot iterate over {list_type.name}",
@@ -2654,6 +2760,8 @@ class JVMEmitter:
             raise JVMUnsupported("unsupported JVM iterator target", target)
         if item_value_type.generic_name != "tuple":
             raise JVMUnsupported("JVM can only unpack tuple items", target)
+        if item_value_type.tuple_variadic:
+            raise JVMUnsupported("JVM variadic tuple unpacking is not implemented", target)
         item_types = tuple(item_value_type.generic_types.values())
         if len(item_types) != len(target.elts):
             raise JVMUnsupported("JVM tuple unpacking length differs", target)
@@ -2775,8 +2883,11 @@ class JVMEmitter:
         self.load(index)
         self.load(source)
         owner = source_type[1:-1]
-        length = self.class_file.field_reference(owner, "length", "I")
-        self.code.emit(0xB4, length.to_bytes(2, "big"))
+        if source_type.startswith("["):
+            self.code.emit(0xBE)
+        else:
+            length = self.class_file.field_reference(owner, "length", "I")
+            self.code.emit(0xB4, length.to_bytes(2, "big"))
         self.code.emit(0x85)
         self.code.emit(0x94)
         item = self.new_label("list.item")
@@ -2785,8 +2896,12 @@ class JVMEmitter:
         self.code.mark(item)
         self.load(source)
         self.load(index)
-        get = self.class_file.method_reference(owner, "get", f"(J){item_type}")
-        self.code.emit(0xB6, get.to_bytes(2, "big"))
+        if source_type.startswith("["):
+            self.code.emit(0x88)
+            self.code.emit(0x32)
+        else:
+            get = self.class_file.method_reference(owner, "get", f"(J){item_type}")
+            self.code.emit(0xB6, get.to_bytes(2, "big"))
         self.assign_iterator_target(node, item_type, semantic_item)
         self.load(index)
         self.long_constant(1)
@@ -4781,6 +4896,8 @@ class JVMEmitter:
             for value_type in self.native_classes:
                 if value_type.name == node.id:
                     return f"L{self.native_class_name(value_type)};"
+            if node.id == "object":
+                return "Ljava/lang/Object;"
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
             members = []
 
@@ -4828,6 +4945,13 @@ class JVMEmitter:
             annotations = (
                 node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
             )
+            if (node.value.id == "tuple" and len(annotations) == 2
+                    and isinstance(annotations[1], ast.Constant)
+                    and annotations[1].value is Ellipsis):
+                item = self.annotation(annotations[0])
+                if not _is_reference_descriptor(item):
+                    raise JVMUnsupported("JVM variadic tuples require reference items", node)
+                return f"[{item}"
             fields = tuple(self.annotation(annotation) for annotation in annotations)
             if node.value.id == "dict":
                 if len(fields) != 2 or not all(
@@ -4955,6 +5079,11 @@ class JVMEmitter:
             self.dictionary_types(value_type)
             return "Ljava/util/HashMap;"
         if value_type.generic_name == "tuple":
+            if value_type.tuple_variadic:
+                item = self.value_type(next(iter(value_type.generic_types.values())))
+                if not _is_reference_descriptor(item):
+                    raise JVMUnsupported("JVM variadic tuples require reference items")
+                return f"[{item}"
             self.tuple_class(value_type)
             return f"L{self.tuple_class_name(value_type)};"
         raise JVMUnsupported(f"unsupported JVM value type {value_type.name}")

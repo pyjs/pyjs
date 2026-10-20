@@ -31,6 +31,10 @@
 
 ### Added
 
+- JVM reference-valued variable-length tuples support literals, typed calls
+  and fields, identity, length, checked integer indexing and iteration.
+  Unsupported tuple operations receive diagnostics; erased reference-array
+  equality raises `TypeError` instead of silently comparing array identity.
 - JVM applications can render Python-style exception chains with
   `pyjs.java.format_exception()`. Reports select explicit causes or unsuppressed
   context, preserve native frames and suppressed details, and safely handle

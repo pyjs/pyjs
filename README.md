@@ -657,6 +657,15 @@ with `pyjs template`.
   still apply. Membership syntax evaluates the needle before the container,
   including application and declared native `__contains__` methods. Explicit
   method calls retain receiver-first evaluation order.
+- JVM `tuple[T, ...]` supports reference-valued items, including nullable
+  references and nested tuples. Literals, calls, returns and fields retain
+  identity; `len`, signed integer/Boolean indexing and `for` loops work.
+  Primitive items, fixed-to-variable tuple conversions, slicing, repetition,
+  membership, unpacking and structural equality remain unsupported.
+  Equality on a reference array erased to `object` raises `TypeError` rather
+  than using Java array identity; `is` and `is not` remain available.
+  Use explicit `cast(object, value)` when erasing reference items to `object`;
+  this does not add general primitive boxing.
 - JVM synchronous context managers support nested cleanup, suppression and
   abrupt exits. Exceptional `__exit__` calls receive a Java class token, the
   actual throwable and a JVM stack-trace array, not Python traceback objects.
