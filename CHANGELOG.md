@@ -31,6 +31,14 @@
 
 ### Added
 
+- Managed JVM exceptions expose read-only `.args`, retaining original
+  positional values and missing dictionary keys independently of messages.
+  Reinitialization replaces the tuple without changing saved references.
+  Existing custom numeric and reference payloads remain supported; erased
+  numeric comparisons preserve Boolean/integer equality and mixed floating
+  precision. Native exceptions reject Python argument inspection. Erased
+  numeric and reference-array dictionary keys raise `TypeError` until
+  Python-compatible hashing is supported.
 - JVM reference-valued variable-length tuples support literals, typed calls
   and fields, identity, length, checked integer indexing and iteration.
   Unsupported tuple operations receive diagnostics; erased reference-array

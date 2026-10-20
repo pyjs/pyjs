@@ -59,6 +59,7 @@ from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
 from .analysis import JVM_ENVIRONMENT
+from .boxed import box, emit_equality, emit_key_guard
 from .classfile import (
     Annotation,
     Bytecode,
@@ -71,6 +72,8 @@ from .classfile import (
 from .diagnostics import JVMUnsupported as JVMUnsupported
 from .exception_reporting import emit_report_runtime
 from .exceptions import (
+    ARGS_GETTER,
+    ARGS_SETTER,
     CAUSE_SETTER,
     EXPLICIT_FORMATTER,
     FORMATTER,
@@ -807,6 +810,7 @@ class JVMEmitter:
                         self.is_jvm_array_type(value_type)
                         or isinstance(value_type, UnionType)
                         or exception_type(value_type) is not None
+                        or getattr(value_type, "py_obj", None) is native_builtins._object
                         # Rendered annotations lose resolved collection items.
                         or value_type.generic_name in {"dict", "list", "tuple"}
                     )
@@ -1147,6 +1151,27 @@ class JVMEmitter:
         if isinstance(node, StaticCast):
             source = self.expression(node.value)
             target = self.expression_type(node)
+            if source == "Ljava/lang/Object;" and target in {"J", "Z", "D"}:
+                if target == "J":
+                    ordinary = self.new_label("cast.integer")
+                    done = self.new_label("cast.integer.done")
+                    self.code.emit(0x59)
+                    self.code.emit(0xC1, self.class_file.constants.class_("java/lang/Boolean").to_bytes(2, "big"))
+                    self.code.branch(0x99, ordinary)
+                    self.checkcast("Ljava/lang/Boolean;")
+                    self.invoke_boolean_value()
+                    self.code.emit(0x85)
+                    self.code.branch(0xA7, done)
+                    self.code.mark(ordinary)
+                owner, method = {"J": ("java/lang/Long", "longValue"),
+                                 "Z": ("java/lang/Boolean", "booleanValue"),
+                                 "D": ("java/lang/Double", "doubleValue")}[target]
+                self.checkcast(f"L{owner};")
+                reference = self.class_file.method_reference(owner, method, f"(){target}")
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                if target == "J":
+                    self.code.mark(done)
+                return target
             if _is_reference_descriptor(source) and _is_reference_descriptor(target):
                 cast_target = target[1:-1] if target.startswith("L") else target
                 class_index = self.class_file.constants.class_(cast_target)
@@ -1357,6 +1382,12 @@ class JVMEmitter:
             getters = getattr(node, "property_getters", ())
             target = getters[0] if getters and all(getter is getters[0] for getter in getters) else None
             if isinstance(target, Function):
+                if target.py_func is native_builtins._BaseException.args.fget:
+                    receiver = analyzed_value_type(node.value)
+                    if exception_type(receiver) is not None and not managed_exception(receiver):
+                        raise JVMUnsupported("JVM native exceptions do not expose Python args", node)
+                    self.expression(node.value)
+                    return self.exception_args()
                 if target.py_func is native_builtins._BaseException.__cause__.fget:
                     self.expression(node.value)
                     reference = self.class_file.method_reference(
@@ -1656,11 +1687,14 @@ class JVMEmitter:
                 concrete = self.current_function.cls if is_super else semantic_receiver
                 if node.keywords or len(node.args) > 1:
                     raise JVMUnsupported("JVM builtin exceptions take at most one positional message", node)
-                self.exception_payload(semantic_receiver, node.args, node)
+                slots = self.exception_argument_slots(node.args)
+                self.code.emit(0x59)
+                self.exception_payload(semantic_receiver, node.args, node, slots=slots)
                 reference = self.class_file.method_reference(
                     self.exception_class(concrete, node), MESSAGE_SETTER, "(Ljava/lang/String;)V",
                 )
                 self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                self.set_exception_args(self.exception_class(concrete, node), slots)
                 return "V"
             if target.name == "__dynamic_bool__":
                 if receiver_type == "Ljava/lang/Boolean;":
@@ -1702,13 +1736,9 @@ class JVMEmitter:
                 self.validate_java_object_semantics(
                     analyzed_value_type(node.args[0]), node,
                 )
-                if receiver_type == "Z":
-                    self.convert_native_argument(receiver_type, "Ljava/lang/Boolean;", node.func.value)
-                    receiver_type = "Ljava/lang/Boolean;"
+                receiver_type = box(self.code, self.class_file, receiver_type)
                 argument_type = self.expression(node.args[0])
-                if argument_type == "Z":
-                    self.convert_native_argument(argument_type, "Ljava/lang/Boolean;", node.args[0])
-                    argument_type = "Ljava/lang/Boolean;"
+                argument_type = box(self.code, self.class_file, argument_type)
                 if not (
                     receiver_type == "N" or _is_reference_descriptor(receiver_type)
                 ) or not (
@@ -1718,7 +1748,9 @@ class JVMEmitter:
                         "JVM dynamic equality requires reference values",
                         node,
                     )
-                if "Ljava/lang/Object;" in {receiver_type, argument_type}:
+                if {receiver_type, argument_type} & {
+                    "Ljava/lang/Object;", "Ljava/lang/Long;", "Ljava/lang/Double;",
+                }:
                     reference = self.reference_equality()
                 else:
                     reference = self.class_file.method_reference(
@@ -2451,6 +2483,7 @@ class JVMEmitter:
             if not self.compatible(actual_value, value_type):
                 raise JVMUnsupported("JVM dictionary literal changes value type", value)
             self.convert_native_argument(actual_value, value_type, value)
+            self.dictionary_key_guard(key_type, beneath_value=True)
             self.code.emit(0xB6, put.to_bytes(2, "big"))
             self.code.emit(0x57)
         return "Ljava/util/HashMap;"
@@ -2472,6 +2505,7 @@ class JVMEmitter:
             if not self.compatible(actual, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual, key_type, node.args[0])
+            self.dictionary_key_guard(key_type)
             reference = self.class_file.method_reference(
                 "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z",
             )
@@ -2497,6 +2531,7 @@ class JVMEmitter:
                     "JVM dictionary value has an incompatible type", node
                 )
             self.convert_native_argument(actual_value, value_descriptor, node.args[1])
+            self.dictionary_key_guard(key_type, beneath_value=True)
             reference = self.class_file.method_reference(
                 "java/util/HashMap",
                 "put",
@@ -2510,6 +2545,7 @@ class JVMEmitter:
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key_guard(key_type)
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2519,24 +2555,27 @@ class JVMEmitter:
             self.code.emit(0xB6, contains.to_bytes(2, "big"))
             present = self.new_label("dict.item.present")
             self.code.branch(0x9A, present)
+            key_slot = self.allocate_temporary(key_type, "dict.missing.key")
+            self.store(key_slot, key_type)
+            self.code.emit(0x57)
             if key_type == "Ljava/lang/String;":
-                self.code.emit(0x5F)
-                self.code.emit(0x57)
+                self.load(key_slot)
                 self.string_repr()
-                name = emit_exception_class(
-                    self.class_files, self.main_class_name, native_builtins._KeyError,
-                )
-                index = self.class_file.constants.class_(name)
-                self.code.emit(0xBB, index.to_bytes(2, "big"))
-                self.code.emit(0x5A)
-                self.code.emit(0x5F)
-                constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
-                self.code.emit(0xB7, constructor.to_bytes(2, "big"))
-                self.context_call("chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
-                self.code.emit(0xBF)
             else:
-                self.code.emit(0x58)
-                self.throw_python("KeyError", "key not found")
+                self.string_constant("key not found")
+            name = emit_exception_class(
+                self.class_files, self.main_class_name, native_builtins._KeyError,
+            )
+            index = self.class_file.constants.class_(name)
+            self.code.emit(0xBB, index.to_bytes(2, "big"))
+            self.code.emit(0x5A)
+            self.code.emit(0x5F)
+            constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
+            self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+            self.code.emit(0x59)
+            self.set_exception_args(name, [key_slot])
+            self.context_call("chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
+            self.code.emit(0xBF)
             self.code.mark(present)
             get = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2557,6 +2596,7 @@ class JVMEmitter:
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             if len(node.args) == 1:
+                self.dictionary_key_guard(key_type)
                 self.code.emit(0xB6, get.to_bytes(2, "big"))
                 self.checkcast(value_descriptor)
                 return value_descriptor
@@ -2571,6 +2611,7 @@ class JVMEmitter:
                 )
             temporary = self.allocate_temporary(value_descriptor, "dict.default")
             self.store(temporary, default_type)
+            self.dictionary_key_guard(key_type)
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2593,6 +2634,18 @@ class JVMEmitter:
             f"unsupported JVM dictionary operation {target.name}",
             node,
         )
+
+    def dictionary_key_guard(self, descriptor, *, beneath_value=False):
+        if descriptor != "Ljava/lang/Object;":
+            return
+        owner = self.class_files[self.main_class_name]
+        name, signature = emit_key_guard(owner, self.throw_python)
+        reference = self.class_file.method_reference(owner.name, name, signature)
+        if beneath_value:
+            self.code.emit(0x5F)
+        self.code.emit(0xB8, reference.to_bytes(2, "big"))
+        if beneath_value:
+            self.code.emit(0x5F)
 
     def tuple_new(self, node: CollectionNew) -> str:
         if node.value_type.tuple_variadic:
@@ -2680,29 +2733,8 @@ class JVMEmitter:
         return descriptor[1:]
 
     def reference_equality(self):
-        name = "$pyjs$object$equals"
-        descriptor = "(Ljava/lang/Object;Ljava/lang/Object;)Z"
         owner = self.class_files[self.main_class_name]
-        if not any(method.name == name for method in owner.methods):
-            code = Bytecode()
-            # Erasing a tuple to object must not turn structural equality into
-            # Java array identity. Native reference arrays share this boundary.
-            for slot in (0, 1):
-                code.local(0x19, slot)
-                array = owner.constants.class_("[Ljava/lang/Object;")
-                code.emit(0xC1, array.to_bytes(2, "big"))
-                code.branch(0x99, f"next{slot}")
-                self.throw_python(
-                    "TypeError", "JVM reference-array equality is not implemented",
-                    code, owner,
-                )
-                code.mark(f"next{slot}")
-            code.local(0x19, 0)
-            code.local(0x19, 1)
-            reference = owner.method_reference("java/util/Objects", "equals", descriptor)
-            code.emit(0xB8, reference.to_bytes(2, "big"))
-            code.emit(0xAC)
-            owner.add_method(Method(0x0009, name, descriptor, code.render(), 3, 2))
+        name, descriptor = emit_equality(owner, self.throw_python)
         return self.class_file.method_reference(owner.name, name, descriptor)
 
     def list_append(self, node: ListAppend) -> None:
@@ -3011,6 +3043,9 @@ class JVMEmitter:
             constructor_descriptor,
         )
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+        if python_exception:
+            self.code.emit(0x59)
+            self.set_exception_args(owner, [slots[name] for name, _ in evaluation[:len(node.call.args)]])
         if initializer in self.functions:
             self.code.emit(0x59)
             argument_types = []
@@ -3451,12 +3486,58 @@ class JVMEmitter:
                 "Java constructor declaration", node,
             )
         name = self.exception_class(exception, node)
+        arguments = [] if message is None else [message]
+        slots = self.exception_argument_slots(arguments)
         index = self.class_file.constants.class_(name)
         self.code.emit(0xBB, index.to_bytes(2, "big"))
         self.code.emit(0x59)
-        self.exception_payload(exception, [] if message is None else [message], node)
+        self.exception_payload(exception, arguments, node, slots=slots)
         constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
         self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+        self.code.emit(0x59)
+        self.set_exception_args(name, slots)
+
+    def exception_argument_slots(self, arguments):
+        slots = []
+        for argument in arguments:
+            descriptor = self.expression(argument)
+            slot = self.allocate_temporary(descriptor, "exception.argument")
+            self.store(slot, descriptor)
+            slots.append(slot)
+        return slots
+
+    def set_exception_args(self, owner, slots):
+        self.long_constant(len(slots))
+        self.code.emit(0x88)
+        self.new_array(self.code, self.class_file, "Ljava/lang/Object;")
+        for index, slot in enumerate(slots):
+            self.code.emit(0x59)
+            self.long_constant(index)
+            self.code.emit(0x88)
+            descriptor = box(self.code, self.class_file, self.load(slot))
+            if descriptor != "N" and not _is_reference_descriptor(descriptor):
+                raise JVMUnsupported("JVM exception arguments require a value")
+            self.code.emit(0x53)
+        reference = self.class_file.method_reference(owner, ARGS_SETTER, "([Ljava/lang/Object;)V")
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+
+    def exception_args(self):
+        done = self.new_label("exception.args.done")
+        for root in (native_builtins._BaseException, native_builtins._Exception):
+            owner = emit_exception_class(self.class_files, self.main_class_name, root)
+            next_root = self.new_label("exception.args.next")
+            self.code.emit(0x59)
+            self.code.emit(0xC1, self.class_file.constants.class_(owner).to_bytes(2, "big"))
+            self.code.branch(0x99, next_root)
+            self.checkcast(f"L{owner};")
+            reference = self.class_file.method_reference(owner, ARGS_GETTER, "()[Ljava/lang/Object;")
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            self.code.branch(0xA7, done)
+            self.code.mark(next_root)
+        self.code.emit(0x57)
+        self.throw_python("TypeError", "native exceptions do not expose Python args")
+        self.code.mark(done)
+        return "[Ljava/lang/Object;"
 
     def exception_payload(self, exception, arguments, node, *, slots=(), allow_opaque=False):
         if not arguments:

@@ -9,6 +9,8 @@ from .classfile import Bytecode, ClassFile, ExceptionHandler, Field, Method
 
 MESSAGE_GETTER = "$pyjs$exception$base_text"
 MESSAGE_SETTER = "$pyjs$exception$set_message"
+ARGS_GETTER = "$pyjs$exception$get_args"
+ARGS_SETTER = "$pyjs$exception$set_args"
 FORMATTER = "$pyjs$exception$text"
 EXPLICIT_FORMATTER = "$pyjs$exception$explicit_text"
 CAUSE_SETTER = "$pyjs$exception$set_cause"
@@ -165,6 +167,25 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         code.local(0x19, 0)
         code.local(0x19, 1)
         code.emit(0xB5, field.to_bytes(2, "big"))
+        args = class_file.field_reference(name, "$pyjs$args", "[Ljava/lang/Object;")
+        class_file.add_field(Field(0x0002, "$pyjs$args", "[Ljava/lang/Object;"))
+        code.local(0x19, 0)
+        code.emit(0x04)
+        code.emit(0xBD, class_file.constants.class_("java/lang/Object").to_bytes(2, "big"))
+        code.emit(0x59)
+        code.emit(0x03)
+        code.local(0x19, 1)
+        code.emit(0x53)
+        code.emit(0xB5, args.to_bytes(2, "big"))
+        for method, setting in ((ARGS_GETTER, False), (ARGS_SETTER, True)):
+            accessor = Bytecode()
+            accessor.local(0x19, 0)
+            if setting:
+                accessor.local(0x19, 1)
+            accessor.emit(0xB5 if setting else 0xB4, args.to_bytes(2, "big"))
+            accessor.emit(0xB1 if setting else 0xB0)
+            descriptor = "([Ljava/lang/Object;)V" if setting else "()[Ljava/lang/Object;"
+            class_file.add_method(Method(0x0011, method, descriptor, accessor.render(), 2, 2))
         getter = Bytecode()
         getter.local(0x19, 0)
         getter.emit(0xB4, field.to_bytes(2, "big"))
@@ -219,7 +240,7 @@ def emit_exception_subclass(class_files, name, parent, prefix):
         emit_print_overrides(class_file, prefix)
     code.emit(0xB1)
     class_file.add_method(Method(
-        0x0001, "<init>", "(Ljava/lang/String;)V", code.render(), 2, 2,
+        0x0001, "<init>", "(Ljava/lang/String;)V", code.render(), 5, 2,
     ))
     return name
 

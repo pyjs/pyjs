@@ -1694,6 +1694,27 @@ def accept_narrow(callback: Callable[..., int8]) -> int:
 )
 
 
+EXCEPTION_ARGS_CONTRACT = _contract(
+    '''
+    from pyjs import js
+    from typing import cast
+    ''',
+    "exception_args_contract",
+    '''
+    empty = ValueError()
+    numeric = ValueError(42)
+    quoted = KeyError("key")
+    saved = quoted.args
+    ''',
+    (
+        ("empty argument list", "len(empty.args) != 0"),
+        ("original numeric value", "cast(int, numeric.args[0]) != 42"),
+        ("original key instead of quoted text", 'cast(str, saved[0]) != "key"'),
+        ("stable tuple identity", "saved is not quoted.args"),
+    ),
+)
+
+
 REFERENCE_TUPLE_CONTRACT = _contract(
     '''
     from pyjs import js
