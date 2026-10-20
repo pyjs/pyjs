@@ -192,6 +192,11 @@ def test_android_notes_compiles_recycler_view_callbacks(tmp_path):
         module_name="pyjs_examples.notes.android",
         class_name="org/pyjs/notes/jvm/PyjsAndroid",
     )
+    owner = read_jvm_class(
+        compilation.classes["org/pyjs/notes/jvm/PyjsAndroid$NotesApplication"],
+    )
+    assert owner.super_name == "android/app/Application"
+    assert owner.declared_methods("onCreate")[0].descriptor == "()V"
 
     adapter_name = "org/pyjs/notes/jvm/PyjsAndroid$NotesAdapter"
     holder_name = "org/pyjs/notes/jvm/PyjsAndroid$NoteHolder"

@@ -38,9 +38,15 @@
   Activity destruction callbacks support coordinated background work.
   Compiled tests discover an unambiguous Application owner and can run
   main-thread callbacks without launching an Activity.
+  Notes uses that owner to retain unsaved order and retry diagnostics across
+  Activity recreation; process termination still loses unpersisted changes.
 - Ordinary Python methods named `notify`, `notifyAll`, `wait` or `getClass`
   no longer collide with Java's final Object methods. Explicit native
   callback names retain their declared ABI.
+- JVM `list(existing_list)` makes a detached shallow copy, including empty,
+  nested and represented-item lists with matching storage. Native callback
+  owners reached only through casts retain their fields and lifecycle
+  methods, supporting framework-created Application state.
 
 - Android Notes saves card order after completed drags and restores it on
   launch. Save failures preserve the previous snapshot and provide a retry

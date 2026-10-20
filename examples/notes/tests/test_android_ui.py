@@ -13,12 +13,14 @@ from pyjs.android.testing import (
     by_text,
     launch,
     recreate,
+    run_on_main,
 )
 from pyjs.android.uiautomator import find_text
 from pyjs.java import format_exception
+from pyjs.java.concurrent import Runnable
 from pyjs.java.io import File, RandomAccessFile
-from pyjs_examples.notes.android import NotesActivity, NotesAdapter
-from pyjs_examples.notes.android_storage import Closing, OrderFile, StorageError
+from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication
+from pyjs_examples.notes.android_storage import Closing, OrderFile, OrderSession, StorageError
 
 pytestmark = [
     pytest.mark.pyjs_android_jvm,
@@ -93,10 +95,17 @@ def order_path() -> str:
     return application_context().getFilesDir().getPath() + "/notes-order.txt"
 
 
+class NewProcessSession(Runnable):
+    def run(self) -> None:
+        owner = cast(NotesApplication, application_context())
+        owner.session = OrderSession(OrderFile(order_path()))
+
+
 def reset_order() -> None:
     file = File(order_path())
     if file.exists():
         assert file.delete()
+    run_on_main(NewProcessSession())
 
 
 class FailOnce(OrderFile):
@@ -125,6 +134,16 @@ class MoveAndSave(ViewAssertion):
             session.store = FailOnce(session.store.path)
         adapter.move(0, 1)
         adapter.save_order()
+
+
+class UnsavedSession(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        adapter = cast(NotesAdapter, cast(RecyclerView, view).get_adapter())
+        owner = cast(NotesApplication, view.getContext().getApplicationContext())
+        assert adapter.session is owner.session
+        assert owner.session.dirty and owner.session.can_save
+        assert "Injected write failure" in owner.session.failure_report
 
 
 def test_grid_displays_sample_cards_in_adapter_order() -> None:
@@ -179,6 +198,52 @@ def test_failed_save_keeps_board_and_retries_from_the_status_message() -> None:
         by_id(101).assert_text("")
         recreate()
         by_id(100).check(NoteOrder([1002, 1001, 1003, 1004, 1005, 1006, 1007], "after retry and recreate"))
+    finally:
+        reset_order()
+
+
+def test_unsaved_order_and_retry_survive_repeated_activity_recreation() -> None:
+    reset_order()
+    try:
+        launch(NotesActivity)
+        by_id(100).check(MoveAndSave(True))
+        for attempt in range(2):
+            recreate()
+            by_id(100).check(NoteOrder(
+                [1002, 1001, 1003, 1004, 1005, 1006, 1007],
+                f"pending recreation {attempt}",
+            ))
+            by_id(100).check(UnsavedSession())
+            by_id(101).assert_text("Order not saved. Tap to retry. Injected write failure")
+        assert not File(order_path()).exists()
+        by_id(101).click()
+        by_id(101).assert_text("")
+        run_on_main(NewProcessSession())
+        launch(NotesActivity)
+        by_id(100).check(NoteOrder(
+            [1002, 1001, 1003, 1004, 1005, 1006, 1007], "fresh owner after retry",
+        ))
+    finally:
+        reset_order()
+
+
+def test_unsaved_state_is_process_local_and_does_not_replace_saved_snapshot() -> None:
+    reset_order()
+    try:
+        launch(NotesActivity)
+        by_id(100).check(MoveAndSave(False))
+        by_id(100).check(MoveAndSave(True))
+        recreate()
+        by_id(100).check(NoteOrder(
+            [1001, 1002, 1003, 1004, 1005, 1006, 1007], "pending over saved",
+        ))
+        by_id(100).check(UnsavedSession())
+        run_on_main(NewProcessSession())
+        launch(NotesActivity)
+        by_id(100).check(NoteOrder(
+            [1002, 1001, 1003, 1004, 1005, 1006, 1007], "fresh owner before retry",
+        ))
+        by_id(101).assert_text("")
     finally:
         reset_order()
 

@@ -29,8 +29,9 @@ python -m pyjs_examples.notes --android
 The default starts the web server. `--android` builds and launches the JVM
 implementation using Android framework classes and RecyclerView. It needs an
 Android SDK and JDK, not a JavaScript Android runtime or Gradle project.
-Android card content is sample data; successfully saved card order survives
-activity recreation and app launches. No backend is required.
+Android card content is sample data. Its process-owned session retains pending
+card order across activity recreation; successfully saved order also survives
+process restarts. No backend is required.
 
 ## Android storage recovery
 
@@ -46,16 +47,17 @@ exception as its cause/context, and its message in `.args`.
 `OrderSession.failure_report` retains the full formatted chain independently
 of the short status message. Successful load/save clears that report.
 
-A failed save keeps the on-screen order and displays a tap-to-retry message
-while that Activity remains alive. Unsaved order and its retry state are not
-retained across Activity recreation (such as rotation) or relaunch: the app
-loads the last saved snapshot, or the initial samples if no snapshot exists.
-This example does not yet retain pending edits across configuration changes.
+A failed save keeps the on-screen order and displays a tap-to-retry message.
+`NotesApplication` owns the session independently of Activity views. Activity
+recreation or relaunch in that same process restores pending order, dirty
+state, and the failure report without reloading the old file. Only a new
+process loads the saved snapshot, or initial samples if no snapshot exists.
+Unsaved edits are not durable across process termination.
 
 Unreadable or invalid snapshots leave the sample board usable but block
-automatic saving. Repair or remove the snapshot before relaunching; dragging
-cannot overwrite it. Validation rejects unknown, duplicate, noncanonical,
-incomplete and oversized saved orders.
+automatic saving. Repair or remove the snapshot and restart the app process;
+dragging cannot overwrite it. Validation rejects unknown, duplicate,
+noncanonical, incomplete and oversized saved orders.
 
 This is a bounded, single-writer example. It saves only IDs, synchronously
 after a drag, not during movement. It does not implement concurrent writers,
@@ -82,6 +84,9 @@ pytest -q examples/notes/tests/test_android_ui.py \
 `test_android_storage.py` injects read, write, sync, close, replacement and
 cleanup failures to check preservation and retry. `test_android_ui.py` checks
 the native grid, restored order, retry controls and invalid-file protection
-under Robolectric or on a device. Its device-only test drags a card, recreates
+under Robolectric or on a device. Retained-session tests recreate the Activity
+after failed saves, then replace the process-owned session to distinguish
+in-memory recovery from disk restoration. That replacement is not a real OS
+process-death test. Its device-only test drags a card, recreates
 the activity to verify the saved order, then drags back with UI Automator.
 Assertions inspect stable IDs on Espresso's UI thread.
