@@ -10,6 +10,7 @@ from tests.backend_semantics import (
     CONTEXT_MANAGER_CONTRACT,
     EXCEPTION_CAUSE_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
+    EXCEPTION_CONTEXT_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
     EXCEPTION_HIERARCHIES,
     EXCEPTION_VALUE_IDENTITY_CONTRACT,
@@ -47,6 +48,10 @@ def test_shared_exception_contract(tmp_path, contract):
 
 def test_shared_exception_cause_contract(tmp_path):
     assert_matches_python(EXCEPTION_CAUSE_CONTRACT.source, tmp_path)
+
+
+def test_shared_exception_context_contract(tmp_path):
+    assert_matches_python(EXCEPTION_CONTEXT_CONTRACT.source, tmp_path)
 
 
 @pytest.mark.parametrize("caught", ["ValueError", "(TypeError, ValueError)", "Exception", "BaseException"])
@@ -486,6 +491,10 @@ def test_exception_regions_compile_to_android_dex(tmp_path, contract):
 
 def test_exception_causes_compile_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(EXCEPTION_CAUSE_CONTRACT.source, tmp_path)
+
+
+def test_exception_context_compiles_to_android_dex(tmp_path):
+    assert_compiles_to_android_dex(EXCEPTION_CONTEXT_CONTRACT.source, tmp_path)
 
 
 def assert_compiles_to_android_dex(source, tmp_path):

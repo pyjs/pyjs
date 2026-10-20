@@ -506,6 +506,7 @@ def main() -> str:
     assert set(compilation.classes) == {
         "PyjsProgram", "PyjsProgram$Used", "PyjsProgram$Unused",
         "PyjsProgram$exception$Exception", "PyjsProgram$exception$TypeError",
+        "PyjsProgram$exception$BaseException", "PyjsProgram$exception$state",
     }
 
 

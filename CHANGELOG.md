@@ -31,6 +31,11 @@
 
 ### Added
 
+- JVM exceptions expose read-only implicit context across handlers, helper
+  calls and cleanup. Runtime and formatting failures retain the handled error;
+  returns and unwinding restore the caller's state, independently per thread.
+  Suppressed context remains inspectable, and exception reuse breaks implicit
+  cycles. Native Java failures may be retained without mutating their state.
 - JVM supports explicit exception causes and `from None`, with read-only
   cause/suppression state, identity-preserving replacement and Java cause
   reporting. Native failures can be retained as causes without mutating their
@@ -98,6 +103,8 @@
 
 ### Fixed
 
+- JVM and LLVM bare reraises in return-path `finally` blocks now use the
+  enclosing handler after the departing inner handler has been popped.
 - JVM optional exceptions format absent values as `None` without dereferencing
   null. `str()`, f-strings and no-argument `__str__()` preserve present-value
   custom dispatch, single evaluation and implicit string-result validation.

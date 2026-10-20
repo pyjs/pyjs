@@ -704,7 +704,15 @@ with `pyjs template`.
   On managed exceptions, Java `initCause()` remains visible until Python
   explicitly sets or clears the cause; that Python state then takes priority.
   Use exception instances rather than classes for the raise/cause operands.
-  Implicit context and assignment to chaining attributes remain unsupported.
+  Read-only `__context__` retains the active handled exception when a Python
+  raise or runtime check fails, including in called helpers and cleanup.
+  `from None` suppresses reporting without discarding this context. Nested
+  handlers restore their enclosing state on return and unwind, and separate
+  threads never share active handlers. Reusing exceptions breaks implicit
+  context cycles without altering explicit causes. Native Java failures may
+  be context values, but expose no Python context themselves. Java's default
+  stack traces still show only explicit causes, not implicit context.
+  Assignment to chaining attributes remains unsupported.
   Explicit optional calls require string-compatible formatter results; narrow
   the receiver before consuming a differently typed custom result.
   `object` locals retain existing inferred union/collection storage, but

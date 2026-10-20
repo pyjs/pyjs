@@ -627,8 +627,10 @@ def main() -> int:
         "RecyclerBindings$Holder",
         "RecyclerBindings$Touch",
         "RecyclerBindings$exception$AssertionError",
+        "RecyclerBindings$exception$BaseException",
         "RecyclerBindings$exception$Exception",
         "RecyclerBindings$exception$TypeError",
+        "RecyclerBindings$exception$state",
     ]
     adapter = read_jvm_class(compilation.classes["RecyclerBindings$Adapter"])
     assert {

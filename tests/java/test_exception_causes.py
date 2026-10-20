@@ -107,6 +107,7 @@ def test_invalid_cause_has_a_focused_diagnostic(cause):
 
 
 @pytest.mark.parametrize(("attribute", "value"), [
+    ("__context__", 'ValueError("context")'),
     ("__cause__", "None"), ("__suppress_context__", "True"),
 ])
 def test_chaining_attributes_reject_assignment_until_writable_support(attribute, value):

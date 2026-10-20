@@ -76,11 +76,14 @@ from .exceptions import (
     MESSAGE_GETTER,
     MESSAGE_SETTER,
     SUPPRESSION_GETTER,
+    UNKNOWN_CONTEXT,
     builtin_exception,
     contained_exception_types,
+    emit_context_call,
     emit_exception_class,
     emit_exception_subclass,
-    emit_type_error,
+    emit_runtime_error,
+    exception_entry_contexts,
     exception_type,
     managed_exception,
     nullable_exception,
@@ -668,13 +671,29 @@ class JVMEmitter:
             _numeric_descriptor(function.return_numeric_format) or self.return_type
         )
         self.code = Bytecode()
+        self.inherited_context_slot = None
+        if any(isinstance(statement, ExceptionCatch) for block in blocks for statement in block.body):
+            self.context_call("current", "()Ljava/lang/Throwable;")
+            self.inherited_context_slot = self.allocate_temporary("Ljava/lang/Throwable;", "exception.inherited")
+            self.store(self.inherited_context_slot, "Ljava/lang/Throwable;")
+        function_start = len(self.code.code)
         self.line_offset = (function.lineno or 1) - 1
         block_map = {block.name: block for block in blocks}
+        entry_contexts = exception_entry_contexts(blocks) if self.inherited_context_slot is not None else {}
         protected = []
         for block in blocks:
             self.code.mark(self.block_label(block.name))
             start = len(self.code.code)
+            self.active_exception_context = entry_contexts.get(block.name)
             for statement in block.body:
+                handled = getattr(statement, "handled_exception", None)
+                if self.inherited_context_slot is not None and handled is not self.active_exception_context:
+                    if handled is None:
+                        self.load(self.inherited_context_slot)
+                    else:
+                        self.expression(handled)
+                    self.context_call("activate", "(Ljava/lang/Throwable;)V")
+                self.active_exception_context = handled
                 line = self.source_line(statement)
                 self.code.line(line + self.line_offset if line is not None else None)
                 self.statement(statement, block_map)
@@ -686,6 +705,16 @@ class JVMEmitter:
                 landings[target] = len(self.code.code)
                 self.code.local(0x3A, self.pending_exception_slot)
                 self.code.branch(0xA7, self.block_label(target))
+        handlers = [
+            ExceptionHandler(start, end, landings[target])
+            for start, end, target in protected
+        ]
+        if self.inherited_context_slot is not None:
+            end = len(self.code.code)
+            self.active_exception_context = UNKNOWN_CONTEXT
+            self.restore_exception_context()
+            self.code.emit(0xBF)
+            handlers.append(ExceptionHandler(function_start, end, end))
         return Method(
             # Reachable module functions live on the root class, but generated
             # application classes call them as siblings rather than JVM nestmates.
@@ -698,10 +727,7 @@ class JVMEmitter:
             0xFFFF,
             self.local_count,
             tuple(self.code.line_numbers),
-            exception_handlers=tuple(
-                ExceptionHandler(start, end, landings[target])
-                for start, end, target in protected
-            ),
+            exception_handlers=tuple(handlers),
         )
 
     def prepare_locals(self, function, parameters) -> None:
@@ -953,6 +979,7 @@ class JVMEmitter:
             ):
                 if _is_reference_descriptor(self.return_type):
                     self.code.emit(0x01)
+                    self.restore_exception_context()
                     self.code.emit(0xB0)
                     return
                 if self.return_type != "V":
@@ -960,11 +987,13 @@ class JVMEmitter:
                         f"cannot return void from {self.return_type} function",
                         node,
                     )
+                self.restore_exception_context()
                 self.code.emit(0xB1)
                 return
             value_type = self.expression(node.value)
             if self.return_type == "V" and value_type == "N":
                 self.code.emit(0x57)
+                self.restore_exception_context()
                 self.code.emit(0xB1)
                 return
             if not self.compatible(value_type, self.return_type):
@@ -977,6 +1006,7 @@ class JVMEmitter:
                 self.return_storage_type,
                 node,
             )
+            self.restore_exception_context()
             self.code.emit(
                 0xAD
                 if self.return_storage_type == "J"
@@ -1332,6 +1362,10 @@ class JVMEmitter:
                     self.expression(node.value)
                     self.exception_cause_state()
                     return "Z"
+                if target.py_func is native_builtins._BaseException.__context__.fget:
+                    self.expression(node.value)
+                    self.context_call("context", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
+                    return "Ljava/lang/Throwable;"
             field = self.native_field(node)
             if field is not None and field.static:
                 reference = self.class_file.field_reference(
@@ -2459,6 +2493,7 @@ class JVMEmitter:
                 self.code.emit(0x5F)
                 constructor = self.class_file.method_reference(name, "<init>", "(Ljava/lang/String;)V")
                 self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+                self.context_call("chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
                 self.code.emit(0xBF)
             else:
                 self.code.emit(0x58)
@@ -3123,8 +3158,9 @@ class JVMEmitter:
             bridge.emit(0xB6, target.to_bytes(2, "big"))
             bridge.emit(0xB0)
         else:
-            emit_type_error(
+            emit_runtime_error(
                 bridge, class_file, self.class_files, self.main_class_name,
+                native_builtins._TypeError,
                 "Exception __str__ must accept no arguments and return str",
             )
         return Method(
@@ -3219,12 +3255,24 @@ class JVMEmitter:
                 self.load(saved)
                 self.exception_cause_state(cause_slot=cause)
                 self.load(saved)
+            if not node.reraised or node.append_trace:
+                self.context_call("chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
             self.code.emit(0xBF)
             return
         if node.reraised:
             raise JVMUnsupported("JVM bare raise requires an active handler", node)
         self.new_exception(node.value_type, node.message, node)
+        self.context_call("chain", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
         self.code.emit(0xBF)
+
+    def context_call(self, name, descriptor, code=None, class_file=None):
+        emit_context_call(code or self.code, class_file or self.class_file,
+                          self.class_files, self.main_class_name, name, descriptor)
+
+    def restore_exception_context(self):
+        if self.inherited_context_slot is not None and self.active_exception_context is not None:
+            self.load(self.inherited_context_slot)
+            self.context_call("activate", "(Ljava/lang/Throwable;)V")
 
     def exception_cause_state(self, *, cause_slot=None):
         """Consume a throwable; read suppression unless given a cause to store."""
@@ -4456,10 +4504,11 @@ class JVMEmitter:
         return opcode
 
     def throw_python(self, kind, message, code=None, class_file=None):
-        name = emit_exception_class(
-            self.class_files, self.main_class_name, getattr(native_builtins, f"_{kind}"),
+        emit_runtime_error(
+            code or self.code, class_file or self.class_file,
+            self.class_files, self.main_class_name,
+            getattr(native_builtins, f"_{kind}"), message,
         )
-        (code or self.code).throw_new(class_file or self.class_file, name, message=message)
 
     def throw(
         self,

@@ -1,6 +1,7 @@
 """Typed control-flow IR constructed during closed-world inference."""
 
 import ast
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -440,6 +441,7 @@ class CleanupRegion:
     body: tuple[ast.stmt, ...]
     exception_target: str | None
     loop_depth: int
+    handled_exception: ast.expr | None = None
 
 
 @dataclass
@@ -452,6 +454,16 @@ class FunctionIR:
     names: dict[str, int] = field(default_factory=dict)
     reserved_names: set[str] = field(default_factory=set)
     lifetime: FunctionLifetime | None = None
+    handled_exception: ast.expr | None = None
+
+    @contextmanager
+    def handling(self, exception):
+        previous = self.handled_exception
+        self.handled_exception = exception
+        try:
+            yield
+        finally:
+            self.handled_exception = previous
 
     def new_block(self, base: str) -> Block:
         count = self.names.get(base, 0) + 1
@@ -477,11 +489,13 @@ class FunctionIR:
 
     def emit(self, instruction: ast.stmt) -> None:
         if self.current is not None and not self.current.terminated:
+            # None inherits the caller's handled error. The exception edge and
+            # the error currently being handled are independent IR contracts.
+            instruction.handled_exception = self.handled_exception
             self.current.body.append(instruction)
 
     def terminate(self, terminator: Terminator) -> None:
-        if self.current is not None and not self.current.terminated:
-            self.current.body.append(terminator)
+        self.emit(terminator)
 
 
 @dataclass(frozen=True)
@@ -909,7 +923,7 @@ class IRInferenceVisitor(InferenceVisitor):
     def visit_Attribute(self, node):
         result = super().visit_Attribute(node)
         if not self.supports_exception_causes and node.attr in {
-                "__cause__", "__suppress_context__"}:
+                "__cause__", "__context__", "__suppress_context__"}:
             if any(getter.cls is self.exception_base_class()
                    for getter in getattr(result, "property_getters", ())):
                 self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
@@ -965,6 +979,10 @@ class IRInferenceVisitor(InferenceVisitor):
         return narrowed
 
     def visit(self, node):
+        with self.ir.handling(self.caught_exception) if self.ir is not None else nullcontext():
+            return self.visit_in_context(node)
+
+    def visit_in_context(self, node):
         expression = isinstance(node, ast.expr)
         self.expression_depth += expression
         try:
@@ -1102,6 +1120,7 @@ class IRInferenceVisitor(InferenceVisitor):
                 tuple(node.finalbody),
                 outer_exception,
                 len(self.ir.loops),
+                self.caught_exception,
             )
             if node.finalbody
             else None
@@ -1339,6 +1358,7 @@ class IRInferenceVisitor(InferenceVisitor):
             (normal_exit,),
             outer_exception,
             len(self.ir.loops),
+            self.caught_exception,
         )
         self.ir.terminate(Jump(body_block.name))
 
@@ -1375,18 +1395,19 @@ class IRInferenceVisitor(InferenceVisitor):
 
         self.ir.enter(exception_block)
         exceptional_exit.exception = self.capture_exception(node)
-        if not can_suppress:
-            self.ir.emit(ast.Expr(value=exceptional_exit))
-            self.ir.terminate(Jump(reraise_block.name))
-        else:
-            assert suppressed_block is not None
-            self.ir.terminate(
-                Branch(
-                    self.lowering.visit(self.truth_test(node, exceptional_exit)),
-                    suppressed_block.name,
-                    reraise_block.name,
+        with self.ir.handling(exceptional_exit.exception):
+            if not can_suppress:
+                self.ir.emit(ast.Expr(value=exceptional_exit))
+                self.ir.terminate(Jump(reraise_block.name))
+            else:
+                assert suppressed_block is not None
+                self.ir.terminate(
+                    Branch(
+                        self.lowering.visit(self.truth_test(node, exceptional_exit)),
+                        suppressed_block.name,
+                        reraise_block.name,
+                    )
                 )
-            )
 
         if suppressed_block is not None:
             self.ir.enter(suppressed_block)
@@ -1465,17 +1486,20 @@ class IRInferenceVisitor(InferenceVisitor):
         self.ir.terminate(Jump(block.name, arguments))
         self.ir.enter(block)
         visitor = self.child_visitor(LocalScope(self.scope))
+        visitor.caught_exception = cleanup.handled_exception
+        visitor.in_exception_handler = cleanup.handled_exception is not None
         protected_exceptions = self.ir.exceptions
         # A return may cross additional try/except regions with no finally.
         # New blocks inside cleanup must inherit its enclosing handler, not
         # whichever protected region happened to be innermost at the return.
         self.ir.exceptions = [cleanup.exception_target] if cleanup.exception_target else []
         try:
-            analyzed_cleanup = visitor.visit_body(cleanup.body)
-            if not self.ir.current.terminated:
-                if loop_depth is not None:
-                    visitor = visitor.exception_entry(cleanup.body, analyzed_cleanup)
-                visitor.terminate_abrupt(continuation, loop_depth=loop_depth)
+            with self.ir.handling(cleanup.handled_exception):
+                analyzed_cleanup = visitor.visit_body(cleanup.body)
+                if not self.ir.current.terminated:
+                    if loop_depth is not None:
+                        visitor = visitor.exception_entry(cleanup.body, analyzed_cleanup)
+                    visitor.terminate_abrupt(continuation, loop_depth=loop_depth)
         finally:
             self.ir.exceptions = protected_exceptions
             self.ir.cleanups.append(cleanup)

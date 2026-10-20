@@ -2146,6 +2146,44 @@ def pending_conflict() -> RevisionConflict:
 )
 
 
+EXCEPTION_CONTEXT_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def fail_in_helper() -> None:
+    raise RuntimeError("helper")
+''',
+    "exception_context_contract",
+    '''
+    original = ValueError("original")
+    inherited = False
+    suppressed_context = False
+    restored = False
+    try:
+        raise original
+    except ValueError:
+        try:
+            fail_in_helper()
+        except RuntimeError as error:
+            inherited = error.__context__ is original and error.__cause__ is None
+        try:
+            raise RuntimeError("suppressed") from None
+        except RuntimeError as hidden:
+            suppressed_context = hidden.__context__ is original and hidden.__suppress_context__
+    try:
+        raise RuntimeError("outside")
+    except RuntimeError as outside:
+        restored = outside.__context__ is None
+    ''',
+    (
+        ("calls inherit the handled error", "not inherited"),
+        ("suppression preserves context for inspection", "not suppressed_context"),
+        ("handler exit restores the previous state", "not restored"),
+    ),
+)
+
+
 EXCEPTION_CAUSE_CONTRACT = _contract(
     '''
 from pyjs import js
@@ -2301,6 +2339,20 @@ def replace_error(events: list[int]) -> None:
             raise TypeError("replacement")
     finally:
         events.append(4)
+
+@js
+def reraise_after_return() -> int:
+    try:
+        raise ValueError("outer")
+    except ValueError:
+        try:
+            try:
+                raise KeyError("inner")
+            except KeyError:
+                return 1
+        finally:
+            raise
+    return 0
 ''',
     "exception_cleanup_contract",
     '''
@@ -2321,10 +2373,18 @@ def replace_error(events: list[int]) -> None:
     sequence = 0
     for event in events:
         sequence = sequence * 10 + event
+    restored = "not raised"
+    try:
+        reraise_after_return()
+    except ValueError as outer:
+        restored = str(outer)
+    except KeyError:
+        restored = "wrong handler"
     ''',
     (
         ("return evaluated before cleanup", 'result != "saved"'),
         ("nested cleanup, replacement, break, and continue", "sequence != 1234567"),
+        ("return cleanup reraises enclosing handler", 'restored != "outer"'),
     ),
 )
 
