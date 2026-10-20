@@ -48,10 +48,12 @@ exception as its cause/context, and its message in `.args`.
 of the short status message. Successful load/save clears that report.
 
 A failed save keeps the on-screen order and displays a tap-to-retry message.
-`NotesApplication` owns the session. An Activity subscribes to status updates
-while alive and detaches its own observer when destroyed. Activity
-recreation or relaunch in that same process restores pending order, dirty
-state, and the failure report without reloading the old file. Only a new
+`NotesApplication` owns the session and one status observer. Only the most
+recently attached Activity receives automatic status updates; another live
+Activity can retain an older status. Destruction detaches its observer without
+removing a newer subscriber. Activity recreation or relaunch in that same
+process restores pending order, dirty state, and the failure report without
+reloading the old file. Only a new
 process loads the saved snapshot, or initial samples if no snapshot exists.
 Unsaved edits are not durable across process termination.
 
@@ -72,9 +74,10 @@ allows reattachment or retry to recover a result if posting was rejected.
 The worker never updates views or the session directly. Initial bounded
 loading remains synchronous. Native threads are not durable Android jobs.
 
-This is a bounded, single-writer example. It does not implement concurrent
-process writers, general note storage, orphan recovery after process
-termination, or directory syncing for power-loss durability.
+This is a bounded, single-writer example. It does not implement multi-window
+status synchronization, concurrent process writers, general note storage,
+orphan recovery after process termination, or directory syncing for power-loss
+durability.
 Replacement uses Android's `File.renameTo` behavior, not a portable desktop
 storage abstraction. Hosts that refuse replacement of an existing destination
 (such as OpenJDK on Windows) report failure and retain the old snapshot.
