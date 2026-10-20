@@ -29,8 +29,8 @@ python -m pyjs_examples.notes --android
 The default starts the web server. `--android` builds and launches the JVM
 implementation using Android framework classes and RecyclerView. It needs an
 Android SDK and JDK, not a JavaScript Android runtime or Gradle project.
-Android card content is sample data; card order survives activity recreation
-and app launches. No backend is required.
+Android card content is sample data; successfully saved card order survives
+activity recreation and app launches. No backend is required.
 
 ## Android storage recovery
 
@@ -46,7 +46,12 @@ exception as its cause/context, and its message in `.args`.
 `OrderSession.failure_report` retains the full formatted chain independently
 of the short status message. Successful load/save clears that report.
 
-A failed save keeps the on-screen order and displays a tap-to-retry message.
+A failed save keeps the on-screen order and displays a tap-to-retry message
+while that Activity remains alive. Unsaved order and its retry state are not
+retained across Activity recreation (such as rotation) or relaunch: the app
+loads the last saved snapshot, or the initial samples if no snapshot exists.
+This example does not yet retain pending edits across configuration changes.
+
 Unreadable or invalid snapshots leave the sample board usable but block
 automatic saving. Repair or remove the snapshot before relaunching; dragging
 cannot overwrite it. Validation rejects unknown, duplicate, noncanonical,
