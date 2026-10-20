@@ -919,9 +919,15 @@ class IRInferenceVisitor(InferenceVisitor):
     lower_exception_regions = False
     lower_exception_objects = False
     lower_generator_suspensions = False
+    supports_exception_args = False
 
     def visit_Attribute(self, node):
         result = super().visit_Attribute(node)
+        if not self.supports_exception_args and node.attr == "args":
+            if any(getter.cls is self.exception_base_class()
+                   for getter in getattr(result, "property_getters", ())):
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "exception arguments are not implemented by this backend")
         if not self.supports_exception_causes and node.attr in {
                 "__cause__", "__context__", "__suppress_context__"}:
             if any(getter.cls is self.exception_base_class()

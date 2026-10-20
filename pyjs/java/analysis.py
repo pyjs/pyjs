@@ -6,7 +6,13 @@ import inspect
 from pyjs.analysis import create_analysis_environment, super_proxy
 from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type, field_owner
 from pyjs.analysis.diagnostics import DiagnosticCode
-from pyjs.analysis.ir import ExceptionRaise, FieldStore, IRInferenceVisitor, Return
+from pyjs.analysis.ir import (
+    ExceptionRaise,
+    FieldStore,
+    IRInferenceVisitor,
+    ObjectNew,
+    Return,
+)
 from pyjs.analysis.lifetime import refine_lifetimes
 from pyjs.analysis.objects import Class, Function, Instance, Name, StaticCast, UnionType
 from pyjs.decorators import backend_metadata, is_declaration
@@ -29,6 +35,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     lower_exception_regions = True
     lower_exception_objects = True
     supports_exception_causes = True
+    supports_exception_args = True
 
     def visit_FunctionDef(self, node):
         result = super().visit_FunctionDef(node)
@@ -171,6 +178,11 @@ def retain_native_boundary_text(visitor, function):
                 if isinstance(node.func, ast.Attribute):
                     values.append(node.func.value)
                 for value in values:
+                    retain_native_exception_text(visitor, value)
+            elif isinstance(node, ObjectNew) and managed_exception(node.value_type):
+                # Original positional values also escape through args' Object[]
+                # storage, even if the authored initializer discards them.
+                for value in node.call.args:
                     retain_native_exception_text(visitor, value)
             elif isinstance(node, (FieldStore, ast.AnnAssign)) and node.value is not None:
                 retain_native_field_text(visitor, node.target, node.value)

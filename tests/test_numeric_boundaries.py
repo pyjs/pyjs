@@ -449,12 +449,12 @@ def test_optional_integer_comparison_and_assignment_contract():
 
 
 @pytest.mark.parametrize("backend", ["jvm", "webassembly"])
-def test_optional_integer_contract_reaches_backend_storage_boundary(backend):
+def test_optional_integer_contract_reaches_backend_unsupported_boundary(backend):
     from pyjs.java import JVMUnsupported, transpile_jvm
     from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
 
     compile, error, message = {
-        "jvm": (transpile_jvm, JVMUnsupported, "dynamic equality requires reference values"),
+        "jvm": (transpile_jvm, JVMUnsupported, "unsupported JVM expression ChainedCompare"),
         "webassembly": (transpile_webassembly, WebAssemblyUnsupported, "union value storage"),
     }[backend]
     with pytest.raises(error, match=message):

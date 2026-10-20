@@ -649,7 +649,7 @@ with `pyjs template`.
   code points with the corresponding astral character; quoting cannot recover
   that distinction. Isolated surrogates are escaped.
   Other reference-key lookups are catchable but currently use the generic
-  message `key not found`; original exception payloads remain unsupported.
+  message `key not found`; their original keys remain available through `.args`.
 - JVM list membership supports matching integer or Boolean items; strings,
   floats and mixed item domains remain explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,
@@ -675,10 +675,22 @@ with `pyjs template`.
   declaration. Python's base-exception initializer does not specify Java
   overloads; inherited native declarations are trusted to describe the actual
   Java constructor signatures.
-  Chaining, `.args`, builtin literal `None` messages
+  Writable chaining state, builtin literal `None` messages
   and `UnicodeDecodeError` payloads remain unsupported. Explicit
   reraising keeps the original JVM stack trace rather than adding a Python
   traceback frame. Async context managers remain unsupported.
+- JVM managed exceptions expose read-only `.args` containing original
+  positional values, independently of formatted text. Keywords and defaulted
+  parameters are excluded; a base initializer replaces the tuple without
+  changing previously saved tuples. Original references and currently
+  supported numeric constructor payloads retain their values, including
+  custom float and JVM-width arguments. This does not broaden default
+  exception text or builtin constructor signatures. Native Java exceptions
+  have no Python argument tuple: concrete access is rejected, while widened
+  access raises `TypeError`. Tuple operations retain the limits above.
+  Erased numeric payloads compare with Python's numeric equality, but cannot
+  be dictionary keys yet: numeric and reference-array keys through an `object`
+  view raise `TypeError` instead of using incompatible Java hashing.
 - JVM custom Python exception classes retain inherited catches, typed fields,
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;
@@ -736,7 +748,8 @@ with `pyjs template`.
   the receiver before consuming a differently typed custom result.
   `object` locals retain existing inferred union/collection storage, but
   cannot erase exception values or exception-bearing containers. Other plain
-  `object` initializers remain unsupported; use explicit casts to expose
+  `object` initializers remain unsupported unless the value is already erased,
+  such as an argument-tuple item or explicit cast. Use explicit casts to expose
   supported reference values to Java.
   Explicit `__str__()` calls through base views require compatible override
   result types; narrow to the concrete type for a differently typed result.

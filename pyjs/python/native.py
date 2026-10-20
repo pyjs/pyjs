@@ -197,6 +197,9 @@ class _BaseException(_object):
     def __str__(self) -> str: ...
 
     @property
+    def args(self) -> tuple[object, ...]: ...
+
+    @property
     def __cause__(self) -> BaseException | None: ...
 
     @property
