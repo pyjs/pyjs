@@ -106,3 +106,87 @@ def main() -> int:
     copied = list[object](source)
     return len(copied)
 ''')
+
+
+@pytest.mark.parametrize("expression", ["list(values)", "values"])
+@pytest.mark.parametrize("source, destination, value, actual, expected", [
+    ("int", "float", "1", "J", "D"),
+    ("Child", "Base", "Child()", "LPyjsProgram$Child_", "LPyjsProgram$Base_"),
+])
+@pytest.mark.parametrize("inherited", [False, True])
+def test_field_assignment_rejects_incompatible_list_storage(
+    expression, source, destination, value, actual, expected, inherited,
+):
+    parent = "Parent" if inherited else "Holder"
+    child = "\nclass Holder(Parent):\n    pass\n" if inherited else ""
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''
+class Base: pass
+class Child(Base): pass
+class {parent}:
+    def __init__(self, values: list[{source}]):
+        self.items: list[{destination}] = {expression}
+{child}
+def main() -> int:
+    return len(Holder([{value}]).items)
+''')
+    assert str(caught.value) == (
+        f"JVM field PyjsProgram${parent}.items cannot store "
+        f"LPyjsProgram$list${actual}; in LPyjsProgram$list${expected}; at line 3"
+        f" while compiling _pyjs_java_.{parent}.__init__"
+    )
+
+
+def test_field_store_accepts_matching_lists_nullable_values_and_subclasses(tmp_path):
+    assert_matches_python('''
+        from typing import cast
+        from pyjs import int8, float32
+        class Base:
+            def __init__(self):
+                self.value = 42
+        class Child(Base): pass
+        class Holder:
+            def __init__(self, values: list[int], child: Child):
+                self.items: list[int] | None = list(values)
+                self.child: Base = child
+                self.erased: object = list(values)
+                self.small = int8(127)
+                self.floating = float32(16777216)
+            def replace(self, values: list[int] | None) -> None:
+                self.items = values
+        def main() -> int:
+            original = [1]
+            holder = Holder(original, Child())
+            items = holder.items
+            assert items is not None
+            items.append(2)
+            assert len(original) == 1 and len(items) == 2
+            holder.replace(None)
+            assert holder.items is None
+            holder.replace(list(original))
+            assert len(cast(list[int], holder.erased)) == 1
+            assert int(holder.small + 1) == -128
+            assert int(holder.floating + 1) == 16777216
+            return holder.child.value
+    ''', tmp_path)
+
+
+@pytest.mark.parametrize("expression", ["list(values)", "values"])
+def test_reassignment_to_an_inherited_field_checks_its_declared_layout(expression):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''
+class Parent:
+    def __init__(self):
+        self.items: list[float] = []
+class Holder(Parent):
+    def replace(self, values: list[int]) -> None:
+        self.items = {expression}
+def main() -> int:
+    holder = Holder()
+    holder.replace([1])
+    return len(holder.items)
+''')
+    assert str(caught.value) == (
+        "JVM field PyjsProgram$Parent.items cannot store LPyjsProgram$list$J; "
+        "in LPyjsProgram$list$D; at line 3 while compiling _pyjs_java_.Holder.replace"
+    )

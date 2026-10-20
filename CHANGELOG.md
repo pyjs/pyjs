@@ -47,6 +47,8 @@
   nested and represented-item lists with matching storage. Native callback
   owners reached only through casts retain their fields and lifecycle
   methods, supporting framework-created Application state.
+  Assigning an incompatible list layout to a Python-owned field is diagnosed
+  during compilation rather than failing JVM class verification.
 
 - Android Notes saves card order after completed drags and restores it on
   launch. Save failures preserve the previous snapshot and provide a retry

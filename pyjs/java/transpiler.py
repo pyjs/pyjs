@@ -1069,12 +1069,24 @@ class JVMEmitter:
                 owner,
                 name,
                 field_type,
-                _semantic_type,
+                semantic_type,
                 writable,
                 _numeric_format,
             ) = self.field(node.target)
             if not writable:
                 raise JVMUnsupported(f"JVM field {owner}.{name} is read-only", node)
+            # Native declarations have explicit ABI overrides; generated
+            # fields must instead accept their declared semantic layout.
+            if owner in self.class_files and not (
+                self.compatible(value_type, semantic_type)
+                or semantic_type == "Ljava/lang/Object;"
+                and _is_reference_descriptor(value_type)
+            ):
+                raise JVMUnsupported(
+                    f"JVM field {owner}.{name} cannot store {value_type} "
+                    f"in {semantic_type}",
+                    node.target,
+                )
             actual_receiver = self.expression(node.target.value)
             if not self.compatible(actual_receiver, receiver_type):
                 if _is_reference_descriptor(actual_receiver) and (
