@@ -9,12 +9,19 @@ from pyjs.tooling.llvm import LLVM
 def test_navigation_response_and_dialog_preserve_python_rendering(tmp_path, optimize):
     result = LLVM().assert_matches_python('''
 from datetime import UTC
+from enum import IntEnum, StrEnum
 from pathlib import Path
 from pyjs.server import LiveSession, NavigationPage
 from pyjs.web.domx import div
 from pyjs.web.ssr import render_html
 from pyjs.web.ui import Widget
 from pyjs.web.ui.dialog import Dialog, DialogContent, DialogTrigger
+
+class Status(IntEnum):
+    OK = 200
+
+class Title(StrEnum):
+    EXAMPLE = "Example"
 
 class Panel(Widget):
     session: LiveSession
@@ -25,7 +32,7 @@ class Panel(Widget):
 def main() -> str:
     panel = Panel()
     dialog = Dialog(DialogTrigger("Open"), DialogContent("Details", panel))
-    response = NavigationPage(div(dialog), "Example")
+    response = NavigationPage(div(dialog), str(Title.EXAMPLE), int(Status.OK))
     assert response.headers == {}
     assert response.status == 200
     assert response.title == "Example"

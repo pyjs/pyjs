@@ -7554,7 +7554,13 @@ class FunctionEmitter:
         Reached Python records shipped with PyJS need the same layouts as
         application records. Browser/native declarations still have no body.
         """
-        return (not value_type.container.scope.is_builtins
+        from . import enum as enum_models
+
+        # These signature-only scalar bases are not stdlib enum classes and
+        # therefore do not match scalar_name(). Giving them object layouts
+        # also incorrectly enrolls their inherited int/str slots in dispatch.
+        return (value_type.py_obj not in {enum_models.IntEnum, enum_models.StrEnum}
+                and not value_type.container.scope.is_builtins
                 and not is_declaration(value_type.py_obj, "native")
                 and not is_declaration(value_type.py_obj, "js"))
 
