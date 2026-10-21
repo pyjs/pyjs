@@ -197,7 +197,12 @@ class LibraryMappings:
         replacement_module = importlib.import_module(module_name)
         if replacement_name is None:
             return replacement_module
-        return getattr(replacement_module, replacement_name)
+        try:
+            return getattr(replacement_module, replacement_name)
+        except AttributeError:
+            raise LibraryCompatibilityError(
+                f"{module}.{name} is not supported by {module_name}"
+            ) from None
 
 
 PYJS_LIBRARY_MAPPINGS = LibraryMappings(LIBRARIES, STDLIB_IMPORTS)

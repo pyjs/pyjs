@@ -1777,7 +1777,9 @@ class NativeLibraryMappings(NativeProtocolMappings):
         if module == "dataclasses" and name == "replace":
             return "pyjs.native.dataclasses", name
         if module in {"datetime", "pathlib", "uuid"}:
-            return "pyjs.native." + module, name
+            # Missing names remain unsupported when reached. Falling back to
+            # host source can mix incompatible host and native representations.
+            return ("pyjs.native." + module, name) if name != "" else None
         if module == "enum" and name in {None, "IntEnum", "StrEnum"}:
             return "pyjs.native.enum", name
         if module == "json" and name == "dumps":

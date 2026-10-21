@@ -8,11 +8,14 @@ from pyjs.web.ssr import render_document, render_html, write_html
 class NavigationPage:
     """Server response metadata for progressively navigated content."""
 
-    def __init__(self, body, title, status=200, headers=None):
+    def __init__(
+        self, body: HTMLElement, title: str, status: int = 200,
+        headers: dict[str, str] | None = None,
+    ):
         self.body = body
         self.title = title
         self.status = status
-        self.headers = headers or {}
+        self.headers: dict[str, str] = headers if headers else {}
 
 
 def html(body, js, css, script_type, title=""):
