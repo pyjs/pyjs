@@ -1217,6 +1217,8 @@ class FunctionEmitter:
             fields = []
             if dom_types.is_browser_declaration(layout.base):
                 raise LLVMUnsupported("LLVM cannot inherit browser-only declarations", value_type.annotation)
+            if is_declaration(getattr(layout.base, "py_obj", None), "jvm"):
+                raise LLVMUnsupported("LLVM cannot inherit JVM-only declarations", value_type.annotation)
             if getattr(layout.base, "py_obj", None) is native_builtins._WebTokenList:
                 # A token view is one arena-owned DOM pointer, not an ordinary
                 # application layout. Inherited native accessors cannot read
@@ -7552,7 +7554,8 @@ class FunctionEmitter:
         """Source ownership comes from declarations, not package spelling.
 
         Reached Python records shipped with PyJS need the same layouts as
-        application records. Browser/native declarations still have no body.
+        application records. Browser/native/JVM declarations supply no layout;
+        WGSL native fallbacks, in contrast, are ordinary CPU implementations.
         """
         from . import enum as enum_models
 
@@ -7562,7 +7565,8 @@ class FunctionEmitter:
         return (value_type.py_obj not in {enum_models.IntEnum, enum_models.StrEnum}
                 and not value_type.container.scope.is_builtins
                 and not is_declaration(value_type.py_obj, "native")
-                and not is_declaration(value_type.py_obj, "js"))
+                and not is_declaration(value_type.py_obj, "js")
+                and not is_declaration(value_type.py_obj, "jvm"))
 
     def symbol_module(self, value: Class | Function) -> str:
         """Qualify imported symbols without changing established entry-module IR."""

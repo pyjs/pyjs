@@ -17,7 +17,7 @@ from pyjs.decorators import *
 from pyjs.numeric import array_format, array_item, numeric_format
 
 from .diagnostics import CompilationContext, DiagnosticCode, SourceFragment
-from .libraries import LibraryClassInfo, LibraryMappings
+from .libraries import LibraryClassInfo, LibraryCompatibilityError, LibraryMappings
 from .representation import (
     ValueRepresentation,
     annotation_representation,
@@ -703,7 +703,16 @@ class Object:
                     container.scope.add(declaration, name)
                     continue
 
-            py_obj = module.library_mappings.resolve(py_obj)
+            binding = container.scope.names.get(name)
+            if isinstance(binding, DeferredImport) and binding.error is not None:
+                continue  # Keep an unsupported from-import lazy, including constants.
+            try:
+                py_obj = module.library_mappings.resolve(py_obj)
+            except LibraryCompatibilityError as error:
+                if not isinstance(container, Module) or not container.defer_unselected_imports:
+                    raise
+                container.add(DeferredImport(name, py_obj, container, error=str(error)))
+                continue
             # A backend may model a C-implemented host function with a typed
             # Python declaration, including through a module-qualified import.
             if inspect.isbuiltin(py_obj):
@@ -918,9 +927,12 @@ class Object:
 class DeferredImport(Object):
     """Materialize an ordinary imported definition only when it is reached."""
 
-    def __init__(self, name: str, imported: object, container: Module):
+    def __init__(self, name: str, imported: object, container: Module, *,
+                 error: str | None = None, import_node: ast.AST | None = None):
         super().__init__(name, container.scope, container)
         self.imported = imported
+        self.error = error
+        self.import_node = import_node
 
     @property
     def py_obj(self):
@@ -935,6 +947,12 @@ class DeferredImport(Object):
         return []
 
     def resolve(self) -> Object:
+        if self.error is not None:
+            if self.import_node is not None and self.container.source_fragment is not None:
+                self.container.context.error(self.container.source_fragment, self.import_node,
+                                             DiagnosticCode.UNSUPPORTED_SYNTAX, self.error)
+            self.container.binding_error(self.name, DiagnosticCode.UNSUPPORTED_SYNTAX, self.error,
+                                         help="Use a supported library API or keep this import unreachable.")
         current = self.container.scope.names.get(self.name)
         if current is not self:
             return current
@@ -1386,8 +1404,20 @@ class Module(Object):
                 if target is not None:
                     replacement_module, replacement_name = target
                     assert replacement_name is not None
+                    replacement = importlib.import_module(replacement_module)
+                    if self.defer_unselected_imports and not hasattr(replacement, replacement_name):
+                        local_name = alias.asname or alias.name
+                        imported = getattr(imported_module, alias.name)
+                        if getattr(self.py_module, local_name, None) is not imported:
+                            continue  # A later module assignment replaced this import.
+                        self.add(DeferredImport(
+                            local_name, imported, self,
+                            error=f"{module_name}.{alias.name} is not supported by {replacement_module}",
+                            import_node=alias,
+                        ))
+                        continue
                     self.add_imported_js_binding(
-                        importlib.import_module(replacement_module),
+                        replacement,
                         replacement_name,
                         alias.asname or alias.name,
                     )
