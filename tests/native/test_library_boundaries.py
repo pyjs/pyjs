@@ -96,3 +96,25 @@ def test_missing_import_cannot_escape_through_reexport(tmp_path, monkeypatch, qu
     with pytest.raises(CompilationError, match="PureWindowsPath is not supported") as caught:
         transpile_llvm(f'{statement}\ndef main() -> str:\n    return str({expression}("a", "b"))\n')
     assert caught.value.lineno is not None
+
+
+def test_reached_class_missing_library_alias_has_location():
+    with pytest.raises(CompilationError, match="PureWindowsPath is not supported") as caught:
+        transpile_llvm('''from pathlib import PureWindowsPath
+class Record:
+    kind = PureWindowsPath
+    def __init__(self, value: int):
+        self.value = value
+def main() -> str:
+    return str(Record(3).value)
+''')
+    assert caught.value.lineno == 3
+    assert "kind = PureWindowsPath" in caught.value.text
+
+
+@pytest.mark.parametrize("module", ["datetime", "pathlib", "uuid", "math", "itertools"])
+def test_mapped_library_star_import_has_location(module):
+    with pytest.raises(CompilationError, match="Star imports from mapped libraries") as caught:
+        transpile_llvm(f'\nfrom {module} import *\ndef main() -> str:\n    return "ok"\n')
+    assert caught.value.lineno == 2
+    assert f"from {module} import *" in caught.value.text

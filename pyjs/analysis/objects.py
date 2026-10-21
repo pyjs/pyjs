@@ -709,6 +709,13 @@ class Object:
             try:
                 py_obj = module.library_mappings.resolve(py_obj)
             except LibraryCompatibilityError as error:
+                if isinstance(container, Class):
+                    node = container.field_value_nodes.get(name)
+                    if node is not None and module.source_fragment is not None:
+                        module.context.error(module.source_fragment, node,
+                                             DiagnosticCode.UNSUPPORTED_SYNTAX, str(error))
+                    module.context.definition_error(container.py_cls,
+                                                    DiagnosticCode.UNSUPPORTED_SYNTAX, str(error))
                 if not isinstance(container, Module) or not container.defer_unselected_imports:
                     raise
                 container.add(DeferredImport(name, py_obj, container, error=str(error)))
@@ -1402,6 +1409,12 @@ class Module(Object):
                     alias.name,
                 )
                 if target is not None:
+                    if alias.name == "*":
+                        message = "Star imports from mapped libraries are not supported"
+                        if self.source_fragment is not None:
+                            self.context.error(self.source_fragment, node,
+                                               DiagnosticCode.UNSUPPORTED_SYNTAX, message)
+                        raise LibraryCompatibilityError(message)
                     replacement_module, replacement_name = target
                     assert replacement_name is not None
                     replacement = importlib.import_module(replacement_module)
