@@ -22,6 +22,7 @@ from .analysis import NATIVE_ENVIRONMENT
 def payload(e, node, *, completion=False):
     semantic = analyzed_value_type(node.message)
     kind, value = e.expression(node.message)
+    semantic = tagged.effective_type(semantic, kind)
     representation = analyzed_representation(node.message)
     represented = "false"
     if completion and representation is not None and representation.direct_numeric_formats:
@@ -101,7 +102,7 @@ def formats(functions):
 
     for function in functions:
         for node in object_values.nodes((function,)):
-            if (function.is_generator and isinstance(node, Return) and node.value is not None
+            if ((function.is_generator or function.is_async) and isinstance(node, Return) and node.value is not None
                     and not (isinstance(node.value, ast.Constant) and node.value.value is None)):
                 add(False, node.value)
             value_type = (node.value_type if isinstance(node, (ExceptionRaise, ObjectNew)) else

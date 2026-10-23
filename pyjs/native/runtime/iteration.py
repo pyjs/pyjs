@@ -77,10 +77,13 @@ GROUPER = 26
 APPLICATION = 27
 ADAPTER = 28
 COUNT_MIXED = 29
+COROUTINE = 30
+AWAIT_ITERATOR = 31
 CALLBACK_ERROR = -9223372036854775808
 INCOMPLETE_BATCH = -9223372036854775807
 TEE_REENTRY = -9223372036854775806
 CALLBACK_STOP = -9223372036854775805
+COROUTINE_REUSED = -9223372036854775804
 
 # Forward-only blocks let GC release consumed history without a registry of
 # cursors, weak references, or a buffer retained for the entire stream.
@@ -116,6 +119,8 @@ GROUP_TAGGED_PAYLOAD = 8
 # GENERATOR uses SOURCE for its frame, CALLBACK_VALUE for the frame's typed
 # input slot, STEP for input presence, INDEX for resume position and STRICT
 # for reentrancy. The callback owns these fields; generic advancement must not.
+# COROUTINE uses the same frame layout, but advancing an exhausted frame is an
+# error. AWAIT_ITERATOR forwards like ADAPTER while retaining its own identity.
 # ADAPTER retains a source cursor in SOURCE, with typed next/send/iter callbacks
 # in ADVANCE/CALLBACK_VALUE/OFFSETS. It owns no generator control or input state.
 # POOLED optionally uses CALLBACK_VALUE for fixed product layout: LIMIT pool
@@ -245,16 +250,19 @@ def advance(state: Pointer, output: Pointer) -> int:
 
 @_runtime
 def control(state: Pointer) -> Pointer:
-    # Views retain their source even after exhaustion: identity and generator
-    # control belong to that source, whose own frame is released on completion.
-    while not is_null(state) and load_integer(state) == ADAPTER:
+    # Views retain their source even after exhaustion: send/throw/close belong
+    # to that source, whose own frame is released on completion.
+    while not is_null(state) and (load_integer(state) == ADAPTER or load_integer(state) == AWAIT_ITERATOR):
         state = load_pointer(byte_offset(state, SOURCE))
     return state
 
 
 @_runtime
 def identity(state: Pointer) -> Pointer:
-    state = control(state)
+    # ABI adapters are transparent, but two __await__ iterators are distinct
+    # Python objects even when they drive the same underlying coroutine.
+    while not is_null(state) and load_integer(state) == ADAPTER:
+        state = load_pointer(byte_offset(state, SOURCE))
     if not is_null(state) and load_integer(state) == APPLICATION:
         return load_pointer(byte_offset(state, SOURCE))
     return state
@@ -284,13 +292,13 @@ def advance_context(state: Pointer, output: Pointer, context: Pointer) -> int:
     if kind < 0:
         return kind
     if load_integer(byte_offset(state, EXHAUSTED)) != 0:
-        return 0
+        return COROUTINE_REUSED if kind == COROUTINE else 0
     source = load_pointer(byte_offset(state, SOURCE))
     index = load_integer(byte_offset(state, INDEX))
     limit = load_integer(byte_offset(state, LIMIT))
     step = load_integer(byte_offset(state, STEP))
     size = load_integer(byte_offset(state, ITEM_SIZE))
-    if kind == CALLBACK or kind == GENERATOR or kind == APPLICATION or kind == ADAPTER:
+    if kind == CALLBACK or kind == GENERATOR or kind == COROUTINE or kind == APPLICATION or kind == ADAPTER or kind == AWAIT_ITERATOR:
         if is_null(context):
             return CALLBACK_ERROR
         return invoke_checked(load_pointer(byte_offset(state, ADVANCE)),

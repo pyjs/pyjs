@@ -37,7 +37,7 @@ from pyjs.analysis.value_representation import (
     set_analyzed_representation,
 )
 
-from . import collection_ops, nullable, persistent, super_proxy, tagged
+from . import collection_ops, coroutines, nullable, persistent, super_proxy, tagged
 from . import dataclasses as dataclass_ops
 from .analysis import (
     NATIVE_ENVIRONMENT,
@@ -785,7 +785,7 @@ def invoke(emitter, target, arguments, node=None, *, receiver=None, implementati
     # before converting the next, and retain it through the checked call.
     roots, frame = object_argument_roots(emitter, (parameter.annotation.obj for parameter in parameters(target)))
     values.extend(convert(emitter, target, arguments, node, box=True, roots=roots))
-    result = checked(emitter, target.return_type, target.return_numeric_format,
+    result = checked(emitter, coroutines.result_type(target), coroutines.result_numeric(target),
                      implementation or f"@{emitter.function_name(target)}", values, node, check=not helper)
     from . import binary
     binary.check_result(emitter, target, result, node)
@@ -796,8 +796,8 @@ def invoke(emitter, target, arguments, node=None, *, receiver=None, implementati
 def project_result(e, target, value_type, value, node, *, check_layout=True):
     """Validate and adapt a body's result before its selected call-site use."""
     known = target in e.module.functions or isinstance(target, CallableClass)
-    semantic = target.return_type if known else None
-    representation = target.return_representation if known else None
+    semantic = coroutines.result_type(target) if known else None
+    representation = coroutines.result_representation(target) if known else None
     if known and isinstance(target, Function):
         semantic, representation = opaque_iterable_signature(e, target, node, semantic, representation)
         if (collection_ops.builtin_name(analyzed_value_type(node)) == "Generator"
@@ -905,9 +905,9 @@ def join_result(e, target, kind, value, node):
     """Project one runtime-selected body before joining its call-site result."""
     kind, value = project_result(e, target, kind, value, node)
     expected = analyzed_value_type(node)
-    e.value_semantics[kind, value] = expected if target in e.module.functions else target.return_type
+    e.value_semantics[kind, value] = expected if target in e.module.functions else coroutines.result_type(target)
     e.value_representations[kind, value] = (
-        analyzed_representation(node) if target in e.module.functions else target.return_representation)
+        analyzed_representation(node) if target in e.module.functions else coroutines.result_representation(target))
     # Equal pointer layouts do not imply equal Python representations: a typed
     # reference joining an object arm still needs its erased box.
     return e.coerce_value(kind, value, e.expression_type(node), node, semantic=expected)
@@ -1018,7 +1018,7 @@ def virtual(emitter, target, receiver, arguments, node):
             sources.append(source)
         call = ast.copy_location(ast.Call(func=ast.Name(id=target.name, ctx=ast.Load()),
                                          args=sources, keywords=[]), node)
-        call.obj = target.return_type
+        call.obj = coroutines.result_type(target)
         return bind_selected_method(emitter, target, receiver, call, semantic=target.cls)
     if (root, index) in emitter.module.adapted_virtual_slots:
         from .properties import dispatch_name
@@ -1026,20 +1026,20 @@ def virtual(emitter, target, receiver, arguments, node):
         # Raw slots retain each body's actual ABI. For covariant returns with
         # different storage, select that body before calling and convert its
         # result to the static declaration. Ordinary uniform slots stay direct.
-        kind = emitter.value_type(target.return_type)
-        view = tagged.Value(node, target.return_type, kind, "")
-        view.representation = target.return_representation
+        kind = emitter.value_type(coroutines.result_type(target))
+        view = tagged.Value(node, coroutines.result_type(target), kind, "")
+        view.representation = coroutines.result_representation(target)
 
         def selected(implementation):
             actual, value = invoke(emitter, implementation, arguments, node, receiver=receiver)
             actual, value = project_result(emitter, implementation, actual, value, view)
-            return emitter.coerce_value(actual, value, kind, view, semantic=target.return_type)[1]
+            return emitter.coerce_value(actual, value, kind, view, semantic=coroutines.result_type(target))[1]
 
         value = runtime_protocol(emitter, target.cls, receiver, kind,
             lambda candidate: emitter.resolve_method(candidate, dispatch_name(target)), selected, node,
             compatible=collection_ops.is_layout_subclass)
-        emitter.value_semantics[kind, value] = target.return_type
-        emitter.value_representations[kind, value] = target.return_representation
+        emitter.value_semantics[kind, value] = coroutines.result_type(target)
+        emitter.value_representations[kind, value] = coroutines.result_representation(target)
         return kind, value if kind != "void" else ""
     vtable = emitter.emit_value(f"load ptr, ptr {receiver}")
     slot = emitter.emit_value(vtable_slot(emitter, vtable, root, index))
@@ -1140,9 +1140,9 @@ def bind_selected_method(e, target, receiver, node, *, semantic, positional=None
     captured = capture_operands(e, node, positional)
     if captured is not node:
         positional = None
-    kind = e.value_type(target.return_type)
-    view = tagged.Value(node, target.return_type, kind, "")
-    view.representation = target.return_representation
+    kind = e.value_type(coroutines.result_type(target))
+    view = tagged.Value(node, coroutines.result_type(target), kind, "")
+    view.representation = coroutines.result_representation(target)
 
     def selected(implementation):
         binding = bind(e, implementation, captured, positional=positional, runtime_errors=True,
@@ -1152,13 +1152,13 @@ def bind_selected_method(e, target, receiver, node, *, semantic, positional=None
         with binding as arguments:
             actual, value = invoke(e, implementation, arguments, node, receiver=receiver)
         actual, value = project_result(e, implementation, actual, value, view)
-        return e.coerce_value(actual, value, kind, view, semantic=target.return_type)[1]
+        return e.coerce_value(actual, value, kind, view, semantic=coroutines.result_type(target))[1]
 
     value = runtime_protocol(e, semantic, receiver, kind,
         lambda candidate: e.resolve_method(candidate, dispatch_name(target)), selected, node,
         compatible=collection_ops.is_layout_subclass)
-    e.value_semantics[kind, value] = target.return_type
-    e.value_representations[kind, value] = target.return_representation
+    e.value_semantics[kind, value] = coroutines.result_type(target)
+    e.value_representations[kind, value] = coroutines.result_representation(target)
     return kind, value if kind != "void" else ""
 
 

@@ -35,6 +35,7 @@ def close(e, node):
     generator, application, done = (e.new_label("delegate.close." + name)
                                     for name in ("generator", "application", "done"))
     e.emit_line(f"switch i64 {kind}, label %{done} [i64 {runtime.GENERATOR}, label %{generator} "
+                f"i64 {runtime.COROUTINE}, label %{generator} "
                 f"i64 {runtime.APPLICATION}, label %{application}]")
     e.emit_line(f"{generator}:")
     generators.close(e, state, None, node, discard=True)
@@ -72,6 +73,8 @@ def throw(e, node):
     state = iterator_views.control(e, view)
     tag = iterator_callbacks.load(e, state, 0, "i64")
     is_generator = e.emit_value(f"icmp eq i64 {tag}, {runtime.GENERATOR}")
+    is_coroutine = e.emit_value(f"icmp eq i64 {tag}, {runtime.COROUTINE}")
+    is_generator = e.emit_value(f"or i1 {is_generator}, {is_coroutine}")
     generator, other, done = (e.new_label("delegate.throw." + name)
                               for name in ("generator", "other", "done"))
     kind = e.value_type(analyzed_value_type(node))

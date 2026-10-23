@@ -1289,7 +1289,11 @@ class NativeInferenceVisitor(IRInferenceVisitor):
 
     def visit_Return(self, node):
         if not self.func.is_generator:
-            return super().visit_Return(node)
+            returned = super().visit_Return(node)
+            if self.func.is_async and returned.value is not None:
+                from .exception_values import retain_methods
+                retain_methods(returned, BUILTINS.search("StopIteration"), returned.value)
+            return returned
         declared = self.func.declared_return_type
         result = declared.generic_types["R"] if getattr(declared, "generic_name", None) == "Generator" else None
         parts = self.func.return_representation
@@ -1351,11 +1355,28 @@ class NativeInferenceVisitor(IRInferenceVisitor):
                 return args, keywords, True, parts[0]
         return super().normalize_collection_call(node, func, args, keywords)
 
+    def analyze_yield_value(self, node, value):
+        if not self.func.is_async:
+            return super().analyze_yield_value(node, value)
+        # A coroutine's annotation describes its completion, not the tokens
+        # yielded to a scheduler while a delegated awaitable is suspended.
+        token = BUILTINS.search("object")
+        value = self.normalize_stored_value(node, value, None, token)
+        self.func.yield_type = token
+        return ast.Yield(value=value)
+
     def visit_Yield(self, node):
-        result = super().visit_Yield(node)
+        result = (self.analyze_yield_value(node, self.visit(node.value))
+                  if self.func.is_async else super().visit_Yield(node))
         declared = self.func.declared_return_type
         context = self.contextual_types.get(node)
         representation = self.contextual_representations.get(node)
+        if self.func.is_async:
+            # The coroutine frame always receives object transport. Each
+            # delegated await iterator checks its own narrower send contract.
+            result.obj = context or BUILTINS.search("object")
+            set_analyzed_representation(result, representation)
+            return result
         sent = context
         if getattr(declared, "generic_name", None) == "Generator":
             sent = declared.generic_types["S"]
@@ -1403,6 +1424,25 @@ class NativeInferenceVisitor(IRInferenceVisitor):
     def visit_YieldFrom(self, node):
         from .delegation import analyze
         return analyze(self, node)
+
+    def visit_Await(self, node):
+        value = self.visit(node.value)
+        acquired = ast.fix_missing_locations(ast.copy_location(ast.Call(
+            func=ast.Attribute(value=AnalyzedExpression(value), attr="__await__", ctx=ast.Load()),
+            args=[], keywords=[],
+        ), node))
+        acquired = self.visit(acquired)
+        acquired.native_coroutine_await = is_builtin_class(analyzed_value_type(value), "Awaitable")
+        if iterable_protocol(analyzed_value_type(acquired), iterator=True) is None:
+            self.fail(node, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                      "__await__ must return an iterator")
+        result = self.visit_YieldFrom(ast.copy_location(ast.YieldFrom(value=AnalyzedExpression(acquired)), node))
+        cursor = analyzed_value_type(acquired)
+        if is_builtin_class(cursor, "Generator"):
+            result.obj = cursor.generic_types["R"]
+            representation = analyzed_representation(acquired)
+            set_analyzed_representation(result, representation.arguments[2] if representation else None)
+        return result
 
     def emit_statement(self, statement):
         if isinstance(statement, list):
@@ -1608,6 +1648,11 @@ class NativeInferenceVisitor(IRInferenceVisitor):
             self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                       "native Pydantic inputs support field reads, not model construction or operations")
         self.func.native_untyped_receive = None
+        if self.func.is_async:
+            if self.func.is_generator:
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "native async generators are not implemented")
+            self.func.send_type = BUILTINS.search("object")
         dataclass_ops.prepare_initializer(self.func, node)
         if node.name == "__exit__":
             parameters = node.args.posonlyargs + node.args.args
