@@ -151,6 +151,8 @@
 
 ### Fixed
 
+- JavaScript string slices use Python character offsets rather than UTF-16
+  offsets, keeping slices around emoji consistent with indexing and length.
 - Native SSR retains reached Python record layouts regardless of package name,
   including navigation responses and dormant live-session fields. Partial
   standard-library models no longer fail on unused unsupported imports, and

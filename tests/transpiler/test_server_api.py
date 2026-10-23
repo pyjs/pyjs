@@ -403,7 +403,7 @@ def test_live_session_emits_topic_routing_and_transport_fallback():
                     constructor({ path='/api', transport=null, autostart=true} = {}) {
                         this.path = path;
                         if (path.endsWith('/')) {
-                            this.path = path.slice(0,-1);
+                            this.path = [...path].slice(0,-1).join('');
                         }
                         this.autostart = autostart;
                         this._transport = transport == null ? new FetchTransport() : transport;

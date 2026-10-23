@@ -1416,6 +1416,15 @@ def slice_value(self, slice=None, start="null", stop="null", step="null", **kwar
     return f"{slice}({self},{start},{stop},{step})"
 
 
+def slice_string_value(self, slice=None, start="null", stop="null", step="null", **kwargs):
+    if step in {"null", "1"}:
+        # JavaScript's string.slice counts UTF-16 units. Python indices count
+        # code points, as do our string length and item operations.
+        selected = slice_value(f"[...{self}]", start=start, stop=stop, step=step)
+        return f"{selected}.join('')"
+    return f"{slice}({self},{start},{stop},{step})"
+
+
 class _type[T](_object): ...
 
 
@@ -2869,7 +2878,7 @@ class _str(_object):
     def __getitem__(self, idx: int) -> str: ...
 
     @integer_index_parameters("start", "stop", "step")
-    @js.inline(slice_value, slice=slice_string)
+    @js.inline(slice_string_value, slice=slice_string)
     def __slice__(
         self,
         start: int | None = None,

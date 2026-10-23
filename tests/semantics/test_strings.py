@@ -502,3 +502,22 @@ def test_string_join_accepts_lazy_and_custom_iterables():
         print("😀".join(Words()))
         """
     )
+
+
+def test_string_slices_count_unicode_code_points_and_evaluate_once():
+    assert_semantics('''
+value = "é🐍 A😀B"
+print(value[:3], value[3:], value[1:4], value[-4:-1])
+print(value[:], value[::1], value[::-1], value[1::2], value[50:])
+from pyjs import js
+@js
+class Source:
+    def __init__(self, value: str):
+        self.value = value
+        self.calls = 0
+    def read(self) -> str:
+        self.calls += 1
+        return self.value
+source = Source(value)
+print(source.read()[1:3], source.calls)
+''')
