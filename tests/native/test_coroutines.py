@@ -311,6 +311,55 @@ def test_async_entry_point_requires_an_explicit_driver():
         transpile_llvm('async def main() -> str: return "value"')
 
 
+@pytest.mark.parametrize("inherited", [False, True])
+@pytest.mark.parametrize("expression", [
+    "drive(Signal())",
+    "drive(parent(Signal()))",
+    "drive(from_callback(make))",
+    "drive(concrete(Signal()))",
+    "drive(stored()[0])",
+])
+def test_awaitable_subclasses_are_rejected_before_coroutine_layout_access(expression, inherited):
+    source = '''
+from collections.abc import Awaitable, Callable, Generator
+class Signal(Awaitable[int]):
+    def __init__(self):
+        self.marker = 12345
+    def __await__(self) -> Generator[object, object, int]:
+        yield 'waiting'
+        return 7
+def drive(source: Awaitable[int]) -> str:
+    cursor = source.__await__()
+    token = str(next(cursor))
+    try:
+        next(cursor)
+    except StopIteration as error:
+        return token + ':' + str(error.value)
+    return 'failed'
+async def parent(source: Awaitable[int]) -> int:
+    return await source
+async def concrete(source: Signal) -> int:
+    return await source
+def make() -> Awaitable[int]:
+    return Signal()
+async def from_callback(callback: Callable[[], Awaitable[int]]) -> int:
+    return await callback()
+def stored() -> list[Awaitable[int]]:
+    return [Signal()]
+def main() -> str:
+    return EXPRESSION
+'''.replace("EXPRESSION", expression)
+    if inherited:
+        source = source.replace("class Signal(Awaitable[int]):", "class Base(Awaitable[int]):")
+        source = source.replace("def drive(", "class Signal(Base):\n    pass\ndef drive(")
+    namespace = {"__name__": "awaitable_subclass_probe"}
+    exec(source, namespace)
+    assert namespace["main"]() == "waiting:7"
+    with pytest.raises(LLVMUnsupported, match="Awaitable subclasses are not supported") as raised:
+        transpile_llvm(source, filename="awaitable_source.py")
+    assert any("awaitable_source.py:" in note for note in raised.value.__notes__)
+
+
 def test_async_generators_have_an_explicit_diagnostic():
     with pytest.raises(CompilationError, match="async generators are not implemented"):
         transpile_llvm('''

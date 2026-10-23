@@ -1227,6 +1227,16 @@ class FunctionEmitter:
                 raise LLVMUnsupported("LLVM cannot inherit browser-only declarations", value_type.annotation)
             if is_declaration(getattr(layout.base, "py_obj", None), "jvm"):
                 raise LLVMUnsupported("LLVM cannot inherit JVM-only declarations", value_type.annotation)
+            if collection_ops.builtin_name(layout.base) == "Awaitable":
+                # Awaitable values use managed coroutine state, not an
+                # application vtable. A subclass can otherwise reach the
+                # coroutine's __await__ lowering through an upcast.
+                error = LLVMUnsupported(
+                    "LLVM Awaitable subclasses are not supported; use a concrete class with __await__ instead",
+                    value_type.annotation,
+                )
+                error.add_class_context(value_type)
+                raise error
             if getattr(layout.base, "py_obj", None) is native_builtins._WebTokenList:
                 # A token view is one arena-owned DOM pointer, not an ordinary
                 # application layout. Inherited native accessors cannot read

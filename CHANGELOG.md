@@ -36,6 +36,8 @@
   and explicit close through `finally`. Synchronous host drivers can use the
   coroutine's `__await__` iterator; native entry points remain synchronous.
   An event loop, `asyncio`, and async generators are not included.
+  Custom awaitables use concrete class annotations; `Awaitable[T]` storage is
+  reserved for coroutine results, and `Awaitable` subclasses receive a diagnostic.
 - Native compiler and LLVM tooling entry points accept per-compilation
   `library_mappings` for host interface implementations. Custom resolvers
   preserve native builtins and do not replace the default resolver, including

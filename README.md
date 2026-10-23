@@ -214,7 +214,10 @@ coroutine frames. Calling an async function creates a coroutine without running
 its body. A synchronous driver can obtain `coroutine.__await__()` and advance
 that iterator with `next`, `send`, `throw`, and `close`; completion arrives as
 `StopIteration.value`. Custom awaitables can define `__await__` returning a
-typed `Generator`. Async callbacks and methods use the same call machinery.
+typed `Generator` and use their concrete class as the annotation. Native
+`Awaitable[T]` storage currently represents coroutine results only; inheriting
+from `Awaitable` is rejected rather than reinterpreting an application object
+as a coroutine frame. Async callbacks and methods use the same call machinery.
 The compiler does not supply an event loop or `asyncio` implementation. Native
 executable and library entry points remain synchronous, and async generators
 are not implemented. A host scheduler must own pending coroutine iterators,
