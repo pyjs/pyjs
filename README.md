@@ -517,7 +517,9 @@ finally:
 
 Acquisition is FIFO and non-reentrant. The browser implementation does not
 provide task cancellation or cross-thread synchronization; host-side tests use
-an `asyncio.Lock` with the same acquire/release interface.
+an `asyncio.Lock` with the same acquire/release interface. Create host locks
+per event loop; do not reuse a contended lock across separate `asyncio.run()`
+calls.
 
 ### Metaprogramming and compiler extensions
 
