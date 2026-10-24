@@ -8,8 +8,10 @@ from tests.semantics.helpers import run_python
 
 
 def assert_small_stack_matches_python(source, directory):
+    # String entry points keep System.exit's unrelated JDK logging path out
+    # of this deliberately small-stack test.
     source = dedent(source)
-    expected = run_python(source + "\nprint(main())\n")
+    expected = run_python(source + "\nprint(main(), end='')\n")
     assert expected.returncode == 0, expected.stderr
     transpile_jvm(source).write(directory)
     actual = subprocess.run(
@@ -17,7 +19,8 @@ def assert_small_stack_matches_python(source, directory):
         capture_output=True, text=True, timeout=30,
     )
     assert actual.stderr == "", actual.stderr
-    assert actual.returncode == int(expected.stdout.strip())
+    assert actual.returncode == 0, actual.stderr
+    assert actual.stdout == expected.stdout
 
 
 def test_jit_calls_do_not_reserve_the_maximum_jvm_operand_stack(tmp_path):
@@ -26,8 +29,8 @@ def test_jit_calls_do_not_reserve_the_maximum_jvm_operand_stack(tmp_path):
             if depth == 0:
                 return 42
             return descend(depth - 1)
-        def main() -> int:
-            return descend(50)
+        def main() -> str:
+            return str(descend(50))
     ''', tmp_path)
 
 
@@ -42,8 +45,8 @@ def test_exception_handlers_and_wide_operands_verify_with_bounded_stack(tmp_path
                 return 1
             finally:
                 depth += 1
-        def main() -> int:
-            return descend(30)
+        def main() -> str:
+            return str(descend(30))
     ''', tmp_path)
 
 

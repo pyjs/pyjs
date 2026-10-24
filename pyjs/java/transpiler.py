@@ -1981,7 +1981,8 @@ class JVMEmitter:
                     receiver_type,
                     leading_argument,
                 )
-            if semantic_receiver.generic_name == "str" and target.name == "__slice__":
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "str" and target.name == "__slice__"):
                 if node.keywords or len(node.args) != 3:
                     raise JVMUnsupported("JVM string slices require start, stop and step", node)
                 step = node.args[2]
