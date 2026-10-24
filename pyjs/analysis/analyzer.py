@@ -3321,9 +3321,9 @@ class InferenceVisitor(ast.NodeVisitor):
             is_async = callable_function.is_async
         expected_return = expected.return_type
         if is_async:
-            if not (
-                isinstance(expected_return, Class)
-                and expected_return.generic_name == "Awaitable"
+            if not any(
+                isinstance(member, Class) and member.generic_name == "Awaitable"
+                for member in get_type_members(expected_return)
             ):
                 self.fail(
                     source,
@@ -3331,7 +3331,12 @@ class InferenceVisitor(ast.NodeVisitor):
                     f"Argument {parameter!r} to {callable_name} cannot be async",
                     help="Pass a synchronous callable or expect an Awaitable result.",
                 )
-            expected_return = expected_return.generic_types["T"]
+            if isinstance(expected_return, Class):
+                expected_return = expected_return.generic_types["T"]
+            else:
+                awaitable = BUILTINS.search("Awaitable")
+                assert isinstance(awaitable, GenericClass)
+                return_type = awaitable(return_type)
         definition = (
             self.module.context.sources.definition_span(callable_function.py_obj)
             if callable_function is not None

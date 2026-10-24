@@ -17,7 +17,7 @@ from pyjs.analysis.objects import Name as AnalyzedName
 from pyjs.analysis.type_relations import get_type_members
 from pyjs.analysis.value_representation import analyzed_value_object
 
-from . import calls, collection_ops, gc_layouts, tagged
+from . import calls, collection_ops, coroutines, gc_layouts, tagged
 from .errors import LLVMUnsupported
 
 
@@ -107,7 +107,7 @@ def uniform_static_union(emitter, node):
 
 
 def register(emitter, node, target):
-    if (not isinstance(target, Function) or target not in emitter.module.functions or target.is_async
+    if (not isinstance(target, Function) or target not in emitter.module.functions
             or target.vararg is not None or target.kwarg is not None
             or any(value is None for value in target.kw_defaults) and target is node.obj
             or target.is_classmethod):
@@ -295,7 +295,7 @@ def definitions(emitter):
         arguments = [(emitter.annotation_storage_type(parameter.annotation, numeric(parameter.representation)), f"%a{index}")
                      for index, parameter in enumerate(target.params)]
         parameters = [*context, ("ptr", "%context"), *arguments]
-        returned = emitter.result_storage_type(target.return_type, target.return_numeric_format)
+        returned = emitter.result_storage_type(coroutines.result_type(target), coroutines.result_numeric(target))
         result.append(f"define private {returned} @{symbol}({', '.join(f'{kind} {value}' for kind, value in parameters)}) {{")
         implementation = "@" + emitter.function_name(target)
         # The descriptor always has the caller's managed ABI. A raw runtime
@@ -321,8 +321,8 @@ class ReferenceInvoke(ast.expr):
 
     def __init__(self, target, count, bound):
         self.target, self.count, self.bound = target, count, bound
-        self.obj = target.return_type
-        self.representation = target.return_representation
+        self.obj = coroutines.result_type(target)
+        self.representation = coroutines.result_representation(target)
         ast.copy_location(self, target.original_node)
 
 
@@ -350,8 +350,8 @@ def default_definitions(parent, target, bound):
         function = Function(_callback, parent.module.entry_module)
         function.name = f"{symbol}.{count}"
         function.source_fragment = target.source_fragment
-        function.return_type = target.return_type
-        function.set_return_representation(target.return_representation)
+        function.return_type = coroutines.result_type(target)
+        function.set_return_representation(coroutines.result_representation(target))
         context_type = target.cls if bound else NATIVE_ENVIRONMENT.builtins.search("NoneType")
         annotation = context_type.annotation
         annotation.obj = context_type
@@ -389,7 +389,7 @@ def invoke_reference(emitter, node):
     call = ast.copy_location(ast.Call(func=AnalyzedName(node.target), args=sources, keywords=[]), node)
     binding = calls.bind(emitter, node.target, call, positional=positional, runtime_errors=True)
     if binding is None:
-        kind = emitter.value_type(node.target.return_type)
+        kind = emitter.value_type(coroutines.result_type(node.target))
         return kind, "" if kind == "void" else "zeroinitializer"
     with binding as arguments:
         return calls.invoke(emitter, node.target, arguments, call,

@@ -31,6 +31,17 @@
 
 ### Added
 
+- Native `async def` and nested `await` use managed suspension frames, including
+  custom await iterators, async callbacks and methods, exception propagation,
+  and explicit close through `finally`. Synchronous host drivers can use the
+  coroutine's `__await__` iterator; native entry points remain synchronous.
+  An event loop, `asyncio`, and async generators are not included.
+  Custom awaitables use concrete class annotations; `Awaitable[T]` storage is
+  reserved for coroutine results, and `Awaitable` subclasses receive a diagnostic.
+- Native compiler and LLVM tooling entry points accept per-compilation
+  `library_mappings` for host interface implementations. Custom resolvers
+  preserve native builtins and do not replace the default resolver, including
+  during nested compilations or after a failed compilation.
 - Android Notes saves detached card-order snapshots on background threads.
   Completed drops coalesce behind a single writer; newer edits remain dirty
   until their own acknowledgement. Save failures retain retry diagnostics
@@ -151,6 +162,13 @@
 
 ### Fixed
 
+- Typed callbacks whose result is an optional awaitable now accept both
+  synchronous and asynchronous functions, including bound methods.
+- Native callback invocation declares its storage layout even when no
+  concrete callback is constructed, such as in an empty typed registry.
+- Suspended native generators and coroutines retain range-loop cursors across
+  separate host calls, avoiding early completion or repeated iterations after
+  the previous call's temporary arena has been released.
 - Native SSR retains reached Python record layouts regardless of package name,
   including navigation responses and dormant live-session fields. Partial
   standard-library models no longer fail on unused unsupported imports, and

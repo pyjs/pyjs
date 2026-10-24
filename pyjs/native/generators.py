@@ -27,6 +27,7 @@ from . import (
     calls,
     closures,
     collection_ops,
+    coroutines,
     exception_values,
     gc_layouts,
     iterator_ops,
@@ -60,26 +61,28 @@ class Create(ast.expr):
 
     def __init__(self, function):
         self.function = function
-        self.obj = function.return_type
+        self.obj = coroutines.result_type(function)
 
 
 def prepare(emitter, functions):
     for function in functions:
-        if not function.is_generator:
+        if not (function.is_generator or function.is_async):
             continue
-        if not iterator_ops.is_iterator(function.return_type):
+        if not function.is_async and not iterator_ops.is_iterator(function.return_type):
             raise LLVMUnsupported("LLVM generators require an Iterator return type", function.original_node)
         states = {function.ir.blocks[0].name: 0}
         for block in function.ir.blocks:
             if isinstance(block.body[-1], Suspend):
                 states.setdefault(block.body[-1].resume, len(states))
         frame = Frame(f"pyjs.generator.{len(emitter.module.generators)}", states)
-        frame.input_type = (function.return_type.generic_types["S"]
+        frame.input_type = (NATIVE_ENVIRONMENT.builtins.search("object") if function.is_async else function.return_type.generic_types["S"]
                             if function.return_type.generic_name == "Generator"
                             else function.send_type or NATIVE_ENVIRONMENT.builtins.search("NoneType"))
         frame.suspensions = {block.body[-1].resume: (block.body[-1], block.exception_target)
                              for block in function.ir.blocks if isinstance(block.body[-1], Suspend)}
         emitter.module.generators[function] = frame
+        if function.is_async:
+            emitter.module.uses_iterator_views = True
     if emitter.module.generators:
         emitter.module.uses_iterators = emitter.module.uses_collections = True
         emitter.module.uses_strings = emitter.module.uses_ranges = True
@@ -130,7 +133,7 @@ def create(emitter, node):
     for index in range(len(frame.snapshots)):
         snapshot = address(emitter, frame, pointer, len(frame.fields) + len(frame.flags) + index)
         emitter.emit_line(f"store %pyjs.exception zeroinitializer, ptr {snapshot}")
-    state = iterator_ops.new(emitter, runtime.GENERATOR, pointer)
+    state = iterator_ops.new(emitter, runtime.COROUTINE if node.function.is_async else runtime.GENERATOR, pointer)
     iterator_ops.store(emitter, state, runtime.ADVANCE, "ptr", "@" + emitter.function_name(node.function) + ".resume")
     # A stable interior pointer exposes the typed input slot without allocating
     # a per-send box or retaining a pointer to the caller's stack.
@@ -151,7 +154,7 @@ def enter(emitter):
     # This invocation owns no frame yet. Do not close the generator that is
     # still executing in the caller; it may catch this reentrancy error.
     emitter.activate_error(emitter.current_function.original_node, NATIVE_ENVIRONMENT.builtins.search("ValueError"),
-                           f"@{emitter.string_constant('generator already executing')}")
+                           f"@{emitter.string_constant('coroutine already executing' if emitter.current_function.is_async else 'generator already executing')}")
     emitter.emit_line(f"ret i64 {runtime.CALLBACK_ERROR}")
     emitter.emit_line(f"{available}:")
     pointer = emitter.emit_value(f"load ptr, ptr {iterator_ops.slot(emitter, state, runtime.SOURCE)}")
@@ -200,7 +203,7 @@ def complete(emitter, node):
     empty = node.value is None or isinstance(node.value, ast.Constant) and node.value.value is None
     if empty:
         function = emitter.current_function
-        result = (function.return_type.generic_types["R"]
+        result = (function.return_type if function.is_async else function.return_type.generic_types["R"]
                   if function.return_type.generic_name == "Generator" else function.inferred_return_type)
         none = NATIVE_ENVIRONMENT.builtins.search("NoneType")
         if result is not None and not is_return_type_compatible(result, none):
@@ -235,13 +238,27 @@ def finish(emitter):
     iterator_ops.store(emitter, state, runtime.STRICT, "i64", "0")
 
 
+def coroutine_kind(emitter, state):
+    kind = emitter.emit_value(f"load i64, ptr {state}")
+    return emitter.emit_value(f"icmp eq i64 {kind}, {runtime.COROUTINE}")
+
+
+def guard_control(emitter, state, valid, node, exception, message, *, coroutine_exception=None,
+                  coroutine_message=None):
+    coroutine = coroutine_kind(emitter, state)
+    ordinary = emitter.emit_value(f"xor i1 {coroutine}, true")
+    emitter.guard_exception(node, emitter.emit_value(f"or i1 {valid}, {ordinary}"),
+                            coroutine_exception or exception, coroutine_message or message)
+    emitter.guard_exception(node, emitter.emit_value(f"or i1 {valid}, {coroutine}"), exception, message)
+
+
 def close(emitter, state, value_type, node, *, discard=False):
     state = iterator_views.control(emitter, state)
     completion = emitter.emit_value("alloca ptr")
     emitter.emit_line(f"store ptr null, ptr {completion}")
     busy = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.STRICT)}")
-    emitter.guard_exception(node, emitter.emit_value(f"icmp eq i64 {busy}, 0"),
-                            "ValueError", "generator already executing")
+    guard_control(emitter, state, emitter.emit_value(f"icmp eq i64 {busy}, 0"), node,
+                  "ValueError", "generator already executing", coroutine_message="coroutine already executing")
     done, available, unstarted, started = (emitter.new_label("close." + name)
                                           for name in ("done", "available", "unstarted", "started"))
     exhausted = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.EXHAUSTED)}")
@@ -266,8 +283,8 @@ def close(emitter, state, value_type, node, *, discard=False):
                                 f"ptr {emitter.load_local('__heap')}, ptr {emitter.load_local('__exception')}, "
                                 f"ptr {state}, ptr null)")
     yielded = emitter.emit_value(f"icmp eq i64 {status}, 1")
-    emitter.guard_exception(node, emitter.emit_value(f"xor i1 {yielded}, true"),
-                            "RuntimeError", "generator ignored GeneratorExit")
+    guard_control(emitter, state, emitter.emit_value(f"xor i1 {yielded}, true"), node,
+                  "RuntimeError", "generator ignored GeneratorExit", coroutine_message="coroutine ignored GeneratorExit")
     stopped = emitter.emit_value(f"icmp eq i64 {status}, {runtime.CALLBACK_STOP}")
     returned, check_exit = emitter.new_label("close.returned"), emitter.new_label("close.exit")
     emitter.emit_line(f"br i1 {stopped}, label %{returned}, label %{check_exit}")
@@ -325,8 +342,13 @@ def throw(emitter, state, value_type, node):
     # but must not inject anything or alter the suspended generator on failure.
     payload = emitter.exception_payload(raised)
     busy = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.STRICT)}")
-    emitter.guard_exception(node, emitter.emit_value(f"icmp eq i64 {busy}, 0"),
-                            "ValueError", "generator already executing")
+    guard_control(emitter, state, emitter.emit_value(f"icmp eq i64 {busy}, 0"), node,
+                  "ValueError", "generator already executing", coroutine_message="coroutine already executing")
+    exhausted = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.EXHAUSTED)}")
+    available = emitter.emit_value(f"icmp eq i64 {exhausted}, 0")
+    ordinary = emitter.emit_value(f"xor i1 {coroutine_kind(emitter, state)}, true")
+    emitter.guard_exception(node, emitter.emit_value(f"or i1 {available}, {ordinary}"),
+                            "RuntimeError", "cannot reuse already awaited coroutine")
     emitter.activate_exception(raised, payload, include_frame=False)
     position = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.INDEX)}")
     exhausted = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.EXHAUSTED)}")
@@ -383,8 +405,11 @@ def receive(emitter, node):
     # A suspended frame stores the declared send layout, not the narrowed
     # receiver's view. Keep that source witness when adapting the loaded value.
     emitter.value_representations[wire_kind, value] = emitter.current_function.send_representation
-    _, value = emitter.coerce_value(wire_kind, value, kind, node, semantic=expected,
-                                    representation=analyzed_representation(node))
+    if emitter.current_function.is_async and not nullable.is_object(expected):
+        _, value = object_values.project(emitter, value, expected, node)
+    else:
+        _, value = emitter.coerce_value(wire_kind, value, kind, node, semantic=expected,
+                                        representation=analyzed_representation(node))
     emitter.emit_line(f"store {kind} {value}, ptr {result}")
     emitter.emit_line(f"br label %{done}")
     emitter.emit_line(f"{done}:")
@@ -396,10 +421,11 @@ def send(emitter, state, value_type, node):
     kind, value = emitter.expression(node.args[0])
     view, state = state, iterator_views.control(emitter, state)
     busy = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.STRICT)}")
-    emitter.guard_exception(node, emitter.emit_value(f"icmp eq i64 {busy}, 0"),
-                            "ValueError", "generator already executing")
+    guard_control(emitter, state, emitter.emit_value(f"icmp eq i64 {busy}, 0"), node,
+                  "ValueError", "generator already executing", coroutine_message="coroutine already executing")
     exhausted = emitter.emit_value(f"load i64, ptr {iterator_ops.slot(emitter, state, runtime.EXHAUSTED)}")
-    emitter.guard_exception(node, emitter.emit_value(f"icmp eq i64 {exhausted}, 0"), "StopIteration", "")
+    guard_control(emitter, state, emitter.emit_value(f"icmp eq i64 {exhausted}, 0"), node, "StopIteration", "",
+                  coroutine_exception="RuntimeError", coroutine_message="cannot reuse already awaited coroutine")
     if kind == "void":
         iterator_ops.store(emitter, state, runtime.STEP, "i64", "0")
         return iterator_ops.next_value(emitter, view, collection_ops.item_type(value_type), node)
@@ -408,7 +434,8 @@ def send(emitter, state, value_type, node):
     started = emitter.emit_value(f"icmp ne i64 {position}, 0")
     missing = emitter.emit_value(f"xor i1 {present}, true")
     valid = emitter.emit_value(f"or i1 {started}, {missing}")
-    emitter.guard_exception(node, valid, "TypeError", "can't send non-None value to a just-started generator")
+    guard_control(emitter, state, valid, node, "TypeError", "can't send non-None value to a just-started generator",
+                  coroutine_message="can't send non-None value to a just-started coroutine")
     yes, no, ready = (emitter.new_label("send." + name) for name in ("value", "none", "ready"))
     emitter.emit_line(f"br i1 {present}, label %{yes}, label %{no}")
     emitter.emit_line(f"{yes}:")
@@ -433,13 +460,14 @@ def send(emitter, state, value_type, node):
 
 
 def suspend(emitter, node):
-    member = collection_ops.item_type(emitter.current_function.return_type)
+    member = (NATIVE_ENVIRONMENT.builtins.search("object") if emitter.current_function.is_async else
+              collection_ops.item_type(emitter.current_function.return_type))
     kind, value = emitter.expression(node.value)
     collection_ops.require_matching_layout(analyzed_value_type(node.value), member, node)
     # Pointer storage alone cannot distinguish a concrete payload from an
     # erased object header. Supply both the yielded type and its representation:
     # a yielded generator handle can itself need a contravariant send adapter.
-    representation = emitter.current_function.return_representation
+    representation = None if emitter.current_function.is_async else emitter.current_function.return_representation
     kind, value = emitter.coerce_value(kind, value, emitter.value_type(member), node, semantic=member,
                                        representation=representation.item_representation if representation else None)
     output = emitter.load_local("__generator.output")
@@ -468,6 +496,6 @@ def failed(emitter):
     emitter.emit_line(f"br i1 {stopped}, label %{convert}, label %{done}")
     emitter.emit_line(f"{convert}:")
     emitter.activate_error(emitter.current_function.original_node, NATIVE_ENVIRONMENT.builtins.search("RuntimeError"),
-                           f"@{emitter.string_constant('generator raised StopIteration')}")
+                           f"@{emitter.string_constant('coroutine raised StopIteration' if emitter.current_function.is_async else 'generator raised StopIteration')}")
     emitter.emit_line(f"br label %{done}")
     emitter.emit_line(f"{done}:")

@@ -7,11 +7,12 @@ import struct
 import sys
 import textwrap
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, get_args, get_type_hints
 
 from pyjs.analysis.analyzer import (
     _ACTIVE_ENVIRONMENT,
+    AnalysisEnvironment,
     analyzed_iterable_protocol,
     analyzed_value_type,
     callable_value_type,
@@ -88,6 +89,7 @@ from . import (
     collection_ops,
     comparisons,
     comprehensions,
+    coroutines,
     dom_ops,
     dom_state,
     dom_types,
@@ -117,7 +119,7 @@ from . import (
     tagged,
     text_search,
 )
-from .analysis import NATIVE_ENVIRONMENT
+from .analysis import NATIVE_ENVIRONMENT, NativeLibraryMappings
 from .bindings import local_storage_binding
 from .errors import LLVMUnsupported
 from .runtime import dom as runtime_dom
@@ -193,7 +195,8 @@ class LLVMModule:
 class ModuleState:
     """Layouts and discovered requirements shared by emitted functions."""
 
-    def __init__(self, entry_point: str, target: str, direct: bool) -> None:
+    def __init__(self, entry_point: str, target: str, direct: bool,
+                 environment: AnalysisEnvironment = NATIVE_ENVIRONMENT) -> None:
         if target not in {"executable", "library"}:
             raise ValueError(f"unsupported LLVM output target {target!r}")
         if direct and target != "library":
@@ -201,6 +204,7 @@ class ModuleState:
         self.entry_point = entry_point
         self.target = target
         self.direct = direct
+        self.environment = environment
         self.functions: set[Function] = set()
         self.callables: dict[Function, bool] = {}
         self.callable_bindings = {}
@@ -364,12 +368,15 @@ class FunctionEmitter:
         # Analysis restores the caller's environment before emission. Structural
         # type relations used by adapters still need this target's builtins,
         # including during helper discovery and recursively nested conversions.
-        with _ACTIVE_ENVIRONMENT.set(NATIVE_ENVIRONMENT):
+        with _ACTIVE_ENVIRONMENT.set(self.module.environment):
             return self._emit(program)
 
     def _emit(self, program: ProgramIR) -> str:
         from . import models
 
+        if program.entry_point.is_async:
+            raise LLVMUnsupported("native entry points must be synchronous; drive an async function through __await__()",
+                                  program.entry_point.original_node)
         module = program.entry_point.container
         assert isinstance(module, Module)
         self.module.entry_module = module
@@ -643,8 +650,9 @@ class FunctionEmitter:
         output.extend(object_values.definitions(self))
         if any(function.py_func is native_builtins._dataclass_missing for function in program.functions):
             output.append("@pyjs.dataclass.missing = private constant { ptr } zeroinitializer")
-        if self.module.callables or self.module.lambdas or self.module.partials or self.module.uses_callable_adapters:
-            output.append("%pyjs.callable = type { ptr, ptr }")
+        # Invocation can be reached without constructing a function value,
+        # for example through an initially empty typed callback registry.
+        output.append("%pyjs.callable = type { ptr, ptr }")
         for function in functions:
             output.extend(FunctionEmitter(self.module).function(function))
             output.append("")
@@ -1219,6 +1227,16 @@ class FunctionEmitter:
                 raise LLVMUnsupported("LLVM cannot inherit browser-only declarations", value_type.annotation)
             if is_declaration(getattr(layout.base, "py_obj", None), "jvm"):
                 raise LLVMUnsupported("LLVM cannot inherit JVM-only declarations", value_type.annotation)
+            if collection_ops.builtin_name(layout.base) == "Awaitable":
+                # Awaitable values use managed coroutine state, not an
+                # application vtable. A subclass can otherwise reach the
+                # coroutine's __await__ lowering through an upcast.
+                error = LLVMUnsupported(
+                    "LLVM Awaitable subclasses are not supported; use a concrete class with __await__ instead",
+                    value_type.annotation,
+                )
+                error.add_class_context(value_type)
+                raise error
             if getattr(layout.base, "py_obj", None) is native_builtins._WebTokenList:
                 # A token view is one arena-owned DOM pointer, not an ordinary
                 # application layout. Inherited native accessors cannot read
@@ -1496,8 +1514,8 @@ class FunctionEmitter:
                 for parameter in calls.parameters(function)
             ),
             self.result_storage_type(
-                function.return_type,
-                function.return_numeric_format,
+                coroutines.result_type(function),
+                coroutines.result_numeric(function),
             ),
         )
 
@@ -1604,19 +1622,16 @@ class FunctionEmitter:
         self.generator_frame = self.module.generators.get(function) if resume else None
         factory = function in self.module.generators and not resume
         self.stack_allocations = []
-        if function.is_async:
-            raise LLVMUnsupported("LLVM async functions are not implemented")
-
         blocks = [block for block in function.ir.blocks if isinstance(block, Block)]
         if not blocks:
             raise LLVMUnsupported(f"LLVM function {function.name} has no blocks")
         if factory:
             blocks = generators.factory_blocks(function)
-        return_type = self.result_storage_type(function.return_type, None)
+        return_type = self.result_storage_type(coroutines.result_type(function), None)
         self.return_type = return_type
         self.return_storage_type = self.result_storage_type(
-            function.return_type,
-            function.return_numeric_format,
+            coroutines.result_type(function),
+            coroutines.result_numeric(function),
         )
         parameters = []
         if self.module.uses_arena:
@@ -2089,10 +2104,11 @@ class FunctionEmitter:
                     self.pop_gc_frame()
                     self.emit_line("ret void")
                     return
-                collection_ops.require_matching_layout(self.runtime_value_type(node.value), self.current_function.return_type, node.value)
+                result_semantic = coroutines.result_type(self.current_function)
+                collection_ops.require_matching_layout(self.runtime_value_type(node.value), result_semantic, node.value)
                 value_type, value = self.coerce_value(value_type, value, self.return_type, node.value,
-                                                      semantic=self.current_function.return_type,
-                                                      representation=self.current_function.return_representation)
+                                                      semantic=result_semantic,
+                                                      representation=coroutines.result_representation(self.current_function))
                 stored_type, stored = self.narrow_numeric(
                     value_type,
                     value,
@@ -3330,6 +3346,8 @@ class FunctionEmitter:
                     operation = comparisons.REFLECTED[operation]
                 return "i1", comparisons.object_compare(self, *operands, node,
                                                          operation=operation, identity=False)
+            if target.py_func is native_builtins._Awaitable.__await__:
+                return coroutines.acquire(self, receiver, semantic_receiver, node)
             if target.name == "__iter__" and (iterator_ops.is_iterator(semantic_receiver)
                     or iterable_views.is_view(semantic_receiver)
                     or (semantic_receiver.container.scope.is_builtins
@@ -5087,7 +5105,11 @@ class FunctionEmitter:
             else:
                 _, value = self.expression(node.iterable)
                 start, stop, step = self.range_values(value)
-            iterator = self.arena_allocate("pyjs.range.iterator")
+            # A resumed frame can outlive the arena of the host call that
+            # created its cursor. Keep its counter/limit/step on the managed
+            # heap just like reference-bearing sequence cursors.
+            iterator = (gc_layouts.allocate(self, ("i64", "i64", "i64"), layout="%pyjs.range.iterator")
+                        if self.generator_frame else self.arena_allocate("pyjs.range.iterator"))
             for index, value in enumerate((start, stop, step)):
                 field = self.new_temporary()
                 self.emit_line(
@@ -5907,7 +5929,7 @@ class FunctionEmitter:
             # SSR components may declare browser collaborators but leave them
             # absent. Storage does not grant a layout, constructor or host ABI.
             return "ptr"
-        if value_type.generic_name in {"dict", "list", "set", "frozenset", "tuple", "range", "slice", "Iterable", "Iterator", "Generator", *collection_ops.VIEWS}:
+        if value_type.generic_name in {"dict", "list", "set", "frozenset", "tuple", "range", "slice", "Iterable", "Iterator", "Generator", "Awaitable", *collection_ops.VIEWS}:
             return "ptr"
         if enum_ops.storage_name(value_type) in {"str", "bytes"}:
             return "ptr"
@@ -7738,8 +7760,9 @@ class FunctionEmitter:
 class LLVMEmitter(FunctionEmitter):
     """Module entry point; functions share only explicit module state."""
 
-    def __init__(self, entry_point: str, target: str = "executable", *, direct: bool = False) -> None:
-        super().__init__(ModuleState(entry_point, target, direct))
+    def __init__(self, entry_point: str, target: str = "executable", *, direct: bool = False,
+                 environment: AnalysisEnvironment = NATIVE_ENVIRONMENT) -> None:
+        super().__init__(ModuleState(entry_point, target, direct, environment))
 
 
 def transpile_llvm(
@@ -7751,6 +7774,7 @@ def transpile_llvm(
     target: str = "executable",
     direct: bool = False,
     wrap: bool | None = False,
+    library_mappings: NativeLibraryMappings | None = None,
 ) -> str:
     """Analyze source and emit an executable or shared-library LLVM module."""
     return transpile_llvm_module(
@@ -7761,6 +7785,7 @@ def transpile_llvm(
         target=target,
         direct=direct,
         wrap=wrap,
+        library_mappings=library_mappings,
     ).llvm_ir
 
 
@@ -7773,18 +7798,27 @@ def transpile_llvm_module(
     target: str = "executable",
     direct: bool = False,
     wrap: bool | None = False,
+    library_mappings: NativeLibraryMappings | None = None,
 ) -> LLVMModule:
-    """Analyze source and retain the generated library's typed ABI."""
+    """Analyze source and retain the generated library's typed ABI.
+
+    Host implementations may subclass NativeLibraryMappings and supply an
+    instance for this compilation. Unhandled imports should delegate to the
+    base resolver. The native semantic builtins and ABI stay shared; the
+    resolver is scoped to this analysis and emission, never installed globally.
+    """
     source = textwrap.dedent(source)
+    environment = (NATIVE_ENVIRONMENT if library_mappings is None else
+                   replace(NATIVE_ENVIRONMENT, library_mappings=library_mappings))
     with analyze_source(
         source,
         filename=filename,
         module_name=module_name,
         entry_point=entry_point,
         wrap=wrap,
-        environment=NATIVE_ENVIRONMENT,
+        environment=environment,
     ) as analysis:
-        emitter = LLVMEmitter(entry_point, target, direct=direct)
+        emitter = LLVMEmitter(entry_point, target, direct=direct, environment=environment)
         llvm_ir = emitter.emit(build_program_ir(analysis.entry_point))
         return LLVMModule(
             llvm_ir,

@@ -423,6 +423,7 @@ define { i64, i64 } @pyjs.fixed.int.divmod(i64 %left, i64 %right) {
   ret { i64, i64 } %result
 }
 
+%pyjs.callable = type { ptr, ptr }
 define i64 @fn.choose(i1 %arg.flag, i64 %arg.left, i64 %arg.right) {
 block.entry:
   %slot.flag = alloca i1
