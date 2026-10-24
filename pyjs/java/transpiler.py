@@ -620,7 +620,9 @@ class JVMEmitter:
             for function in functions
             if function.cls in self.classes and function.name != "__init__"
         }
+        self.virtual_methods = {}
         for (owner, name), implementation in methods.items():
+            self.virtual_methods.setdefault(name, []).append(implementation)
             base = self.classes[owner].base
             while base in self.classes:
                 inherited = methods.get((base, name))
@@ -2047,6 +2049,8 @@ class JVMEmitter:
                         f"JVM call to {target.name} has incompatible arguments",
                         node,
                     )
+                if not is_super:
+                    self.validate_virtual_arguments(node, target, semantic_receiver)
                 self.application_arguments(node, target, leading_argument)
                 reference = self.class_file.method_reference(
                     self.class_name(target.cls),
@@ -3363,7 +3367,8 @@ class JVMEmitter:
             ):
                 raise JVMUnsupported(
                     f"JVM constructor for {value_type.name} has incompatible arguments",
-                    node,
+                    node.call,
+                    fragment=self.current_function.source_fragment,
                 )
             reference = self.class_file.method_reference(
                 owner,
@@ -3477,6 +3482,37 @@ class JVMEmitter:
             and isinstance(node.operand.value, (int, float))
             and not isinstance(node.operand.value, bool)
         )
+
+    def validate_virtual_arguments(self, node, function, receiver):
+        if not node.keywords and len(node.args) == len(self.application_parameters(function)):
+            return
+        supplied = {id(value) for value in node.args}
+        supplied.update(id(keyword.value) for keyword in node.keywords)
+
+        def binding(method):
+            evaluation, ordered = self.bind_application_arguments(node, method)
+            values = dict(evaluation)
+            # Identical-looking calls can have different side effects. Compare
+            # supplied expression identities, not their printed source.
+            return tuple(("argument", id(values[name])) if id(values[name]) in supplied
+                         else ("default", ast.dump(values[name])) for name in ordered)
+
+        expected = binding(function)
+        for implementation in self.virtual_methods.get(function.name, ()):
+            if implementation is function or not self.compatible(
+                self.class_descriptor(implementation.cls), self.class_descriptor(receiver),
+            ):
+                continue
+            try:
+                matches = binding(implementation) == expected
+            except JVMUnsupported:
+                matches = False
+            if not matches:
+                raise JVMUnsupported(
+                    f"JVM virtual call to {function.name} has incompatible keyword or default "
+                    f"binding in override {implementation.cls.name}.{implementation.name}",
+                    node, fragment=self.current_function.source_fragment,
+                )
 
     def application_arguments(
         self,

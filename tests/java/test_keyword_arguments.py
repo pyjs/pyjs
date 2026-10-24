@@ -37,6 +37,58 @@ def main() -> int:
     )
 
 
+@pytest.mark.parametrize(("base", "child", "call"), [
+    ("first: int, second: int", "second: int, first: int", "first=1, second=2"),
+    ("first: int", "renamed: int", "first=1"),
+    ("a: int, first: int = 1", "a: int, first: int = 2", "a=0"),
+    ("first: int = 1", "first: int = 2", ""),
+    ("first: int, second: int", "second: int, first: int", "first=next_value(), second=next_value()"),
+])
+def test_virtual_positional_keyword_binding_is_checked_at_the_call(base, child, call):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''class Base:
+    def value(self, {base}) -> int:
+        return 1
+class Child(Base):
+    def value(self, {child}) -> int:
+        return 2
+def invoke(value: Base) -> int:
+    return value.value({call})
+def next_value() -> int:
+    return 1
+def main() -> int:
+    return invoke(Child())
+''', filename="dispatch.py")
+    assert str(caught.value) == (
+        "JVM virtual call to value has incompatible keyword or default binding in "
+        "override Child.value at line 8 while compiling dispatch.invoke"
+    )
+
+
+def test_positional_override_renames_and_explicit_defaults_remain_valid(tmp_path):
+    assert_text_matches_python('''
+class Base:
+    def value(self, first: int, second: int = 1) -> str:
+        return str(first) + str(second)
+class Child(Base):
+    def value(self, second: int, first: int = 2) -> str:
+        return super().value(first=first, second=second)
+class Other(Base):
+    def value(self, renamed: int, second: int = 3) -> str:
+        return "other"
+def invoke(value: Base) -> str:
+    return value.value(1, 2)
+def invoke_child(value: Child) -> str:
+    return value.value(second=4)
+def main() -> str:
+    other = Other()
+    assert invoke(other) == "other"
+    assert invoke(Child()) == "21"
+    assert invoke_child(Child()) == "24"
+    return Child().value(first=5, second=6)
+''', tmp_path)
+
+
 def test_keyword_only_calls_keep_defaults_evaluation_order_and_virtual_dispatch(tmp_path):
     assert_text_matches_python('''
 from pyjs import int8, float32

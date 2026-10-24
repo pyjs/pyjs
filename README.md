@@ -708,7 +708,10 @@ with `pyjs template`.
   must be immutable literals. Variadic parameters and keyword arguments to
   native Java declarations remain unsupported. Overrides with keyword-only
   parameters must preserve parameter names, kinds, order, and defaults;
-  incompatible runtime binding contracts are rejected.
+  incompatible runtime binding contracts are rejected. Other virtual calls
+  using keywords or omitted defaults are rejected when reachable overrides
+  would bind them differently. Fully supplied positional calls still permit
+  renamed parameters, and direct child-typed calls use the child's signature.
 - Plain Pydantic 2 models compile as typed JVM field containers, with
   keyword-only construction, inherited fields, scalar defaults, nested models,
   and supported JVM collection types. Compiler type checks apply; Pydantic

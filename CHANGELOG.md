@@ -30,6 +30,10 @@
   defaults, inherited methods, and constructors, without reordering argument
   evaluation. Native Java calls continue to require positional arguments.
   Keyword-only overrides with incompatible binding contracts are rejected.
+  Virtual calls using ordinary keywords or omitted defaults also reject
+  incompatible override binding instead of silently swapping arguments or
+  choosing the wrong default. Fully supplied positional calls retain support
+  for renamed override parameters.
 - JVM and Android clients can read schema-directed JSON tokens and quote JSON
   strings without an additional runtime dependency. Unknown values are
   validated with bounded nesting. Typed number readers reject signed-integer
