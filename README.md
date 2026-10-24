@@ -517,7 +517,9 @@ finally:
 
 Acquisition is FIFO and non-reentrant. The browser implementation does not
 provide task cancellation or cross-thread synchronization; host-side tests use
-an `asyncio.Lock` with the same acquire/release interface.
+an `asyncio.Lock` with the same acquire/release interface. Create host locks
+per event loop; do not reuse a contended lock across separate `asyncio.run()`
+calls.
 
 ### Metaprogramming and compiler extensions
 
@@ -666,6 +668,14 @@ with `pyjs template`.
 - Android uses direct JVM bytecode and native framework/AndroidX APIs.
   Calculator and Notes demonstrate the supported subset; Notes editor parity
   and broader platform coverage remain in progress.
+- `AndroidJVMApplication.permissions` explicitly requests manifest permissions
+  such as `("android.permission.INTERNET",)`. No permissions are added by
+  default. `network_security_config="@xml/network_policy"` links an app-owned
+  XML resource from `resources`; Android 7 and newer apply that policy instead
+  of the manifest's default `usesCleartextTraffic="false"`. For local HTTP
+  testing, allow only the emulator host `10.0.2.2` in a development resource,
+  not all hosts. Supply a production policy when building for deployment.
+  See the [Android network-security guide][android-network-security].
 - JVM exception handling supports ordered handlers, reraising, assertions,
   and `finally`, including cleanup across returns, breaks and continues.
   Builtin exceptions can be constructed, stored in fields or collections,
@@ -683,13 +693,34 @@ with `pyjs template`.
   Controlled Python operations raise Python categories for invalid indexing,
   division by zero, negative shifts, invalid integer parsing and storage
   limits; arbitrary Java API failures are not relabeled.
-- JVM strings support code-point iteration, `ord`, signed `hex`, `replace`
+- JVM strings support code-point iteration, `ord`, `chr`, `hex`, `replace`
   with optional positional or keyword `count`, and slices with a literal unit
   step or omitted step. Dynamic or non-unit steps remain unsupported.
   These operations retain the UTF-16 surrogate limitation described below.
+  String ordering compares Unicode code points, not UTF-16 units. Chained
+  comparisons short-circuit and evaluate each reached operand once, including
+  nested chains and application comparison methods.
 - JVM Python property getters support inherited virtual dispatch and retain
   their declared numeric representation. This does not add property setters
   or properties overriding ordinary instance fields.
+- JVM application functions, methods, and constructors accept keyword and
+  keyword-only arguments while preserving source evaluation order. Defaults
+  must be immutable literals. Variadic parameters and keyword arguments to
+  native Java declarations remain unsupported. Overrides with keyword-only
+  parameters must preserve parameter names, kinds, order, and defaults;
+  incompatible runtime binding contracts are rejected. Other virtual calls
+  using keywords or omitted defaults are rejected when reachable overrides
+  would bind them differently. Fully supplied positional calls still permit
+  renamed parameters, and direct child-typed calls use the child's signature.
+- Plain Pydantic 2 models compile as typed JVM field containers, with
+  keyword-only construction, inherited fields, scalar defaults, nested models,
+  and supported JVM collection types. Compiler type checks apply; Pydantic
+  coercion and `Field` constraints remain server-side, not JVM validators.
+  Custom validators/serializers, initialization hooks, aliases, generic models,
+  mutable defaults/factories, frozen fields, and dynamic extras are rejected.
+  Field access is supported; model equality, dumping, and JSON validation are
+  not yet implemented. This is groundwork for typed API proxies, not parity
+  with Pydantic's host runtime.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
@@ -700,8 +731,20 @@ with `pyjs template`.
   explicit worker, never Android's UI thread. This is a transport foundation,
   not yet generated JVM API proxies, Pydantic decoding, session management,
   cancellation, or lifecycle-aware delivery. Native I/O exceptions propagate.
+- `pyjs.java.json.JSONReader` provides typed JSON tokens for schema-directed
+  decoding without building an untyped object tree. Call `finish()` after
+  reading the root value. `skip()` validates unknown values with a default
+  nesting limit of 64 containers; number tokens keep their original spelling
+  for the schema decoder to check range and precision. Diagnostic positions
+  count UTF-16 units. `quote()` produces an ASCII-escaped JSON string.
+  `integer()` requires a signed 64-bit integer token; `floating()` accepts
+  finite binary64 values, preserving negative zero and ordinary underflow.
+  Both reject overflow instead of silently wrapping or producing infinity.
+  These helpers do not yet implement Pydantic decoding or typed API proxies.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
-  values with reference keys. Scalar `get` requires a matching default;
+  values with reference keys. Iteration and live, reusable key views preserve
+  insertion order. Updating values does not invalidate an iterator; changing
+  its key set raises `RuntimeError`. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
@@ -713,6 +756,18 @@ with `pyjs template`.
   that distinction. Isolated surrogates are escaped.
   Other reference-key lookups are catchable but currently use the generic
   message `key not found`; their original keys remain available through `.args`.
+- JVM nullable integers, floats, and Booleans use boxed storage in parameters,
+  returns, fields, and collections. `None` stays distinct from zero; equality
+  keeps integer precision, including above `2**53`. Truth tests treat `None`
+  and zero as false; NaN is true, as in Python. Narrow with `is not None`
+  before arithmetic or formatting.
+  Represented values retain their wrapping and rounding rules. Mixed numeric
+  unions such as `int | float | None` and scalar `isinstance` remain unsupported.
+  Numeric identity checks only support comparison against `None`; nullable
+  numeric dictionary keys remain unsupported.
+  Explicit casts from present nullable numbers use the scalar ABI without
+  losing integer precision. As with other static casts, callers must ensure
+  the value is not `None` before casting to a non-null type.
 - JVM list membership supports matching integer or Boolean items; strings,
   floats and mixed item domains remain explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,
@@ -873,3 +928,5 @@ PyJS is distributed under the [BSD 3-Clause License](LICENSE).
 [python-badge]: https://img.shields.io/pypi/pyversions/pyjs.svg
 [license]: LICENSE
 [license-badge]: https://img.shields.io/pypi/l/pyjs.svg
+[android-network-security]:
+  https://developer.android.com/privacy-and-security/security-config

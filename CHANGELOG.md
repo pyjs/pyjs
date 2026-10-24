@@ -2,7 +2,45 @@
 
 ## Unreleased
 
+- JVM nullable integers and floats retain `None` through calls, fields, and
+  collections, with exact numeric equality and Python-compatible truth tests.
+  Ordinary scalar method signatures keep their primitive ABI.
+
+- Android application packages can declare permissions and reference an
+  app-owned network-security XML resource. Defaults still request no network
+  access and retain the existing cleartext policy.
+
+- Plain Pydantic models can be constructed as typed JVM field containers with
+  inherited defaults and nested values. Server validation stays server-side;
+  unsupported model hooks and configurations receive explicit diagnostics.
+  Redeclared inherited fields share their original storage, including reads
+  and writes through base-typed references; incompatible redeclarations fail
+  compilation instead of creating shadow fields.
+
+- String `Literal` values retain ordinary string storage and operations in
+  JVM code, including containers and iteration. Native iteration also accepts
+  string literals without losing their declared value constraints.
+  Aliased `Literal` imports now work in local annotations across backends.
+- JVM dictionary iteration preserves insertion order and supports live key
+  views. Key-set changes during iteration raise a Python `RuntimeError`.
+
 ### Changed
+
+- JVM application calls support keyword and keyword-only arguments, including
+  defaults, inherited methods, and constructors, without reordering argument
+  evaluation. Native Java calls continue to require positional arguments.
+  Keyword-only overrides with incompatible binding contracts are rejected.
+  Virtual calls using ordinary keywords or omitted defaults also reject
+  incompatible override binding instead of silently swapping arguments or
+  choosing the wrong default. Fully supplied positional calls retain support
+  for renamed override parameters.
+- JVM and Android clients can read schema-directed JSON tokens and quote JSON
+  strings without an additional runtime dependency. Unknown values are
+  validated with bounded nesting. Typed number readers reject signed-integer
+  and finite-double overflow; typed API proxies remain future work.
+- JVM chained comparisons retain Python short-circuiting and single operand
+  evaluation. String ordering compares Unicode code points, and `chr()`
+  supports the full Unicode range with Python-compatible range errors.
 
 - JVM API transport can POST UTF-8 JSON through the existing client transport
   interface, retaining error bodies with bounded response size and explicit

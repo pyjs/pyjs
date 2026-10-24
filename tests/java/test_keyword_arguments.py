@@ -1,0 +1,193 @@
+import pytest
+
+from pyjs.analysis.diagnostics import CompilationError
+from pyjs.java import JVMUnsupported, transpile_jvm
+from tests.backend_semantics import KEYWORD_ARGUMENT_CONTRACT
+from tests.java.test_context_managers import assert_text_matches_python
+from tests.java.test_exceptions import assert_matches_python
+
+
+def test_shared_keyword_argument_contract(tmp_path):
+    assert_matches_python(KEYWORD_ARGUMENT_CONTRACT.source, tmp_path)
+
+
+@pytest.mark.parametrize(("base", "child", "call"), [
+    ("*, first: int, second: int", "*, second: int, first: int", "first=1, second=2"),
+    ("*, first: int = 1", "*, first: int = 2", ""),
+    ("*, first: int = 1", "first: int = 1", ""),
+    ("*, first: int", "*, renamed: int", "first=1"),
+    ("first: int = 1, *, second: int = 0", "first: int = 2, *, second: int = 0", ""),
+])
+def test_incompatible_keyword_override_contracts_are_located(base, child, call):
+    with pytest.raises(JVMUnsupported, match="must preserve parameter names, kinds, order, and defaults") as caught:
+        transpile_jvm(f'''class Base:
+    def value(self, {base}) -> int:
+        return 1
+class Child(Base):
+    def value(self, {child}) -> int:
+        return 2
+def invoke(value: Base) -> int:
+    return value.value({call})
+def main() -> int:
+    return invoke(Child())
+''', filename="dispatch.py")
+    assert str(caught.value) == (
+        "JVM override Child.value must preserve parameter names, kinds, order, "
+        "and defaults for keyword-only dispatch at line 5"
+    )
+
+
+@pytest.mark.parametrize(("base", "child", "call"), [
+    ("first: int, second: int", "second: int, first: int", "first=1, second=2"),
+    ("first: int", "renamed: int", "first=1"),
+    ("a: int, first: int = 1", "a: int, first: int = 2", "a=0"),
+    ("first: int = 1", "first: int = 2", ""),
+    ("first: int, second: int", "second: int, first: int", "first=next_value(), second=next_value()"),
+])
+def test_virtual_positional_keyword_binding_is_checked_at_the_call(base, child, call):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''class Base:
+    def value(self, {base}) -> int:
+        return 1
+class Child(Base):
+    def value(self, {child}) -> int:
+        return 2
+def invoke(value: Base) -> int:
+    return value.value({call})
+def next_value() -> int:
+    return 1
+def main() -> int:
+    return invoke(Child())
+''', filename="dispatch.py")
+    assert str(caught.value) == (
+        "JVM virtual call to value has incompatible keyword or default binding in "
+        "override Child.value at line 8 while compiling dispatch.invoke"
+    )
+
+
+def test_positional_override_renames_and_explicit_defaults_remain_valid(tmp_path):
+    assert_text_matches_python('''
+class Base:
+    def value(self, first: int, second: int = 1) -> str:
+        return str(first) + str(second)
+class Child(Base):
+    def value(self, second: int, first: int = 2) -> str:
+        return super().value(first=first, second=second)
+class Other(Base):
+    def value(self, renamed: int, second: int = 3) -> str:
+        return "other"
+def invoke(value: Base) -> str:
+    return value.value(1, 2)
+def invoke_child(value: Child) -> str:
+    return value.value(second=4)
+def main() -> str:
+    other = Other()
+    assert invoke(other) == "other"
+    assert invoke(Child()) == "21"
+    assert invoke_child(Child()) == "24"
+    return Child().value(first=5, second=6)
+''', tmp_path)
+
+
+def test_keyword_only_calls_keep_defaults_evaluation_order_and_virtual_dispatch(tmp_path):
+    assert_text_matches_python('''
+from pyjs import int8, float32
+class Base:
+    def __init__(self, *, title: str, count: int = 1):
+        self.title = title
+        self.count = count
+    def label(self, prefix: str = "", *, suffix: str, repeat: int = 1) -> str:
+        return prefix + self.title + suffix * repeat
+class Child(Base):
+    def label(self, prefix: str = "", *, suffix: str, repeat: int = 1) -> str:
+        return super().label(prefix, suffix=suffix, repeat=repeat) + "child"
+def record(events: list[str], value: str) -> str:
+    events.append(value)
+    return value
+def receiver(events: list[str]) -> Base:
+    events.append("receiver")
+    return Child(count=2, title="note")
+def text(first: str, /, second: str = "default", *, third: str, fourth: str = "!") -> str:
+    return first + second + third + fourth
+def represented(*, number: int8, fraction: float32) -> float32:
+    assert number == int8(127)
+    return fraction
+def main() -> str:
+    events: list[str] = []
+    value = text(record(events, "first"), third=record(events, "third"), second=record(events, "second"))
+    assert value == "firstsecondthird!"
+    assert "|".join(events) == "first|third|second"
+    assert text("a", third="c") == "adefaultc!"
+    events = []
+    value = receiver(events).label(suffix=record(events, "."), prefix=record(events, ">"))
+    assert value == ">note.child"
+    assert "|".join(events) == "receiver|.|>"
+    assert Base(title="default").count == 1
+    assert represented(number=int8(127), fraction=float32(1.25)) == float32(1.25)
+    assert represented(fraction=float32(2.5), number=int8(127)) == float32(2.5)
+    return "matched"
+''', tmp_path)
+
+
+@pytest.mark.parametrize(("call", "message", "help_text"), [
+    ("operation(1, 2)", "operation() received too many positional arguments",
+     "Pass at most 1 positional arguments."),
+    ("operation(1)", "operation() is missing required argument(s): 'second'",
+     "Pass every required argument."),
+    ("operation(1, second=2, unknown=3)", "operation() got an unexpected keyword argument 'unknown'",
+     "Use a parameter name from the function signature."),
+    ("operation(first=1, second=2)", "operation() parameter 'first' is positional-only",
+     "Pass 'first' as a positional argument."),
+])
+def test_invalid_keyword_call_shapes_keep_analysis_diagnostics(call, message, help_text):
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm(f'''def operation(first: int, /, *, second: int) -> int:
+    return first + second
+def main() -> int:
+    return {call}
+''', filename="keywords.py")
+    assert caught.value.filename == "keywords.py"
+    assert caught.value.lineno == 4
+    assert caught.value.diagnostic.code == "PYJS1104"
+    assert caught.value.diagnostic.message == message
+    assert caught.value.diagnostic.help == (help_text,)
+
+
+def test_keyword_argument_failure_stops_later_values(tmp_path):
+    assert_text_matches_python('''
+def record(events: list[str], value: str, fail: bool = False) -> str:
+    events.append(value)
+    if fail:
+        raise ValueError(value)
+    return value
+def operation(*, first: str, second: str) -> str:
+    return first + second
+def main() -> str:
+    events: list[str] = []
+    try:
+        operation(second=record(events, "second", fail=True), first=record(events, "first"))
+    except ValueError as error:
+        assert str(error) == "second"
+    else:
+        return "missing failure"
+    return "|".join(events)
+''', tmp_path)
+
+
+def test_positional_only_methods_nullable_defaults_and_immediate_async_calls(tmp_path):
+    assert_text_matches_python('''
+from pyjs.java import run_sync
+class Options:
+    def __init__(self, name: str, /, *, enabled: bool = True, comment: str | None = None):
+        self.name = name
+        self.enabled = enabled
+        self.comment = comment
+    async def label(self, prefix: str, /, *, suffix: str = "!") -> str:
+        return prefix + self.name + suffix
+def main() -> str:
+    first = Options("one")
+    second = Options("two", comment="note", enabled=False)
+    assert first.enabled and first.comment is None
+    assert not second.enabled and second.comment == "note"
+    return run_sync(second.label(">", suffix="."))
+''', tmp_path)

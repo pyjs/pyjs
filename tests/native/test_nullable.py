@@ -8,6 +8,7 @@ from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM, LLVMRuntimeError
 from tests.backend_semantics import (
     OPTIONAL_BRANCH_CONTRACT,
+    OPTIONAL_FLOAT_CONTRACT,
     OPTIONAL_INTEGER_CONTRACT,
     OPTIONAL_OBJECT_CONTRACT,
     OPTIONAL_STRING_CONTRACT,
@@ -50,6 +51,12 @@ def test_shared_optional_integer_contract(optimize):
     result = LLVM().assert_matches_python(OPTIONAL_INTEGER_CONTRACT.source, optimize=optimize,
                                           sanitizers=("address", "undefined"))
     assert result.native.returncode == 0, OPTIONAL_INTEGER_CONTRACT.failure(result.native.returncode)
+
+
+def test_shared_optional_float_contract(tmp_path):
+    result = LLVM().assert_matches_python(OPTIONAL_FLOAT_CONTRACT.source, directory=tmp_path,
+                                          sanitizers=("address", "undefined"))
+    assert result.native.returncode == 0, OPTIONAL_FLOAT_CONTRACT.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

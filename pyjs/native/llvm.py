@@ -1991,7 +1991,7 @@ class FunctionEmitter:
         return result
 
     def iterator_descriptor(self, node: IteratorCreate):
-        value_type = analyzed_value_type(node.iterable)
+        value_type = tagged.runtime_type(analyzed_value_type(node.iterable))
         if not isinstance(value_type, Class):
             raise LLVMUnsupported("LLVM iteration requires a concrete iterable type; narrow unions before use", node)
         if (iterator_ops.is_iterator(value_type) or iterable_views.is_view(value_type) or getattr(value_type, "tuple_variadic", False)

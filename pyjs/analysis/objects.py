@@ -725,7 +725,9 @@ class Object:
             if inspect.isbuiltin(py_obj):
                 continue
 
-            if isinstance(container, Module) and (py_obj is Callable or py_obj is typing.Callable):
+            if isinstance(container, Module) and (
+                py_obj is Callable or py_obj is typing.Callable or py_obj is typing.Literal
+            ):
                 # These are annotation constructors, not reachable Python
                 # implementations of collections.abc's subscription machinery.
                 container.add(TypeAliasValue(name, py_obj, container.scope, container))
@@ -2094,6 +2096,11 @@ class Class(Object):
             source_overrides=source_overrides,
             skip_names=skip_names,
         )
+        if info is not None and info.initializer is not None:
+            Function.from_py_func(
+                self.py_cls.__init__, self, emitted_name="__init__",
+                source_override=info.initializer, load_overloads=False,
+            )
         for name, initializer in self.field_value_nodes.items():
             field = self.find_attrs(name, search_bases=False)
             if not isinstance(field, Instance) or field.static_value is None:

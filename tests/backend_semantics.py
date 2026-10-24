@@ -3116,6 +3116,7 @@ INHERITED_FIELD_ASSIGNMENT_CONTRACT = _contract(
             return -1
     @js
     class Child(Parent):
+        saved: Box | None
         def put(self, value: Box):
             self.saved = value
     @js
@@ -3396,6 +3397,145 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+DICTIONARY_KEYS_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def ordered_mapping(events: list[int]) -> dict[str, int]:
+        events.append(1)
+        return {"beta": 2, "alpha": 1, "last": 3}
+    ''',
+    "dictionary_keys_result",
+    '''
+    events: list[int] = []
+    order = ""
+    for key in ordered_mapping(events):
+        order += key + ";"
+    values = {"beta": 2, "alpha": 1}
+    view = values.keys()
+    values["last"] = 3
+    values["alpha"] = 7
+    repeated = ""
+    for key in view:
+        repeated += key + str(values[key])
+    for key in values:
+        repeated += key
+    empty: dict[str, int] = {}
+    for key in empty:
+        order = "unexpected"
+    else:
+        order += "empty"
+    for key in values:
+        break
+    else:
+        order = "unexpected else"
+    ''',
+    (
+        ("iteration preserves insertion order and loop else", "order != 'beta;alpha;last;empty'"),
+        ("mapping expression is evaluated once", "len(events) != 1"),
+        ("key views remain live and dictionaries can be iterated again", "repeated != 'beta2alpha7last3betaalphalast'"),
+    ),
+)
+
+
+LITERAL_STRING_CONTRACT = _contract(
+    '''
+    from typing import Literal
+    from typing import Literal as Choice
+    from pyjs import js
+
+    @js
+    class LiteralState:
+        def __init__(self, kind: Literal["text", "list"] = "text"):
+            self.kind = kind
+
+    @js
+    def literal_identity(value: Literal["text", "list"]) -> Literal["text", "list"]:
+        return value
+    ''',
+    "literal_string_result",
+    '''
+    state = LiteralState()
+    value = literal_identity(state.kind)
+    letters = ""
+    for letter in value:
+        letters += letter
+    items: list[Choice["text", "list"]] = ["text", "list"]
+    ''',
+    (
+        ("literal fields retain their default", "value != 'text'"),
+        ("literal string length uses its base representation", "len(value) != 4"),
+        ("literal strings support slicing", "value[:2] != 'te'"),
+        ("literal strings support iteration", "letters != 'text'"),
+        ("literal container items keep their string representation", "items[1] != 'list'"),
+        ("literal comparisons use string ordering", "not (items[1] < value)"),
+    ),
+)
+
+
+KEYWORD_ARGUMENT_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def keyword_record(events: list[int], value: int) -> int:
+        events.append(value)
+        return value
+
+    @js
+    def keyword_operation(first: int, /, second: int = 5, *, third: int, fourth: int = 7) -> int:
+        return first * 1000 + second * 100 + third * 10 + fourth
+    ''',
+    "keyword_argument_result",
+    '''
+    events: list[int] = []
+    result = keyword_operation(keyword_record(events, 1),
+                               third=keyword_record(events, 3),
+                               second=keyword_record(events, 2))
+    defaults = keyword_operation(1, third=3)
+    ''',
+    (
+        ("keywords bind by name", "result != 1237"),
+        ("both kinds of defaults are retained", "defaults != 1537"),
+        ("arguments are evaluated once", "len(events) != 3"),
+        ("argument evaluation follows source order", "events[0] != 1 or events[1] != 3 or events[2] != 2"),
+    ),
+)
+
+
+CHAINED_COMPARISON_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def record_comparison(events: list[int], value: int) -> int:
+        events.append(value)
+        return value
+    ''',
+    "chained_comparison_result",
+    '''
+    failed_events: list[int] = []
+    failed = (record_comparison(failed_events, 3)
+              < record_comparison(failed_events, 2)
+              < record_comparison(failed_events, 1))
+    passed_events: list[int] = []
+    passed = (record_comparison(passed_events, 0)
+              < record_comparison(passed_events, 1)
+              <= record_comparison(passed_events, 1)
+              < record_comparison(passed_events, 2))
+    ''',
+    (
+        ("failed chain returns false", "failed"),
+        ("failed chain skips later operands", "len(failed_events) != 2"),
+        ("operands retain source order", "failed_events[0] != 3 or failed_events[1] != 2"),
+        ("successful chain returns true", "not passed"),
+        ("middle operands are evaluated once", "len(passed_events) != 4"),
+        ("longer chain preserves order", "passed_events[0] != 0 or passed_events[3] != 2"),
+    ),
+)
+
+
 PROPERTY_GETTER_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -3567,6 +3707,11 @@ UNICODE_TEXT_CONTRACT = _contract(
         ("empty prefix matches", 'not value.startswith("")'),
         ("concatenation preserves equality", 'value != "é" + "😀é\\0"'),
         ("Unicode lowercase", '"ÉΣΑ".lower() != "éσα"'),
+        ("ordering compares code points rather than UTF-16 units", 'not "\\ue000" < "😀"'),
+        ("ordering preserves matching prefixes", 'not "x\\ue000" <= "x😀"'),
+        ("reverse ordering uses the same code-point domain", 'not "😀" > "\\ue000"'),
+        ("equal strings satisfy inclusive ordering", 'not value >= value or not value <= value'),
+        ("empty and shorter prefixes sort first", 'not "" < "a" or not "a" < "ab"'),
     ),
 )
 
@@ -5271,6 +5416,55 @@ UNION_NONE_GUARD_CONTRACT = _contract(
         ("is not None excludes None in the true branch", 'describe_present("snow") != "SNOW"'),
         ("nested concrete narrowing preserves list", 'describe_present(["a", "b", "c", "d"]) != "5"'),
         ("false is-not-None branch remains reachable", 'describe_present(None) != "absent"'),
+    ),
+)
+
+
+OPTIONAL_FLOAT_CONTRACT = _contract(
+    '''
+    from pyjs import js, float32
+    from typing import cast
+
+    @js
+    def optional_numeric_cast(value: float | None, number: int | None, flag: bool | None) -> bool:
+        return cast(float, value) == 1.25 and cast(int, number) == 42 and cast(bool, flag)
+
+    @js
+    def optional_float(value: float | None) -> float | None:
+        return value
+
+    @js
+    def optional_float_truth(value: float | None) -> bool:
+        return bool(value)
+
+    @js
+    def optional_float_equal(left: float | None, right: float | None) -> bool:
+        return left == right
+
+    @js
+    def optional_float_increment(value: float32 | None) -> float32 | None:
+        if value is None:
+            return None
+        return value + float32(1.0)
+    ''',
+    "optional_float_contract",
+    '''
+    values: list[float | None] = [None, -0.0, 1.25]
+    total = 0.0
+    for value in values:
+        if value is not None:
+            total += value
+    ''',
+    (
+        ("None is distinct from floating zero", "optional_float(None) is not None or optional_float(0.0) is None"),
+        ("nullable floating truth retains None and zero", "optional_float_truth(None) or optional_float_truth(-0.0)"),
+        ("nonzero nullable floats are true", "not optional_float_truth(1.25)"),
+        ("nullable equality keeps zero distinct from None", "optional_float_equal(None, 0.0) or optional_float_equal(0.0, None)"),
+        ("floating signed zeros compare equal", "not optional_float_equal(-0.0, 0.0)"),
+        ("optional collection reads narrow before arithmetic", "total != 1.25"),
+        ("binary32 optional results retain rounding", "optional_float_increment(float32(16777216.0)) != float32(16777216.0)"),
+        ("represented floating absence stays None", "optional_float_increment(None) is not None"),
+        ("explicit non-null scalar casts retain their values", "not optional_numeric_cast(1.25, 42, True)"),
     ),
 )
 

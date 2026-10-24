@@ -37,10 +37,12 @@ from pyjs.analysis.objects import (
     Await as AnalyzedAwait,
 )
 from pyjs.analysis.objects import (
+    ChainedCompare,
     Class,
     Function,
     GenericClass,
     Instance,
+    LiteralClass,
     Module,
     RecursiveTypeAlias,
     StaticCast,
@@ -59,7 +61,7 @@ from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
 from .analysis import JVM_ENVIRONMENT
-from .boxed import box, emit_equality, emit_key_guard
+from .boxed import SCALAR_BOXES, box, emit_equality, emit_key_guard, unbox_scalar
 from .classfile import (
     Annotation,
     Bytecode,
@@ -70,6 +72,7 @@ from .classfile import (
     Method,
 )
 from .diagnostics import JVMUnsupported as JVMUnsupported
+from .dictionaries import emit_iterator_next
 from .exception_reporting import emit_report_runtime
 from .exceptions import (
     ARGS_GETTER,
@@ -396,6 +399,18 @@ class JVMEmitter:
             class_file = self.class_files[self.class_name(layout.value_type)]
             class_file.source_file = self.module_source_file(layout.value_type.container)
             for field in layout.fields:
+                owner, inherited = self.managed_field(layout, field.name)
+                if owner is not layout.value_type:
+                    if (not same_analyzer_type(field.value_type, inherited.value_type)
+                            or field.representation != inherited.representation):
+                        raise JVMUnsupported(
+                            f"JVM field {layout.value_type.name}.{field.name} must preserve "
+                            "the inherited field type and representation",
+                            layout.value_type.field_declaration_nodes.get(
+                                field.name, layout.value_type.annotation,
+                            ),
+                        )
+                    continue
                 class_file.add_field(
                     Field(
                         0x0001,
@@ -541,7 +556,7 @@ class JVMEmitter:
                 raise JVMUnsupported(
                     f"JVM test {test.module_name}.{test.function_name} was not reached"
                 ) from None
-            if target.params or self.function_return_type(target) != "V":
+            if self.application_parameters(target) or self.function_return_type(target) != "V":
                 raise JVMUnsupported(
                     f"JVM test {test.module_name}.{test.function_name} must take no "
                     "arguments and return None"
@@ -605,7 +620,9 @@ class JVMEmitter:
             for function in functions
             if function.cls in self.classes and function.name != "__init__"
         }
+        self.virtual_methods = {}
         for (owner, name), implementation in methods.items():
+            self.virtual_methods.setdefault(name, []).append(implementation)
             base = self.classes[owner].base
             while base in self.classes:
                 inherited = methods.get((base, name))
@@ -614,6 +631,16 @@ class JVMEmitter:
                         raise JVMUnsupported(
                             f"JVM override {owner.name}.{name} must preserve the "
                             "base method signature"
+                        )
+                    if (implementation.kwonlyargs or inherited.kwonlyargs) and (
+                        self.keyword_dispatch_contract(implementation)
+                        != self.keyword_dispatch_contract(inherited)
+                    ):
+                        raise JVMUnsupported(
+                            f"JVM override {owner.name}.{name} must preserve parameter "
+                            "names, kinds, order, and defaults for keyword-only dispatch",
+                            implementation.original_node,
+                            fragment=implementation.source_fragment,
                         )
                     break
                 base = self.classes[base].base
@@ -654,16 +681,38 @@ class JVMEmitter:
                         f"{declaration.name} must preserve the interface signature"
                     )
 
+    @staticmethod
+    def keyword_dispatch_contract(function):
+        return (
+            tuple(parameter.arg for parameter in function.params),
+            function.posonly_count,
+            tuple(parameter.arg for parameter in function.kwonlyargs),
+            tuple(ast.dump(default) for default in function.defaults),
+            tuple(ast.dump(default) if default is not None else None
+                  for default in function.kw_defaults),
+        )
+
+    def managed_field(self, layout, name):
+        result = (None, None)
+        while layout is not None:
+            for field in layout.fields:
+                if field.name == name:
+                    result = (layout.value_type, field)
+                    break
+            layout = self.classes.get(layout.base)
+        return result
+
     def function(self, function: Function) -> Method:
         self.current_function = function
-        if function.vararg or function.kwarg or function.kwonlyargs:
+        if function.vararg or function.kwarg:
             raise JVMUnsupported(
-                "JVM functions do not yet support variadic or keyword-only parameters"
+                "JVM functions do not yet support variadic parameters"
             )
         unsupported_default = next(
             (
                 default
-                for default in function.defaults
+                for default in [*function.defaults, *function.kw_defaults]
+                if default is not None
                 if not self.is_immutable_default(default)
             ),
             None,
@@ -682,7 +731,7 @@ class JVMEmitter:
                 _numeric_descriptor(analyzed_numeric_format(parameter))
                 or self.parameter_type(parameter),
             )
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
         ]
         if function.cls in self.classes:
             parameters.insert(0, ("self", self.class_descriptor(function.cls)))
@@ -755,7 +804,7 @@ class JVMEmitter:
         self.slot_types = {}
         self.slot_numeric_formats = {
             parameter.arg: analyzed_numeric_format(parameter)
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
             if analyzed_numeric_format(parameter) is not None
         }
         self.object_argument_slots = {}
@@ -879,6 +928,8 @@ class JVMEmitter:
                     else:
                         add(f"{statement.name}.source", descriptor[2])
                         add(f"{statement.name}.index", "J")
+                        if descriptor[0] == "keys":
+                            add(f"{statement.name}.view", "Ljava/util/Set;")
                 elif isinstance(statement, IteratorNext):
                     descriptor = self.iterators[statement.iterator]
                     storage_format = self.local_numeric_format(statement.target)
@@ -1146,12 +1197,13 @@ class JVMEmitter:
             # assigned, returned, or compared, including __enter__ results.
             self.code.emit(0x01)
             return "N"
-        if (
-            result == "Ljava/lang/Boolean;"
-            and getattr(analyzed_value_type(node), "generic_name", None) == "bool"
-        ):
-            self.invoke_boolean_value()
-            return "Z"
+        if result not in SCALAR_BOXES.values():
+            return result
+        scalar = {"int": "J", "float": "D", "bool": "Z"}.get(
+            getattr(analyzed_value_type(node), "generic_name", None),
+        )
+        if scalar is not None and result == SCALAR_BOXES[scalar]:
+            return unbox_scalar(self.code, self.class_file, result)
         return result
 
     def invoke_boolean_value(self) -> None:
@@ -1166,7 +1218,36 @@ class JVMEmitter:
         )
         (code or self.code).emit(0xB8, reference.to_bytes(2, "big"))
 
+    def scalar_truth(self, descriptor, node) -> None:
+        if descriptor in SCALAR_BOXES.values():
+            missing = self.new_label("scalar.none")
+            done = self.new_label("scalar.truth")
+            self.code.emit(0x59)
+            self.code.branch(0xC6, missing)
+            scalar = unbox_scalar(self.code, self.class_file, descriptor)
+            self.scalar_truth(scalar, node)
+            self.code.branch(0xA7, done)
+            self.code.mark(missing)
+            self.code.emit(0x57)
+            self.code.emit(0x03)
+            self.code.mark(done)
+        elif descriptor == "N":
+            self.code.emit(0x57)
+            self.code.emit(0x03)
+        elif descriptor == "J":
+            self.long_constant(0)
+            self.code.emit(0x94)
+            self.comparison(0x9A)
+        elif descriptor == "D":
+            self.double_constant(0.0)
+            self.code.emit(0x97)
+            self.comparison(0x9A)
+        elif descriptor != "Z":
+            raise JVMUnsupported("JVM bool conversion requires a numeric or nullable numeric value", node)
+
     def _expression(self, node) -> str:
+        if isinstance(node, ChainedCompare):
+            return self.chained_comparison(node)
         if isinstance(node, ContextExitCall):
             return self.context_exit(node)
         if isinstance(node, AnalyzedAwait):
@@ -1174,6 +1255,8 @@ class JVMEmitter:
         if isinstance(node, StaticCast):
             source = self.expression(node.value)
             target = self.expression_type(node)
+            if SCALAR_BOXES.get(target) == source:
+                return unbox_scalar(self.code, self.class_file, source)
             if source == "Ljava/lang/Object;" and target in {"J", "Z", "D"}:
                 if target == "J":
                     ordinary = self.new_label("cast.integer")
@@ -1477,6 +1560,14 @@ class JVMEmitter:
             return self.construct_simple_exception(target, node)
         if isinstance(target, Class) and target.py_obj is native_builtins._slice:
             raise JVMUnsupported("JVM first-class slice construction is not implemented", node)
+        if isinstance(target, Class) and target.py_obj is native_builtins._bool:
+            if len(node.args) > 1 or node.keywords:
+                raise JVMUnsupported("JVM bool() takes at most one positional argument", node)
+            if node.args:
+                self.scalar_truth(self.expression(node.args[0]), node)
+            else:
+                self.code.emit(0x03)
+            return "Z"
         if isinstance(target, Function) and target.py_func is native_builtins._print:
             raise JVMUnsupported("JVM print() output is not implemented", node)
         if isinstance(target, Function) and target.py_func is run_sync:
@@ -1562,14 +1653,15 @@ class JVMEmitter:
             self.normalize_integer_result(node)
             return value_type
         if isinstance(target, Function) and target.py_func in {
-            native_builtins._ord, native_builtins._hex,
+            native_builtins._ord, native_builtins._hex, native_builtins._chr,
         }:
-            name = "ord" if target.py_func is native_builtins._ord else "hex"
+            name = {native_builtins._ord: "ord", native_builtins._hex: "hex",
+                    native_builtins._chr: "chr"}[target.py_func]
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported(f"JVM {name} takes one positional argument", node)
             actual = self.expression(node.args[0])
             expected = "Ljava/lang/String;" if name == "ord" else "J"
-            if name == "hex" and actual == "Z":
+            if name != "ord" and actual == "Z":
                 self.code.emit(0x85)
                 actual = "J"
             if actual != expected:
@@ -1585,6 +1677,8 @@ class JVMEmitter:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM len takes one positional argument", node)
             list_type = analyzed_value_type(node.args[0])
+            if isinstance(list_type, LiteralClass):
+                list_type = list_type.super
             if list_type.generic_name == "tuple" and list_type.tuple_variadic:
                 self.expression(node.args[0])
                 self.code.emit(0xBE)
@@ -1701,6 +1795,8 @@ class JVMEmitter:
                 self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
+            if isinstance(semantic_receiver, LiteralClass):
+                semantic_receiver = semantic_receiver.super
             if (getattr(semantic_receiver, "generic_name", None) == "tuple"
                     and semantic_receiver.tuple_variadic
                     and target.name not in {"__is__", "__is_not__"}):
@@ -1755,17 +1851,8 @@ class JVMEmitter:
                 self.set_exception_args(self.exception_class(concrete, node), slots)
                 return "V"
             if target.name == "__dynamic_bool__":
-                if receiver_type == "Ljava/lang/Boolean;":
-                    missing = self.new_label("bool.none")
-                    done = self.new_label("bool.done")
-                    self.code.emit(0x59)
-                    self.code.branch(0xC6, missing)
-                    self.invoke_boolean_value()
-                    self.code.branch(0xA7, done)
-                    self.code.mark(missing)
-                    self.code.emit(0x57)
-                    self.code.emit(0x03)
-                    self.code.mark(done)
+                if receiver_type in SCALAR_BOXES.values():
+                    self.scalar_truth(receiver_type, node)
                     return "Z"
                 raise JVMUnsupported("JVM optional truth tests require narrowing first", node)
             if (
@@ -1775,14 +1862,14 @@ class JVMEmitter:
             ):
                 self.code.emit(0x57)
                 return "V"
-            nullable_bool_equality = (
+            nullable_scalar_equality = (
                 target.name in {"__eq__", "__ne__"}
                 and len(node.args) == 1
-                and "Ljava/lang/Boolean;" in {
+                and bool(set(SCALAR_BOXES.values()) & {
                     receiver_type, self.expression_type(node.args[0]),
-                }
+                })
             )
-            if nullable_bool_equality or target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
+            if nullable_scalar_equality or target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
                 native_builtins._object.__eq__, native_builtins._object.__ne__,
             }:
                 if len(node.args) != 1 or node.keywords:
@@ -1821,13 +1908,24 @@ class JVMEmitter:
                     self.code.emit(0x82)
                 return "Z"
             if target.name in {"__is__", "__is_not__"} and len(node.args) == 1:
+                other = self.expression_type(node.args[0])
+                if "N" not in {receiver_type, other} and {receiver_type, other} & {
+                    "J", "D", "Ljava/lang/Long;", "Ljava/lang/Double;",
+                }:
+                    raise JVMUnsupported(
+                        "JVM numeric identity comparisons are only supported against None", node,
+                    )
                 if receiver_type == "Z":
                     self.convert_native_argument(receiver_type, "Ljava/lang/Boolean;", node.func.value)
                     receiver_type = "Ljava/lang/Boolean;"
+                elif receiver_type in {"J", "D"} and self.expression_type(node.args[0]) == "N":
+                    receiver_type = box(self.code, self.class_file, receiver_type)
                 argument_type = self.expression(node.args[0])
                 if argument_type == "Z":
                     self.convert_native_argument(argument_type, "Ljava/lang/Boolean;", node.args[0])
                     argument_type = "Ljava/lang/Boolean;"
+                elif argument_type in {"J", "D"} and receiver_type == "N":
+                    argument_type = box(self.code, self.class_file, argument_type)
                 if not (
                     receiver_type == "N"
                     or _is_reference_descriptor(receiver_type)
@@ -1945,32 +2043,15 @@ class JVMEmitter:
                     )
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
-                arguments = self.application_arguments(node, target)
                 expected_receiver = self.class_descriptor(target.cls)
-                if not self.compatible(receiver_type, expected_receiver) or len(
-                    arguments
-                ) != len(target.params):
+                if not self.compatible(receiver_type, expected_receiver):
                     raise JVMUnsupported(
                         f"JVM call to {target.name} has incompatible arguments",
                         node,
                     )
-                for index, (argument, parameter) in enumerate(zip(
-                    arguments,
-                    target.params,
-                    strict=True,
-                )):
-                    actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
-                              else self.expression(argument))
-                    semantic = self.parameter_type(parameter)
-                    if not self.compatible(actual, semantic):
-                        raise JVMUnsupported(
-                            f"JVM call to {target.name} has incompatible arguments",
-                            node,
-                        )
-                    storage = (
-                        _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
-                    )
-                    self.convert_native_argument(actual, storage, argument)
+                if not is_super:
+                    self.validate_virtual_arguments(node, target, semantic_receiver)
+                self.application_arguments(node, target, leading_argument)
                 reference = self.class_file.method_reference(
                     self.class_name(target.cls),
                     self.function_name(target),
@@ -2122,6 +2203,15 @@ class JVMEmitter:
                     )
                     self.code.emit(0xB6, reference.to_bytes(2, "big"))
                     return "Ljava/lang/String;"
+                if target.name in {"__lt__", "__le__", "__gt__", "__ge__"} and argument_types == ["Ljava/lang/String;"]:
+                    self.string_helpers.add("compare")
+                    reference = self.class_file.method_reference(
+                        self.main_class_name, "pyjs_string_compare",
+                        "(Ljava/lang/String;Ljava/lang/String;)I",
+                    )
+                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    self.comparison(self.INTEGER_COMPARISONS[target.name])
+                    return "Z"
                 if target.name == "__getitem__" and argument_types == ["J"]:
                     reference = self.class_file.method_reference(
                         self.main_class_name,
@@ -2351,12 +2441,8 @@ class JVMEmitter:
                 if target.name in self.INTEGER_COMPARISONS:
                     self.double_comparison(target.name)
                     return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "Z":
-                return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "J":
-                self.long_constant(0)
-                self.code.emit(0x94)  # lcmp
-                self.comparison(0x9A)
+            if target.name == "__bool__" and not argument_types and receiver_type in SCALAR_BOXES:
+                self.scalar_truth(receiver_type, node)
                 return "Z"
             if (
                 target.name in {"__eq__", "__ne__"}
@@ -2365,11 +2451,6 @@ class JVMEmitter:
             ):
                 self.code.emit(0x82)
                 self.comparison(0x99 if target.name == "__eq__" else 0x9A)
-                return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "D":
-                self.code.emit(0x0E)
-                self.code.emit(0x97)
-                self.comparison(0x9A)
                 return "Z"
             if target.name == "__str__" and not argument_types:
                 if self.is_exception_value(receiver_type, semantic_receiver):
@@ -2414,28 +2495,7 @@ class JVMEmitter:
                     f"JVM call target {target.name} has no emitted definition",
                     node,
                 )
-            arguments = self.application_arguments(node, target)
-            if len(arguments) != len(target.params):
-                raise JVMUnsupported(
-                    f"JVM call to {target.name} has incompatible arguments",
-                    node,
-                )
-            for argument, parameter in zip(
-                arguments,
-                target.params,
-                strict=True,
-            ):
-                actual = self.expression(argument)
-                semantic = self.parameter_type(parameter)
-                if not self.compatible(actual, semantic):
-                    raise JVMUnsupported(
-                        f"JVM call to {target.name} has incompatible arguments",
-                        node,
-                    )
-                storage = (
-                    _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
-                )
-                self.convert_native_argument(actual, storage, argument)
+            self.application_arguments(node, target)
             reference = self.class_file.method_reference(
                 self.function_owner(target),
                 self.function_name(target),
@@ -2584,7 +2644,7 @@ class JVMEmitter:
 
     def dictionary_new(self, node: CollectionNew) -> str:
         key_type, value_type = self.dictionary_types(node.value_type, node)
-        owner = "java/util/HashMap"
+        owner = "java/util/LinkedHashMap"
         class_index = self.class_file.constants.class_(owner)
         self.code.emit(0xBB, class_index.to_bytes(2, "big"))
         self.code.emit(0x59)
@@ -2628,6 +2688,12 @@ class JVMEmitter:
         if receiver_type != "Ljava/util/HashMap;":
             raise JVMUnsupported("JVM dictionary has an incompatible receiver", node)
         key_type, value_descriptor = self.dictionary_types(value_type, node)
+        if target.name == "keys" and not node.args and not node.keywords:
+            reference = self.class_file.method_reference(
+                "java/util/HashMap", "keySet", "()Ljava/util/Set;",
+            )
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            return "Ljava/util/Set;"
         if target.name == "__contains__" and len(node.args) == 1:
             actual = (self.load(leading_argument) if leading_argument is not None
                       else self.expression(node.args[0]))
@@ -2917,8 +2983,13 @@ class JVMEmitter:
                 JVM_ENVIRONMENT.builtins.search("int"),
             )
         list_type = analyzed_value_type(node.iterable)
+        if isinstance(list_type, LiteralClass):
+            list_type = list_type.super
         if list_type.generic_name == "str":
             return ("str", "Ljava/lang/String;", "Ljava/lang/String;", list_type)
+        if list_type.generic_name == "KeysView":
+            item = next(iter(list_type.generic_types.values()))
+            return ("keys", self.value_type(item), "Ljava/util/Iterator;", item)
         if list_type.generic_name == "tuple" and list_type.tuple_variadic:
             item = next(iter(list_type.generic_types.values()))
             return ("tuple", self.value_type(item), self.value_type(list_type), item)
@@ -2953,6 +3024,18 @@ class JVMEmitter:
 
     def iterator_create(self, node: IteratorCreate) -> None:
         kind, _item_type, source_type, _semantic_item = self.iterators[node.name]
+        if kind == "keys":
+            if self.expression(node.iterable) != "Ljava/util/Set;":
+                raise JVMUnsupported("JVM dictionary iterator requires a key view", node)
+            self.code.emit(0x59)
+            self.store(f"{node.name}.view", "Ljava/util/Set;")
+            self.invoke_interface_noargs("java/util/Set", "size", "()I")
+            self.code.emit(0x85)
+            self.store(f"{node.name}.index", "J")
+            self.load(f"{node.name}.view")
+            self.invoke_interface_noargs("java/util/Set", "iterator", "()Ljava/util/Iterator;")
+            self.store(f"{node.name}.source", source_type)
+            return
         if kind == "range":
             arguments = [
                 self.expression_type(argument) for argument in node.iterable.args
@@ -2994,8 +3077,36 @@ class JVMEmitter:
             self.range_iterator_next(node)
         elif kind == "str":
             self.string_iterator_next(node)
+        elif kind == "keys":
+            self.dictionary_iterator_next(node, item_type, semantic_item)
         else:
             self.list_iterator_next(node, item_type, source_type, semantic_item)
+
+    def invoke_interface_noargs(self, owner, name, descriptor):
+        reference = self.class_file.interface_method_reference(owner, name, descriptor)
+        self.code.emit(0xB9, reference.to_bytes(2, "big") + b"\x01\x00")
+
+    def dictionary_iterator_next(self, node, item_type, semantic_item):
+        unchanged = self.new_label("dictionary.size.unchanged")
+        self.load(f"{node.iterator}.view")
+        self.invoke_interface_noargs("java/util/Set", "size", "()I")
+        self.code.emit(0x85)
+        self.load(f"{node.iterator}.index")
+        self.code.emit(0x94)
+        self.code.branch(0x99, unchanged)
+        self.throw_python("RuntimeError", "dictionary changed size during iteration")
+        self.code.mark(unchanged)
+        self.load(f"{node.iterator}.source")
+        self.invoke_interface_noargs("java/util/Iterator", "hasNext", "()Z")
+        self.code.branch(0x99, self.block_label(node.exhausted))
+        self.load(f"{node.iterator}.source")
+        owner = self.class_files[self.main_class_name]
+        name, descriptor = emit_iterator_next(owner, self.throw_python)
+        reference = self.class_file.method_reference(owner.name, name, descriptor)
+        self.code.emit(0xB8, reference.to_bytes(2, "big"))
+        self.checkcast(item_type)
+        self.assign_iterator_target(node, item_type, semantic_item)
+        self.code.branch(0xA7, self.block_label(node.body))
 
     def string_iterator_next(self, node: IteratorNext) -> None:
         source = f"{node.iterator}.source"
@@ -3212,14 +3323,16 @@ class JVMEmitter:
         if native_subclass:
             for name, parameter in zip(
                 ordered,
-                initializer.params,
+                self.application_parameters(initializer),
                 strict=True,
             ):
                 actual = self.load(slots[name])
                 storage = _numeric_descriptor(
                     analyzed_numeric_format(parameter)
                 ) or self.parameter_type(parameter)
-                self.convert_native_argument(actual, storage, node)
+                self.convert_native_argument(
+                    actual, storage, node.call, fragment=self.current_function.source_fragment,
+                )
         constructor = self.class_file.method_reference(
             owner,
             "<init>",
@@ -3234,7 +3347,7 @@ class JVMEmitter:
             argument_types = []
             for name, parameter in zip(
                 ordered,
-                initializer.params,
+                self.application_parameters(initializer),
                 strict=True,
             ):
                 actual = self.load(slots[name])
@@ -3242,9 +3355,11 @@ class JVMEmitter:
                 storage = _numeric_descriptor(
                     analyzed_numeric_format(parameter)
                 ) or self.parameter_type(parameter)
-                self.convert_native_argument(actual, storage, node)
+                self.convert_native_argument(
+                    actual, storage, node.call, fragment=self.current_function.source_fragment,
+                )
             expected = [
-                self.parameter_type(parameter) for parameter in initializer.params
+                self.parameter_type(parameter) for parameter in self.application_parameters(initializer)
             ]
             if len(argument_types) != len(expected) or not all(
                 self.compatible(actual, wanted)
@@ -3252,7 +3367,8 @@ class JVMEmitter:
             ):
                 raise JVMUnsupported(
                     f"JVM constructor for {value_type.name} has incompatible arguments",
-                    node,
+                    node.call,
+                    fragment=self.current_function.source_fragment,
                 )
             reference = self.class_file.method_reference(
                 owner,
@@ -3312,37 +3428,41 @@ class JVMEmitter:
                     node,
                 )
             return [], []
-        parameters = [parameter.arg for parameter in initializer.params]
-        if len(node.call.args) > len(parameters):
-            raise JVMUnsupported(
-                f"JVM constructor for {node.value_type.name} has too many arguments",
-                node,
-            )
-        evaluation = list(zip(parameters, node.call.args, strict=False))
+        return self.bind_application_arguments(node.call, initializer)
+
+    @staticmethod
+    def application_parameters(function: Function):
+        return [*function.params, *function.kwonlyargs]
+
+    def bind_application_arguments(self, node: ast.Call, function: Function):
+        parameters = [parameter.arg for parameter in self.application_parameters(function)]
+        if len(node.args) > len(function.params):
+            raise JVMUnsupported(f"JVM call to {function.name} has too many positional arguments", node)
+        evaluation = list(zip(parameters, node.args, strict=False))
         supplied = {name for name, _value in evaluation}
-        for keyword in node.call.keywords:
+        positional_only = {parameter.arg for parameter in function.params[:function.posonly_count]}
+        for keyword in node.keywords:
             if keyword.arg is None:
-                raise JVMUnsupported("JVM constructors do not support **kwargs", node)
-            if keyword.arg not in parameters or keyword.arg in supplied:
+                raise JVMUnsupported("JVM calls do not support **kwargs", node)
+            if keyword.arg not in parameters or keyword.arg in supplied or keyword.arg in positional_only:
                 raise JVMUnsupported(
-                    f"JVM constructor argument {keyword.arg} is invalid",
+                    f"JVM call argument {keyword.arg} is invalid",
                     node,
                 )
             supplied.add(keyword.arg)
             evaluation.append((keyword.arg, keyword.value))
         missing = [name for name in parameters if name not in supplied]
-        first_default = len(parameters) - len(initializer.defaults)
-        defaults = dict(
-            zip(
-                parameters[first_default:],
-                initializer.defaults,
-                strict=True,
-            )
-        )
+        defaults = {parameter.arg: default for parameter, default in zip(
+            function.params[len(function.params) - len(function.defaults):],
+            function.defaults, strict=True,
+        )}
+        defaults.update((parameter.arg, default) for parameter, default in zip(
+            function.kwonlyargs, function.kw_defaults, strict=True,
+        ) if default is not None)
         required = [name for name in missing if name not in defaults]
         if required:
             raise JVMUnsupported(
-                f"JVM constructor arguments are missing: {', '.join(required)}",
+                f"JVM call arguments are missing: {', '.join(required)}",
                 node,
             )
         evaluation.extend((name, defaults[name]) for name in missing)
@@ -3363,26 +3483,69 @@ class JVMEmitter:
             and not isinstance(node.operand.value, bool)
         )
 
+    def validate_virtual_arguments(self, node, function, receiver):
+        if not node.keywords and len(node.args) == len(self.application_parameters(function)):
+            return
+        supplied = {id(value) for value in node.args}
+        supplied.update(id(keyword.value) for keyword in node.keywords)
+
+        def binding(method):
+            evaluation, ordered = self.bind_application_arguments(node, method)
+            values = dict(evaluation)
+            # Identical-looking calls can have different side effects. Compare
+            # supplied expression identities, not their printed source.
+            return tuple(("argument", id(values[name])) if id(values[name]) in supplied
+                         else ("default", ast.dump(values[name])) for name in ordered)
+
+        expected = binding(function)
+        for implementation in self.virtual_methods.get(function.name, ()):
+            if implementation is function or not self.compatible(
+                self.class_descriptor(implementation.cls), self.class_descriptor(receiver),
+            ):
+                continue
+            try:
+                matches = binding(implementation) == expected
+            except JVMUnsupported:
+                matches = False
+            if not matches:
+                raise JVMUnsupported(
+                    f"JVM virtual call to {function.name} has incompatible keyword or default "
+                    f"binding in override {implementation.cls.name}.{implementation.name}",
+                    node, fragment=self.current_function.source_fragment,
+                )
+
     def application_arguments(
         self,
         node: ast.Call,
         function: Function,
-    ) -> list[ast.expr]:
-        if node.keywords:
-            raise JVMUnsupported(
-                "JVM application calls do not yet support keyword arguments",
-                node,
-            )
-        arguments = list(node.args)
-        required = len(function.params) - len(function.defaults)
-        default_offset = len(arguments) - required
-        if default_offset < 0 or len(arguments) > len(function.params):
-            raise JVMUnsupported(
-                f"JVM call to {function.name} has incompatible arguments",
-                node,
-            )
-        arguments.extend(function.defaults[default_offset:])
-        return arguments
+        leading_argument: str | None = None,
+    ) -> None:
+        evaluation, ordered = self.bind_application_arguments(node, function)
+        parameters = self.application_parameters(function)
+        if not node.keywords:
+            for index, ((_name, argument), parameter) in enumerate(zip(evaluation, parameters, strict=True)):
+                actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
+                          else self.expression(argument))
+                self.application_argument(actual, parameter, node, function)
+            return
+        slots = {}
+        for index, (name, argument) in enumerate(evaluation):
+            if index == 0 and leading_argument is not None:
+                slots[name] = leading_argument
+            else:
+                actual = self.expression(argument)
+                slot = self.allocate_temporary(actual, "call.argument")
+                self.store(slot, actual)
+                slots[name] = slot
+        for name, parameter in zip(ordered, parameters, strict=True):
+            self.application_argument(self.load(slots[name]), parameter, node, function)
+
+    def application_argument(self, actual: str, parameter, node: ast.Call, function: Function) -> None:
+        semantic = self.parameter_type(parameter)
+        if not self.compatible(actual, semantic):
+            raise JVMUnsupported(f"JVM call to {function.name} has incompatible arguments", node)
+        storage = _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
+        self.convert_native_argument(actual, storage, node)
 
     def context_exit(self, node):
         method = analyzed_value_object(node.func)
@@ -3811,17 +3974,7 @@ class JVMEmitter:
                 f"JVM cannot resolve field {attribute.attr} on {receiver_type.to_annotation_str()}",
                 attribute,
             )
-        owner = receiver_type
-        field = None
-        while layout is not None:
-            field = next(
-                (field for field in layout.fields if field.name == attribute.attr),
-                None,
-            )
-            if field is not None:
-                break
-            owner = layout.base
-            layout = self.classes.get(owner)
+        owner, field = self.managed_field(layout, attribute.attr)
         if field is None:
             raise JVMUnsupported(
                 f"JVM class {receiver_type.name} has no field {attribute.attr}",
@@ -4128,6 +4281,39 @@ class JVMEmitter:
             self.long_constant(0)
         self.code.mark(done)
 
+    def chained_comparison(self, node: ChainedCompare) -> str:
+        failed = self.new_label("comparison.failed")
+        done = self.new_label("comparison.done")
+        mappings = (self.slots, self.slot_types, self.slot_numeric_formats)
+        previous = [{value.id: mapping.get(value.id) for value in node.temporaries}
+                    for mapping in mappings]
+        try:
+            for index, (operand, temporary) in enumerate(zip(node.operands, node.temporaries, strict=True)):
+                result = self.expression(operand)
+                name = self.allocate_temporary(result, "comparison.value")
+                self.store(name, result)
+                self.slots[temporary.id] = self.slots[name]
+                self.slot_types[temporary.id] = result
+                self.slot_numeric_formats.pop(temporary.id, None)
+                if index:
+                    if self.expression(node.comparisons[index - 1]) != "Z":
+                        raise JVMUnsupported("JVM chained comparison must return bool", node)
+                    self.code.branch(0x99, failed)
+            self.code.emit(0x04)
+            self.code.branch(0xA7, done)
+            self.code.mark(failed)
+            self.code.emit(0x03)
+            self.code.mark(done)
+            return "Z"
+        finally:
+            # Nested chains reuse analyzer temporary names, not lexical slots.
+            for mapping, saved in zip(mappings, previous, strict=True):
+                for name, value in saved.items():
+                    if value is None:
+                        mapping.pop(name, None)
+                    else:
+                        mapping[name] = value
+
     def load(self, name: str) -> str:
         value_type = self.slot_types[name]
         opcode = (
@@ -4272,7 +4458,7 @@ class JVMEmitter:
         storage_type = (
             _numeric_descriptor(entry_point.return_numeric_format) or return_type
         )
-        if entry_point.params or return_type not in {"J", "Ljava/lang/String;"}:
+        if self.application_parameters(entry_point) or return_type not in {"J", "Ljava/lang/String;"}:
             raise JVMUnsupported("the JVM executable entry point must return int or str")
         code = Bytecode()
         if return_type == "Ljava/lang/String;":
@@ -4394,7 +4580,7 @@ class JVMEmitter:
                 f"JVM subclass {layout.value_type.name} must call its native "
                 "superclass constructor"
             )
-        parameters = {parameter.arg: parameter for parameter in initializer.params}
+        parameters = {parameter.arg: parameter for parameter in self.application_parameters(initializer)}
         forwarded = list(parameters) if inherited else []
         for argument in arguments:
             if not isinstance(argument, ast.Name) or argument.id not in parameters:
@@ -4408,7 +4594,7 @@ class JVMEmitter:
         slots = {}
         types = {}
         index = 1
-        for parameter in initializer.params:
+        for parameter in self.application_parameters(initializer):
             value_type = _numeric_descriptor(
                 analyzed_numeric_format(parameter)
             ) or self.parameter_type(parameter)
@@ -4423,7 +4609,7 @@ class JVMEmitter:
             if native else [
                 _numeric_descriptor(analyzed_numeric_format(parameter))
                 or self.parameter_type(parameter)
-                for parameter in native_initializer.params
+                for parameter in self.application_parameters(native_initializer)
             ]
         )
         if len(forwarded) != len(expected):
@@ -4449,8 +4635,8 @@ class JVMEmitter:
                 code.emit(0x88)
             elif actual == "D" and wanted == "F":
                 code.emit(0x90)
-            elif actual == "Z" and wanted == "Ljava/lang/Boolean;":
-                self.box_boolean(code, class_file)
+            elif SCALAR_BOXES.get(actual) == wanted:
+                box(code, class_file, actual)
             elif not self.compatible(actual, wanted):
                 raise JVMUnsupported(
                     f"JVM native superclass constructor for "
@@ -4957,7 +5143,7 @@ class JVMEmitter:
         parameters = "".join(
             _numeric_descriptor(analyzed_numeric_format(parameter))
             or self.parameter_type(parameter)
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
         )
         result = _numeric_descriptor(
             function.return_numeric_format
@@ -4993,6 +5179,8 @@ class JVMEmitter:
         )
 
     def native_parameter_types(self, function: Function) -> list[str]:
+        if function.kwonlyargs:
+            raise JVMUnsupported("JVM native declarations require positional parameters")
         annotations = self.native_annotations(function)
         if not function.params:
             parameters = list(inspect.signature(function.py_func).parameters)
@@ -5091,11 +5279,13 @@ class JVMEmitter:
         actual: str,
         expected: str,
         node: ast.AST,
+        *,
+        fragment=None,
     ) -> None:
         if actual == "N" and _is_reference_descriptor(expected):
             return
-        if actual == "Z" and expected == "Ljava/lang/Boolean;":
-            self.box_boolean()
+        if SCALAR_BOXES.get(actual) == expected:
+            box(self.code, self.class_file, actual)
             return
         if actual == "J" and expected in {"B", "C", "S"}:
             self.code.emit(0x88)
@@ -5113,6 +5303,7 @@ class JVMEmitter:
                     raise JVMUnsupported(
                         f"JVM native argument {actual} cannot cross an {expected} ABI",
                         node,
+                        fragment=fragment,
                     )
             return
         if self.compatible(actual, expected):
@@ -5120,6 +5311,7 @@ class JVMEmitter:
         raise JVMUnsupported(
             f"JVM native argument {actual} cannot cross an {expected} ABI",
             node,
+            fragment=fragment,
         )
 
     def convert_native_result(self, function: Function) -> str:
@@ -5168,6 +5360,13 @@ class JVMEmitter:
     def annotation(self, node) -> str:
         if node is None or isinstance(node, ast.Constant) and node.value is None:
             return "V"
+        if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                and node.value.id == "Literal"):
+            # Analysis only admits string literals; their ABI is ordinary str.
+            return "Ljava/lang/String;"
+        if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                and node.value.id == "KeysView"):
+            return "Ljava/util/Set;"
         if isinstance(node, ast.Name):
             if node.id == "int":
                 return "J"
@@ -5219,8 +5418,8 @@ class JVMEmitter:
             add(node)
             if len(members) == 1:
                 descriptor = self.annotation(members[0])
-                if descriptor == "Z":
-                    return "Ljava/lang/Boolean;"
+                if descriptor in SCALAR_BOXES:
+                    return SCALAR_BOXES[descriptor]
                 if _is_reference_descriptor(descriptor):
                     return descriptor
         if (
@@ -5229,8 +5428,8 @@ class JVMEmitter:
             and node.value.id == "Optional"
         ):
             descriptor = self.annotation(node.slice)
-            if descriptor == "Z":
-                return "Ljava/lang/Boolean;"
+            if descriptor in SCALAR_BOXES:
+                return SCALAR_BOXES[descriptor]
             if _is_reference_descriptor(descriptor):
                 return descriptor
         if (
@@ -5281,6 +5480,8 @@ class JVMEmitter:
         raise JVMUnsupported("unsupported JVM type annotation", node)
 
     def value_type(self, value_type, representation=None) -> str:
+        if isinstance(value_type, LiteralClass):
+            return self.value_type(value_type.super, representation)
         if exception_type(value_type) is not None:
             if is_declaration(value_type.py_obj, "jvm"):
                 descriptor = f"L{self.native_class_name(value_type)};"
@@ -5316,8 +5517,8 @@ class JVMEmitter:
             ]
             if len(concrete) == 1:
                 descriptor = descriptors[0]
-                if len(value_type.types) == 2 and descriptor == "Z":
-                    return "Ljava/lang/Boolean;"
+                if len(value_type.types) == 2 and descriptor in SCALAR_BOXES:
+                    return SCALAR_BOXES[descriptor]
                 if _is_reference_descriptor(descriptor):
                     return descriptor
             if descriptors and all(
@@ -5381,6 +5582,8 @@ class JVMEmitter:
         if value_type.generic_name == "dict":
             self.dictionary_types(value_type)
             return "Ljava/util/HashMap;"
+        if value_type.generic_name == "KeysView":
+            return "Ljava/util/Set;"
         if value_type.generic_name == "tuple":
             if value_type.tuple_variadic:
                 item = self.value_type(next(iter(value_type.generic_types.values())))
@@ -5407,6 +5610,8 @@ class JVMEmitter:
         self.validate_java_object_semantics(key, source, dictionary_key=True)
         key_type = self.value_type(key)
         value_descriptor = self.value_type(value)
+        if key_type in {"Ljava/lang/Long;", "Ljava/lang/Double;"}:
+            raise JVMUnsupported("JVM dictionaries do not support nullable numeric keys", source)
         if not _is_reference_descriptor(key_type) or not (
             _is_reference_descriptor(value_descriptor) or value_descriptor in {"J", "D", "Z"}
         ):
@@ -5548,6 +5753,10 @@ class JVMEmitter:
         return f"{self.main_class_name}$tuple${suffix or 'empty'}"
 
     def expression_type(self, node) -> str:
+        if isinstance(node, ast.Name):
+            target = analyzed_value_object(node)
+            if isinstance(target, Class) and (target in self.classes or exception_type(target) is not None):
+                return "Ljava/lang/Class;"
         value_type = analyzed_value_type(node)
         return self.value_type(value_type, analyzed_representation(node))
 
@@ -5651,7 +5860,7 @@ class JVMEmitter:
     def compatible(self, actual: str, expected: str) -> bool:
         if actual == expected:
             return True
-        if actual == "Z" and expected == "Ljava/lang/Boolean;":
+        if SCALAR_BOXES.get(actual) == expected:
             return True
         if actual == "N" and _is_reference_descriptor(expected):
             return True

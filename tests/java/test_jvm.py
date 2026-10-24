@@ -113,7 +113,7 @@ def main() -> int:
 
 
 @pytest.mark.parametrize("name, argument, result", [
-    ("hash", "1", "int"), ("chr", "65", "str"),
+    ("hash", "1", "int"),
 ])
 def test_native_value_builtins_keep_located_jvm_boundaries(name, argument, result):
     with pytest.raises(JVMUnsupported, match=f"JVM call target {name} has no emitted definition at line 2"):
@@ -838,9 +838,8 @@ def test_jvm_reversed_protocol_contract(tmp_path):
     test_jvm_runs_shared_numeric_contracts(tmp_path, REVERSED_PROTOCOL_CONTRACT)
 
 
-def test_literal_sequence_reflection_has_explicit_jvm_storage_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM value type str"):
-        transpile_jvm(LITERAL_SEQUENCE_REFLECTION_CONTRACT.source)
+def test_jvm_literal_sequence_reflection_contract(tmp_path):
+    test_jvm_runs_shared_numeric_contracts(tmp_path, LITERAL_SEQUENCE_REFLECTION_CONTRACT)
 
 
 def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
@@ -849,7 +848,7 @@ def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
 
 
 def test_union_key_representation_contract_has_explicit_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="dictionaries require reference keys and reference or scalar values"):
+    with pytest.raises(JVMUnsupported, match="JVM dictionaries do not support nullable numeric keys"):
         transpile_jvm(UNION_KEY_REPRESENTATION_CONTRACT.source)
 
 
@@ -1136,21 +1135,21 @@ def test_jvm_rejects_mutable_application_defaults():
         )
 
 
-def test_jvm_application_calls_reject_keywords_instead_of_ignoring_them():
-    with pytest.raises(
-        JVMUnsupported,
-        match="application calls do not yet support keyword arguments",
-    ):
-        transpile_jvm(
-            """
-            def add(value: int, amount: int = 1) -> int:
-                return value + amount
+def test_jvm_application_calls_bind_keywords(tmp_path):
+    compilation = transpile_jvm(
+        """
+        def add(value: int, amount: int = 1) -> int:
+            return value + amount
 
 
-            def main() -> int:
-                return add(2, amount=3)
-            """
-        )
+        def main() -> int:
+            return add(2, amount=3)
+        """
+    )
+    compilation.write(tmp_path)
+    result = subprocess.run([java(), "-cp", str(tmp_path), "PyjsProgram"],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 5, result.stderr
 
 
 def test_jvm_runs_immediate_async_virtual_calls(tmp_path):

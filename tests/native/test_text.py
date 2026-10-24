@@ -3,7 +3,12 @@ import pytest
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import UNICODE_TEXT_CONTRACT
+from tests.backend_semantics import LITERAL_STRING_CONTRACT, UNICODE_TEXT_CONTRACT
+
+
+def test_shared_literal_string_contract(tmp_path):
+    result = LLVM().assert_matches_python(LITERAL_STRING_CONTRACT.source, directory=tmp_path)
+    assert result.native.returncode == 0, LITERAL_STRING_CONTRACT.failure(result.native.returncode)
 
 
 def test_shared_unicode_text_contract():

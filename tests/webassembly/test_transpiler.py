@@ -16,6 +16,7 @@ from tests.backend_semantics import (
     BINARY_POWER_CONTRACT,
     BOOLEAN_NUMERIC_CONTRACT,
     CALLABLE_INPUT_CONTRACT,
+    CHAINED_COMPARISON_CONTRACT,
     CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
     COLLECTION_NAME_CONTRACT,
     CUSTOM_EXCEPTION_CONTRACT,
@@ -29,6 +30,7 @@ from tests.backend_semantics import (
     INHERITED_FACTORY_FIELD_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
+    KEYWORD_ARGUMENT_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_SEQUENCE_REFLECTION_CONTRACT,
     MAPPING_LOOKUP_REPRESENTATION_CONTRACT,
@@ -48,10 +50,54 @@ from tests.backend_semantics import (
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
     STRUCTURAL_OPERATOR_CONTRACT,
     TEXT_SERIALIZATION_CONTRACT,
+    UNICODE_CHARACTER_CONTRACT,
     UNION_KEY_REPRESENTATION_CONTRACT,
     UNPACK_FIELD_CONTRACT,
     nominal_object_contract,
 )
+
+
+def test_literal_strings_keep_explicit_wasm_boundary():
+    from tests.backend_semantics import LITERAL_STRING_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(LITERAL_STRING_CONTRACT.source)
+
+
+def test_dictionary_iteration_keeps_explicit_wasm_boundary():
+    from tests.backend_semantics import DICTIONARY_KEYS_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type dict__str_int is not implemented$"):
+        transpile_webassembly(DICTIONARY_KEYS_CONTRACT.source)
+
+
+def test_optional_float_contract_keeps_explicit_wasm_boundary():
+    from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="union value storage"):
+        transpile_webassembly(OPTIONAL_FLOAT_CONTRACT.source)
+
+
+@pytest.mark.parametrize("name", ["cast", "cast as project"])
+def test_typing_cast_reaches_explicit_wasm_boundary(name):
+    call = "project" if " as " in name else name
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly expression StaticCast is not implemented at line 3$"):
+        transpile_webassembly(f"from typing import {name}\ndef main() -> int:\n    value = 3\n    return {call}(int, value)\n")
+
+
+def test_keyword_only_calls_keep_explicit_wasm_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly functions require fixed positional parameters$"):
+        transpile_webassembly(KEYWORD_ARGUMENT_CONTRACT.source)
+
+
+def test_chained_comparisons_keep_explicit_wasm_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly expression ChainedCompare is not implemented"):
+        transpile_webassembly(CHAINED_COMPARISON_CONTRACT.source)
+
+
+def test_unicode_characters_keep_explicit_wasm_string_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(UNICODE_CHARACTER_CONTRACT.source)
 
 
 def test_boolean_arithmetic_has_an_explicit_wasm_boundary():
