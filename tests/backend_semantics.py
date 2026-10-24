@@ -3396,6 +3396,40 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+LITERAL_STRING_CONTRACT = _contract(
+    '''
+    from typing import Literal
+    from pyjs import js
+
+    @js
+    class LiteralState:
+        def __init__(self, kind: Literal["text", "list"] = "text"):
+            self.kind = kind
+
+    @js
+    def literal_identity(value: Literal["text", "list"]) -> Literal["text", "list"]:
+        return value
+    ''',
+    "literal_string_result",
+    '''
+    state = LiteralState()
+    value = literal_identity(state.kind)
+    letters = ""
+    for letter in value:
+        letters += letter
+    items: list[Literal["text", "list"]] = ["text", "list"]
+    ''',
+    (
+        ("literal fields retain their default", "value != 'text'"),
+        ("literal string length uses its base representation", "len(value) != 4"),
+        ("literal strings support slicing", "value[:2] != 'te'"),
+        ("literal strings support iteration", "letters != 'text'"),
+        ("literal container items keep their string representation", "items[1] != 'list'"),
+        ("literal comparisons use string ordering", "not (items[1] < value)"),
+    ),
+)
+
+
 KEYWORD_ARGUMENT_CONTRACT = _contract(
     '''
     from pyjs import js

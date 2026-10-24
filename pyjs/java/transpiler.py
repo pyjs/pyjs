@@ -42,6 +42,7 @@ from pyjs.analysis.objects import (
     Function,
     GenericClass,
     Instance,
+    LiteralClass,
     Module,
     RecursiveTypeAlias,
     StaticCast,
@@ -1590,6 +1591,8 @@ class JVMEmitter:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM len takes one positional argument", node)
             list_type = analyzed_value_type(node.args[0])
+            if isinstance(list_type, LiteralClass):
+                list_type = list_type.super
             if list_type.generic_name == "tuple" and list_type.tuple_variadic:
                 self.expression(node.args[0])
                 self.code.emit(0xBE)
@@ -1706,6 +1709,8 @@ class JVMEmitter:
                 self.store(leading_argument, actual)
             receiver_type = self.expression(node.func.value)
             semantic_receiver = analyzed_value_type(node.func.value)
+            if isinstance(semantic_receiver, LiteralClass):
+                semantic_receiver = semantic_receiver.super
             if (getattr(semantic_receiver, "generic_name", None) == "tuple"
                     and semantic_receiver.tuple_variadic
                     and target.name not in {"__is__", "__is_not__"}):
@@ -2891,6 +2896,8 @@ class JVMEmitter:
                 JVM_ENVIRONMENT.builtins.search("int"),
             )
         list_type = analyzed_value_type(node.iterable)
+        if isinstance(list_type, LiteralClass):
+            list_type = list_type.super
         if list_type.generic_name == "str":
             return ("str", "Ljava/lang/String;", "Ljava/lang/String;", list_type)
         if list_type.generic_name == "tuple" and list_type.tuple_variadic:
@@ -5193,6 +5200,10 @@ class JVMEmitter:
     def annotation(self, node) -> str:
         if node is None or isinstance(node, ast.Constant) and node.value is None:
             return "V"
+        if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                and node.value.id == "Literal"):
+            # Analysis only admits string literals; their ABI is ordinary str.
+            return "Ljava/lang/String;"
         if isinstance(node, ast.Name):
             if node.id == "int":
                 return "J"
@@ -5306,6 +5317,8 @@ class JVMEmitter:
         raise JVMUnsupported("unsupported JVM type annotation", node)
 
     def value_type(self, value_type, representation=None) -> str:
+        if isinstance(value_type, LiteralClass):
+            return self.value_type(value_type.super, representation)
         if exception_type(value_type) is not None:
             if is_declaration(value_type.py_obj, "jvm"):
                 descriptor = f"L{self.native_class_name(value_type)};"

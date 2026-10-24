@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- String `Literal` values retain ordinary string storage and operations in
+  JVM code, including containers and iteration. Native iteration also accepts
+  string literals without losing their declared value constraints.
+
 ### Changed
 
 - JVM application calls support keyword and keyword-only arguments, including

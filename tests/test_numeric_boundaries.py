@@ -454,7 +454,7 @@ def test_optional_integer_contract_reaches_backend_unsupported_boundary(backend)
     from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
 
     compile, error, message = {
-        "jvm": (transpile_jvm, JVMUnsupported, "unsupported JVM expression ChainedCompare"),
+        "jvm": (transpile_jvm, JVMUnsupported, "JVM identity comparison requires reference values"),
         "webassembly": (transpile_webassembly, WebAssemblyUnsupported, "union value storage"),
     }[backend]
     with pytest.raises(error, match=message):
