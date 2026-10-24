@@ -2,6 +2,23 @@
 
 from .classfile import Bytecode, Method
 
+SCALAR_BOXES = {
+    "J": "Ljava/lang/Long;",
+    "D": "Ljava/lang/Double;",
+    "Z": "Ljava/lang/Boolean;",
+}
+
+
+def unbox_scalar(code, class_file, descriptor):
+    scalar, method = {
+        "Ljava/lang/Long;": ("J", "longValue"),
+        "Ljava/lang/Double;": ("D", "doubleValue"),
+        "Ljava/lang/Boolean;": ("Z", "booleanValue"),
+    }[descriptor]
+    reference = class_file.method_reference(descriptor[1:-1], method, f"(){scalar}")
+    code.emit(0xB6, reference.to_bytes(2, "big"))
+    return scalar
+
 
 def box(code, class_file, descriptor):
     if descriptor in {"B", "C", "S", "I"}:
@@ -10,12 +27,11 @@ def box(code, class_file, descriptor):
     elif descriptor == "F":
         code.emit(0x8D)
         descriptor = "D"
-    owner = {"J": "java/lang/Long", "Z": "java/lang/Boolean",
-             "D": "java/lang/Double"}.get(descriptor)
-    if owner is not None:
-        reference = class_file.method_reference(owner, "valueOf", f"({descriptor})L{owner};")
+    boxed = SCALAR_BOXES.get(descriptor)
+    if boxed is not None:
+        reference = class_file.method_reference(boxed[1:-1], "valueOf", f"({descriptor}){boxed}")
         code.emit(0xB8, reference.to_bytes(2, "big"))
-        return f"L{owner};"
+        return boxed
     return descriptor
 
 

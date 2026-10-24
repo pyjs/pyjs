@@ -61,7 +61,7 @@ from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
 from .analysis import JVM_ENVIRONMENT
-from .boxed import box, emit_equality, emit_key_guard
+from .boxed import SCALAR_BOXES, box, emit_equality, emit_key_guard, unbox_scalar
 from .classfile import (
     Annotation,
     Bytecode,
@@ -1149,12 +1149,13 @@ class JVMEmitter:
             # assigned, returned, or compared, including __enter__ results.
             self.code.emit(0x01)
             return "N"
-        if (
-            result == "Ljava/lang/Boolean;"
-            and getattr(analyzed_value_type(node), "generic_name", None) == "bool"
-        ):
-            self.invoke_boolean_value()
-            return "Z"
+        if result not in SCALAR_BOXES.values():
+            return result
+        scalar = {"int": "J", "float": "D", "bool": "Z"}.get(
+            getattr(analyzed_value_type(node), "generic_name", None),
+        )
+        if scalar is not None and result == SCALAR_BOXES[scalar]:
+            return unbox_scalar(self.code, self.class_file, result)
         return result
 
     def invoke_boolean_value(self) -> None:
@@ -1168,6 +1169,33 @@ class JVMEmitter:
             "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;",
         )
         (code or self.code).emit(0xB8, reference.to_bytes(2, "big"))
+
+    def scalar_truth(self, descriptor, node) -> None:
+        if descriptor in SCALAR_BOXES.values():
+            missing = self.new_label("scalar.none")
+            done = self.new_label("scalar.truth")
+            self.code.emit(0x59)
+            self.code.branch(0xC6, missing)
+            scalar = unbox_scalar(self.code, self.class_file, descriptor)
+            self.scalar_truth(scalar, node)
+            self.code.branch(0xA7, done)
+            self.code.mark(missing)
+            self.code.emit(0x57)
+            self.code.emit(0x03)
+            self.code.mark(done)
+        elif descriptor == "N":
+            self.code.emit(0x57)
+            self.code.emit(0x03)
+        elif descriptor == "J":
+            self.long_constant(0)
+            self.code.emit(0x94)
+            self.comparison(0x9A)
+        elif descriptor == "D":
+            self.double_constant(0.0)
+            self.code.emit(0x97)
+            self.comparison(0x9A)
+        elif descriptor != "Z":
+            raise JVMUnsupported("JVM bool conversion requires a numeric or nullable numeric value", node)
 
     def _expression(self, node) -> str:
         if isinstance(node, ChainedCompare):
@@ -1482,6 +1510,14 @@ class JVMEmitter:
             return self.construct_simple_exception(target, node)
         if isinstance(target, Class) and target.py_obj is native_builtins._slice:
             raise JVMUnsupported("JVM first-class slice construction is not implemented", node)
+        if isinstance(target, Class) and target.py_obj is native_builtins._bool:
+            if len(node.args) > 1 or node.keywords:
+                raise JVMUnsupported("JVM bool() takes at most one positional argument", node)
+            if node.args:
+                self.scalar_truth(self.expression(node.args[0]), node)
+            else:
+                self.code.emit(0x03)
+            return "Z"
         if isinstance(target, Function) and target.py_func is native_builtins._print:
             raise JVMUnsupported("JVM print() output is not implemented", node)
         if isinstance(target, Function) and target.py_func is run_sync:
@@ -1765,17 +1801,8 @@ class JVMEmitter:
                 self.set_exception_args(self.exception_class(concrete, node), slots)
                 return "V"
             if target.name == "__dynamic_bool__":
-                if receiver_type == "Ljava/lang/Boolean;":
-                    missing = self.new_label("bool.none")
-                    done = self.new_label("bool.done")
-                    self.code.emit(0x59)
-                    self.code.branch(0xC6, missing)
-                    self.invoke_boolean_value()
-                    self.code.branch(0xA7, done)
-                    self.code.mark(missing)
-                    self.code.emit(0x57)
-                    self.code.emit(0x03)
-                    self.code.mark(done)
+                if receiver_type in SCALAR_BOXES.values():
+                    self.scalar_truth(receiver_type, node)
                     return "Z"
                 raise JVMUnsupported("JVM optional truth tests require narrowing first", node)
             if (
@@ -1785,14 +1812,14 @@ class JVMEmitter:
             ):
                 self.code.emit(0x57)
                 return "V"
-            nullable_bool_equality = (
+            nullable_scalar_equality = (
                 target.name in {"__eq__", "__ne__"}
                 and len(node.args) == 1
-                and "Ljava/lang/Boolean;" in {
+                and bool(set(SCALAR_BOXES.values()) & {
                     receiver_type, self.expression_type(node.args[0]),
-                }
+                })
             )
-            if nullable_bool_equality or target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
+            if nullable_scalar_equality or target.name in {"__dynamic_eq__", "__dynamic_ne__"} or target.py_func in {
                 native_builtins._object.__eq__, native_builtins._object.__ne__,
             }:
                 if len(node.args) != 1 or node.keywords:
@@ -1831,13 +1858,24 @@ class JVMEmitter:
                     self.code.emit(0x82)
                 return "Z"
             if target.name in {"__is__", "__is_not__"} and len(node.args) == 1:
+                other = self.expression_type(node.args[0])
+                if "N" not in {receiver_type, other} and {receiver_type, other} & {
+                    "J", "D", "Ljava/lang/Long;", "Ljava/lang/Double;",
+                }:
+                    raise JVMUnsupported(
+                        "JVM numeric identity comparisons are only supported against None", node,
+                    )
                 if receiver_type == "Z":
                     self.convert_native_argument(receiver_type, "Ljava/lang/Boolean;", node.func.value)
                     receiver_type = "Ljava/lang/Boolean;"
+                elif receiver_type in {"J", "D"} and self.expression_type(node.args[0]) == "N":
+                    receiver_type = box(self.code, self.class_file, receiver_type)
                 argument_type = self.expression(node.args[0])
                 if argument_type == "Z":
                     self.convert_native_argument(argument_type, "Ljava/lang/Boolean;", node.args[0])
                     argument_type = "Ljava/lang/Boolean;"
+                elif argument_type in {"J", "D"} and receiver_type == "N":
+                    argument_type = box(self.code, self.class_file, argument_type)
                 if not (
                     receiver_type == "N"
                     or _is_reference_descriptor(receiver_type)
@@ -2351,12 +2389,8 @@ class JVMEmitter:
                 if target.name in self.INTEGER_COMPARISONS:
                     self.double_comparison(target.name)
                     return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "Z":
-                return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "J":
-                self.long_constant(0)
-                self.code.emit(0x94)  # lcmp
-                self.comparison(0x9A)
+            if target.name == "__bool__" and not argument_types and receiver_type in SCALAR_BOXES:
+                self.scalar_truth(receiver_type, node)
                 return "Z"
             if (
                 target.name in {"__eq__", "__ne__"}
@@ -2365,11 +2399,6 @@ class JVMEmitter:
             ):
                 self.code.emit(0x82)
                 self.comparison(0x99 if target.name == "__eq__" else 0x9A)
-                return "Z"
-            if target.name == "__bool__" and not argument_types and receiver_type == "D":
-                self.code.emit(0x0E)
-                self.code.emit(0x97)
-                self.comparison(0x9A)
                 return "Z"
             if target.name == "__str__" and not argument_types:
                 if self.is_exception_value(receiver_type, semantic_receiver):
@@ -4479,8 +4508,8 @@ class JVMEmitter:
                 code.emit(0x88)
             elif actual == "D" and wanted == "F":
                 code.emit(0x90)
-            elif actual == "Z" and wanted == "Ljava/lang/Boolean;":
-                self.box_boolean(code, class_file)
+            elif SCALAR_BOXES.get(actual) == wanted:
+                box(code, class_file, actual)
             elif not self.compatible(actual, wanted):
                 raise JVMUnsupported(
                     f"JVM native superclass constructor for "
@@ -5126,8 +5155,8 @@ class JVMEmitter:
     ) -> None:
         if actual == "N" and _is_reference_descriptor(expected):
             return
-        if actual == "Z" and expected == "Ljava/lang/Boolean;":
-            self.box_boolean()
+        if SCALAR_BOXES.get(actual) == expected:
+            box(self.code, self.class_file, actual)
             return
         if actual == "J" and expected in {"B", "C", "S"}:
             self.code.emit(0x88)
@@ -5255,8 +5284,8 @@ class JVMEmitter:
             add(node)
             if len(members) == 1:
                 descriptor = self.annotation(members[0])
-                if descriptor == "Z":
-                    return "Ljava/lang/Boolean;"
+                if descriptor in SCALAR_BOXES:
+                    return SCALAR_BOXES[descriptor]
                 if _is_reference_descriptor(descriptor):
                     return descriptor
         if (
@@ -5265,8 +5294,8 @@ class JVMEmitter:
             and node.value.id == "Optional"
         ):
             descriptor = self.annotation(node.slice)
-            if descriptor == "Z":
-                return "Ljava/lang/Boolean;"
+            if descriptor in SCALAR_BOXES:
+                return SCALAR_BOXES[descriptor]
             if _is_reference_descriptor(descriptor):
                 return descriptor
         if (
@@ -5354,8 +5383,8 @@ class JVMEmitter:
             ]
             if len(concrete) == 1:
                 descriptor = descriptors[0]
-                if len(value_type.types) == 2 and descriptor == "Z":
-                    return "Ljava/lang/Boolean;"
+                if len(value_type.types) == 2 and descriptor in SCALAR_BOXES:
+                    return SCALAR_BOXES[descriptor]
                 if _is_reference_descriptor(descriptor):
                     return descriptor
             if descriptors and all(
@@ -5445,6 +5474,8 @@ class JVMEmitter:
         self.validate_java_object_semantics(key, source, dictionary_key=True)
         key_type = self.value_type(key)
         value_descriptor = self.value_type(value)
+        if key_type in {"Ljava/lang/Long;", "Ljava/lang/Double;"}:
+            raise JVMUnsupported("JVM dictionaries do not support nullable numeric keys", source)
         if not _is_reference_descriptor(key_type) or not (
             _is_reference_descriptor(value_descriptor) or value_descriptor in {"J", "D", "Z"}
         ):
@@ -5689,7 +5720,7 @@ class JVMEmitter:
     def compatible(self, actual: str, expected: str) -> bool:
         if actual == expected:
             return True
-        if actual == "Z" and expected == "Ljava/lang/Boolean;":
+        if SCALAR_BOXES.get(actual) == expected:
             return True
         if actual == "N" and _is_reference_descriptor(expected):
             return True

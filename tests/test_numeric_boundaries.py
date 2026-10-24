@@ -448,17 +448,11 @@ def test_optional_integer_comparison_and_assignment_contract():
     assert_semantics(OPTIONAL_INTEGER_CONTRACT.print_source + "\nmain()\n")
 
 
-@pytest.mark.parametrize("backend", ["jvm", "webassembly"])
-def test_optional_integer_contract_reaches_backend_unsupported_boundary(backend):
-    from pyjs.java import JVMUnsupported, transpile_jvm
+def test_optional_integer_contract_reaches_webassembly_unsupported_boundary():
     from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
 
-    compile, error, message = {
-        "jvm": (transpile_jvm, JVMUnsupported, "JVM identity comparison requires reference values"),
-        "webassembly": (transpile_webassembly, WebAssemblyUnsupported, "union value storage"),
-    }[backend]
-    with pytest.raises(error, match=message):
-        compile(OPTIONAL_INTEGER_CONTRACT.source)
+    with pytest.raises(WebAssemblyUnsupported, match="union value storage"):
+        transpile_webassembly(OPTIONAL_INTEGER_CONTRACT.source)
 
 
 @pytest.mark.parametrize("backend", ["javascript", "llvm", "jvm", "webassembly"])

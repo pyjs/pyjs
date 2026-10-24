@@ -5376,6 +5376,49 @@ UNION_NONE_GUARD_CONTRACT = _contract(
 )
 
 
+OPTIONAL_FLOAT_CONTRACT = _contract(
+    '''
+    from pyjs import js, float32
+
+    @js
+    def optional_float(value: float | None) -> float | None:
+        return value
+
+    @js
+    def optional_float_truth(value: float | None) -> bool:
+        return bool(value)
+
+    @js
+    def optional_float_equal(left: float | None, right: float | None) -> bool:
+        return left == right
+
+    @js
+    def optional_float_increment(value: float32 | None) -> float32 | None:
+        if value is None:
+            return None
+        return value + float32(1.0)
+    ''',
+    "optional_float_contract",
+    '''
+    values: list[float | None] = [None, -0.0, 1.25]
+    total = 0.0
+    for value in values:
+        if value is not None:
+            total += value
+    ''',
+    (
+        ("None is distinct from floating zero", "optional_float(None) is not None or optional_float(0.0) is None"),
+        ("nullable floating truth retains None and zero", "optional_float_truth(None) or optional_float_truth(-0.0)"),
+        ("nonzero nullable floats are true", "not optional_float_truth(1.25)"),
+        ("nullable equality keeps zero distinct from None", "optional_float_equal(None, 0.0) or optional_float_equal(0.0, None)"),
+        ("floating signed zeros compare equal", "not optional_float_equal(-0.0, 0.0)"),
+        ("optional collection reads narrow before arithmetic", "total != 1.25"),
+        ("binary32 optional results retain rounding", "optional_float_increment(float32(16777216.0)) != float32(16777216.0)"),
+        ("represented floating absence stays None", "optional_float_increment(None) is not None"),
+    ),
+)
+
+
 OPTIONAL_INTEGER_CONTRACT = _contract(
     '''
 from pyjs import js, int64

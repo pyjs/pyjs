@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM nullable integers and floats retain `None` through calls, fields, and
+  collections, with exact numeric equality and Python-compatible truth tests.
+  Ordinary scalar method signatures keep their primitive ABI.
+
 - Android application packages can declare permissions and reference an
   app-owned network-security XML resource. Defaults still request no network
   access and retain the existing cleartext policy.

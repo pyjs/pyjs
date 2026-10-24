@@ -746,6 +746,14 @@ with `pyjs template`.
   that distinction. Isolated surrogates are escaped.
   Other reference-key lookups are catchable but currently use the generic
   message `key not found`; their original keys remain available through `.args`.
+- JVM nullable integers, floats, and Booleans use boxed storage in parameters,
+  returns, fields, and collections. `None` stays distinct from zero; equality
+  keeps integer precision, including above `2**53`. Truth tests accept absence,
+  zero, and NaN. Narrow with `is not None` before arithmetic or formatting.
+  Represented values retain their wrapping and rounding rules. Mixed numeric
+  unions such as `int | float | None` and scalar `isinstance` remain unsupported.
+  Numeric identity checks only support comparison against `None`; nullable
+  numeric dictionary keys remain unsupported.
 - JVM list membership supports matching integer or Boolean items; strings,
   floats and mixed item domains remain explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,

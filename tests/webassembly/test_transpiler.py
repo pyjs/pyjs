@@ -64,6 +64,13 @@ def test_literal_strings_keep_explicit_wasm_boundary():
         transpile_webassembly(LITERAL_STRING_CONTRACT.source)
 
 
+def test_optional_float_contract_keeps_explicit_wasm_boundary():
+    from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="union value storage"):
+        transpile_webassembly(OPTIONAL_FLOAT_CONTRACT.source)
+
+
 def test_keyword_only_calls_keep_explicit_wasm_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly functions require fixed positional parameters$"):
         transpile_webassembly(KEYWORD_ARGUMENT_CONTRACT.source)
