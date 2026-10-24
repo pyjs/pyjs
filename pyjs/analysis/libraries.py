@@ -18,6 +18,8 @@ class LibraryClassInfo:
     # Some targets consume only a foreign object's declared fields. Its host
     # implementation namespace (validators, descriptors, etc.) is not source.
     opaque: bool = False
+    # A target may construct a field-only view without analyzing host methods.
+    initializer: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,8 +93,8 @@ class LibrarySpec:
             implementation = self.implementation_for(base)
             if implementation is not None:
                 module = importlib.import_module(implementation.module)
-                annotations, defaults, required = module._class_info(cls)
-                return LibraryClassInfo(annotations, defaults, required)
+                info = module._class_info(cls)
+                return info if isinstance(info, LibraryClassInfo) else LibraryClassInfo(*info)
         return None
 
 

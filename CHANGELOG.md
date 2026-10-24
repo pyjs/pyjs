@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Plain Pydantic models can be constructed as typed JVM field containers with
+  inherited defaults and nested values. Server validation stays server-side;
+  unsupported model hooks and configurations receive explicit diagnostics.
+
 - String `Literal` values retain ordinary string storage and operations in
   JVM code, including containers and iteration. Native iteration also accepts
   string literals without losing their declared value constraints.

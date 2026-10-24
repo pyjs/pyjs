@@ -26,6 +26,8 @@ from .exceptions import (
     managed_exception,
     nullable_exception,
 )
+from .models import LIBRARY as MODEL_LIBRARY
+from .models import BaseModel, is_model
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -73,6 +75,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if not isinstance(result, ast.Call):
             return result
         target = getattr(result.func, "obj", None)
+        self.validate_model_call(node, target, result.args)
         receiver = None
         if getattr(target, "py_obj", None) is native_builtins._str and result.args:
             receiver = result.args[0]
@@ -84,6 +87,22 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if receiver is not None:
             self.retain_exception_formatter(result, receiver)
         return result
+
+    def call_node(self, node, return_type, *, func, args, keywords, **attributes):
+        self.validate_model_call(node, func.obj, args)
+        return super().call_node(node, return_type, func=func, args=args, keywords=keywords, **attributes)
+
+    def validate_model_call(self, node, target, args):
+        model_operation = (isinstance(target, Function) and target.cls is not None
+                           and target.cls.py_obj is BaseModel)
+        if getattr(target, "py_obj", None) in {
+                native_builtins._str, native_builtins._repr, native_builtins._hash} and args:
+            value_type = analyzed_value_type(args[0])
+            members = value_type.types if isinstance(value_type, UnionType) else (value_type,)
+            model_operation = any(is_model(member.py_obj) for member in members)
+        if model_operation:
+            self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JVM client models support typed construction and fields, not model operations")
 
     @staticmethod
     def retain_exception_formatter(call, receiver):
@@ -288,6 +307,7 @@ JVM_ENVIRONMENT = create_analysis_environment(
     native_builtins,
     inference_visitor=JVMInferenceVisitor,
     library_mappings=NativeProtocolMappings(
+        libraries=(MODEL_LIBRARY,),
         stdlib_imports={
             ("typing", "cast"): ("pyjs.stdlib.typing", "cast"),
         }

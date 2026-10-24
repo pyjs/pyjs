@@ -685,7 +685,7 @@ with `pyjs template`.
   Controlled Python operations raise Python categories for invalid indexing,
   division by zero, negative shifts, invalid integer parsing and storage
   limits; arbitrary Java API failures are not relabeled.
-- JVM strings support code-point iteration, `ord`, `chr`, signed `hex`, `replace`
+- JVM strings support code-point iteration, `ord`, `chr`, `hex`, `replace`
   with optional positional or keyword `count`, and slices with a literal unit
   step or omitted step. Dynamic or non-unit steps remain unsupported.
   These operations retain the UTF-16 surrogate limitation described below.
@@ -699,6 +699,15 @@ with `pyjs template`.
   keyword-only arguments while preserving source evaluation order. Defaults
   must be immutable literals. Variadic parameters and keyword arguments to
   native Java declarations remain unsupported.
+- Plain Pydantic 2 models compile as typed JVM field containers, with
+  keyword-only construction, inherited fields, scalar defaults, nested models,
+  and supported JVM collection types. Compiler type checks apply; Pydantic
+  coercion and `Field` constraints remain server-side, not JVM validators.
+  Custom validators/serializers, initialization hooks, aliases, generic models,
+  mutable defaults/factories, frozen fields, and dynamic extras are rejected.
+  Field access is supported; model equality, dumping, and JSON validation are
+  not yet implemented. This is groundwork for typed API proxies, not parity
+  with Pydantic's host runtime.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
