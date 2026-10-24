@@ -703,6 +703,13 @@ with `pyjs template`.
   explicit worker, never Android's UI thread. This is a transport foundation,
   not yet generated JVM API proxies, Pydantic decoding, session management,
   cancellation, or lifecycle-aware delivery. Native I/O exceptions propagate.
+- `pyjs.java.json.JSONReader` provides typed JSON tokens for schema-directed
+  decoding without building an untyped object tree. Call `finish()` after
+  reading the root value. `skip()` validates unknown values with a default
+  nesting limit of 64 containers; number tokens keep their original spelling
+  for the schema decoder to check range and precision. Diagnostic positions
+  count UTF-16 units. `quote()` produces an ASCII-escaped JSON string.
+  These helpers do not yet implement Pydantic decoding or typed API proxies.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
   values with reference keys. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
