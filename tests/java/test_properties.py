@@ -61,3 +61,63 @@ def main() -> str:
     except ValueError as error:
         return str(error)
 ''', tmp_path)
+
+
+@pytest.mark.parametrize("read", ["Child().label", "Child().parent_label()", "Inherited().label"])
+def test_super_property_uses_lexical_parent_not_virtual_override(tmp_path, read):
+    assert_text_matches_python(f'''
+class Base:
+    @property
+    def label(self) -> str:
+        return "base"
+class Middle(Base):
+    @property
+    def label(self) -> str:
+        return "middle:" + super().label
+class Child(Middle):
+    @property
+    def label(self) -> str:
+        return "child:" + super().label
+    def parent_label(self) -> str:
+        return super().label
+class Inherited(Child):
+    pass
+def main() -> str:
+    return {read}
+''', tmp_path)
+
+
+def test_super_property_preserves_numeric_abi_and_exception_cleanup(tmp_path):
+    assert_text_matches_python('''
+from pyjs import int8
+class Base:
+    def __init__(self, events: list[str]):
+        self.events = events
+    @property
+    def number(self) -> int8:
+        self.events.append("base")
+        return int8(130)
+    @property
+    def failure(self) -> str:
+        raise ValueError("base failure")
+class Child(Base):
+    @property
+    def number(self) -> int8:
+        self.events.append("child")
+        return super().number
+    @property
+    def failure(self) -> str:
+        try:
+            return super().failure
+        finally:
+            self.events.append("cleanup")
+def main() -> str:
+    events: list[str] = []
+    child = Child(events)
+    result = str(child.number)
+    try:
+        result += child.failure
+    except ValueError as error:
+        result += ":" + str(error)
+    return result + ":" + "|".join(events)
+''', tmp_path)
