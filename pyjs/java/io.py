@@ -1,6 +1,13 @@
 """Native Java file APIs for JVM and Android applications."""
 
-from pyjs import jvm
+from pyjs import int8, jvm
+from pyjs.java import JVMArray, i32
+
+
+@jvm.native("java/io/InputStream")
+class InputStream:
+    def read(self, buffer: JVMArray[int8]) -> i32: ...
+    def close(self) -> None: ...
 
 
 @jvm.native("java/io/IOException")
@@ -11,6 +18,13 @@ class IOException(Exception):
 @jvm.native("java/io/OutputStream")
 class OutputStream:
     def close(self) -> None: ...
+
+
+@jvm.native("java/io/ByteArrayOutputStream")
+class ByteArrayOutputStream(OutputStream):
+    def __init__(self) -> None: ...
+    def write(self, buffer: JVMArray[int8], offset: i32, length: i32) -> None: ...
+    def toString(self, charset: str) -> str: ...
 
 
 @jvm.native("java/io/Writer")

@@ -37,6 +37,7 @@ from tests.backend_semantics import (
     PORTABLE_FAILURE_SOURCES,
     POSTPONED_DATACLASS_CONTRACT,
     PROPERTY_FIELD_OVERRIDE_CONTRACT,
+    PROPERTY_GETTER_CONTRACT,
     RANGE_NUMERIC_LOOKUP_CONTRACT,
     RECURSIVE_EQUALITY_CONTRACT,
     RECURSIVE_OPTIONAL_CONTRACT,
@@ -56,6 +57,11 @@ from tests.backend_semantics import (
 def test_boolean_arithmetic_has_an_explicit_wasm_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly call target __add__ is not implemented"):
         transpile_webassembly(BOOLEAN_NUMERIC_CONTRACT.source)
+
+
+def test_property_getter_contract_keeps_wasm_inheritance_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(PROPERTY_GETTER_CONTRACT.source)
 
 
 @pytest.mark.parametrize(("contract", "message"), [

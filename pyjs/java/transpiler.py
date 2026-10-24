@@ -1426,6 +1426,16 @@ class JVMEmitter:
                     self.expression(node.value)
                     self.context_call("context", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
                     return "Ljava/lang/Throwable;"
+                if target in self.functions and target.cls in self.classes:
+                    self.expression(node.value)
+                    reference = self.class_file.method_reference(
+                        self.class_name(target.cls), self.function_name(target), self.descriptor(target),
+                    )
+                    self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                    semantic = self.function_return_type(target)
+                    storage = _numeric_descriptor(target.return_numeric_format) or semantic
+                    self.convert_abi_result(storage, semantic, target.return_numeric_format)
+                    return semantic
             field = self.native_field(node)
             if field is not None and field.static:
                 reference = self.class_file.field_reference(
