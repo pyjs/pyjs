@@ -31,6 +31,9 @@
 
 ### Added
 
+- `pyjs.web.async_lock.AsyncLock` serializes asynchronous browser operations
+  in acquisition order, with a matching CPython implementation for tests.
+  Release it in `finally` to preserve progress after request failures.
 - Native `async def` and nested `await` use managed suspension frames, including
   custom await iterators, async callbacks and methods, exception propagation,
   and explicit close through `finally`. Synchronous host drivers can use the

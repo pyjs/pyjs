@@ -502,6 +502,23 @@ such as `fetch()`, WebSockets, and WebGPU use the same syntax as asynchronous
 Python code. Basic raising and exception handling are supported, but exception
 semantics are not yet a complete match for CPython.
 
+Use `pyjs.web.async_lock.AsyncLock` to serialize overlapping browser callbacks
+that read state, await a request, and then update that state. Acquire before
+reading the shared state, and release in `finally` so errors cannot strand the
+queue:
+
+```python
+await lock.acquire()
+try:
+    await save_changes()
+finally:
+    lock.release()
+```
+
+Acquisition is FIFO and non-reentrant. The browser implementation does not
+provide task cancellation or cross-thread synchronization; host-side tests use
+an `asyncio.Lock` with the same acquire/release interface.
+
 ### Metaprogramming and compiler extensions
 
 Module and class bodies execute in Python before analysis, so ordinary Python
