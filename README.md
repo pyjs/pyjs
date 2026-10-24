@@ -743,6 +743,8 @@ with `pyjs template`.
   application responsibilities.
 - JVM clients compile ordinary `API` query, mutation, and action methods into
   typed remote operations, including nested API children and inherited methods.
+  Pass an absolute HTTP(S) API root and a finite `timeout_ms`; there is no
+  implicit browser origin for the default relative `/api` path on JVM.
   Server operation bodies are not analyzed or emitted. Supported schemas are
   scalar values, string literals, nullable values, lists, string-keyed mappings,
   and the plain Pydantic models described above. Results are decoded by schema;
