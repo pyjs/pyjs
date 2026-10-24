@@ -5732,6 +5732,36 @@ STRING_SEARCH_CASES = (
 )
 
 
+AWAIT_ATTRIBUTE_SOURCE = '''
+from pyjs import js, int8
+
+@js
+class AwaitValue:
+    def __init__(self, text: str):
+        self.text = text
+        self.number: int8 = int8(127)
+    @property
+    def title(self) -> str:
+        return self.text + "!"
+    def label(self) -> str:
+        return self.text + "?"
+
+@js
+async def make_await_value(events: list[int]) -> AwaitValue:
+    events.append(1)
+    return AwaitValue("ready")
+
+@js
+async def await_attributes() -> str:
+    events: list[int] = []
+    text = (await make_await_value(events)).text
+    title = (await make_await_value(events)).title
+    label = (await make_await_value(events)).label()
+    number = (await make_await_value(events)).number + 1
+    return text + title + label + ":" + str(number) + ":" + str(len(events))
+'''
+
+
 LIST_TRUTH_CONTRACT = _contract(
     '''
     from pyjs import js

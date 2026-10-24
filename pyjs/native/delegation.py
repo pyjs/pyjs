@@ -315,6 +315,9 @@ def lower_statement(visitor, node, *, capture=None):
         return ast.copy_location(ast.Pass(), node)
     value = visitor.visit(ast.copy_location(ast.Name(id=names["result"], ctx=ast.Load()), node))
     result_type, result_representation = capture
-    return ast.copy_location(ResultProjection(
+    result = ast.copy_location(ResultProjection(
         value, result_type, result_representation,
     ), node)
+    result.value_obj = (result_type("__delegate_result__", visitor.scope, visitor.func)
+                        if isinstance(result_type, Class) else result_type)
+    return result

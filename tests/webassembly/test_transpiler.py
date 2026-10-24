@@ -85,6 +85,16 @@ def test_list_truth_contract_wasm_boundary():
         transpile_webassembly(LIST_TRUTH_CONTRACT.source)
 
 
+def test_awaited_attribute_contract_keeps_wasm_string_boundary():
+    from tests.backend_semantics import AWAIT_ATTRIBUTE_SOURCE
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(AWAIT_ATTRIBUTE_SOURCE + '''
+async def main() -> str:
+    return await await_attributes()
+''')
+
+
 def test_optional_float_contract_keeps_explicit_wasm_boundary():
     from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
 
