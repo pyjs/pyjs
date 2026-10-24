@@ -18,8 +18,9 @@ class LibraryClassInfo:
     # Some targets consume only a foreign object's declared fields. Its host
     # implementation namespace (validators, descriptors, etc.) is not source.
     opaque: bool = False
-    # A target may construct a field-only view without analyzing host methods.
-    initializer: str | None = None
+    # A target can replace host methods with statically generated client code.
+    methods: dict[str, str] = field(default_factory=dict)
+    imports: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

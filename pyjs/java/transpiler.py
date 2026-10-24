@@ -1171,8 +1171,7 @@ class JVMEmitter:
             self.iterator_next(node)
             return
         if isinstance(node, Branch):
-            if self.expression(node.test) != "Z":
-                raise JVMUnsupported("JVM branch conditions must be bool", node.test)
+            self.coerce_truth(self.expression(node.test), node.test)
             self.code.branch(0x9A, self.block_label(node.true))
             self.code.branch(0xA7, self.block_label(node.false))
             return
@@ -1192,6 +1191,16 @@ class JVMEmitter:
 
     def expression(self, node) -> str:
         result = self._expression(node)
+        if getattr(node, "jvm_truth_length", False):
+            if result != "J":
+                raise JVMUnsupported("JVM __len__ truth tests require an integer result", node)
+            valid = self.new_label("truth.length.valid")
+            self.code.emit(0x5C)
+            self.long_constant(0)
+            self.code.emit(0x94)
+            self.code.branch(0x9C, valid)
+            self.throw_python("ValueError", "__len__() should return >= 0")
+            self.code.mark(valid)
         if result == "V":
             # JVM void is not a value; Python calls still produce None when
             # assigned, returned, or compared, including __enter__ results.
@@ -1244,6 +1253,14 @@ class JVMEmitter:
             self.comparison(0x9A)
         elif descriptor != "Z":
             raise JVMUnsupported("JVM bool conversion requires a numeric or nullable numeric value", node)
+
+    def coerce_truth(self, descriptor, node):
+        if descriptor == "Z":
+            return
+        if descriptor == "J" and getattr(node, "jvm_truth_length", False):
+            self.scalar_truth("J", node)
+            return
+        raise JVMUnsupported("JVM branch conditions must be bool", node)
 
     def _expression(self, node) -> str:
         if isinstance(node, ChainedCompare):
@@ -1370,7 +1387,8 @@ class JVMEmitter:
                 self.code.emit(0x77)
                 self.normalize_float_result(node)
                 return "D"
-            if isinstance(node.op, ast.Not) and value_type == "Z":
+            if isinstance(node.op, ast.Not):
+                self.coerce_truth(value_type, node.operand)
                 self.code.emit(0x04)
                 self.code.emit(0x82)
                 return "Z"
@@ -1378,8 +1396,7 @@ class JVMEmitter:
         if isinstance(node, ast.IfExp):
             otherwise = self.new_label("conditional.else")
             done = self.new_label("conditional.done")
-            if self.expression(node.test) != "Z":
-                raise JVMUnsupported("JVM conditional test must be bool", node.test)
+            self.coerce_truth(self.expression(node.test), node.test)
             self.code.branch(0x99, otherwise)
             result = self.expression_type(node)
             self.convert_native_argument(self.expression(node.body), result, node.body)
@@ -2077,6 +2094,14 @@ class JVMEmitter:
                     receiver_type,
                     leading_argument,
                 )
+            if (semantic_receiver.generic_name == "list" and target.name == "__len__"
+                    and not node.args and not node.keywords):
+                reference = self.class_file.field_reference(
+                    self.list_class_name(semantic_receiver), "length", "I",
+                )
+                self.code.emit(0xB4, reference.to_bytes(2, "big"))
+                self.code.emit(0x85)
+                return "J"
             if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "str" and target.name == "__slice__"):
                 if node.keywords or len(node.args) != 3:

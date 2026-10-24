@@ -4,24 +4,9 @@ from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 import django
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.core.wsgi import get_wsgi_application
-from pydantic import BaseModel, Field
 
-from pyjs.server import API, query
-
-
-class Draft(BaseModel):
-    title: str = Field(min_length=1)
-    count: int = 0
-
-
-class EchoAPI(API):
-    @query
-    async def echo(self, draft: Draft) -> Draft:
-        if self.request.headers.get("Authorization") != "Bearer test-token":
-            raise PermissionDenied("missing test credential")
-        return draft
+from tests.java.api_transport_contract import EchoAPI
 
 
 class QuietHandler(WSGIRequestHandler):

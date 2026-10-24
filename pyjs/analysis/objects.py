@@ -472,7 +472,13 @@ def resolve_imported(
     current_module: Module,
     fallback_name: str | None = None,
 ):
+    if obj is typing.Literal or obj is typing.Callable or obj is Callable:
+        return TypeAliasValue(fallback_name or obj.__name__, obj, current_module.scope, current_module)
     module_name = obj.__module__
+    if module_name == current_module.py_module.__name__:
+        existing = current_module.scope.names.get(getattr(obj, "__name__", None))
+        if existing is not None and existing.py_obj is obj:
+            return existing
     if isinstance(obj, typing.TypeAliasType) and inspect.getmodule(obj) is None:
         raise TypeError("Type aliases require an importable defining module")
     builtins = current_module.scope.BUILTINS
@@ -1994,6 +2000,10 @@ class Class(Object):
     def build(self, *args, **kwargs):
         class_node = self.container.class_definitions.get(self.py_cls.__name__)
         info = self.library_info
+        if info is not None:
+            for name, imported in info.imports.items():
+                imported = self.container.library_mappings.resolve(imported)
+                traverse_imported(name, imported, self.container)
         (
             self.field_declaration_nodes,
             self.field_value_nodes,
@@ -2096,11 +2106,12 @@ class Class(Object):
             source_overrides=source_overrides,
             skip_names=skip_names,
         )
-        if info is not None and info.initializer is not None:
-            Function.from_py_func(
-                self.py_cls.__init__, self, emitted_name="__init__",
-                source_override=info.initializer, load_overloads=False,
-            )
+        if info is not None:
+            for name, source in info.methods.items():
+                Function.from_py_func(
+                    inspect.getattr_static(self.py_cls, name), self, emitted_name=name,
+                    source_override=source, load_overloads=False,
+                )
         for name, initializer in self.field_value_nodes.items():
             field = self.find_attrs(name, search_bases=False)
             if not isinstance(field, Instance) or field.static_value is None:
@@ -3323,6 +3334,8 @@ class Function(Object):
 
     @property
     def has_source_decorator(self):
+        if self.has_synthetic_source:
+            return False  # Explicit target source supersedes host JS replacements.
         implementation = own_js_metadata(self.py_func, "implementation")
         return self.runtime_source is not None or (
             implementation is not None and implementation.kind == "source"

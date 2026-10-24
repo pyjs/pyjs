@@ -10,7 +10,7 @@ from .models import _class_info, is_model
 
 
 class JSONCodegen:
-    def __init__(self):
+    def __init__(self, reserved=()):
         self.lines = []
         self.imports = {
             "_pyjs_reader": JSONReader,
@@ -22,10 +22,24 @@ class JSONCodegen:
         self.next_name = 0
         self.level = 0
         self.schema_heights = {}
+        self.reserved = set(reserved)
 
     def name(self):
         self.next_name += 1
+        while f"_pyjs_value_{self.next_name}" in self.reserved:
+            self.next_name += 1
         return f"_pyjs_value_{self.next_name}"
+
+    def type_name(self, annotation):
+        for name, value in self.imports.items():
+            if value is annotation:
+                return name
+        identity = f"{annotation.__module__}.{annotation.__qualname__}"
+        name = "_pyjs_type_" + sha256(identity.encode()).hexdigest()[:16]
+        if name in self.imports or name in self.reserved:
+            raise TypeError("JVM JSON type identities must be unique within a compilation")
+        self.imports[name] = annotation
+        return name
 
     def emit(self, line):
         if len(self.lines) >= 4096:
@@ -50,15 +64,7 @@ class JSONCodegen:
         if annotation in (str, bool, int, float):
             return annotation.__name__
         if is_model(annotation):
-            for name, value in self.imports.items():
-                if value is annotation:
-                    return name
-            identity = f"{annotation.__module__}.{annotation.__qualname__}"
-            name = "_pyjs_json_model_" + sha256(identity.encode()).hexdigest()[:16]
-            if name in self.imports:
-                raise TypeError("JVM JSON model identities must be unique within a compilation")
-            self.imports[name] = annotation
-            return name
+            return self.type_name(annotation)
         origin, args = get_origin(annotation), get_args(annotation)
         if origin is Literal and args and all(type(value) is str for value in args):
             return "_pyjs_literal[" + ", ".join(repr(value) for value in args) + "]"
