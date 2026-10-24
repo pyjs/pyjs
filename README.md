@@ -687,6 +687,19 @@ with `pyjs template`.
   with optional positional or keyword `count`, and slices with a literal unit
   step or omitted step. Dynamic or non-unit steps remain unsupported.
   These operations retain the UTF-16 surrogate limitation described below.
+- JVM Python property getters support inherited virtual dispatch and retain
+  their declared numeric representation. This does not add property setters
+  or properties overriding ordinary instance fields.
+- `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
+  HTTP interface using native Java HTTP(S), including on Android. It sends
+  UTF-8 JSON and retains status/body for errors. Headers are explicit;
+  redirects are not followed. Responses default to an 8 MiB byte limit.
+  Set a finite request timeout for network operations; zero disables the
+  connect/read timeouts. These are not total-request deadlines.
+  Calls block the calling JVM thread despite the async interface: use an
+  explicit worker, never Android's UI thread. This is a transport foundation,
+  not yet generated JVM API proxies, Pydantic decoding, session management,
+  cancellation, or lifecycle-aware delivery. Native I/O exceptions propagate.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
   values with reference keys. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.

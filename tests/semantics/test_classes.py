@@ -6,9 +6,14 @@ from tests.backend_semantics import (
     APPLICATION_GENERIC_UNION_ORDER_CONTRACT,
     INHERITED_FACTORY_FIELD_CONTRACT,
     PROPERTY_FIELD_OVERRIDE_CONTRACT,
+    PROPERTY_GETTER_CONTRACT,
 )
 
 from .helpers import assert_semantics, run_python
+
+
+def test_shared_property_getter_contract():
+    assert_semantics(PROPERTY_GETTER_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_inherited_factory_field_contract():

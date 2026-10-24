@@ -4,6 +4,13 @@
 
 ### Changed
 
+- JVM API transport can POST UTF-8 JSON through the existing client transport
+  interface, retaining error bodies with bounded response size and explicit
+  connect/read timeouts. Native calls require a worker thread on Android;
+  generated typed JVM proxies and lifecycle integration remain future work.
+- JVM Python property getters now preserve inherited virtual dispatch and
+  declared numeric representations, including shared response properties.
+
 - Tailwind provisioning and Clang/browser discovery delegate to sdkmgr 0.3.
   Tailwind selects the exact supported release; explicit custom commands are
   retained. Browser discovery never downloads implicitly and reports setup
