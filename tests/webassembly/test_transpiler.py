@@ -78,6 +78,13 @@ def test_optional_float_contract_keeps_explicit_wasm_boundary():
         transpile_webassembly(OPTIONAL_FLOAT_CONTRACT.source)
 
 
+@pytest.mark.parametrize("name", ["cast", "cast as project"])
+def test_typing_cast_reaches_explicit_wasm_boundary(name):
+    call = "project" if " as " in name else name
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly expression StaticCast is not implemented at line 3$"):
+        transpile_webassembly(f"from typing import {name}\ndef main() -> int:\n    value = 3\n    return {call}(int, value)\n")
+
+
 def test_keyword_only_calls_keep_explicit_wasm_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly functions require fixed positional parameters$"):
         transpile_webassembly(KEYWORD_ARGUMENT_CONTRACT.source)

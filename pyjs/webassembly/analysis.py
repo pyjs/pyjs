@@ -20,6 +20,7 @@ WEBASSEMBLY_LIBRARY_MAPPINGS = NativeProtocolMappings(
     stdlib_imports={
         ("math", None): ("pyjs.stdlib.math", None),
         ("math", "isfinite"): ("pyjs.stdlib.math", "isfinite"),
+        ("typing", "cast"): ("pyjs.stdlib.typing", "cast"),
     }
 )
 
