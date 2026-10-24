@@ -1,12 +1,15 @@
+import pytest
+
 from pyjs.testing.helpers import ad, at
 
 
-def test_string_literal_aliases_validate_calls_returns_and_containers():
+@pytest.mark.parametrize("imported", ["Literal", "Choice"])
+def test_string_literal_aliases_validate_calls_returns_and_containers(imported):
     at(
         """
-        from typing import Literal
+        from typing import Literal as IMPORTED
 
-        type Mode = Literal["open", "closed"]
+        type Mode = IMPORTED["open", "closed"]
 
         @js
         def normalize(mode: Mode) -> Mode:
@@ -15,9 +18,9 @@ def test_string_literal_aliases_validate_calls_returns_and_containers():
             return "closed"
 
         def main():
-            modes: list[Mode] = ["open", "closed"]
+            modes: list[IMPORTED["open", "closed"]] = ["open", "closed"]
             print(normalize(modes[0]))
-        """,
+        """.replace("IMPORTED", imported),
         """
         def normalize(mode: Literal['open', 'closed']) -> Literal['open', 'closed']:
             if mode.[object]__eq__!('open'):

@@ -725,7 +725,9 @@ class Object:
             if inspect.isbuiltin(py_obj):
                 continue
 
-            if isinstance(container, Module) and (py_obj is Callable or py_obj is typing.Callable):
+            if isinstance(container, Module) and (
+                py_obj is Callable or py_obj is typing.Callable or py_obj is typing.Literal
+            ):
                 # These are annotation constructors, not reachable Python
                 # implementations of collections.abc's subscription machinery.
                 container.add(TypeAliasValue(name, py_obj, container.scope, container))

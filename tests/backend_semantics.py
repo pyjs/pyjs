@@ -3399,6 +3399,7 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 LITERAL_STRING_CONTRACT = _contract(
     '''
     from typing import Literal
+    from typing import Literal as Choice
     from pyjs import js
 
     @js
@@ -3417,7 +3418,7 @@ LITERAL_STRING_CONTRACT = _contract(
     letters = ""
     for letter in value:
         letters += letter
-    items: list[Literal["text", "list"]] = ["text", "list"]
+    items: list[Choice["text", "list"]] = ["text", "list"]
     ''',
     (
         ("literal fields retain their default", "value != 'text'"),

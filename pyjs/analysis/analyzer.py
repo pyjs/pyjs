@@ -184,6 +184,8 @@ def typing_alias_name(node: ast.expr, scope: Scope) -> str | None:
         return node.id
     if isinstance(value, TypeAliasValue) and (value.annotation is Callable or value.annotation is typing.Callable):
         return "Callable"
+    if isinstance(value, TypeAliasValue) and value.annotation is typing.Literal:
+        return "Literal"
     return None
 
 
