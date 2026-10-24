@@ -732,6 +732,9 @@ with `pyjs template`.
   nesting limit of 64 containers; number tokens keep their original spelling
   for the schema decoder to check range and precision. Diagnostic positions
   count UTF-16 units. `quote()` produces an ASCII-escaped JSON string.
+  `integer()` requires a signed 64-bit integer token; `floating()` accepts
+  finite binary64 values, preserving negative zero and ordinary underflow.
+  Both reject overflow instead of silently wrapping or producing infinity.
   These helpers do not yet implement Pydantic decoding or typed API proxies.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
   values with reference keys. Scalar `get` requires a matching default;

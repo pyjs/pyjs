@@ -25,7 +25,8 @@
   evaluation. Native Java calls continue to require positional arguments.
 - JVM and Android clients can read schema-directed JSON tokens and quote JSON
   strings without an additional runtime dependency. Unknown values are
-  validated with bounded nesting; typed API proxies remain future work.
+  validated with bounded nesting. Typed number readers reject signed-integer
+  and finite-double overflow; typed API proxies remain future work.
 - JVM chained comparisons retain Python short-circuiting and single operand
   evaluation. String ordering compares Unicode code points, and `chr()`
   supports the full Unicode range with Python-compatible range errors.

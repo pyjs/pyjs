@@ -1,7 +1,7 @@
 """Strict JSON tokens for schema-directed JVM and Android decoding."""
 
 from pyjs import jvm, uint16
-from pyjs.java import i32
+from pyjs.java import i32, parse_double
 
 
 @jvm.native("java/lang/String")
@@ -212,6 +212,25 @@ class JSONReader:
             self.position += 1
         if self.position == start:
             raise ValueError("Expected JSON digit at " + str(self.position))
+
+    def integer(self) -> int:
+        """Read an integer token in the JVM's signed 64-bit range."""
+        token = self.number()
+        digits = token[1:] if token[0] == "-" else token
+        for character in digits:
+            if character < "0" or character > "9":
+                raise ValueError("Expected JSON integer")
+        limit = "9223372036854775808" if token[0] == "-" else "9223372036854775807"
+        if len(digits) > 19 or len(digits) == 19 and digits > limit:
+            raise ValueError("JSON integer exceeds the signed 64-bit range")
+        return int(token)
+
+    def floating(self) -> float:
+        """Read a finite binary64 number; underflow follows JVM rounding."""
+        value = parse_double(self.number())
+        if value > 1.7976931348623157e308 or value < -1.7976931348623157e308:
+            raise ValueError("JSON number exceeds the finite binary64 range")
+        return value
 
     def skip(self, max_depth: int = 64) -> None:
         """Consume one unknown value, validating its complete JSON syntax."""

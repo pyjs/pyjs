@@ -171,3 +171,49 @@ def main() -> str:
     result = run_jvm(source, tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "matched"
+
+
+TYPED_NUMBERS = '''
+from pyjs.java import double_to_string
+from pyjs.java.json import JSONReader
+def main() -> str:
+    for token in ["0", "-0", "42", "-123", "9007199254740993",
+                  "9223372036854775807", "-9223372036854775808"]:
+        reader = JSONReader(" " + token + " ")
+        assert reader.integer() == int(token)
+        reader.finish()
+    for token in ["9223372036854775808", "-9223372036854775809",
+                  "9" * 5000, "1.0", "1e0", "-2.1", "true", "null"]:
+        try:
+            JSONReader(token).integer()
+        except ValueError:
+            continue
+        return "accepted invalid integer: " + token
+    for token in ["0", "-0", "1", "1.25", "-3.125e1", "1.7976931348623157e308",
+                  "-1.7976931348623157e308", "5e-324", "1e-999"]:
+        reader = JSONReader(token)
+        value = reader.floating()
+        reader.finish()
+        assert value <= 1.7976931348623157e308
+    assert JSONReader("1.25").floating() == 1.25
+    assert JSONReader("-3.125e1").floating() == -31.25
+    assert JSONReader("5e-324").floating() > 0.0
+    assert JSONReader("1e-999").floating() == 0.0
+    assert double_to_string(JSONReader("-1e-999").floating()) == "-0.0"
+    assert double_to_string(JSONReader("-0").floating()) == "-0.0"
+    for token in ["1.7976931348623159e308", "-1e309", "NaN", "Infinity", "null", "true"]:
+        try:
+            JSONReader(token).floating()
+        except ValueError:
+            continue
+        return "accepted invalid float: " + token
+    return "matched"
+'''
+
+
+def test_typed_json_numbers_match_python(tmp_path):
+    assert_text_matches_python(TYPED_NUMBERS, tmp_path)
+
+
+def test_typed_json_numbers_compile_to_android_dex(tmp_path):
+    assert_compiles_to_android_dex(TYPED_NUMBERS, tmp_path)
