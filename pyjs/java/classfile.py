@@ -331,6 +331,11 @@ class ClassFile:
 
     def render_method(self, method: Method) -> bytes:
         code = method.code
+        # Valid loops preserve entry depth; each instruction adds at most two
+        # slots, and handlers enter with one exception. A byte-length bound
+        # avoids reserving 65,535 slots for small methods at JIT transitions,
+        # while retaining any tighter maximum supplied by a helper emitter.
+        max_stack = min(method.max_stack, 2 * len(code) + 1)
         handlers = []
         for handler in method.exception_handlers:
             if not (
@@ -357,7 +362,7 @@ class ClassFile:
             code_attributes.append(_u2(name) + _u4(len(body)) + body)
         code_body = b"".join(
             [
-                _u2(method.max_stack),
+                _u2(max_stack),
                 _u2(method.max_locals),
                 _u4(len(code)),
                 code,

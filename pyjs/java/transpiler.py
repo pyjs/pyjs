@@ -743,8 +743,7 @@ class JVMEmitter:
             self.function_name(function),
             self.descriptor(function),
             self.code.render(),
-            # Version 49 verification accepts a conservative declared maximum.
-            # Track exact depth only when a newer class format requires frames.
+            # The class writer caps this conservative maximum by code size.
             0xFFFF,
             self.local_count,
             tuple(self.code.line_numbers),
