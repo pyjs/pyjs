@@ -3396,6 +3396,49 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+PROPERTY_GETTER_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Status:
+        def __init__(self, code: int):
+            self.code = code
+            self.reads = 0
+        @property
+        def ok(self) -> bool:
+            self.reads += 1
+            return self.code >= 200 and self.code < 300
+
+    @js
+    class Accepted(Status):
+        @property
+        def ok(self) -> bool:
+            self.reads += 1
+            return self.code == 202
+
+    @js
+    def inspect_status(status: Status) -> bool:
+        return status.ok
+    ''',
+    "property_getter_result",
+    '''
+    ordinary = Status(200)
+    specialized = Accepted(200)
+    first = inspect_status(ordinary)
+    second = inspect_status(specialized)
+    specialized.code = 202
+    third = inspect_status(specialized)
+    ''',
+    (
+        ("base getter reads its fields", "not first"),
+        ("base-typed call dispatches overridden getter", "second"),
+        ("property is not cached", "not third"),
+        ("each access evaluates getter once", "ordinary.reads != 1 or specialized.reads != 2"),
+    ),
+)
+
+
 LITERAL_FIELD_ASSIGNMENT_CONTRACT = _contract(
     '''
     from pyjs import js
