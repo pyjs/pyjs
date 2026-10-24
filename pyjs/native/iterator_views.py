@@ -109,9 +109,9 @@ def symbol(e, source, target, node, *, operation='next', representation=None, ta
                                          representation=representation, target_representation=target_representation))
 
 
-def wrap(e, source, target, value, node, *, representation=None, target_representation=None):
+def wrap(e, source, target, value, node, *, representation=None, target_representation=None, kind=runtime.ADAPTER):
     roots = calls.root_values(e, value)
-    result = iterator_ops.new(e, runtime.ADAPTER, value)
+    result = iterator_ops.new(e, kind, value)
     iterator_ops.store(e, result, runtime.ADVANCE, 'ptr', symbol(e, source, target, node,
                        representation=representation, target_representation=target_representation))
     if target.generic_name == 'Generator':
@@ -200,6 +200,8 @@ def store_send(e, state, kind, value, node):
     direct, adapted, done = (e.new_label('send.' + name) for name in ('direct', 'adapted', 'stored'))
     tag = e.emit_value(f'load i64, ptr {state}')
     wrapped = e.emit_value(f'icmp eq i64 {tag}, {runtime.ADAPTER}')
+    awaited = e.emit_value(f'icmp eq i64 {tag}, {runtime.AWAIT_ITERATOR}')
+    wrapped = e.emit_value(f'or i1 {wrapped}, {awaited}')
     e.emit_line(f'br i1 {wrapped}, label %{adapted}, label %{direct}')
     e.emit_line(f'{direct}:')
     destination = iterator_callbacks.load(e, state, runtime.CALLBACK_VALUE)

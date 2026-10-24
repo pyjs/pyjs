@@ -1115,10 +1115,11 @@ class LifetimeInference:
             origin: (LifetimeBoundary.LOCAL, set())
             for origin in origins
         }
-        if self.function.is_generator:
+        if self.function.is_generator or self.function.is_async:
             # A suspended frame retains parameters and locals past this call.
             for origin in origins:
-                self.mark(origin, LifetimeBoundary.EXTERNAL, "retained by generator frame")
+                reason = "retained by coroutine frame" if self.function.is_async else "retained by generator frame"
+                self.mark(origin, LifetimeBoundary.EXTERNAL, reason)
         for value in self.constraints.returned:
             for origin in self.origins(value):
                 self.mark(origin, LifetimeBoundary.CALLER, "returned")
@@ -1169,7 +1170,7 @@ class LifetimeInference:
         return reachable
 
     def returned_parameters(self) -> frozenset[str]:
-        if self.function.is_generator:
+        if self.function.is_generator or self.function.is_async:
             return frozenset(self.parameters)
         origins = set()
         for value in self.constraints.returned:

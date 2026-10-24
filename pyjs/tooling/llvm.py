@@ -18,6 +18,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from pyjs.analysis.source import create_module
+from pyjs.native.analysis import NativeLibraryMappings
 from pyjs.native.llvm import (
     LLVMABIParameter,
     LLVMABIType,
@@ -807,6 +808,7 @@ class LLVM:
         optimize: int = 2,
         sanitizers: tuple[str, ...] = (),
         direct: bool = False,
+        library_mappings: NativeLibraryMappings | None = None,
     ) -> LLVMLibrary:
         """Compile and load a typed buffered or descriptor renderer."""
         module = transpile_llvm_module(
@@ -816,6 +818,7 @@ class LLVM:
             entry_point=entry_point,
             target="library",
             direct=direct,
+            library_mappings=library_mappings,
         )
         library = self.compile(
             module.llvm_ir,
@@ -847,6 +850,7 @@ class LLVM:
         optimize: int = 2,
         sanitizers: tuple[str, ...] = (),
         direct: bool = False,
+        library_mappings: NativeLibraryMappings | None = None,
     ) -> LLVMRenderComparison:
         """Compare renders, transferring library ownership only on success.
 
@@ -863,6 +867,7 @@ class LLVM:
             optimize=optimize,
             sanitizers=sanitizers,
             direct=direct,
+            library_mappings=library_mappings,
         )
         try:
             python_module_name = f"{module_name or Path(filename).stem}_python"
@@ -951,12 +956,14 @@ class LLVM:
         pass_fds: tuple[int, ...] = (),
         sanitizers: tuple[str, ...] = (),
         timeout: float = 10,
+        library_mappings: NativeLibraryMappings | None = None,
     ) -> LLVMExecution:
         """Generate, compile, and execute one Python source module."""
         llvm_ir = transpile_llvm(
             source,
             filename=filename,
             module_name=module_name,
+            library_mappings=library_mappings,
         )
         if directory is not None:
             return self._run_ir(
@@ -991,6 +998,7 @@ class LLVM:
         optimize: int = 2,
         sanitizers: tuple[str, ...] = (),
         timeout: float = 10,
+        library_mappings: NativeLibraryMappings | None = None,
     ) -> LLVMComparison:
         """Execute a zero-argument ``main`` with CPython and native LLVM."""
         root_context = (
@@ -1010,6 +1018,7 @@ class LLVM:
                 optimize=optimize,
                 sanitizers=sanitizers,
                 timeout=timeout,
+                library_mappings=library_mappings,
             )
             return LLVMComparison(python, native)
         finally:

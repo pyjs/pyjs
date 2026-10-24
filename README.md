@@ -197,6 +197,32 @@ Initialization output is reported as compilation diagnostics on stderr, or
 under `compilation` with `--json`, rather than mixed into the native result or
 generated LLVM source.
 
+Embedded hosts can select source implementations of imported interfaces with
+`library_mappings=` on `transpile_llvm`, `transpile_llvm_module`,
+`LLVM.run_source`, or `LLVM.compile_library` (and their comparison helpers).
+Subclass `pyjs.native.analysis.NativeLibraryMappings`, override `resolve(value)`
+to return the host implementation for a recognized Python class or function,
+and delegate unhandled values to `super().resolve(value)`. Pass the resolver
+instance explicitly for each compilation; it applies during analysis and
+emission without modifying the default native resolver or Python imports.
+The native semantic builtins and ABI remain unchanged. These mappings select
+implementations; they do not provide a browser runtime, event loop, or additional
+language support. Host implementations must use the supported native subset.
+
+The native backend supports `async def` and nested `await` through managed
+coroutine frames. Calling an async function creates a coroutine without running
+its body. A synchronous driver can obtain `coroutine.__await__()` and advance
+that iterator with `next`, `send`, `throw`, and `close`; completion arrives as
+`StopIteration.value`. Custom awaitables can define `__await__` returning a
+typed `Generator` and use their concrete class as the annotation. Native
+`Awaitable[T]` storage currently represents coroutine results only; inheriting
+from `Awaitable` is rejected rather than reinterpreting an application object
+as a coroutine frame. Async callbacks and methods use the same call machinery.
+The compiler does not supply an event loop or `asyncio` implementation. Native
+executable and library entry points remain synchronous, and async generators
+are not implemented. A host scheduler must own pending coroutine iterators,
+resume them when operations finish, and close them before disposing its heap.
+
 ## What makes PyJS different
 
 - **Python stays visible.** Generated JavaScript is readable and maps back to

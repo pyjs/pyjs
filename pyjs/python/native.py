@@ -177,7 +177,8 @@ class _Generator[V, S, R](_Iterator[V]):
     def throw(self, exception: BaseException | type[BaseException], /) -> V: ...
 
 
-class _Awaitable[T](_object): ...
+class _Awaitable[T](_object):
+    def __await__(self) -> Generator[object, object, T]: ...
 
 
 class _callable(_object):

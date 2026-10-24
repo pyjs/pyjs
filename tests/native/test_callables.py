@@ -383,3 +383,22 @@ def main() -> int:
 '''
     with pytest.raises(LLVMUnsupported, match="bound receiver"):
         transpile_llvm(source)
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_empty_callback_registry_still_declares_invocation_layout(optimize):
+    result = LLVM().assert_matches_python('''
+from collections.abc import Callable
+class Registry:
+    def __init__(self):
+        self.callbacks: dict[int, Callable[[int], None]] = {}
+    def dispatch(self, code: int) -> None:
+        callback = self.callbacks.get(code)
+        if callback is not None:
+            callback(42)
+def main() -> int:
+    registry = Registry()
+    registry.dispatch(1)
+    return len(registry.callbacks)
+''', optimize=optimize)
+    assert result.native.returncode == 0

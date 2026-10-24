@@ -262,6 +262,7 @@ def status(emitter, iterator, output, node, *, preserve_stop=False):
         (-4, "RuntimeError", "Set changed size during iteration"),
         (runtime.INCOMPLETE_BATCH, "ValueError", "batched(): incomplete batch"),
         (runtime.TEE_REENTRY, "RuntimeError", "cannot re-enter the tee iterator"),
+        (runtime.COROUTINE_REUSED, "RuntimeError", "cannot reuse already awaited coroutine"),
     ):
         emitter.guard_exception(node, emitter.emit_value(f"icmp ne i64 {result}, {code}"), exception, message)
     failed, ready = emitter.new_label("zip.mismatch"), emitter.new_label("iterator.ready")

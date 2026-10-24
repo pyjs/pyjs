@@ -82,7 +82,7 @@ except StopIteration{binding}:
 else:
     while True:
         try:
-            received = yield item
+            received{receive_annotation} = yield item
         except GeneratorExit:
             {close}
             raise
@@ -280,7 +280,13 @@ def lower_statement(visitor, node, *, capture=None):
                        "(container.step < 0 and container.stop < -9223372036854775808 + (-1 - container.step)):\n"
                        f"    {long_error}\n{failure}")
         send = "if received is None:\n    item = next(source)\nelse:\n" + indent(failure, " " * 4)
+    receive_annotation = ""
+    if generator and visitor.func.is_async:
+        contract = visitor.ir.new_name("__await_send_type")
+        visitor.scope.add(source_type.generic_types["S"], name=contract)
+        receive_annotation = ": " + contract
     tree = ast.parse(("result: object = None\n" if capture else "") + _FORWARD.format(
+        receive_annotation=receive_annotation,
         binding=binding, completion=completion,
         close="source.close()" if generator else "close_cursor(source)" if erased else "pass",
         throw=indent(_THROW.format(advance="item = source.throw(error)" if generator else
