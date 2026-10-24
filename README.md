@@ -719,8 +719,8 @@ with `pyjs template`.
   Custom validators/serializers, initialization hooks, aliases, generic models,
   mutable defaults/factories, frozen fields, and dynamic extras are rejected.
   Field access is supported; model equality, dumping, and JSON validation are
-  not yet implemented. This is groundwork for typed API proxies, not parity
-  with Pydantic's host runtime.
+  not yet implemented. Typed API codecs are separate from Pydantic's host
+  runtime.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
@@ -728,9 +728,16 @@ with `pyjs template`.
   Set a finite request timeout for network operations; zero disables the
   connect/read timeouts. These are not total-request deadlines.
   Calls block the calling JVM thread despite the async interface: use an
-  explicit worker, never Android's UI thread. Session management, cancellation,
-  and lifecycle-aware delivery remain separate work. Native I/O exceptions
-  propagate.
+  explicit worker, never Android's UI thread. Native I/O exceptions propagate.
+  An optional `cookies=CookieManager()` from `pyjs.java.net` provides an
+  isolated in-memory cookie jar without installing a global cookie handler.
+  `get()` and `post_form()` support session bootstrap and ordinary Django
+  login/logout, retaining redirects so the app can inspect their status.
+  CSRF headers remain explicit and must follow token rotation after login.
+  Managed cookies cannot be combined with explicit Cookie headers. Credential
+  headers are not origin-scoped: keep a transport per trusted server/account.
+  Cookie persistence, cancellation, and lifecycle-aware delivery remain
+  application responsibilities.
 - JVM clients compile ordinary `API` query, mutation, and action methods into
   typed remote operations, including nested API children and inherited methods.
   Server operation bodies are not analyzed or emitted. Supported schemas are

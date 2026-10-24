@@ -2,10 +2,15 @@
 
 ## Unreleased
 
+- Immediately awaited objects preserve instance fields, properties, methods,
+  and represented numeric fields across JavaScript, JVM, and LLVM lowering.
 - JVM clients generate typed remote operations from ordinary API declarations
   without including server bodies. Nested model results and structured errors
-  are decoded on the client. This does not add sessions, cancellation, streams,
+  are decoded on the client. This does not add cancellation, streams,
   resource relationships, or nonblocking execution.
+- JVM transports support isolated in-memory cookie sessions, GET bootstrap,
+  and UTF-8 form submission for Django login/logout. CSRF headers remain
+  explicit; credential persistence and lifecycle handling stay with the app.
 - JVM list and application-length truth tests reject negative lengths even
   under negation. Explicit-separator string splitting supports bounded splits
   and preserves trailing empty fields; whitespace splitting remains unsupported.
@@ -45,7 +50,7 @@
 - JVM and Android clients can read schema-directed JSON tokens and quote JSON
   strings without an additional runtime dependency. Unknown values are
   validated with bounded nesting. Typed number readers reject signed-integer
-  and finite-double overflow; typed API proxies remain future work.
+  and finite-double overflow.
 - JVM chained comparisons retain Python short-circuiting and single operand
   evaluation. String ordering compares Unicode code points, and `chr()`
   supports the full Unicode range with Python-compatible range errors.
@@ -53,7 +58,7 @@
 - JVM API transport can POST UTF-8 JSON through the existing client transport
   interface, retaining error bodies with bounded response size and explicit
   connect/read timeouts. Native calls require a worker thread on Android;
-  generated typed JVM proxies and lifecycle integration remain future work.
+  lifecycle integration remains application-owned.
 - JVM Python property getters now preserve inherited virtual dispatch and
   declared numeric representations, including shared response properties.
 
