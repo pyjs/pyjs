@@ -147,6 +147,36 @@ def main() -> str:
     assert_compiles_to_android_dex(source, tmp_path)
 
 
+def test_managed_session_rejects_a_process_global_cookie_handler(tmp_path, cookie_endpoint):
+    url, received = cookie_endpoint
+    source = f'''
+from pyjs import jvm
+from pyjs.java import run_sync
+from pyjs.java.net import CookieHandler, CookieManager, default_cookie_handler
+from pyjs.server.jvm import JVMTransport
+@jvm.native("java/net/CookieHandler", name="setDefault")
+def set_global_cookies(value: CookieHandler | None) -> None: ...
+def main() -> str:
+    original = default_cookie_handler()
+    global_jar = CookieManager()
+    set_global_cookies(global_jar)
+    try:
+        try:
+            run_sync(JVMTransport(cookies=CookieManager()).get({url + '/api/check'!r}, 3000))
+        except ValueError as error:
+            assert str(error) == "Managed sessions cannot share a process-global CookieHandler"
+            assert default_cookie_handler() is global_jar
+            return "rejected without changing global state"
+        return "used global cookies"
+    finally:
+        set_global_cookies(original)
+'''
+    result = run_jvm(source, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "rejected without changing global state"
+    assert received == []
+
+
 @pytest.fixture(scope="module")
 def django_session_endpoint(tmp_path_factory):
     directory = tmp_path_factory.mktemp("django-session")

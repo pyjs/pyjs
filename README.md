@@ -736,6 +736,9 @@ with `pyjs template`.
   CSRF headers remain explicit and must follow token rotation after login.
   Managed cookies cannot be combined with explicit Cookie headers. Credential
   headers are not origin-scoped: keep a transport per trusted server/account.
+  Do not install a process-global CookieHandler while using managed sessions:
+  Java HTTP also consults that global handler. Requests reject one already
+  installed rather than mix its credentials with the transport's private jar.
   Cookie persistence, cancellation, and lifecycle-aware delivery remain
   application responsibilities.
 - JVM clients compile ordinary `API` query, mutation, and action methods into

@@ -10,7 +10,13 @@ from pyjs import int8
 from pyjs.java import JVMArray, i32
 from pyjs.java.collections import JavaList
 from pyjs.java.io import ByteArrayOutputStream, InputStream, OutputStreamWriter
-from pyjs.java.net import URL, CookieManager, HttpURLConnection, encode_form_value
+from pyjs.java.net import (
+    URL,
+    CookieManager,
+    HttpURLConnection,
+    default_cookie_handler,
+    encode_form_value,
+)
 from pyjs.server.transport import ClientTransport, TransportResponse
 
 
@@ -79,6 +85,8 @@ class JVMTransport(ClientTransport):
     async def _send(self, method: str, url: str, body: str, content_type: str, timeout_ms: int) -> TransportResponse:
         if timeout_ms < 0 or timeout_ms > 2147483647:
             raise ValueError("API request timeout must be between 0 and 2147483647 milliseconds")
+        if self.cookies is not None and default_cookie_handler() is not None:
+            raise ValueError("Managed sessions cannot share a process-global CookieHandler")
         target = URL(url)
         protocol = target.getProtocol()
         if protocol != "http" and protocol != "https":

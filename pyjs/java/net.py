@@ -66,8 +66,17 @@ class CookieStore:
     def removeAll(self) -> bool: ...
 
 
+@jvm.native("java/net/CookieHandler")
+class CookieHandler:
+    pass
+
+
+@jvm.native("java/net/CookieHandler", name="getDefault")
+def default_cookie_handler() -> CookieHandler | None: ...
+
+
 @jvm.native("java/net/CookieManager")
-class CookieManager:
+class CookieManager(CookieHandler):
     def __init__(self) -> None: ...
     def get(self, uri: URI, request_headers: JavaMap) -> JavaMap: ...
     def put(self, uri: URI, response_headers: JavaMap) -> None: ...
