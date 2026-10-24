@@ -1,7 +1,7 @@
 import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
-from pyjs.java import transpile_jvm
+from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_compiles_to_android_dex
 
@@ -34,6 +34,56 @@ def test_typed_model_construction_defaults_inheritance_and_nested_fields(tmp_pat
 
 def test_model_construction_compiles_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(MODEL_CONSTRUCTION, tmp_path)
+
+
+def test_model_inherited_fields_share_storage_through_base_views(tmp_path):
+    assert_text_matches_python('''
+from pydantic import BaseModel
+class Base(BaseModel):
+    count: int = 1
+    label: str
+class Child(Base):
+    count: int = 5
+    enabled: bool = True
+class Grandchild(Child):
+    pass
+def read(value: Base) -> str:
+    return str(value.count) + value.label
+def change(value: Base):
+    value.count = 9
+    value.label = "changed"
+def main() -> str:
+    child = Grandchild(label="hello")
+    assert read(child) == "5hello"
+    values: list[Base] = [child]
+    assert values[0].count == 5 and values[0].label == "hello"
+    change(child)
+    assert child.count == 9 and child.label == "changed"
+    child.count = 7
+    return read(child)
+''', tmp_path)
+
+
+@pytest.mark.parametrize(("parent", "child", "value"), [
+    ("int", "float", "1.0"),
+    ("int8", "uint8", "uint8(1)"),
+    ("list[int8]", "list[uint8]", "[uint8(1)]"),
+])
+def test_redeclared_fields_cannot_change_inherited_storage(parent, child, value):
+    with pytest.raises(CompilationError, match="Cannot override inherited field") as caught:
+        transpile_jvm(f'''from pyjs import int8, uint8
+class Base:
+    count: {parent}
+class Child(Base):
+    count: {child}
+    def __init__(self):
+        self.count = {value}
+def main() -> int:
+    Child()
+    return 0
+''')
+    assert caught.value.lineno == 5
+    assert caught.value.diagnostic.code == "PYJS1103"
 
 
 @pytest.mark.parametrize("call", ['Item("bad")', 'Item()', 'Item(title=1)', 'Item(title="ok", extra=1)'])
@@ -80,6 +130,24 @@ def main() -> str:
 ''', tmp_path)
 
 
+@pytest.mark.parametrize(("field", "argument", "abi"), [
+    ("value: int = None", "", "N cannot cross an J"),
+    ("value: float", "value=2", "J cannot cross an D"),
+])
+def test_model_constructor_abi_boundaries_retain_a_source_location(field, argument, abi):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''from pydantic import BaseModel
+class Item(BaseModel):
+    {field}
+def main() -> int:
+    Item({argument})
+    return 0
+''', filename="model.py")
+    assert str(caught.value) == (
+        f"JVM native argument {abi} ABI at line 5 while compiling model.main"
+    )
+
+
 @pytest.mark.parametrize(("field", "message"), [
     ('name: str = Field(alias="title")', "does not support aliases"),
     ('names: list[str] = Field(default_factory=list)', "does not support default factories"),
@@ -87,6 +155,8 @@ def main() -> str:
     ('name: str = Field(default="ok", frozen=True)', "does not support freezing or exclusion"),
     ('name: str = Field(default="ok", exclude=True)', "does not support freezing or exclusion"),
     ('name: bytes = b"ok"', "has an unsupported type"),
+    ('value: int | str', "has an unsupported type"),
+    ('value: int | float | None', "has an unsupported type"),
     ('number: float = float("inf")', "requires a finite default"),
 ])
 def test_unsupported_model_fields_have_located_diagnostics(field, message):

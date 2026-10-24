@@ -1,7 +1,7 @@
 import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
-from pyjs.java import transpile_jvm
+from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.backend_semantics import KEYWORD_ARGUMENT_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_matches_python
@@ -9,6 +9,32 @@ from tests.java.test_exceptions import assert_matches_python
 
 def test_shared_keyword_argument_contract(tmp_path):
     assert_matches_python(KEYWORD_ARGUMENT_CONTRACT.source, tmp_path)
+
+
+@pytest.mark.parametrize(("base", "child", "call"), [
+    ("*, first: int, second: int", "*, second: int, first: int", "first=1, second=2"),
+    ("*, first: int = 1", "*, first: int = 2", ""),
+    ("*, first: int = 1", "first: int = 1", ""),
+    ("*, first: int", "*, renamed: int", "first=1"),
+    ("first: int = 1, *, second: int = 0", "first: int = 2, *, second: int = 0", ""),
+])
+def test_incompatible_keyword_override_contracts_are_located(base, child, call):
+    with pytest.raises(JVMUnsupported, match="must preserve parameter names, kinds, order, and defaults") as caught:
+        transpile_jvm(f'''class Base:
+    def value(self, {base}) -> int:
+        return 1
+class Child(Base):
+    def value(self, {child}) -> int:
+        return 2
+def invoke(value: Base) -> int:
+    return value.value({call})
+def main() -> int:
+    return invoke(Child())
+''', filename="dispatch.py")
+    assert str(caught.value) == (
+        "JVM override Child.value must preserve parameter names, kinds, order, "
+        "and defaults for keyword-only dispatch at line 5"
+    )
 
 
 def test_keyword_only_calls_keep_defaults_evaluation_order_and_virtual_dispatch(tmp_path):

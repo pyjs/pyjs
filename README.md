@@ -706,7 +706,9 @@ with `pyjs template`.
 - JVM application functions, methods, and constructors accept keyword and
   keyword-only arguments while preserving source evaluation order. Defaults
   must be immutable literals. Variadic parameters and keyword arguments to
-  native Java declarations remain unsupported.
+  native Java declarations remain unsupported. Overrides with keyword-only
+  parameters must preserve parameter names, kinds, order, and defaults;
+  incompatible runtime binding contracts are rejected.
 - Plain Pydantic 2 models compile as typed JVM field containers, with
   keyword-only construction, inherited fields, scalar defaults, nested models,
   and supported JVM collection types. Compiler type checks apply; Pydantic
@@ -753,8 +755,9 @@ with `pyjs template`.
   message `key not found`; their original keys remain available through `.args`.
 - JVM nullable integers, floats, and Booleans use boxed storage in parameters,
   returns, fields, and collections. `None` stays distinct from zero; equality
-  keeps integer precision, including above `2**53`. Truth tests accept absence,
-  zero, and NaN. Narrow with `is not None` before arithmetic or formatting.
+  keeps integer precision, including above `2**53`. Truth tests treat `None`
+  and zero as false; NaN is true, as in Python. Narrow with `is not None`
+  before arithmetic or formatting.
   Represented values retain their wrapping and rounding rules. Mixed numeric
   unions such as `int | float | None` and scalar `isinstance` remain unsupported.
   Numeric identity checks only support comparison against `None`; nullable

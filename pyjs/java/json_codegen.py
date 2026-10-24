@@ -39,6 +39,11 @@ class JSONCodegen:
         return annotation
 
     def annotation(self, annotation):
+        return self._annotation(annotation, 0)
+
+    def _annotation(self, annotation, depth):
+        if depth >= 32:
+            raise TypeError("JVM JSON schemas must be acyclic and at most 32 levels deep")
         annotation = self.unwrap(annotation)
         if annotation is type(None):
             return "None"
@@ -58,11 +63,11 @@ class JSONCodegen:
         if origin is Literal and args and all(type(value) is str for value in args):
             return "_pyjs_literal[" + ", ".join(repr(value) for value in args) + "]"
         if origin in (Union, UnionType) and len(args) == 2 and type(None) in args:
-            return " | ".join(self.annotation(value) for value in args)
+            return " | ".join(self._annotation(value, depth + 1) for value in args)
         if origin is list and len(args) == 1:
-            return f"list[{self.annotation(args[0])}]"
+            return f"list[{self._annotation(args[0], depth + 1)}]"
         if origin is dict and len(args) == 2 and args[0] is str:
-            return f"dict[str, {self.annotation(args[1])}]"
+            return f"dict[str, {self._annotation(args[1], depth + 1)}]"
         raise TypeError(f"Unsupported JVM JSON schema: {annotation!r}")
 
     def validate(self, annotation, parents=()):

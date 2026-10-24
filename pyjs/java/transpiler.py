@@ -399,6 +399,18 @@ class JVMEmitter:
             class_file = self.class_files[self.class_name(layout.value_type)]
             class_file.source_file = self.module_source_file(layout.value_type.container)
             for field in layout.fields:
+                owner, inherited = self.managed_field(layout, field.name)
+                if owner is not layout.value_type:
+                    if (not same_analyzer_type(field.value_type, inherited.value_type)
+                            or field.representation != inherited.representation):
+                        raise JVMUnsupported(
+                            f"JVM field {layout.value_type.name}.{field.name} must preserve "
+                            "the inherited field type and representation",
+                            layout.value_type.field_declaration_nodes.get(
+                                field.name, layout.value_type.annotation,
+                            ),
+                        )
+                    continue
                 class_file.add_field(
                     Field(
                         0x0001,
@@ -618,6 +630,16 @@ class JVMEmitter:
                             f"JVM override {owner.name}.{name} must preserve the "
                             "base method signature"
                         )
+                    if (implementation.kwonlyargs or inherited.kwonlyargs) and (
+                        self.keyword_dispatch_contract(implementation)
+                        != self.keyword_dispatch_contract(inherited)
+                    ):
+                        raise JVMUnsupported(
+                            f"JVM override {owner.name}.{name} must preserve parameter "
+                            "names, kinds, order, and defaults for keyword-only dispatch",
+                            implementation.original_node,
+                            fragment=implementation.source_fragment,
+                        )
                     break
                 base = self.classes[base].base
 
@@ -656,6 +678,27 @@ class JVMEmitter:
                         f"JVM implementation {layout.value_type.name}."
                         f"{declaration.name} must preserve the interface signature"
                     )
+
+    @staticmethod
+    def keyword_dispatch_contract(function):
+        return (
+            tuple(parameter.arg for parameter in function.params),
+            function.posonly_count,
+            tuple(parameter.arg for parameter in function.kwonlyargs),
+            tuple(ast.dump(default) for default in function.defaults),
+            tuple(ast.dump(default) if default is not None else None
+                  for default in function.kw_defaults),
+        )
+
+    def managed_field(self, layout, name):
+        result = (None, None)
+        while layout is not None:
+            for field in layout.fields:
+                if field.name == name:
+                    result = (layout.value_type, field)
+                    break
+            layout = self.classes.get(layout.base)
+        return result
 
     def function(self, function: Function) -> Method:
         self.current_function = function
@@ -3283,7 +3326,9 @@ class JVMEmitter:
                 storage = _numeric_descriptor(
                     analyzed_numeric_format(parameter)
                 ) or self.parameter_type(parameter)
-                self.convert_native_argument(actual, storage, node)
+                self.convert_native_argument(
+                    actual, storage, node.call, fragment=self.current_function.source_fragment,
+                )
         constructor = self.class_file.method_reference(
             owner,
             "<init>",
@@ -3306,7 +3351,9 @@ class JVMEmitter:
                 storage = _numeric_descriptor(
                     analyzed_numeric_format(parameter)
                 ) or self.parameter_type(parameter)
-                self.convert_native_argument(actual, storage, node)
+                self.convert_native_argument(
+                    actual, storage, node.call, fragment=self.current_function.source_fragment,
+                )
             expected = [
                 self.parameter_type(parameter) for parameter in self.application_parameters(initializer)
             ]
@@ -3891,17 +3938,7 @@ class JVMEmitter:
                 f"JVM cannot resolve field {attribute.attr} on {receiver_type.to_annotation_str()}",
                 attribute,
             )
-        owner = receiver_type
-        field = None
-        while layout is not None:
-            field = next(
-                (field for field in layout.fields if field.name == attribute.attr),
-                None,
-            )
-            if field is not None:
-                break
-            owner = layout.base
-            layout = self.classes.get(owner)
+        owner, field = self.managed_field(layout, attribute.attr)
         if field is None:
             raise JVMUnsupported(
                 f"JVM class {receiver_type.name} has no field {attribute.attr}",
@@ -5206,6 +5243,8 @@ class JVMEmitter:
         actual: str,
         expected: str,
         node: ast.AST,
+        *,
+        fragment=None,
     ) -> None:
         if actual == "N" and _is_reference_descriptor(expected):
             return
@@ -5228,6 +5267,7 @@ class JVMEmitter:
                     raise JVMUnsupported(
                         f"JVM native argument {actual} cannot cross an {expected} ABI",
                         node,
+                        fragment=fragment,
                     )
             return
         if self.compatible(actual, expected):
@@ -5235,6 +5275,7 @@ class JVMEmitter:
         raise JVMUnsupported(
             f"JVM native argument {actual} cannot cross an {expected} ABI",
             node,
+            fragment=fragment,
         )
 
     def convert_native_result(self, function: Function) -> str:

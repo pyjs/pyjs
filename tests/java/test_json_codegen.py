@@ -67,6 +67,26 @@ def test_generated_model_codecs_compile_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(model_corpus(), tmp_path)
 
 
+def test_generated_encoder_reads_subclasses_through_base_model_fields(tmp_path):
+    generator = JSONCodegen()
+    generator.validate(list[Item])
+    generator.emit("parts: list[str] = []")
+    generator.encode(list[Item], "values", "parts")
+    generator.emit("return ''.join(parts)")
+    body = "\n".join("    " + line for line in generator.lines)
+    assert_text_matches_python('''
+from tests.java.json_models import Item, ChildItem
+from pyjs.java.json import quote as _pyjs_quote
+def encode(values: list[Item]) -> str:
+''' + body + '''
+def main() -> str:
+    value = ChildItem(name="hello")
+    encoded = encode([value])
+    assert encoded == '[{"name":"hello","count":5}]'
+    return encoded
+''', tmp_path)
+
+
 @pytest.mark.parametrize(("annotation", "source", "expected"), [
     (OptionalField, '{"value":null}', '{"value":null}'),
     (OptionalField, '{"value":0}', '{"value":0}'),
@@ -113,9 +133,10 @@ def test_repeated_schema_graphs_have_bounded_generated_source():
     assert len(generator.lines) == 4096
 
 
-def test_deep_schema_is_rejected_before_emission():
+@pytest.mark.parametrize("depth", [32, 1100])
+def test_deep_schema_is_rejected_before_emission(depth):
     schema = str
-    for _ in range(32):
+    for _ in range(depth):
         schema = list[schema]
     generator = JSONCodegen()
     with pytest.raises(TypeError, match="at most 32 levels"):

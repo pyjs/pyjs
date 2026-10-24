@@ -13,6 +13,9 @@
 - Plain Pydantic models can be constructed as typed JVM field containers with
   inherited defaults and nested values. Server validation stays server-side;
   unsupported model hooks and configurations receive explicit diagnostics.
+  Redeclared inherited fields share their original storage, including reads
+  and writes through base-typed references; incompatible redeclarations fail
+  compilation instead of creating shadow fields.
 
 - String `Literal` values retain ordinary string storage and operations in
   JVM code, including containers and iteration. Native iteration also accepts
@@ -26,6 +29,7 @@
 - JVM application calls support keyword and keyword-only arguments, including
   defaults, inherited methods, and constructors, without reordering argument
   evaluation. Native Java calls continue to require positional arguments.
+  Keyword-only overrides with incompatible binding contracts are rejected.
 - JVM and Android clients can read schema-directed JSON tokens and quote JSON
   strings without an additional runtime dependency. Unknown values are
   validated with bounded nesting. Typed number readers reject signed-integer

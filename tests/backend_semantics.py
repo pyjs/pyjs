@@ -3116,6 +3116,7 @@ INHERITED_FIELD_ASSIGNMENT_CONTRACT = _contract(
             return -1
     @js
     class Child(Parent):
+        saved: Box | None
         def put(self, value: Box):
             self.saved = value
     @js

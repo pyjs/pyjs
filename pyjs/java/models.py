@@ -44,7 +44,12 @@ def field_type(annotation):
     origin, arguments = get_origin(annotation), get_args(annotation)
     if origin is Literal:
         return all(type(value) is str for value in arguments)
-    if origin in (list, UnionType, Union):
+    if origin in (UnionType, Union):
+        members = [value for value in arguments if value is not type(None)]
+        if len(members) > 1 and any(value in (bool, int, float) for value in members):
+            return False
+        return all(field_type(value) for value in arguments)
+    if origin is list:
         return all(field_type(value) for value in arguments)
     if origin is dict:
         return arguments[0] is str and field_type(arguments[1])

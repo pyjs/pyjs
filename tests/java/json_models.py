@@ -9,6 +9,11 @@ class Item(BaseModel):
     count: int = 0
 
 
+class ChildItem(Item):
+    count: int = 5
+    detail: str = "child"
+
+
 class Page(BaseModel):
     items: list[Item]
     cursor: int | None = None
