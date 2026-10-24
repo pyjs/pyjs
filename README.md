@@ -695,6 +695,10 @@ with `pyjs template`.
 - JVM Python property getters support inherited virtual dispatch and retain
   their declared numeric representation. This does not add property setters
   or properties overriding ordinary instance fields.
+- JVM application functions, methods, and constructors accept keyword and
+  keyword-only arguments while preserving source evaluation order. Defaults
+  must be immutable literals. Variadic parameters and keyword arguments to
+  native Java declarations remain unsupported.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;

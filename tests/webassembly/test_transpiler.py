@@ -30,6 +30,7 @@ from tests.backend_semantics import (
     INHERITED_FACTORY_FIELD_CONTRACT,
     INHERITED_FIELD_ASSIGNMENT_CONTRACT,
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
+    KEYWORD_ARGUMENT_CONTRACT,
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_SEQUENCE_REFLECTION_CONTRACT,
     MAPPING_LOOKUP_REPRESENTATION_CONTRACT,
@@ -54,6 +55,11 @@ from tests.backend_semantics import (
     UNPACK_FIELD_CONTRACT,
     nominal_object_contract,
 )
+
+
+def test_keyword_only_calls_keep_explicit_wasm_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly functions require fixed positional parameters$"):
+        transpile_webassembly(KEYWORD_ARGUMENT_CONTRACT.source)
 
 
 def test_chained_comparisons_keep_explicit_wasm_boundary():

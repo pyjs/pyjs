@@ -4,6 +4,9 @@
 
 ### Changed
 
+- JVM application calls support keyword and keyword-only arguments, including
+  defaults, inherited methods, and constructors, without reordering argument
+  evaluation. Native Java calls continue to require positional arguments.
 - JVM and Android clients can read schema-directed JSON tokens and quote JSON
   strings without an additional runtime dependency. Unknown values are
   validated with bounded nesting; typed API proxies remain future work.

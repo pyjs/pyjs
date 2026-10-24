@@ -542,7 +542,7 @@ class JVMEmitter:
                 raise JVMUnsupported(
                     f"JVM test {test.module_name}.{test.function_name} was not reached"
                 ) from None
-            if target.params or self.function_return_type(target) != "V":
+            if self.application_parameters(target) or self.function_return_type(target) != "V":
                 raise JVMUnsupported(
                     f"JVM test {test.module_name}.{test.function_name} must take no "
                     "arguments and return None"
@@ -657,14 +657,15 @@ class JVMEmitter:
 
     def function(self, function: Function) -> Method:
         self.current_function = function
-        if function.vararg or function.kwarg or function.kwonlyargs:
+        if function.vararg or function.kwarg:
             raise JVMUnsupported(
-                "JVM functions do not yet support variadic or keyword-only parameters"
+                "JVM functions do not yet support variadic parameters"
             )
         unsupported_default = next(
             (
                 default
-                for default in function.defaults
+                for default in [*function.defaults, *function.kw_defaults]
+                if default is not None
                 if not self.is_immutable_default(default)
             ),
             None,
@@ -683,7 +684,7 @@ class JVMEmitter:
                 _numeric_descriptor(analyzed_numeric_format(parameter))
                 or self.parameter_type(parameter),
             )
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
         ]
         if function.cls in self.classes:
             parameters.insert(0, ("self", self.class_descriptor(function.cls)))
@@ -756,7 +757,7 @@ class JVMEmitter:
         self.slot_types = {}
         self.slot_numeric_formats = {
             parameter.arg: analyzed_numeric_format(parameter)
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
             if analyzed_numeric_format(parameter) is not None
         }
         self.object_argument_slots = {}
@@ -1949,32 +1950,13 @@ class JVMEmitter:
                     )
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
-                arguments = self.application_arguments(node, target)
                 expected_receiver = self.class_descriptor(target.cls)
-                if not self.compatible(receiver_type, expected_receiver) or len(
-                    arguments
-                ) != len(target.params):
+                if not self.compatible(receiver_type, expected_receiver):
                     raise JVMUnsupported(
                         f"JVM call to {target.name} has incompatible arguments",
                         node,
                     )
-                for index, (argument, parameter) in enumerate(zip(
-                    arguments,
-                    target.params,
-                    strict=True,
-                )):
-                    actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
-                              else self.expression(argument))
-                    semantic = self.parameter_type(parameter)
-                    if not self.compatible(actual, semantic):
-                        raise JVMUnsupported(
-                            f"JVM call to {target.name} has incompatible arguments",
-                            node,
-                        )
-                    storage = (
-                        _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
-                    )
-                    self.convert_native_argument(actual, storage, argument)
+                self.application_arguments(node, target, leading_argument)
                 reference = self.class_file.method_reference(
                     self.class_name(target.cls),
                     self.function_name(target),
@@ -2427,28 +2409,7 @@ class JVMEmitter:
                     f"JVM call target {target.name} has no emitted definition",
                     node,
                 )
-            arguments = self.application_arguments(node, target)
-            if len(arguments) != len(target.params):
-                raise JVMUnsupported(
-                    f"JVM call to {target.name} has incompatible arguments",
-                    node,
-                )
-            for argument, parameter in zip(
-                arguments,
-                target.params,
-                strict=True,
-            ):
-                actual = self.expression(argument)
-                semantic = self.parameter_type(parameter)
-                if not self.compatible(actual, semantic):
-                    raise JVMUnsupported(
-                        f"JVM call to {target.name} has incompatible arguments",
-                        node,
-                    )
-                storage = (
-                    _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
-                )
-                self.convert_native_argument(actual, storage, argument)
+            self.application_arguments(node, target)
             reference = self.class_file.method_reference(
                 self.function_owner(target),
                 self.function_name(target),
@@ -3225,7 +3186,7 @@ class JVMEmitter:
         if native_subclass:
             for name, parameter in zip(
                 ordered,
-                initializer.params,
+                self.application_parameters(initializer),
                 strict=True,
             ):
                 actual = self.load(slots[name])
@@ -3247,7 +3208,7 @@ class JVMEmitter:
             argument_types = []
             for name, parameter in zip(
                 ordered,
-                initializer.params,
+                self.application_parameters(initializer),
                 strict=True,
             ):
                 actual = self.load(slots[name])
@@ -3257,7 +3218,7 @@ class JVMEmitter:
                 ) or self.parameter_type(parameter)
                 self.convert_native_argument(actual, storage, node)
             expected = [
-                self.parameter_type(parameter) for parameter in initializer.params
+                self.parameter_type(parameter) for parameter in self.application_parameters(initializer)
             ]
             if len(argument_types) != len(expected) or not all(
                 self.compatible(actual, wanted)
@@ -3325,37 +3286,41 @@ class JVMEmitter:
                     node,
                 )
             return [], []
-        parameters = [parameter.arg for parameter in initializer.params]
-        if len(node.call.args) > len(parameters):
-            raise JVMUnsupported(
-                f"JVM constructor for {node.value_type.name} has too many arguments",
-                node,
-            )
-        evaluation = list(zip(parameters, node.call.args, strict=False))
+        return self.bind_application_arguments(node.call, initializer)
+
+    @staticmethod
+    def application_parameters(function: Function):
+        return [*function.params, *function.kwonlyargs]
+
+    def bind_application_arguments(self, node: ast.Call, function: Function):
+        parameters = [parameter.arg for parameter in self.application_parameters(function)]
+        if len(node.args) > len(function.params):
+            raise JVMUnsupported(f"JVM call to {function.name} has too many positional arguments", node)
+        evaluation = list(zip(parameters, node.args, strict=False))
         supplied = {name for name, _value in evaluation}
-        for keyword in node.call.keywords:
+        positional_only = {parameter.arg for parameter in function.params[:function.posonly_count]}
+        for keyword in node.keywords:
             if keyword.arg is None:
-                raise JVMUnsupported("JVM constructors do not support **kwargs", node)
-            if keyword.arg not in parameters or keyword.arg in supplied:
+                raise JVMUnsupported("JVM calls do not support **kwargs", node)
+            if keyword.arg not in parameters or keyword.arg in supplied or keyword.arg in positional_only:
                 raise JVMUnsupported(
-                    f"JVM constructor argument {keyword.arg} is invalid",
+                    f"JVM call argument {keyword.arg} is invalid",
                     node,
                 )
             supplied.add(keyword.arg)
             evaluation.append((keyword.arg, keyword.value))
         missing = [name for name in parameters if name not in supplied]
-        first_default = len(parameters) - len(initializer.defaults)
-        defaults = dict(
-            zip(
-                parameters[first_default:],
-                initializer.defaults,
-                strict=True,
-            )
-        )
+        defaults = {parameter.arg: default for parameter, default in zip(
+            function.params[len(function.params) - len(function.defaults):],
+            function.defaults, strict=True,
+        )}
+        defaults.update((parameter.arg, default) for parameter, default in zip(
+            function.kwonlyargs, function.kw_defaults, strict=True,
+        ) if default is not None)
         required = [name for name in missing if name not in defaults]
         if required:
             raise JVMUnsupported(
-                f"JVM constructor arguments are missing: {', '.join(required)}",
+                f"JVM call arguments are missing: {', '.join(required)}",
                 node,
             )
         evaluation.extend((name, defaults[name]) for name in missing)
@@ -3380,22 +3345,34 @@ class JVMEmitter:
         self,
         node: ast.Call,
         function: Function,
-    ) -> list[ast.expr]:
-        if node.keywords:
-            raise JVMUnsupported(
-                "JVM application calls do not yet support keyword arguments",
-                node,
-            )
-        arguments = list(node.args)
-        required = len(function.params) - len(function.defaults)
-        default_offset = len(arguments) - required
-        if default_offset < 0 or len(arguments) > len(function.params):
-            raise JVMUnsupported(
-                f"JVM call to {function.name} has incompatible arguments",
-                node,
-            )
-        arguments.extend(function.defaults[default_offset:])
-        return arguments
+        leading_argument: str | None = None,
+    ) -> None:
+        evaluation, ordered = self.bind_application_arguments(node, function)
+        parameters = self.application_parameters(function)
+        if not node.keywords:
+            for index, ((_name, argument), parameter) in enumerate(zip(evaluation, parameters, strict=True)):
+                actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
+                          else self.expression(argument))
+                self.application_argument(actual, parameter, node)
+            return
+        slots = {}
+        for index, (name, argument) in enumerate(evaluation):
+            if index == 0 and leading_argument is not None:
+                slots[name] = leading_argument
+            else:
+                actual = self.expression(argument)
+                slot = self.allocate_temporary(actual, "call.argument")
+                self.store(slot, actual)
+                slots[name] = slot
+        for name, parameter in zip(ordered, parameters, strict=True):
+            self.application_argument(self.load(slots[name]), parameter, node)
+
+    def application_argument(self, actual: str, parameter, node: ast.Call) -> None:
+        semantic = self.parameter_type(parameter)
+        if not self.compatible(actual, semantic):
+            raise JVMUnsupported("JVM application call has incompatible arguments", node)
+        storage = _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
+        self.convert_native_argument(actual, storage, node)
 
     def context_exit(self, node):
         method = analyzed_value_object(node.func)
@@ -4318,7 +4295,7 @@ class JVMEmitter:
         storage_type = (
             _numeric_descriptor(entry_point.return_numeric_format) or return_type
         )
-        if entry_point.params or return_type not in {"J", "Ljava/lang/String;"}:
+        if self.application_parameters(entry_point) or return_type not in {"J", "Ljava/lang/String;"}:
             raise JVMUnsupported("the JVM executable entry point must return int or str")
         code = Bytecode()
         if return_type == "Ljava/lang/String;":
@@ -4440,7 +4417,7 @@ class JVMEmitter:
                 f"JVM subclass {layout.value_type.name} must call its native "
                 "superclass constructor"
             )
-        parameters = {parameter.arg: parameter for parameter in initializer.params}
+        parameters = {parameter.arg: parameter for parameter in self.application_parameters(initializer)}
         forwarded = list(parameters) if inherited else []
         for argument in arguments:
             if not isinstance(argument, ast.Name) or argument.id not in parameters:
@@ -4454,7 +4431,7 @@ class JVMEmitter:
         slots = {}
         types = {}
         index = 1
-        for parameter in initializer.params:
+        for parameter in self.application_parameters(initializer):
             value_type = _numeric_descriptor(
                 analyzed_numeric_format(parameter)
             ) or self.parameter_type(parameter)
@@ -4469,7 +4446,7 @@ class JVMEmitter:
             if native else [
                 _numeric_descriptor(analyzed_numeric_format(parameter))
                 or self.parameter_type(parameter)
-                for parameter in native_initializer.params
+                for parameter in self.application_parameters(native_initializer)
             ]
         )
         if len(forwarded) != len(expected):
@@ -5003,7 +4980,7 @@ class JVMEmitter:
         parameters = "".join(
             _numeric_descriptor(analyzed_numeric_format(parameter))
             or self.parameter_type(parameter)
-            for parameter in function.params
+            for parameter in self.application_parameters(function)
         )
         result = _numeric_descriptor(
             function.return_numeric_format
@@ -5039,6 +5016,8 @@ class JVMEmitter:
         )
 
     def native_parameter_types(self, function: Function) -> list[str]:
+        if function.kwonlyargs:
+            raise JVMUnsupported("JVM native declarations require positional parameters")
         annotations = self.native_annotations(function)
         if not function.params:
             parameters = list(inspect.signature(function.py_func).parameters)

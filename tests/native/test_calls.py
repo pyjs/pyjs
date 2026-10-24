@@ -2,6 +2,12 @@ import pytest
 
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
+from tests.backend_semantics import KEYWORD_ARGUMENT_CONTRACT
+
+
+def test_shared_keyword_argument_contract(tmp_path):
+    result = LLVM().assert_matches_python(KEYWORD_ARGUMENT_CONTRACT.source, directory=tmp_path)
+    assert result.native.returncode == 0, KEYWORD_ARGUMENT_CONTRACT.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("invocation", ["forward(value)", "forward(value=value)"])

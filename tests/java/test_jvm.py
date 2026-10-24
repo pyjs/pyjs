@@ -1136,21 +1136,21 @@ def test_jvm_rejects_mutable_application_defaults():
         )
 
 
-def test_jvm_application_calls_reject_keywords_instead_of_ignoring_them():
-    with pytest.raises(
-        JVMUnsupported,
-        match="application calls do not yet support keyword arguments",
-    ):
-        transpile_jvm(
-            """
-            def add(value: int, amount: int = 1) -> int:
-                return value + amount
+def test_jvm_application_calls_bind_keywords(tmp_path):
+    compilation = transpile_jvm(
+        """
+        def add(value: int, amount: int = 1) -> int:
+            return value + amount
 
 
-            def main() -> int:
-                return add(2, amount=3)
-            """
-        )
+        def main() -> int:
+            return add(2, amount=3)
+        """
+    )
+    compilation.write(tmp_path)
+    result = subprocess.run([java(), "-cp", str(tmp_path), "PyjsProgram"],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 5, result.stderr
 
 
 def test_jvm_runs_immediate_async_virtual_calls(tmp_path):

@@ -3396,6 +3396,36 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+KEYWORD_ARGUMENT_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def keyword_record(events: list[int], value: int) -> int:
+        events.append(value)
+        return value
+
+    @js
+    def keyword_operation(first: int, /, second: int = 5, *, third: int, fourth: int = 7) -> int:
+        return first * 1000 + second * 100 + third * 10 + fourth
+    ''',
+    "keyword_argument_result",
+    '''
+    events: list[int] = []
+    result = keyword_operation(keyword_record(events, 1),
+                               third=keyword_record(events, 3),
+                               second=keyword_record(events, 2))
+    defaults = keyword_operation(1, third=3)
+    ''',
+    (
+        ("keywords bind by name", "result != 1237"),
+        ("both kinds of defaults are retained", "defaults != 1537"),
+        ("arguments are evaluated once", "len(events) != 3"),
+        ("argument evaluation follows source order", "events[0] != 1 or events[1] != 3 or events[2] != 2"),
+    ),
+)
+
+
 CHAINED_COMPARISON_CONTRACT = _contract(
     '''
     from pyjs import js
