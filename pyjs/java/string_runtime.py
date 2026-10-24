@@ -9,7 +9,7 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
     required = required | ({"length"} if "getitem" in required else set())
     if "repr" in required:
         required = required | {"printable"}
-    if required & {"contains", "startswith", "endswith"}:
+    if required & {"contains", "startswith", "endswith", "replace"}:
         required = required | {"boundary"}
     for name, factory in (
         ("length", string_length_method),
@@ -23,9 +23,209 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("contains", string_contains_method),
         ("startswith", partial(string_affix_method, suffix=False)),
         ("endswith", partial(string_affix_method, suffix=True)),
+        ("replace", string_replace_method),
+        ("ord", partial(string_ord_method, throw_python=throw_python)),
+        ("hex", string_hex_method),
+        ("slice", string_slice_method),
     ):
         if name in required:
             class_file.add_method(factory(class_file))
+
+
+def string_slice_method(class_file: ClassFile) -> Method:
+    code = Bytecode()
+    def call(name, descriptor):
+        code.emit(0xB6, class_file.method_reference("java/lang/String", name, descriptor).to_bytes(2, "big"))
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.local(0x19, 0)
+    call("length", "()I")
+    call("codePointCount", "(II)I")
+    code.emit(0x85)
+    code.local(0x37, 5)
+    for slot in (1, 3):
+        code.local(0x16, slot)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9C, f"slice.{slot}.upper")
+        code.local(0x16, slot)
+        code.local(0x16, 5)
+        code.emit(0x61)
+        code.local(0x37, slot)
+        code.local(0x16, slot)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9C, f"slice.{slot}.upper")
+        code.emit(0x09)
+        code.local(0x37, slot)
+        code.mark(f"slice.{slot}.upper")
+        code.local(0x16, slot)
+        code.local(0x16, 5)
+        code.emit(0x94)
+        code.branch(0x9E, f"slice.{slot}.done")
+        code.local(0x16, 5)
+        code.local(0x37, slot)
+        code.mark(f"slice.{slot}.done")
+    code.local(0x16, 1)
+    code.local(0x16, 3)
+    code.emit(0x94)
+    code.branch(0x9E, "slice.substring")
+    code.local(0x16, 1)
+    code.local(0x37, 3)
+    code.mark("slice.substring")
+    code.local(0x19, 0)
+    for slot in (1, 3):
+        code.local(0x19, 0)
+        code.emit(0x03)
+        code.local(0x16, slot)
+        code.emit(0x88)
+        call("offsetByCodePoints", "(II)I")
+    call("substring", "(II)Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(
+        0x0009, "pyjs_string_slice", "(Ljava/lang/String;JJ)Ljava/lang/String;",
+        code.render(), 6, 7,
+    )
+
+
+def string_ord_method(class_file: ClassFile, *, throw_python) -> Method:
+    code = Bytecode()
+    def call(owner, name, descriptor):
+        code.emit(0xB6, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.local(0x19, 0)
+    call("java/lang/String", "length", "()I")
+    call("java/lang/String", "codePointCount", "(II)I")
+    code.emit(0x04)
+    code.branch(0x9F, "ord.valid")
+    throw_python("TypeError", "ord() expected a character", code, class_file)
+    code.mark("ord.valid")
+    code.local(0x19, 0)
+    code.emit(0x03)
+    call("java/lang/String", "codePointAt", "(I)I")
+    code.emit(0x85)
+    code.emit(0xAD)
+    return Method(0x0009, "pyjs_string_ord", "(Ljava/lang/String;)J", code.render(), 4, 1)
+
+
+def string_hex_method(class_file: ClassFile) -> Method:
+    code = Bytecode()
+    def call(owner, name, descriptor, opcode=0xB6):
+        code.emit(opcode, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+    def text(value):
+        code.emit(0x13, class_file.constants.string(value).to_bytes(2, "big"))
+    code.local(0x16, 0)
+    code.emit(0x10, bytes([16]))
+    call("java/lang/Long", "toString", "(JI)Ljava/lang/String;", 0xB8)
+    code.local(0x3A, 2)
+    code.local(0x16, 0)
+    code.emit(0x09)
+    code.emit(0x94)
+    code.branch(0x9C, "hex.positive")
+    text("-0x")
+    code.local(0x19, 2)
+    code.emit(0x04)
+    call("java/lang/String", "substring", "(I)Ljava/lang/String;")
+    code.branch(0xA7, "hex.concat")
+    code.mark("hex.positive")
+    text("0x")
+    code.local(0x19, 2)
+    code.mark("hex.concat")
+    call("java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(0x0009, "pyjs_string_hex", "(J)Ljava/lang/String;", code.render(), 4, 3)
+
+
+def string_replace_method(class_file: ClassFile) -> Method:
+    code = Bytecode()
+    def call(owner, name, descriptor, opcode=0xB6):
+        code.emit(opcode, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+    def append():
+        call("java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+        code.emit(0x57)
+    # UTF-16 cursors advance only at code-point boundaries. In particular an
+    # empty pattern inserts around characters, not inside surrogate pairs.
+    builder = class_file.constants.class_("java/lang/StringBuilder")
+    code.emit(0xBB, builder.to_bytes(2, "big"))
+    code.emit(0x59)
+    call("java/lang/StringBuilder", "<init>", "()V", 0xB7)
+    code.local(0x3A, 5)
+    for slot in (6, 7):
+        code.emit(0x03)
+        code.local(0x36, slot)
+    for source, slot in ((0, 8), (1, 9)):
+        code.local(0x19, source)
+        call("java/lang/String", "length", "()I")
+        code.local(0x36, slot)
+    code.local(0x16, 3)
+    code.emit(0x09)
+    code.emit(0x94)
+    code.branch(0x9C, "replace.loop")
+    code.emit(0x14, class_file.constants.long(9223372036854775807).to_bytes(2, "big"))
+    code.local(0x37, 3)
+    code.mark("replace.loop")
+    code.local(0x16, 3)
+    code.emit(0x09)
+    code.emit(0x94)
+    code.branch(0x99, "replace.done")
+    code.local(0x19, 0)
+    code.local(0x19, 1)
+    code.local(0x15, 6)
+    call("java/lang/String", "startsWith", "(Ljava/lang/String;I)Z")
+    code.branch(0x99, "replace.advance")
+    code.local(0x19, 0)
+    code.local(0x15, 6)
+    code.local(0x15, 9)
+    code.emit(0x60)
+    call(class_file.name, "pyjs_string_boundary", "(Ljava/lang/String;I)Z", 0xB8)
+    code.branch(0x99, "replace.advance")
+    code.local(0x19, 5)
+    code.local(0x19, 0)
+    code.local(0x15, 7)
+    code.local(0x15, 6)
+    call("java/lang/String", "substring", "(II)Ljava/lang/String;")
+    append()
+    code.local(0x19, 5)
+    code.local(0x19, 2)
+    append()
+    code.local(0x15, 6)
+    code.local(0x15, 9)
+    code.emit(0x60)
+    code.local(0x36, 7)
+    code.local(0x16, 3)
+    code.emit(0x0A)
+    code.emit(0x65)
+    code.local(0x37, 3)
+    code.local(0x15, 9)
+    code.branch(0x99, "replace.advance")
+    code.local(0x15, 7)
+    code.local(0x36, 6)
+    code.branch(0xA7, "replace.loop")
+    code.mark("replace.advance")
+    code.local(0x15, 6)
+    code.local(0x15, 8)
+    code.branch(0x9F, "replace.done")
+    code.local(0x19, 0)
+    code.local(0x15, 6)
+    code.emit(0x04)
+    call("java/lang/String", "offsetByCodePoints", "(II)I")
+    code.local(0x36, 6)
+    code.branch(0xA7, "replace.loop")
+    code.mark("replace.done")
+    code.local(0x19, 5)
+    code.local(0x19, 0)
+    code.local(0x15, 7)
+    call("java/lang/String", "substring", "(I)Ljava/lang/String;")
+    append()
+    code.local(0x19, 5)
+    call("java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(
+        0x0009, "pyjs_string_replace",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;",
+        code.render(), 6, 10,
+    )
 
 
 def string_printable_method(class_file: ClassFile) -> Method:

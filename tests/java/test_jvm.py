@@ -113,7 +113,7 @@ def main() -> int:
 
 
 @pytest.mark.parametrize("name, argument, result", [
-    ("hash", "1", "int"), ("ord", "'x'", "int"), ("chr", "65", "str"),
+    ("hash", "1", "int"), ("chr", "65", "str"),
 ])
 def test_native_value_builtins_keep_located_jvm_boundaries(name, argument, result):
     with pytest.raises(JVMUnsupported, match=f"JVM call target {name} has no emitted definition at line 2"):
@@ -849,7 +849,7 @@ def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
 
 
 def test_union_key_representation_contract_has_explicit_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="dictionaries require reference key and value types"):
+    with pytest.raises(JVMUnsupported, match="dictionaries require reference keys and reference or scalar values"):
         transpile_jvm(UNION_KEY_REPRESENTATION_CONTRACT.source)
 
 
@@ -1279,16 +1279,16 @@ def main() -> int:
     assert "$exception$KeyError: 'missing'" in result.stderr
 
 
-def test_jvm_dictionary_rejects_primitive_storage():
+def test_jvm_dictionary_rejects_primitive_keys():
     with pytest.raises(
         JVMUnsupported,
-        match="dictionaries require reference key and value types",
+        match="dictionaries require reference keys and reference or scalar values",
     ):
         transpile_jvm(
             """
             def main() -> int:
-                values: dict[str, int] = {"answer": 42}
-                return values["answer"]
+                values: dict[int, int] = {1: 42}
+                return values[1]
             """
         )
 

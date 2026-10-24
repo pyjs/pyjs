@@ -1546,6 +1546,26 @@ class JVMEmitter:
             self.code.emit(0xB8, reference.to_bytes(2, "big"))
             self.normalize_integer_result(node)
             return value_type
+        if isinstance(target, Function) and target.py_func in {
+            native_builtins._ord, native_builtins._hex,
+        }:
+            name = "ord" if target.py_func is native_builtins._ord else "hex"
+            if len(node.args) != 1 or node.keywords:
+                raise JVMUnsupported(f"JVM {name} takes one positional argument", node)
+            actual = self.expression(node.args[0])
+            expected = "Ljava/lang/String;" if name == "ord" else "J"
+            if name == "hex" and actual == "Z":
+                self.code.emit(0x85)
+                actual = "J"
+            if actual != expected:
+                raise JVMUnsupported(f"JVM {name} has an unsupported argument type", node)
+            result = "J" if name == "ord" else "Ljava/lang/String;"
+            self.string_helpers.add(name)
+            reference = self.class_file.method_reference(
+                self.main_class_name, f"pyjs_string_{name}", f"({expected}){result}",
+            )
+            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+            return result
         if isinstance(target, Function) and target.py_func is native_builtins._len:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("JVM len takes one positional argument", node)
@@ -1961,6 +1981,30 @@ class JVMEmitter:
                     receiver_type,
                     leading_argument,
                 )
+            if semantic_receiver.generic_name == "str" and target.name == "__slice__":
+                if node.keywords or len(node.args) != 3:
+                    raise JVMUnsupported("JVM string slices require start, stop and step", node)
+                step = node.args[2]
+                if not isinstance(step, ast.Constant) or not (
+                    step.value is None or isinstance(step.value, (int, bool)) and step.value == 1
+                ):
+                    raise JVMUnsupported("JVM string slices currently require a unit step", node)
+                for argument, default in zip(node.args[:2], (0, 9223372036854775807), strict=True):
+                    actual = self.expression(argument)
+                    if actual == "N":
+                        self.code.emit(0x57)
+                        self.long_constant(default)
+                    elif actual == "Z":
+                        self.code.emit(0x85)
+                    elif actual != "J":
+                        raise JVMUnsupported("JVM string slice bounds must be integers or None", node)
+                self.string_helpers.add("slice")
+                reference = self.class_file.method_reference(
+                    self.main_class_name, "pyjs_string_slice",
+                    "(Ljava/lang/String;JJ)Ljava/lang/String;",
+                )
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                return "Ljava/lang/String;"
             argument_types = (
                 [self.load(leading_argument)] if leading_argument is not None
                 else [self.expression(argument) for argument in node.args]
@@ -1985,6 +2029,25 @@ class JVMEmitter:
                 isinstance(semantic_receiver, Class)
                 and semantic_receiver.generic_name == "str"
             ):
+                if target.name == "replace":
+                    if node.keywords:
+                        if (len(node.args) != 2 or len(node.keywords) != 1
+                                or node.keywords[0].arg != "count"):
+                            raise JVMUnsupported("JVM str.replace accepts only count as a keyword", node)
+                        argument_types.append(self.expression(node.keywords[0].value))
+                    if argument_types == ["Ljava/lang/String;", "Ljava/lang/String;"]:
+                        self.long_constant(-1)
+                    elif argument_types == ["Ljava/lang/String;", "Ljava/lang/String;", "Z"]:
+                        self.code.emit(0x85)
+                    elif argument_types != ["Ljava/lang/String;", "Ljava/lang/String;", "J"]:
+                        raise JVMUnsupported("JVM str.replace requires strings and an integer count", node)
+                    self.string_helpers.add("replace")
+                    reference = self.class_file.method_reference(
+                        self.main_class_name, "pyjs_string_replace",
+                        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;",
+                    )
+                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    return "Ljava/lang/String;"
                 if target.name in {"__add__", "__radd__"} and argument_types == [
                     "Ljava/lang/String;"
                 ]:
@@ -2532,6 +2595,7 @@ class JVMEmitter:
             if not self.compatible(actual_value, value_type):
                 raise JVMUnsupported("JVM dictionary literal changes value type", value)
             self.convert_native_argument(actual_value, value_type, value)
+            box(self.code, self.class_file, value_type)
             self.dictionary_key_guard(key_type, beneath_value=True)
             self.code.emit(0xB6, put.to_bytes(2, "big"))
             self.code.emit(0x57)
@@ -2580,6 +2644,7 @@ class JVMEmitter:
                     "JVM dictionary value has an incompatible type", node
                 )
             self.convert_native_argument(actual_value, value_descriptor, node.args[1])
+            box(self.code, self.class_file, value_descriptor)
             self.dictionary_key_guard(key_type, beneath_value=True)
             reference = self.class_file.method_reference(
                 "java/util/HashMap",
@@ -2632,7 +2697,7 @@ class JVMEmitter:
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             self.code.emit(0xB6, get.to_bytes(2, "big"))
-            self.checkcast(value_descriptor)
+            self.dictionary_value_cast(value_descriptor)
             return value_descriptor
         if target.name == "get" and len(node.args) in {1, 2}:
             actual_key = self.expression(node.args[0])
@@ -2645,11 +2710,15 @@ class JVMEmitter:
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             if len(node.args) == 1:
+                if not _is_reference_descriptor(value_descriptor):
+                    raise JVMUnsupported("JVM scalar dictionary get requires a matching default", node)
                 self.dictionary_key_guard(key_type)
                 self.code.emit(0xB6, get.to_bytes(2, "big"))
                 self.checkcast(value_descriptor)
                 return value_descriptor
             default_type = self.expression(node.args[1])
+            if default_type == "N" and not _is_reference_descriptor(value_descriptor):
+                raise JVMUnsupported("JVM scalar dictionary get requires a matching default", node)
             if default_type != "N" and not self.compatible(
                 default_type,
                 value_descriptor,
@@ -2659,7 +2728,8 @@ class JVMEmitter:
                     node.args[1],
                 )
             temporary = self.allocate_temporary(value_descriptor, "dict.default")
-            self.store(temporary, default_type)
+            self.convert_native_argument(default_type, value_descriptor, node.args[1])
+            self.store(temporary, value_descriptor)
             self.dictionary_key_guard(key_type)
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
@@ -2672,7 +2742,7 @@ class JVMEmitter:
             done = self.new_label("dict.get.done")
             self.code.branch(0x99, missing)
             self.code.emit(0xB6, get.to_bytes(2, "big"))
-            self.checkcast(value_descriptor)
+            self.dictionary_value_cast(value_descriptor)
             self.code.branch(0xA7, done)
             self.code.mark(missing)
             self.code.emit(0x58)
@@ -2683,6 +2753,20 @@ class JVMEmitter:
             f"unsupported JVM dictionary operation {target.name}",
             node,
         )
+
+    def dictionary_value_cast(self, descriptor: str) -> None:
+        wrappers = {
+            "J": ("java/lang/Long", "longValue"),
+            "D": ("java/lang/Double", "doubleValue"),
+            "Z": ("java/lang/Boolean", "booleanValue"),
+        }
+        if descriptor not in wrappers:
+            self.checkcast(descriptor)
+            return
+        owner, method = wrappers[descriptor]
+        self.checkcast(f"L{owner};")
+        reference = self.class_file.method_reference(owner, method, f"(){descriptor}")
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
 
     def dictionary_key_guard(self, descriptor, *, beneath_value=False):
         if descriptor != "Ljava/lang/Object;":
@@ -2817,6 +2901,8 @@ class JVMEmitter:
                 JVM_ENVIRONMENT.builtins.search("int"),
             )
         list_type = analyzed_value_type(node.iterable)
+        if list_type.generic_name == "str":
+            return ("str", "Ljava/lang/String;", "Ljava/lang/String;", list_type)
         if list_type.generic_name == "tuple" and list_type.tuple_variadic:
             item = next(iter(list_type.generic_types.values()))
             return ("tuple", self.value_type(item), self.value_type(list_type), item)
@@ -2890,8 +2976,40 @@ class JVMEmitter:
         kind, item_type, source_type, semantic_item = self.iterators[node.iterator]
         if kind == "range":
             self.range_iterator_next(node)
+        elif kind == "str":
+            self.string_iterator_next(node)
         else:
             self.list_iterator_next(node, item_type, source_type, semantic_item)
+
+    def string_iterator_next(self, node: IteratorNext) -> None:
+        source = f"{node.iterator}.source"
+        index = f"{node.iterator}.index"
+        self.load(index)
+        self.code.emit(0x88)
+        self.load(source)
+        length = self.class_file.method_reference("java/lang/String", "length", "()I")
+        self.code.emit(0xB6, length.to_bytes(2, "big"))
+        self.code.branch(0xA2, self.block_label(node.exhausted))
+        self.load(source)
+        self.load(index)
+        self.code.emit(0x88)
+        self.load(source)
+        self.load(index)
+        self.code.emit(0x88)
+        self.code.emit(0x04)
+        offset = self.class_file.method_reference(
+            "java/lang/String", "offsetByCodePoints", "(II)I",
+        )
+        self.code.emit(0xB6, offset.to_bytes(2, "big"))
+        self.code.emit(0x59)
+        self.code.emit(0x85)
+        self.store(index, "J")
+        substring = self.class_file.method_reference(
+            "java/lang/String", "substring", "(II)Ljava/lang/String;",
+        )
+        self.code.emit(0xB6, substring.to_bytes(2, "big"))
+        self.assign_iterator_target(node, "Ljava/lang/String;", self.iterators[node.iterator][3])
+        self.code.branch(0xA7, self.block_label(node.body))
 
     def range_iterator_next(self, node: IteratorNext) -> None:
         current = f"{node.iterator}.current"
@@ -5273,11 +5391,11 @@ class JVMEmitter:
         self.validate_java_object_semantics(key, source, dictionary_key=True)
         key_type = self.value_type(key)
         value_descriptor = self.value_type(value)
-        if not _is_reference_descriptor(key_type) or not _is_reference_descriptor(
-            value_descriptor
+        if not _is_reference_descriptor(key_type) or not (
+            _is_reference_descriptor(value_descriptor) or value_descriptor in {"J", "D", "Z"}
         ):
             raise JVMUnsupported(
-                "JVM dictionaries require reference key and value types",
+                "JVM dictionaries require reference keys and reference or scalar values",
                 source,
             )
         return key_type, value_descriptor

@@ -42,9 +42,11 @@ from tests.backend_semantics import (
     RECURSIVE_OPTIONAL_CONTRACT,
     RECURSIVE_TREE_CONTRACT,
     REVERSED_PROTOCOL_CONTRACT,
+    SCALAR_MAPPING_VALUES_CONTRACT,
     SEQUENCE_REFLECTION_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
     STRUCTURAL_OPERATOR_CONTRACT,
+    TEXT_SERIALIZATION_CONTRACT,
     UNION_KEY_REPRESENTATION_CONTRACT,
     UNPACK_FIELD_CONTRACT,
     nominal_object_contract,
@@ -61,6 +63,16 @@ def test_boolean_arithmetic_has_an_explicit_wasm_boundary():
     (STRING_DICTIONARY_MEMBERSHIP_CONTRACT, "WebAssembly value type dict__str_str is not implemented"),
 ])
 def test_membership_contract_has_an_explicit_wasm_boundary(contract, message):
+    with pytest.raises(WebAssemblyUnsupported) as error:
+        transpile_webassembly(contract.source)
+    assert str(error.value) == message
+
+
+@pytest.mark.parametrize(("contract", "message"), [
+    (SCALAR_MAPPING_VALUES_CONTRACT, "WebAssembly value type dict__str_int is not implemented"),
+    (TEXT_SERIALIZATION_CONTRACT, "WebAssembly value type str is not implemented"),
+])
+def test_serialization_primitives_keep_explicit_wasm_boundaries(contract, message):
     with pytest.raises(WebAssemblyUnsupported) as error:
         transpile_webassembly(contract.source)
     assert str(error.value) == message
