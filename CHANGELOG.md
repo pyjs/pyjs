@@ -162,6 +162,8 @@
 
 ### Fixed
 
+- JavaScript string slices use Python character offsets rather than UTF-16
+  offsets, keeping slices around emoji consistent with indexing and length.
 - Typed callbacks whose result is an optional awaitable now accept both
   synchronous and asynchronous functions, including bound methods.
 - Native callback invocation declares its storage layout even when no

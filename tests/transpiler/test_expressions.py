@@ -1992,7 +1992,7 @@ def test_string_python_transformations():
             var lower = value.toLowerCase();
             var capitalized = ((value)=>value.length?value.charAt(0).toUpperCase()+value.slice(1).toLowerCase():value)('eXAMPLE');
             var titled = $title_string('sample primitive');
-            var prefix = value.slice(0,2);
+            var prefix = [...value].slice(0,2).join('');
             var first = $get_string_item(value, 0);
         }
         """,
