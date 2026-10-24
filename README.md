@@ -666,7 +666,14 @@ with `pyjs template`.
   Controlled Python operations raise Python categories for invalid indexing,
   division by zero, negative shifts, invalid integer parsing and storage
   limits; arbitrary Java API failures are not relabeled.
-- JVM dictionary subscription raises `KeyError` for missing keys without
+- JVM strings support code-point iteration, `ord`, signed `hex`, `replace`
+  with optional positional or keyword `count`, and slices with a literal unit
+  step or omitted step. Dynamic or non-unit steps remain unsupported.
+  These operations retain the UTF-16 surrogate limitation described below.
+- JVM dictionaries support ordinary integer, float, Boolean and reference
+  values with reference keys. Scalar `get` requires a matching default;
+  omitted/`None` defaults for scalar values remain explicit boundaries.
+  Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
   String and nullable-string keys retain Python-style quoted messages;
   `KeyError()` and `KeyError("")` remain distinct. Formatting uses pinned
@@ -722,6 +729,13 @@ with `pyjs template`.
   snapshots, checked replacement, failure reporting and retry without
   overwriting an unreadable snapshot. See its README for durability and
   host-platform limits.
+- `pyjs.android.json.JsonWriter` writes structured JSON through native Java
+  character writers. Use `StringWriter` for in-memory output or wrap a
+  document provider's `ContentResolver.open_output_stream(uri, "wt")` in an
+  `OutputStreamWriter(stream, "UTF-8")`. The resolver may return `None` or
+  raise a native I/O/security exception. Close owned writers and streams in
+  `finally`; closing `JsonWriter` also closes its underlying writer. A provider
+  failure can leave partial output, so do not report success before close.
 - Android packages can set `AndroidJVMApplication.application_class` to a
   source-defined `Application` subclass. Initialize framework-owned state in
   `onCreate`, not Python `__init__` (including inherited initializers).

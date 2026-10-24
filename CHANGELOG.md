@@ -42,6 +42,16 @@
   `library_mappings` for host interface implementations. Custom resolvers
   preserve native builtins and do not replace the default resolver, including
   during nested compilations or after a failed compilation.
+- JVM strings support `replace`, code-point iteration, unit-step slices,
+  `ord`, and signed `hex`. Scalar dictionary values can be stored and read
+  through subscription or `get` with a matching default; optional scalar
+  results and primitive dictionary keys remain unsupported.
+- Android document export can use `ContentResolver.open_output_stream` and
+  `Intent.EXTRA_TITLE`, Java output/character writers, and Android's streaming
+  `JsonWriter`. Applications retain ownership of closing streams and handling
+  provider failures.
+- JVM class emission bounds conservative operand-stack sizes by method size,
+  avoiding spurious stack overflows at JIT transitions for small methods.
 - Android Notes saves detached card-order snapshots on background threads.
   Completed drops coalesce behind a single writer; newer edits remain dirty
   until their own acknowledgement. Save failures retain retry diagnostics

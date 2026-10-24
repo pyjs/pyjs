@@ -54,5 +54,3 @@ def test_class_writer_caps_large_stack_requests_but_retains_tighter_bounds():
         encoded = owner.render_method(method)
         # method_info header, Code attribute header, then max_stack (JVMS 4.7.3).
         assert int.from_bytes(encoded[14:16]) == expected
-
-
