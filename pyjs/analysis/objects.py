@@ -478,6 +478,8 @@ def resolve_imported(
     if module_name == current_module.py_module.__name__:
         existing = current_module.scope.names.get(getattr(obj, "__name__", None))
         if existing is not None and existing.py_obj is obj:
+            if isinstance(existing, DeferredDefinition):
+                return existing.resolve()
             return existing
     if isinstance(obj, typing.TypeAliasType) and inspect.getmodule(obj) is None:
         raise TypeError("Type aliases require an importable defining module")

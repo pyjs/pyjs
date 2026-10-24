@@ -641,6 +641,34 @@ def test_lazy_module_imports_share_objects_in_both_resolution_orders(first):
         assert sum(value.name == "VALUES" for value in analysis.entry_point.compilation_objects) == 1
 
 
+@pytest.mark.parametrize("name", ["factory", "Record"])
+def test_same_module_import_resolution_materializes_deferred_definitions(name):
+    from pyjs.analysis.objects import (
+        Class,
+        DeferredDefinition,
+        Function,
+        resolve_imported,
+    )
+
+    with analyze_ir('''
+        class Record:
+            pass
+
+        def factory() -> Record:
+            return Record()
+
+        def main() -> int:
+            return 42
+    ''') as analysis:
+        module = analysis.entry_point.container
+        deferred = module.scope.names[name]
+        assert isinstance(deferred, DeferredDefinition)
+        resolved = resolve_imported(deferred.py_obj, module)
+        assert isinstance(resolved, Function if name == "factory" else Class)
+        assert resolved is module.search(name)
+        assert resolve_imported(deferred.py_obj, module) is resolved
+
+
 def test_bound_callback_lifetime_retains_its_receiver():
     with analyze_ir('''
         from typing import Callable

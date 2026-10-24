@@ -2104,7 +2104,8 @@ class JVMEmitter:
                     receiver_type,
                     leading_argument,
                 )
-            if (semantic_receiver.generic_name == "list" and target.name == "__len__"
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "__len__"
                     and not node.args and not node.keywords):
                 reference = self.class_file.field_reference(
                     self.list_class_name(semantic_receiver), "length", "I",
