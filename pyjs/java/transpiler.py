@@ -3443,7 +3443,7 @@ class JVMEmitter:
             for index, ((_name, argument), parameter) in enumerate(zip(evaluation, parameters, strict=True)):
                 actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
                           else self.expression(argument))
-                self.application_argument(actual, parameter, node)
+                self.application_argument(actual, parameter, node, function)
             return
         slots = {}
         for index, (name, argument) in enumerate(evaluation):
@@ -3455,12 +3455,12 @@ class JVMEmitter:
                 self.store(slot, actual)
                 slots[name] = slot
         for name, parameter in zip(ordered, parameters, strict=True):
-            self.application_argument(self.load(slots[name]), parameter, node)
+            self.application_argument(self.load(slots[name]), parameter, node, function)
 
-    def application_argument(self, actual: str, parameter, node: ast.Call) -> None:
+    def application_argument(self, actual: str, parameter, node: ast.Call, function: Function) -> None:
         semantic = self.parameter_type(parameter)
         if not self.compatible(actual, semantic):
-            raise JVMUnsupported("JVM application call has incompatible arguments", node)
+            raise JVMUnsupported(f"JVM call to {function.name} has incompatible arguments", node)
         storage = _numeric_descriptor(analyzed_numeric_format(parameter)) or semantic
         self.convert_native_argument(actual, storage, node)
 
@@ -5676,6 +5676,10 @@ class JVMEmitter:
         return f"{self.main_class_name}$tuple${suffix or 'empty'}"
 
     def expression_type(self, node) -> str:
+        if isinstance(node, ast.Name):
+            target = analyzed_value_object(node)
+            if isinstance(target, Class) and (target in self.classes or exception_type(target) is not None):
+                return "Ljava/lang/Class;"
         value_type = analyzed_value_type(node)
         return self.value_type(value_type, analyzed_representation(node))
 

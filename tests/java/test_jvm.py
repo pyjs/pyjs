@@ -838,9 +838,8 @@ def test_jvm_reversed_protocol_contract(tmp_path):
     test_jvm_runs_shared_numeric_contracts(tmp_path, REVERSED_PROTOCOL_CONTRACT)
 
 
-def test_literal_sequence_reflection_has_explicit_jvm_storage_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM value type str"):
-        transpile_jvm(LITERAL_SEQUENCE_REFLECTION_CONTRACT.source)
+def test_jvm_literal_sequence_reflection_contract(tmp_path):
+    test_jvm_runs_shared_numeric_contracts(tmp_path, LITERAL_SEQUENCE_REFLECTION_CONTRACT)
 
 
 def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
@@ -849,7 +848,7 @@ def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
 
 
 def test_union_key_representation_contract_has_explicit_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="dictionaries require reference keys and reference or scalar values"):
+    with pytest.raises(JVMUnsupported, match="JVM dictionaries do not support nullable numeric keys"):
         transpile_jvm(UNION_KEY_REPRESENTATION_CONTRACT.source)
 
 

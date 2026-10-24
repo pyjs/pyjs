@@ -202,3 +202,20 @@ def main() -> str:
     assert required(9007199254740993) == 9007199254740993
     return "matched"
 ''', tmp_path)
+
+
+def test_numeric_identity_guard_preserves_exception_class_tokens(tmp_path):
+    assert_text_matches_python('''
+class Scope:
+    def __enter__(self) -> None:
+        pass
+    def __exit__(self, token: object, value: object, traceback: object) -> bool:
+        assert token is ValueError
+        assert token is not TypeError
+        assert token is not None
+        return True
+def main() -> str:
+    with Scope():
+        raise ValueError("suppressed")
+    return "matched"
+''', tmp_path)
