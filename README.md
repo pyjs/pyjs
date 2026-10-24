@@ -737,7 +737,9 @@ with `pyjs template`.
   Both reject overflow instead of silently wrapping or producing infinity.
   These helpers do not yet implement Pydantic decoding or typed API proxies.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
-  values with reference keys. Scalar `get` requires a matching default;
+  values with reference keys. Iteration and live, reusable key views preserve
+  insertion order. Updating values does not invalidate an iterator; changing
+  its key set raises `RuntimeError`. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
@@ -757,6 +759,9 @@ with `pyjs template`.
   unions such as `int | float | None` and scalar `isinstance` remain unsupported.
   Numeric identity checks only support comparison against `None`; nullable
   numeric dictionary keys remain unsupported.
+  Explicit casts from present nullable numbers use the scalar ABI without
+  losing integer precision. As with other static casts, callers must ensure
+  the value is not `None` before casting to a non-null type.
 - JVM list membership supports matching integer or Boolean items; strings,
   floats and mixed item domains remain explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,

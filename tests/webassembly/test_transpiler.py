@@ -64,6 +64,13 @@ def test_literal_strings_keep_explicit_wasm_boundary():
         transpile_webassembly(LITERAL_STRING_CONTRACT.source)
 
 
+def test_dictionary_iteration_keeps_explicit_wasm_boundary():
+    from tests.backend_semantics import DICTIONARY_KEYS_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type dict__str_int is not implemented$"):
+        transpile_webassembly(DICTIONARY_KEYS_CONTRACT.source)
+
+
 def test_optional_float_contract_keeps_explicit_wasm_boundary():
     from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
 

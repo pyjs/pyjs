@@ -3396,6 +3396,48 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+DICTIONARY_KEYS_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def ordered_mapping(events: list[int]) -> dict[str, int]:
+        events.append(1)
+        return {"beta": 2, "alpha": 1, "last": 3}
+    ''',
+    "dictionary_keys_result",
+    '''
+    events: list[int] = []
+    order = ""
+    for key in ordered_mapping(events):
+        order += key + ";"
+    values = {"beta": 2, "alpha": 1}
+    view = values.keys()
+    values["last"] = 3
+    values["alpha"] = 7
+    repeated = ""
+    for key in view:
+        repeated += key + str(values[key])
+    for key in values:
+        repeated += key
+    empty: dict[str, int] = {}
+    for key in empty:
+        order = "unexpected"
+    else:
+        order += "empty"
+    for key in values:
+        break
+    else:
+        order = "unexpected else"
+    ''',
+    (
+        ("iteration preserves insertion order and loop else", "order != 'beta;alpha;last;empty'"),
+        ("mapping expression is evaluated once", "len(events) != 1"),
+        ("key views remain live and dictionaries can be iterated again", "repeated != 'beta2alpha7last3betaalphalast'"),
+    ),
+)
+
+
 LITERAL_STRING_CONTRACT = _contract(
     '''
     from typing import Literal
@@ -5380,6 +5422,11 @@ UNION_NONE_GUARD_CONTRACT = _contract(
 OPTIONAL_FLOAT_CONTRACT = _contract(
     '''
     from pyjs import js, float32
+    from typing import cast
+
+    @js
+    def optional_numeric_cast(value: float | None, number: int | None, flag: bool | None) -> bool:
+        return cast(float, value) == 1.25 and cast(int, number) == 42 and cast(bool, flag)
 
     @js
     def optional_float(value: float | None) -> float | None:
@@ -5416,6 +5463,7 @@ OPTIONAL_FLOAT_CONTRACT = _contract(
         ("optional collection reads narrow before arithmetic", "total != 1.25"),
         ("binary32 optional results retain rounding", "optional_float_increment(float32(16777216.0)) != float32(16777216.0)"),
         ("represented floating absence stays None", "optional_float_increment(None) is not None"),
+        ("explicit non-null scalar casts retain their values", "not optional_numeric_cast(1.25, 42, True)"),
     ),
 )
 

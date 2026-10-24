@@ -17,6 +17,9 @@
 - String `Literal` values retain ordinary string storage and operations in
   JVM code, including containers and iteration. Native iteration also accepts
   string literals without losing their declared value constraints.
+  Aliased `Literal` imports now work in local annotations across backends.
+- JVM dictionary iteration preserves insertion order and supports live key
+  views. Key-set changes during iteration raise a Python `RuntimeError`.
 
 ### Changed
 

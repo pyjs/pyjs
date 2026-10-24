@@ -192,3 +192,13 @@ def main() -> int:
     values: dict[{annotation} | None, int] = {{None: 1}}
     return values[None]
 ''')
+
+
+def test_explicit_nullable_integer_cast_preserves_precision(tmp_path):
+    assert_text_matches_python('''from typing import cast
+def required(value: int | None) -> int:
+    return cast(int, value)
+def main() -> str:
+    assert required(9007199254740993) == 9007199254740993
+    return "matched"
+''', tmp_path)

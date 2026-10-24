@@ -72,6 +72,7 @@ from .classfile import (
     Method,
 )
 from .diagnostics import JVMUnsupported as JVMUnsupported
+from .dictionaries import emit_iterator_next
 from .exception_reporting import emit_report_runtime
 from .exceptions import (
     ARGS_GETTER,
@@ -882,6 +883,8 @@ class JVMEmitter:
                     else:
                         add(f"{statement.name}.source", descriptor[2])
                         add(f"{statement.name}.index", "J")
+                        if descriptor[0] == "keys":
+                            add(f"{statement.name}.view", "Ljava/util/Set;")
                 elif isinstance(statement, IteratorNext):
                     descriptor = self.iterators[statement.iterator]
                     storage_format = self.local_numeric_format(statement.target)
@@ -1207,6 +1210,8 @@ class JVMEmitter:
         if isinstance(node, StaticCast):
             source = self.expression(node.value)
             target = self.expression_type(node)
+            if SCALAR_BOXES.get(target) == source:
+                return unbox_scalar(self.code, self.class_file, source)
             if source == "Ljava/lang/Object;" and target in {"J", "Z", "D"}:
                 if target == "J":
                     ordinary = self.new_label("cast.integer")
@@ -2592,7 +2597,7 @@ class JVMEmitter:
 
     def dictionary_new(self, node: CollectionNew) -> str:
         key_type, value_type = self.dictionary_types(node.value_type, node)
-        owner = "java/util/HashMap"
+        owner = "java/util/LinkedHashMap"
         class_index = self.class_file.constants.class_(owner)
         self.code.emit(0xBB, class_index.to_bytes(2, "big"))
         self.code.emit(0x59)
@@ -2636,6 +2641,12 @@ class JVMEmitter:
         if receiver_type != "Ljava/util/HashMap;":
             raise JVMUnsupported("JVM dictionary has an incompatible receiver", node)
         key_type, value_descriptor = self.dictionary_types(value_type, node)
+        if target.name == "keys" and not node.args and not node.keywords:
+            reference = self.class_file.method_reference(
+                "java/util/HashMap", "keySet", "()Ljava/util/Set;",
+            )
+            self.code.emit(0xB6, reference.to_bytes(2, "big"))
+            return "Ljava/util/Set;"
         if target.name == "__contains__" and len(node.args) == 1:
             actual = (self.load(leading_argument) if leading_argument is not None
                       else self.expression(node.args[0]))
@@ -2929,6 +2940,9 @@ class JVMEmitter:
             list_type = list_type.super
         if list_type.generic_name == "str":
             return ("str", "Ljava/lang/String;", "Ljava/lang/String;", list_type)
+        if list_type.generic_name == "KeysView":
+            item = next(iter(list_type.generic_types.values()))
+            return ("keys", self.value_type(item), "Ljava/util/Iterator;", item)
         if list_type.generic_name == "tuple" and list_type.tuple_variadic:
             item = next(iter(list_type.generic_types.values()))
             return ("tuple", self.value_type(item), self.value_type(list_type), item)
@@ -2963,6 +2977,18 @@ class JVMEmitter:
 
     def iterator_create(self, node: IteratorCreate) -> None:
         kind, _item_type, source_type, _semantic_item = self.iterators[node.name]
+        if kind == "keys":
+            if self.expression(node.iterable) != "Ljava/util/Set;":
+                raise JVMUnsupported("JVM dictionary iterator requires a key view", node)
+            self.code.emit(0x59)
+            self.store(f"{node.name}.view", "Ljava/util/Set;")
+            self.invoke_interface_noargs("java/util/Set", "size", "()I")
+            self.code.emit(0x85)
+            self.store(f"{node.name}.index", "J")
+            self.load(f"{node.name}.view")
+            self.invoke_interface_noargs("java/util/Set", "iterator", "()Ljava/util/Iterator;")
+            self.store(f"{node.name}.source", source_type)
+            return
         if kind == "range":
             arguments = [
                 self.expression_type(argument) for argument in node.iterable.args
@@ -3004,8 +3030,36 @@ class JVMEmitter:
             self.range_iterator_next(node)
         elif kind == "str":
             self.string_iterator_next(node)
+        elif kind == "keys":
+            self.dictionary_iterator_next(node, item_type, semantic_item)
         else:
             self.list_iterator_next(node, item_type, source_type, semantic_item)
+
+    def invoke_interface_noargs(self, owner, name, descriptor):
+        reference = self.class_file.interface_method_reference(owner, name, descriptor)
+        self.code.emit(0xB9, reference.to_bytes(2, "big") + b"\x01\x00")
+
+    def dictionary_iterator_next(self, node, item_type, semantic_item):
+        unchanged = self.new_label("dictionary.size.unchanged")
+        self.load(f"{node.iterator}.view")
+        self.invoke_interface_noargs("java/util/Set", "size", "()I")
+        self.code.emit(0x85)
+        self.load(f"{node.iterator}.index")
+        self.code.emit(0x94)
+        self.code.branch(0x99, unchanged)
+        self.throw_python("RuntimeError", "dictionary changed size during iteration")
+        self.code.mark(unchanged)
+        self.load(f"{node.iterator}.source")
+        self.invoke_interface_noargs("java/util/Iterator", "hasNext", "()Z")
+        self.code.branch(0x99, self.block_label(node.exhausted))
+        self.load(f"{node.iterator}.source")
+        owner = self.class_files[self.main_class_name]
+        name, descriptor = emit_iterator_next(owner, self.throw_python)
+        reference = self.class_file.method_reference(owner.name, name, descriptor)
+        self.code.emit(0xB8, reference.to_bytes(2, "big"))
+        self.checkcast(item_type)
+        self.assign_iterator_target(node, item_type, semantic_item)
+        self.code.branch(0xA7, self.block_label(node.body))
 
     def string_iterator_next(self, node: IteratorNext) -> None:
         source = f"{node.iterator}.source"
@@ -5233,6 +5287,9 @@ class JVMEmitter:
                 and node.value.id == "Literal"):
             # Analysis only admits string literals; their ABI is ordinary str.
             return "Ljava/lang/String;"
+        if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+                and node.value.id == "KeysView"):
+            return "Ljava/util/Set;"
         if isinstance(node, ast.Name):
             if node.id == "int":
                 return "J"
@@ -5448,6 +5505,8 @@ class JVMEmitter:
         if value_type.generic_name == "dict":
             self.dictionary_types(value_type)
             return "Ljava/util/HashMap;"
+        if value_type.generic_name == "KeysView":
+            return "Ljava/util/Set;"
         if value_type.generic_name == "tuple":
             if value_type.tuple_variadic:
                 item = self.value_type(next(iter(value_type.generic_types.values())))
