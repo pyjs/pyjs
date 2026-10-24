@@ -500,6 +500,9 @@ class View:
     def setEnabled(self, enabled: bool) -> None:
         pass
 
+    def setSaveEnabled(self, enabled: bool) -> None:
+        pass
+
     def isEnabled(self) -> bool:
         return True
 
@@ -896,6 +899,9 @@ class Activity(Context):
         pass
 
     def onSaveInstanceState(self, state: Bundle) -> None:
+        pass
+
+    def onResume(self) -> None:
         pass
 
     def onStop(self) -> None:
