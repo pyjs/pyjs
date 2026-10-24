@@ -5,6 +5,7 @@ from tests.backend_semantics import (
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
+    NARROWED_METHOD_CONTRACT,
 )
 from tests.semantics.helpers import assert_semantics
 
@@ -22,3 +23,7 @@ async def main() -> None:
     print(await await_attributes())
 asyncio.run(main())
 ''')
+
+
+def test_narrowed_receivers_and_arguments_keep_their_refined_type():
+    assert_semantics(NARROWED_METHOD_CONTRACT.print_source + "\nmain()\n")

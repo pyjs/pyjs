@@ -5,6 +5,7 @@ from tests.backend_semantics import (
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
+    NARROWED_METHOD_CONTRACT,
 )
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_matches_python
@@ -21,3 +22,7 @@ from pyjs.java import run_sync
 def main() -> str:
     return run_sync(await_attributes())
 ''', tmp_path)
+
+
+def test_narrowed_receivers_and_arguments_keep_their_refined_type(tmp_path):
+    assert_matches_python(NARROWED_METHOD_CONTRACT.source, tmp_path)

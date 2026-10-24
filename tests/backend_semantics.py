@@ -3397,6 +3397,44 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+NARROWED_METHOD_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class ReceiverBase:
+        pass
+
+    @js
+    class ReceiverChild(ReceiverBase):
+        def value(self) -> int:
+            return 5
+
+    @js
+    class ReceiverOverride(ReceiverChild):
+        def value(self) -> int:
+            return 7
+
+    @js
+    def accept_child(value: ReceiverChild) -> int:
+        return value.value()
+
+    @js
+    def guarded_receiver(value: ReceiverBase) -> int:
+        if not isinstance(value, ReceiverChild):
+            return 0
+        return value.value() + accept_child(value)
+    ''',
+    "narrowed_method_result",
+    "",
+    (
+        ("failed type guard does not call the child method", "guarded_receiver(ReceiverBase()) != 0"),
+        ("guard refines both receiver and argument", "guarded_receiver(ReceiverChild()) != 10"),
+        ("refined calls preserve virtual dispatch", "guarded_receiver(ReceiverOverride()) != 14"),
+    ),
+)
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js

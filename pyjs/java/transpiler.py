@@ -1191,6 +1191,16 @@ class JVMEmitter:
 
     def expression(self, node) -> str:
         result = self._expression(node)
+        if (_is_reference_descriptor(result) and hasattr(node, "obj")
+                and isinstance(analyzed_value_object(node), Instance)):
+            narrowed = analyzed_value_type(node)
+            if isinstance(narrowed, Class) and (narrowed in self.classes or narrowed in self.native_classes):
+                expected = self.value_type(narrowed)
+                if not self.compatible(result, expected) and self.compatible(expected, result):
+                    # Flow analysis can refine a base-typed local without
+                    # changing its JVM slot's declared storage type.
+                    self.checkcast(expected)
+                    result = expected
         if getattr(node, "jvm_truth_length", False):
             if result != "J":
                 raise JVMUnsupported("JVM __len__ truth tests require an integer result", node)

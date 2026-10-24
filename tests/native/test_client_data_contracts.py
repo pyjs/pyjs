@@ -6,6 +6,7 @@ from tests.backend_semantics import (
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
+    NARROWED_METHOD_CONTRACT,
 )
 
 
@@ -26,3 +27,8 @@ def main() -> str:
     return "unexpected suspension"
 ''', directory=tmp_path)
     assert result.native.stdout == "readyready!ready?:-128:4"
+
+
+def test_narrowed_receivers_and_arguments_keep_their_refined_type(tmp_path):
+    result = LLVM().assert_matches_python(NARROWED_METHOD_CONTRACT.source, directory=tmp_path)
+    assert result.native.returncode == 0

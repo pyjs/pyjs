@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- JVM method receivers and arguments retain class refinements from type guards
+  even when their local slot has a broader declared type.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.
