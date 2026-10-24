@@ -80,6 +80,8 @@ class AndroidJVMApplication:
     resources: tuple[Path, ...] = ()
     components: tuple[AndroidManifestComponent, ...] = ()
     application_class: str | None = None
+    permissions: tuple[str, ...] = ()
+    network_security_config: str | None = None
 
     def __post_init__(self) -> None:
         identifier = r"[A-Za-z_][A-Za-z0-9_]*"
@@ -99,6 +101,14 @@ class AndroidJVMApplication:
             raise ValueError("Android target SDK cannot be older than the minimum SDK")
         if self.target_sdk is not None and self.target_sdk > self.compile_sdk:
             raise ValueError("Android target SDK cannot be newer than the compile SDK")
+        for permission in self.permissions:
+            if re.fullmatch(rf"{identifier}(?:\.{identifier})+", permission) is None:
+                raise ValueError(f"invalid Android permission name: {permission!r}")
+        if self.network_security_config is not None:
+            if re.fullmatch(r"@xml/[a-z_][a-z0-9_]*", self.network_security_config) is None:
+                raise ValueError("Android network security config must reference an @xml/resource")
+            if self.compile_sdk < 24:
+                raise ValueError("Android network security config requires compile SDK 24 or newer")
 
     @property
     def jvm_class(self) -> str:
@@ -441,6 +451,13 @@ class AndroidJVMBuilder:
         activity = escape(application.android_activity, quote=True)
         title = escape(application.title, quote=True)
         debuggable = str(application.debuggable).lower()
+        permissions = "".join(
+            f'    <uses-permission android:name="{permission}" />\n'
+            for permission in dict.fromkeys(application.permissions)
+        )
+        network = ""
+        if application.network_security_config is not None:
+            network = f' android:networkSecurityConfig="{application.network_security_config}"'
         owner = ""
         if application.application_class is not None:
             owner = ' android:name="' + escape(
@@ -458,7 +475,7 @@ class AndroidJVMBuilder:
     package="{app_id}">
     <uses-sdk android:minSdkVersion="{application.min_sdk}"
         android:targetSdkVersion="{target_sdk}" />
-    <application{owner} android:allowBackup="false" android:debuggable="{debuggable}"
+{permissions}    <application{owner}{network} android:allowBackup="false" android:debuggable="{debuggable}"
         android:label="{title}"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">

@@ -668,6 +668,14 @@ with `pyjs template`.
 - Android uses direct JVM bytecode and native framework/AndroidX APIs.
   Calculator and Notes demonstrate the supported subset; Notes editor parity
   and broader platform coverage remain in progress.
+- `AndroidJVMApplication.permissions` explicitly requests manifest permissions
+  such as `("android.permission.INTERNET",)`. No permissions are added by
+  default. `network_security_config="@xml/network_policy"` links an app-owned
+  XML resource from `resources`; Android 7 and newer apply that policy instead
+  of the manifest's default `usesCleartextTraffic="false"`. For local HTTP
+  testing, allow only the emulator host `10.0.2.2` in a development resource,
+  not all hosts. Supply a production policy when building for deployment.
+  See the [Android network-security guide][android-network-security].
 - JVM exception handling supports ordered handlers, reraising, assertions,
   and `finally`, including cleanup across returns, breaks and continues.
   Builtin exceptions can be constructed, stored in fields or collections,
@@ -898,3 +906,5 @@ PyJS is distributed under the [BSD 3-Clause License](LICENSE).
 [python-badge]: https://img.shields.io/pypi/pyversions/pyjs.svg
 [license]: LICENSE
 [license-badge]: https://img.shields.io/pypi/l/pyjs.svg
+[android-network-security]:
+  https://developer.android.com/privacy-and-security/security-config

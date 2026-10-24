@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android application packages can declare permissions and reference an
+  app-owned network-security XML resource. Defaults still request no network
+  access and retain the existing cleartext policy.
+
 - Plain Pydantic models can be constructed as typed JVM field containers with
   inherited defaults and nested values. Server validation stays server-side;
   unsupported model hooks and configurations receive explicit diagnostics.
