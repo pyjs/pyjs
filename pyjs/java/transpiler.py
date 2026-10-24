@@ -2793,7 +2793,7 @@ class JVMEmitter:
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             self.code.emit(0x57)
             return "V"
-        if target.name == "__getitem__" and len(node.args) == 1:
+        if target.name in {"__getitem__", "pop"} and len(node.args) == 1:
             actual_key = self.expression(node.args[0])
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
@@ -2832,20 +2832,20 @@ class JVMEmitter:
             self.code.mark(present)
             get = self.class_file.method_reference(
                 "java/util/HashMap",
-                "get",
+                "get" if target.name == "__getitem__" else "remove",
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             self.code.emit(0xB6, get.to_bytes(2, "big"))
             self.dictionary_value_cast(value_descriptor)
             return value_descriptor
-        if target.name == "get" and len(node.args) in {1, 2}:
+        if target.name in {"get", "pop"} and len(node.args) in {1, 2}:
             actual_key = self.expression(node.args[0])
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
             get = self.class_file.method_reference(
                 "java/util/HashMap",
-                "get",
+                "get" if target.name == "get" else "remove",
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             if len(node.args) == 1:

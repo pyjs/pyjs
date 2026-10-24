@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- JVM dictionaries support `pop`, including eager defaults, nullable values,
+  missing-key errors, and iterator invalidation after removal.
 - Immediately awaited objects preserve instance fields, properties, methods,
   and represented numeric fields across JavaScript, JVM, and LLVM lowering.
 - JVM clients generate typed remote operations from ordinary API declarations

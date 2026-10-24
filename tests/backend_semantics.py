@@ -3397,6 +3397,31 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+DICTIONARY_POP_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def fallback(values: dict[str, int], events: list[int]) -> int:
+        events.append(len(values))
+        return values.pop("first") + 1
+    ''',
+    "dictionary_pop_result",
+    '''
+    values = {"first": 3, "last": 7}
+    events: list[int] = []
+    first = values.pop("first", fallback(values, events))
+    last = values.pop("last")
+    missing = values.pop("missing", 9)
+    ''',
+    (
+        ("default is evaluated eagerly before removal", "first != 4 or events[0] != 2"),
+        ("present values are returned and removed", "last != 7 or len(values) != 0"),
+        ("absent keys return the explicit default", "missing != 9"),
+    ),
+)
+
+
 DICTIONARY_KEYS_CONTRACT = _contract(
     '''
     from pyjs import js

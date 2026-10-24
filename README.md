@@ -764,6 +764,8 @@ with `pyjs template`.
   insertion order. Updating values does not invalidate an iterator; changing
   its key set raises `RuntimeError`. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
+  `pop` returns and removes present values, evaluates explicit defaults eagerly,
+  and raises `KeyError` for absent keys when no default was supplied.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
   String and nullable-string keys retain Python-style quoted messages;
