@@ -3409,6 +3409,7 @@ DICTIONARY_POP_CONTRACT = _contract(
     "dictionary_pop_result",
     '''
     values = {"first": 3, "last": 7}
+    copied = values.copy()
     events: list[int] = []
     first = values.pop("first", fallback(values, events))
     last = values.pop("last")
@@ -3418,6 +3419,7 @@ DICTIONARY_POP_CONTRACT = _contract(
         ("default is evaluated eagerly before removal", "first != 4 or events[0] != 2"),
         ("present values are returned and removed", "last != 7 or len(values) != 0"),
         ("absent keys return the explicit default", "missing != 9"),
+        ("copy retains entries independently of removals", "len(copied) != 2 or copied['first'] != 3"),
     ),
 )
 

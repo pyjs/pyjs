@@ -766,6 +766,7 @@ with `pyjs template`.
   omitted/`None` defaults for scalar values remain explicit boundaries.
   `pop` returns and removes present values, evaluates explicit defaults eagerly,
   and raises `KeyError` for absent keys when no default was supplied.
+  `copy` creates a shallow, insertion-ordered copy with independent keys.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
   String and nullable-string keys retain Python-style quoted messages;

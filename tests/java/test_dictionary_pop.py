@@ -52,3 +52,21 @@ def main() -> str:
         events.append("missed")
     return ":".join(events)
 ''', tmp_path)
+
+
+def test_dictionary_copy_is_shallow_and_retains_insertion_order(tmp_path):
+    assert_text_matches_python('''
+def main() -> str:
+    values = {"last": [1], "first": [2]}
+    copied = values.copy()
+    copied["last"].append(3)
+    assert len(values["last"]) == 2
+    copied["new"] = [4]
+    assert "new" not in values
+    result = ""
+    for key in copied:
+        result += key
+    empty: dict[str, int] = {}
+    assert len(empty.copy()) == 0
+    return result
+''', tmp_path)

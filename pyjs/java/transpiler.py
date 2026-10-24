@@ -2745,6 +2745,16 @@ class JVMEmitter:
         if receiver_type != "Ljava/util/HashMap;":
             raise JVMUnsupported("JVM dictionary has an incompatible receiver", node)
         key_type, value_descriptor = self.dictionary_types(value_type, node)
+        if target.name == "copy" and not node.args and not node.keywords:
+            original = self.allocate_temporary(receiver_type, "dict.copy.source")
+            self.store(original, receiver_type)
+            owner = "java/util/LinkedHashMap"
+            self.code.emit(0xBB, self.class_file.constants.class_(owner).to_bytes(2, "big"))
+            self.code.emit(0x59)
+            self.load(original)
+            constructor = self.class_file.method_reference(owner, "<init>", "(Ljava/util/Map;)V")
+            self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+            return receiver_type
         if target.name == "keys" and not node.args and not node.keywords:
             reference = self.class_file.method_reference(
                 "java/util/HashMap", "keySet", "()Ljava/util/Set;",
