@@ -8,6 +8,29 @@ class IOException(Exception):
     def getMessage(self) -> str | None: ...
 
 
+@jvm.native("java/io/OutputStream")
+class OutputStream:
+    def close(self) -> None: ...
+
+
+@jvm.native("java/io/Writer")
+class Writer:
+    def write(self, text: str) -> None: ...
+    def flush(self) -> None: ...
+    def close(self) -> None: ...
+
+
+@jvm.native("java/io/OutputStreamWriter")
+class OutputStreamWriter(Writer):
+    def __init__(self, stream: OutputStream, charset: str) -> None: ...
+
+
+@jvm.native("java/io/StringWriter")
+class StringWriter(Writer):
+    def __init__(self) -> None: ...
+    def toString(self) -> str: ...
+
+
 @jvm.native("java/io/File")
 class File:
     def __init__(self, path: str) -> None: ...

@@ -5,7 +5,7 @@ from typing import Annotated, ClassVar
 from pyjs import jvm
 from pyjs.java import JVMArray, f32, i32
 from pyjs.java.concurrent import Runnable
-from pyjs.java.io import File
+from pyjs.java.io import File, OutputStream
 from pyjs.java.primitives import Reference
 
 from .api import AndroidAPI, AndroidAvailability, AndroidNullability
@@ -318,6 +318,11 @@ class Uri:
 @jvm.native("android/content/ContentResolver")
 class ContentResolver:
     @jvm.native(
+        "android/content/ContentResolver", name="openOutputStream", invocation="virtual",
+    )
+    def open_output_stream(self, uri: Uri, mode: str) -> OutputStream | None: ...
+
+    @jvm.native(
         "android/content/ContentResolver",
         name="takePersistableUriPermission",
         invocation="virtual",
@@ -328,6 +333,9 @@ class ContentResolver:
 
 @jvm.native("android/content/Intent")
 class Intent:
+    EXTRA_TITLE: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
+        "android.intent.extra.TITLE"
+    )
     ACTION_CREATE_DOCUMENT: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
         "android.intent.action.CREATE_DOCUMENT"
     )

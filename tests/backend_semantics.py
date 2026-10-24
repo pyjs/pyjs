@@ -3539,6 +3539,63 @@ UNICODE_CHARACTER_CONTRACT = _contract(
 )
 
 
+TEXT_SERIALIZATION_CONTRACT = _contract(
+    "from pyjs import js",
+    "text_serialization_result",
+    '''
+    value = "é😀é\\0z"
+    codes = ""
+    for character in value:
+        codes += hex(ord(character)) + ":"
+    ''',
+    (
+        ("iteration visits Unicode code points", 'codes != "0xe9:0x1f600:0x65:0x301:0x0:0x7a:"'),
+        ("slice preserves complete code points", 'value[1:-1] != "😀é\\0"'),
+        ("slice clips bounds", 'value[-99:99] != value'),
+        ("empty pattern count counts code points", '"é😀".replace("", "x", 2) != "xéx😀"'),
+        ("replacement is non-overlapping", '"aaaaa".replace("aa", "x") != "xxa"'),
+        ("zero count preserves input", 'value.replace("", "x", 0) != value'),
+        ("negative count is unlimited", '"😀😀".replace("😀", "雪", -2) != "雪雪"'),
+        ("negative hex puts sign before prefix", 'hex(-255) != "-0xff"'),
+    ),
+)
+
+
+SCALAR_MAPPING_VALUES_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def default(events: list[int]) -> int:
+        events.append(1)
+        return -7
+    ''',
+    "scalar_mapping_values_result",
+    '''
+    integers = {"zero": 0, "value": 4}
+    integers["value"] += 3
+    integers["new"] = -2
+    floats = {"value": 1.25}
+    floats["value"] = 2.5
+    flags = {"yes": True, "no": False}
+    flags["yes"] = False
+    events: list[int] = []
+    found = integers.get("value", default(events))
+    absent = integers.get("absent", default(events))
+    ''',
+    (
+        ("scalar assignment and lookup", 'integers["value"] != 7 or integers["new"] != -2'),
+        ("stored zero is not missing", 'integers.get("zero", 9) != 0'),
+        ("present and missing defaults", 'found != 7 or absent != -7'),
+        ("defaults evaluated once even for present key", 'len(events) != 2'),
+        ("floating values survive storage", 'floats["value"] != 2.5'),
+        ("floating default", 'floats.get("absent", 3.5) != 3.5'),
+        ("false values are not missing", 'flags.get("yes", True) or flags["no"]'),
+        ("boolean default", 'not flags.get("absent", True)'),
+    ),
+)
+
+
 TEXT_EDIT_CONTRACT = _contract(
     "from pyjs import js",
     "text_edit_result",
