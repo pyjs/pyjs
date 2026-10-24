@@ -2151,6 +2151,38 @@ class JVMEmitter:
                 isinstance(semantic_receiver, Class)
                 and semantic_receiver.generic_name == "str"
             ):
+                if target.name == "split":
+                    if node.keywords:
+                        if len(node.args) != 1 or len(node.keywords) != 1 or node.keywords[0].arg != "maxsplit":
+                            raise JVMUnsupported("JVM str.split requires a positional separator and optional maxsplit", node)
+                        argument_types.append(self.expression(node.keywords[0].value))
+                    if argument_types == ["Ljava/lang/String;"]:
+                        self.long_constant(-1)
+                    elif argument_types == ["Ljava/lang/String;", "Z"]:
+                        self.code.emit(0x85)
+                    elif argument_types != ["Ljava/lang/String;", "J"]:
+                        raise JVMUnsupported("JVM str.split requires an explicit string separator", node)
+                    self.string_helpers.add("split")
+                    reference = self.class_file.method_reference(
+                        self.main_class_name, "pyjs_string_split",
+                        "(Ljava/lang/String;Ljava/lang/String;J)[Ljava/lang/String;",
+                    )
+                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    array = self.allocate_temporary("[Ljava/lang/String;", "split.items")
+                    self.store(array, "[Ljava/lang/String;")
+                    result = self.list_class(analyzed_value_type(node))
+                    self.code.emit(0xBB, self.class_file.constants.class_(result.name).to_bytes(2, "big"))
+                    self.code.emit(0x59)
+                    reference = self.class_file.method_reference(result.name, "<init>", "()V")
+                    self.code.emit(0xB7, reference.to_bytes(2, "big"))
+                    for field, descriptor in (("data", "[Ljava/lang/String;"), ("length", "I")):
+                        self.code.emit(0x59)
+                        self.load(array)
+                        if field == "length":
+                            self.code.emit(0xBE)
+                        reference = self.class_file.field_reference(result.name, field, descriptor)
+                        self.code.emit(0xB5, reference.to_bytes(2, "big"))
+                    return f"L{result.name};"
                 if target.name == "replace":
                     if node.keywords:
                         if (len(node.args) != 2 or len(node.keywords) != 1

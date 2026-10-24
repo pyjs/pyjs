@@ -71,6 +71,20 @@ def test_dictionary_iteration_keeps_explicit_wasm_boundary():
         transpile_webassembly(DICTIONARY_KEYS_CONTRACT.source)
 
 
+def test_explicit_split_keeps_wasm_string_boundary():
+    from tests.backend_semantics import EXPLICIT_SPLIT_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(EXPLICIT_SPLIT_CONTRACT.source)
+
+
+def test_list_truth_contract_wasm_boundary():
+    from tests.backend_semantics import LIST_TRUTH_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly call target __len__ is not implemented at line 5$"):
+        transpile_webassembly(LIST_TRUTH_CONTRACT.source)
+
+
 def test_optional_float_contract_keeps_explicit_wasm_boundary():
     from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
 

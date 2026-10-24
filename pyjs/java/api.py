@@ -17,6 +17,26 @@ def is_api(value):
     )
 
 
+def validate_children(cls, parents=(), sizes=None):
+    if sizes is None:
+        sizes = {}
+    if cls in parents or len(parents) >= 32:
+        raise TypeError("JVM API child graphs must be acyclic and at most 32 levels deep")
+    if cls not in sizes:
+        height, count = 1, 1
+        for child in cls.__pyjs_api_children__.values():
+            child_height, child_count = validate_children(child, (*parents, cls), sizes)
+            height = max(height, child_height + 1)
+            count += child_count
+            if count > 4096:
+                raise TypeError("JVM API child graph exceeds 4096 constructed nodes")
+        sizes[cls] = height, count
+    height, count = sizes[cls]
+    if len(parents) + height > 32:
+        raise TypeError("JVM API child graphs must be acyclic and at most 32 levels deep")
+    return height, count
+
+
 def operation_source(operation):
     if operation.kind not in {"query", "mutation", "action"} or operation.jsonapi:
         raise TypeError("JVM API clients currently support ordinary query, mutation, and action results")
@@ -70,6 +90,7 @@ def operation_source(operation):
 def class_info(cls):
     if not is_api(cls):
         return None
+    validate_children(cls)
     if "__init__" in vars(cls):
         raise TypeError("JVM API clients do not support custom initialization")
     if getattr(cls, "__pyjs_model__", None) is not None or getattr(cls, "__pyjs_relationships__", {}):

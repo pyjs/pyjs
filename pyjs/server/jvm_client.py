@@ -1,7 +1,7 @@
 """Runtime for generated typed API proxies on the JVM."""
 
-from pyjs.server.errors import OperationError, OperationIssue
 from pyjs.server.jvm import JVMTransport
+from pyjs.server.jvm_errors import parse_operation_error
 from pyjs.server.transport import ClientTransport
 
 
@@ -17,5 +17,5 @@ class API:
     async def _request(self, operation: str, body: str) -> str:
         response = await self._transport.request(self._path + "/" + operation, body, self._timeout_ms)
         if not response.ok:
-            raise OperationError([OperationIssue(response.body, [], response.status, "Request failed")])
+            raise parse_operation_error(response.body, response.status)
         return response.body

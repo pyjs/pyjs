@@ -728,9 +728,20 @@ with `pyjs template`.
   Set a finite request timeout for network operations; zero disables the
   connect/read timeouts. These are not total-request deadlines.
   Calls block the calling JVM thread despite the async interface: use an
-  explicit worker, never Android's UI thread. This is a transport foundation,
-  not yet generated JVM API proxies, Pydantic decoding, session management,
-  cancellation, or lifecycle-aware delivery. Native I/O exceptions propagate.
+  explicit worker, never Android's UI thread. Session management, cancellation,
+  and lifecycle-aware delivery remain separate work. Native I/O exceptions
+  propagate.
+- JVM clients compile ordinary `API` query, mutation, and action methods into
+  typed remote operations, including nested API children and inherited methods.
+  Server operation bodies are not analyzed or emitted. Supported schemas are
+  scalar values, string literals, nullable values, lists, string-keyed mappings,
+  and the plain Pydantic models described above. Results are decoded by schema;
+  Pydantic coercion and constraints remain server-side. The compiler rejects
+  recursive schemas, excessive API graphs, streams, JSON:API resources,
+  relationships, variadic operation parameters, and custom API initialization.
+  Operation errors preserve their status, code, title, detail, and field path;
+  malformed error bodies become a generic `OperationError` retaining the body.
+  Calls still block their thread despite their async signatures.
 - `pyjs.java.json.JSONReader` provides typed JSON tokens for schema-directed
   decoding without building an untyped object tree. Call `finish()` after
   reading the root value. `skip()` validates unknown values with a default
@@ -740,7 +751,7 @@ with `pyjs template`.
   `integer()` requires a signed 64-bit integer token; `floating()` accepts
   finite binary64 values, preserving negative zero and ordinary underflow.
   Both reject overflow instead of silently wrapping or producing infinity.
-  These helpers do not yet implement Pydantic decoding or typed API proxies.
+  Generated operation codecs use these tokens without an untyped object tree.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
   values with reference keys. Iteration and live, reusable key views preserve
   insertion order. Updating values does not invalidate an iterator; changing

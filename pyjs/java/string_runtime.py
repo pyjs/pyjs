@@ -29,9 +29,45 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("hex", string_hex_method),
         ("slice", string_slice_method),
         ("compare", string_compare_method),
+        ("split", partial(string_split_method, throw_python=throw_python)),
     ):
         if name in required:
             class_file.add_method(factory(class_file))
+
+
+def string_split_method(class_file: ClassFile, *, throw_python) -> Method:
+    code = Bytecode()
+    def call(owner, name, descriptor, opcode=0xB6):
+        code.emit(opcode, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+    code.local(0x19, 1)
+    call("java/lang/String", "isEmpty", "()Z")
+    code.branch(0x99, "split.limit")
+    throw_python("ValueError", "empty separator", code, class_file)
+    code.mark("split.limit")
+    code.emit(0x02)  # Java's negative limit retains trailing empty fields.
+    code.local(0x36, 4)
+    code.local(0x16, 2)
+    code.emit(0x09)
+    code.emit(0x94)
+    code.branch(0x9B, "split.call")
+    code.local(0x16, 2)
+    code.emit(0x14, class_file.constants.long(2147483646).to_bytes(2, "big"))
+    code.emit(0x94)
+    code.branch(0x9C, "split.call")
+    code.local(0x16, 2)
+    code.emit(0x88)
+    code.emit(0x04)
+    code.emit(0x60)
+    code.local(0x36, 4)
+    code.mark("split.call")
+    code.local(0x19, 0)
+    code.local(0x19, 1)
+    call("java/util/regex/Pattern", "quote", "(Ljava/lang/String;)Ljava/lang/String;", 0xB8)
+    code.local(0x15, 4)
+    call("java/lang/String", "split", "(Ljava/lang/String;I)[Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(0x0009, "pyjs_string_split", "(Ljava/lang/String;Ljava/lang/String;J)[Ljava/lang/String;",
+                  code.render(), 4, 5)
 
 
 def string_compare_method(class_file: ClassFile) -> Method:

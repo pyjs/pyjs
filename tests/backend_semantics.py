@@ -5732,6 +5732,49 @@ STRING_SEARCH_CASES = (
 )
 
 
+LIST_TRUTH_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def truth_values(full: bool, events: list[int]) -> list[int]:
+        events.append(1)
+        return [7] if full else []
+
+    @js
+    def truth_result(full: bool) -> int:
+        events: list[int] = []
+        result = 0
+        if truth_values(full, events):
+            result += 1
+        if not truth_values(full, events):
+            result += 2
+        result += 4 if truth_values(full, events) else 8
+        return result + len(events) * 100
+    ''',
+    "list_truth_contract", "",
+    (("empty branches and single evaluation", "truth_result(False) != 310"),
+     ("nonempty branches and single evaluation", "truth_result(True) != 305")),
+)
+
+
+EXPLICIT_SPLIT_CONTRACT = _contract(
+    "from pyjs import js",
+    "explicit_split_contract",
+    '''
+    parts = "a.*b.*".split(".*")
+    parts.append("end")
+    unicode_parts = "é😀雪😀".split("😀", 1)
+    limited = "a/b/c".split("/", maxsplit=0)
+    empty = "".split("/")
+    ''',
+    (("literal separator and mutable result", '"|".join(parts) != "a|b||end"'),
+     ("Unicode and maximum splits", '"|".join(unicode_parts) != "é|雪😀"'),
+     ("zero maximum preserves original", '"|".join(limited) != "a/b/c"'),
+     ("empty input retains one empty field", 'len(empty) != 1 or empty[0] != ""')),
+)
+
+
 PORTABLE_FAILURE_SOURCES = {
     "division by zero": """
 from pyjs import int8

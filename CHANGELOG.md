@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- JVM clients generate typed remote operations from ordinary API declarations
+  without including server bodies. Nested model results and structured errors
+  are decoded on the client. This does not add sessions, cancellation, streams,
+  resource relationships, or nonblocking execution.
+- JVM list and application-length truth tests reject negative lengths even
+  under negation. Explicit-separator string splitting supports bounded splits
+  and preserves trailing empty fields; whitespace splitting remains unsupported.
+
 - JVM nullable integers and floats retain `None` through calls, fields, and
   collections, with exact numeric equality and Python-compatible truth tests.
   Ordinary scalar method signatures keep their primitive ABI.
