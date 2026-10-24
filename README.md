@@ -683,10 +683,13 @@ with `pyjs template`.
   Controlled Python operations raise Python categories for invalid indexing,
   division by zero, negative shifts, invalid integer parsing and storage
   limits; arbitrary Java API failures are not relabeled.
-- JVM strings support code-point iteration, `ord`, signed `hex`, `replace`
+- JVM strings support code-point iteration, `ord`, `chr`, signed `hex`, `replace`
   with optional positional or keyword `count`, and slices with a literal unit
   step or omitted step. Dynamic or non-unit steps remain unsupported.
   These operations retain the UTF-16 surrogate limitation described below.
+  String ordering compares Unicode code points, not UTF-16 units. Chained
+  comparisons short-circuit and evaluate each reached operand once, including
+  nested chains and application comparison methods.
 - JVM Python property getters support inherited virtual dispatch and retain
   their declared numeric representation. This does not add property setters
   or properties overriding ordinary instance fields.

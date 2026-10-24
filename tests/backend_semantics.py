@@ -3396,6 +3396,38 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+CHAINED_COMPARISON_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def record_comparison(events: list[int], value: int) -> int:
+        events.append(value)
+        return value
+    ''',
+    "chained_comparison_result",
+    '''
+    failed_events: list[int] = []
+    failed = (record_comparison(failed_events, 3)
+              < record_comparison(failed_events, 2)
+              < record_comparison(failed_events, 1))
+    passed_events: list[int] = []
+    passed = (record_comparison(passed_events, 0)
+              < record_comparison(passed_events, 1)
+              <= record_comparison(passed_events, 1)
+              < record_comparison(passed_events, 2))
+    ''',
+    (
+        ("failed chain returns false", "failed"),
+        ("failed chain skips later operands", "len(failed_events) != 2"),
+        ("operands retain source order", "failed_events[0] != 3 or failed_events[1] != 2"),
+        ("successful chain returns true", "not passed"),
+        ("middle operands are evaluated once", "len(passed_events) != 4"),
+        ("longer chain preserves order", "passed_events[0] != 0 or passed_events[3] != 2"),
+    ),
+)
+
+
 PROPERTY_GETTER_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -3567,6 +3599,11 @@ UNICODE_TEXT_CONTRACT = _contract(
         ("empty prefix matches", 'not value.startswith("")'),
         ("concatenation preserves equality", 'value != "é" + "😀é\\0"'),
         ("Unicode lowercase", '"ÉΣΑ".lower() != "éσα"'),
+        ("ordering compares code points rather than UTF-16 units", 'not "\\ue000" < "😀"'),
+        ("ordering preserves matching prefixes", 'not "x\\ue000" <= "x😀"'),
+        ("reverse ordering uses the same code-point domain", 'not "😀" > "\\ue000"'),
+        ("equal strings satisfy inclusive ordering", 'not value >= value or not value <= value'),
+        ("empty and shorter prefixes sort first", 'not "" < "a" or not "a" < "ab"'),
     ),
 )
 

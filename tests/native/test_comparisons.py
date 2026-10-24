@@ -5,7 +5,15 @@ from pyjs.analysis.source import analyze_source
 from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import OBJECT_COMPARISON_CONTRACT
+from tests.backend_semantics import (
+    CHAINED_COMPARISON_CONTRACT,
+    OBJECT_COMPARISON_CONTRACT,
+)
+
+
+def test_shared_chained_comparison_contract(tmp_path):
+    result = LLVM().assert_matches_python(CHAINED_COMPARISON_CONTRACT.source, directory=tmp_path)
+    assert result.native.returncode == 0, CHAINED_COMPARISON_CONTRACT.failure(result.native.returncode)
 
 
 def test_shared_object_comparison_contract():

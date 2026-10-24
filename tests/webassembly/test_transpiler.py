@@ -16,6 +16,7 @@ from tests.backend_semantics import (
     BINARY_POWER_CONTRACT,
     BOOLEAN_NUMERIC_CONTRACT,
     CALLABLE_INPUT_CONTRACT,
+    CHAINED_COMPARISON_CONTRACT,
     CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
     COLLECTION_NAME_CONTRACT,
     CUSTOM_EXCEPTION_CONTRACT,
@@ -48,10 +49,21 @@ from tests.backend_semantics import (
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
     STRUCTURAL_OPERATOR_CONTRACT,
     TEXT_SERIALIZATION_CONTRACT,
+    UNICODE_CHARACTER_CONTRACT,
     UNION_KEY_REPRESENTATION_CONTRACT,
     UNPACK_FIELD_CONTRACT,
     nominal_object_contract,
 )
+
+
+def test_chained_comparisons_keep_explicit_wasm_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly expression ChainedCompare is not implemented"):
+        transpile_webassembly(CHAINED_COMPARISON_CONTRACT.source)
+
+
+def test_unicode_characters_keep_explicit_wasm_string_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(UNICODE_CHARACTER_CONTRACT.source)
 
 
 def test_boolean_arithmetic_has_an_explicit_wasm_boundary():

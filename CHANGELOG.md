@@ -4,6 +4,10 @@
 
 ### Changed
 
+- JVM chained comparisons retain Python short-circuiting and single operand
+  evaluation. String ordering compares Unicode code points, and `chr()`
+  supports the full Unicode range with Python-compatible range errors.
+
 - JVM API transport can POST UTF-8 JSON through the existing client transport
   interface, retaining error bodies with bounded response size and explicit
   connect/read timeouts. Native calls require a worker thread on Android;

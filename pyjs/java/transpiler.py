@@ -37,6 +37,7 @@ from pyjs.analysis.objects import (
     Await as AnalyzedAwait,
 )
 from pyjs.analysis.objects import (
+    ChainedCompare,
     Class,
     Function,
     GenericClass,
@@ -1167,6 +1168,8 @@ class JVMEmitter:
         (code or self.code).emit(0xB8, reference.to_bytes(2, "big"))
 
     def _expression(self, node) -> str:
+        if isinstance(node, ChainedCompare):
+            return self.chained_comparison(node)
         if isinstance(node, ContextExitCall):
             return self.context_exit(node)
         if isinstance(node, AnalyzedAwait):
@@ -1562,14 +1565,15 @@ class JVMEmitter:
             self.normalize_integer_result(node)
             return value_type
         if isinstance(target, Function) and target.py_func in {
-            native_builtins._ord, native_builtins._hex,
+            native_builtins._ord, native_builtins._hex, native_builtins._chr,
         }:
-            name = "ord" if target.py_func is native_builtins._ord else "hex"
+            name = {native_builtins._ord: "ord", native_builtins._hex: "hex",
+                    native_builtins._chr: "chr"}[target.py_func]
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported(f"JVM {name} takes one positional argument", node)
             actual = self.expression(node.args[0])
             expected = "Ljava/lang/String;" if name == "ord" else "J"
-            if name == "hex" and actual == "Z":
+            if name != "ord" and actual == "Z":
                 self.code.emit(0x85)
                 actual = "J"
             if actual != expected:
@@ -2122,6 +2126,15 @@ class JVMEmitter:
                     )
                     self.code.emit(0xB6, reference.to_bytes(2, "big"))
                     return "Ljava/lang/String;"
+                if target.name in {"__lt__", "__le__", "__gt__", "__ge__"} and argument_types == ["Ljava/lang/String;"]:
+                    self.string_helpers.add("compare")
+                    reference = self.class_file.method_reference(
+                        self.main_class_name, "pyjs_string_compare",
+                        "(Ljava/lang/String;Ljava/lang/String;)I",
+                    )
+                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    self.comparison(self.INTEGER_COMPARISONS[target.name])
+                    return "Z"
                 if target.name == "__getitem__" and argument_types == ["J"]:
                     reference = self.class_file.method_reference(
                         self.main_class_name,
@@ -4127,6 +4140,39 @@ class JVMEmitter:
             self.code.mark(nonnegative)
             self.long_constant(0)
         self.code.mark(done)
+
+    def chained_comparison(self, node: ChainedCompare) -> str:
+        failed = self.new_label("comparison.failed")
+        done = self.new_label("comparison.done")
+        mappings = (self.slots, self.slot_types, self.slot_numeric_formats)
+        previous = [{value.id: mapping.get(value.id) for value in node.temporaries}
+                    for mapping in mappings]
+        try:
+            for index, (operand, temporary) in enumerate(zip(node.operands, node.temporaries, strict=True)):
+                result = self.expression(operand)
+                name = self.allocate_temporary(result, "comparison.value")
+                self.store(name, result)
+                self.slots[temporary.id] = self.slots[name]
+                self.slot_types[temporary.id] = result
+                self.slot_numeric_formats.pop(temporary.id, None)
+                if index:
+                    if self.expression(node.comparisons[index - 1]) != "Z":
+                        raise JVMUnsupported("JVM chained comparison must return bool", node)
+                    self.code.branch(0x99, failed)
+            self.code.emit(0x04)
+            self.code.branch(0xA7, done)
+            self.code.mark(failed)
+            self.code.emit(0x03)
+            self.code.mark(done)
+            return "Z"
+        finally:
+            # Nested chains reuse analyzer temporary names, not lexical slots.
+            for mapping, saved in zip(mappings, previous, strict=True):
+                for name, value in saved.items():
+                    if value is None:
+                        mapping.pop(name, None)
+                    else:
+                        mapping[name] = value
 
     def load(self, name: str) -> str:
         value_type = self.slot_types[name]

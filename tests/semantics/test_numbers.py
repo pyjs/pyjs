@@ -5,8 +5,13 @@ from pyjs.testing.helpers import (
     at,
     diagnostic_text,
 )
+from tests.backend_semantics import CHAINED_COMPARISON_CONTRACT
 
 from .helpers import assert_semantics
+
+
+def test_shared_chained_comparison_contract():
+    assert_semantics(CHAINED_COMPARISON_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_modulo_uses_the_divisor_sign():

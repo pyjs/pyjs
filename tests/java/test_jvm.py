@@ -113,7 +113,7 @@ def main() -> int:
 
 
 @pytest.mark.parametrize("name, argument, result", [
-    ("hash", "1", "int"), ("chr", "65", "str"),
+    ("hash", "1", "int"),
 ])
 def test_native_value_builtins_keep_located_jvm_boundaries(name, argument, result):
     with pytest.raises(JVMUnsupported, match=f"JVM call target {name} has no emitted definition at line 2"):

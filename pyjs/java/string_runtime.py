@@ -25,11 +25,59 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("endswith", partial(string_affix_method, suffix=True)),
         ("replace", string_replace_method),
         ("ord", partial(string_ord_method, throw_python=throw_python)),
+        ("chr", partial(string_chr_method, throw_python=throw_python)),
         ("hex", string_hex_method),
         ("slice", string_slice_method),
+        ("compare", string_compare_method),
     ):
         if name in required:
             class_file.add_method(factory(class_file))
+
+
+def string_compare_method(class_file: ClassFile) -> Method:
+    code = Bytecode()
+    def call(owner, name, descriptor, opcode=0xB6):
+        code.emit(opcode, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+    for slot in (2, 3):
+        code.emit(0x03)
+        code.local(0x36, slot)
+    code.mark("compare.next")
+    for receiver, offset in ((0, 2), (1, 3)):
+        code.local(0x15, offset)
+        code.local(0x19, receiver)
+        call("java/lang/String", "length", "()I")
+        code.branch(0xA2, "compare.end")
+        code.local(0x19, receiver)
+        code.local(0x15, offset)
+        call("java/lang/String", "codePointAt", "(I)I")
+        code.local(0x36, offset + 2)
+    code.local(0x15, 4)
+    code.local(0x15, 5)
+    code.branch(0xA0, "compare.different")
+    for offset in (2, 3):
+        code.local(0x15, offset)
+        code.local(0x15, offset + 2)
+        call("java/lang/Character", "charCount", "(I)I", 0xB8)
+        code.emit(0x60)
+        code.local(0x36, offset)
+    code.branch(0xA7, "compare.next")
+    code.mark("compare.different")
+    code.local(0x15, 4)
+    code.local(0x15, 5)
+    code.emit(0x64)
+    code.emit(0xAC)
+    code.mark("compare.end")
+    for receiver, offset in ((0, 2), (1, 3)):
+        code.local(0x19, receiver)
+        call("java/lang/String", "length", "()I")
+        code.local(0x15, offset)
+        code.emit(0x64)
+    code.emit(0x64)
+    code.emit(0xAC)
+    return Method(
+        0x0009, "pyjs_string_compare", "(Ljava/lang/String;Ljava/lang/String;)I",
+        code.render(), 3, 6,
+    )
 
 
 def string_slice_method(class_file: ClassFile) -> Method:
@@ -107,6 +155,31 @@ def string_ord_method(class_file: ClassFile, *, throw_python) -> Method:
     code.emit(0x85)
     code.emit(0xAD)
     return Method(0x0009, "pyjs_string_ord", "(Ljava/lang/String;)J", code.render(), 4, 1)
+
+
+def string_chr_method(class_file: ClassFile, *, throw_python) -> Method:
+    code = Bytecode()
+    def bound(value, opcode, label):
+        code.local(0x16, 0)
+        code.emit(0x14, class_file.constants.long(value).to_bytes(2, "big"))
+        code.emit(0x94)
+        code.branch(opcode, label)
+    bound(0, 0x9B, "chr.range")
+    bound(1114111, 0x9D, "chr.range")
+    code.emit(0xBB, class_file.constants.class_("java/lang/String").to_bytes(2, "big"))
+    code.emit(0x59)
+    code.local(0x16, 0)
+    code.emit(0x88)
+    reference = class_file.method_reference("java/lang/Character", "toChars", "(I)[C")
+    code.emit(0xB8, reference.to_bytes(2, "big"))
+    reference = class_file.method_reference("java/lang/String", "<init>", "([C)V")
+    code.emit(0xB7, reference.to_bytes(2, "big"))
+    code.emit(0xB0)
+    code.mark("chr.range")
+    throw_python("ValueError", "chr() arg not in range(0x110000)", code, class_file)
+    return Method(
+        0x0009, "pyjs_string_chr", "(J)Ljava/lang/String;", code.render(), 4, 2,
+    )
 
 
 def string_hex_method(class_file: ClassFile) -> Method:
