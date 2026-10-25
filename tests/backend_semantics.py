@@ -3410,10 +3410,19 @@ NARROWED_METHOD_CONTRACT = _contract(
         def value(self) -> int:
             return 5
 
+        @property
+        def amount(self) -> int:
+            return self.value()
+
     @js
     class ReceiverOverride(ReceiverChild):
         def value(self) -> int:
             return 7
+
+    @js
+    class ReceiverBox:
+        def __init__(self, item: ReceiverChild):
+            self.item = item
 
     @js
     def accept_child(value: ReceiverChild) -> int:
@@ -3424,6 +3433,31 @@ NARROWED_METHOD_CONTRACT = _contract(
         if not isinstance(value, ReceiverChild):
             return 0
         return value.value() + accept_child(value)
+
+    @js
+    def keep_child(value: ReceiverBase) -> ReceiverChild:
+        if isinstance(value, ReceiverChild):
+            return value
+        return ReceiverChild()
+
+    @js
+    def guarded_consumers(value: ReceiverBase) -> int:
+        if not isinstance(value, ReceiverChild):
+            return 0
+        first: ReceiverChild = value
+        second = value
+        box = ReceiverBox(value)
+        box.item = value
+        items: list[ReceiverChild] = [value]
+        items.append(value)
+        items.insert(0, value)
+        items[1] = value
+        mapped: dict[str, ReceiverChild] = {"item": value}
+        mapped["item"] = value
+        return (first.value() + second.value() + box.item.value()
+                + items[0].value() + items[1].value() + mapped["item"].value()
+                + value.amount + accept_child(value=value) + keep_child(value).value()
+                + mapped.get("missing", value).value())
     ''',
     "narrowed_method_result",
     "",
@@ -3431,6 +3465,9 @@ NARROWED_METHOD_CONTRACT = _contract(
         ("failed type guard does not call the child method", "guarded_receiver(ReceiverBase()) != 0"),
         ("guard refines both receiver and argument", "guarded_receiver(ReceiverChild()) != 10"),
         ("refined calls preserve virtual dispatch", "guarded_receiver(ReceiverOverride()) != 14"),
+        ("typed consumers retain guarded values", "guarded_consumers(ReceiverChild()) != 50"),
+        ("stored guarded values retain virtual dispatch", "guarded_consumers(ReceiverOverride()) != 70"),
+        ("failed guards skip typed consumers", "guarded_consumers(ReceiverBase()) != 0"),
     ),
 )
 
@@ -3469,6 +3506,38 @@ REPLACED_ATTRIBUTE_CONTRACT = _contract(
         return 0
 
     @js
+    def replace_through_local(holder: Holder) -> int:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            return read_base(item)
+        return 0
+
+    @js
+    def return_replaced_local(holder: Holder) -> StoredBase:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            return item
+        return item
+
+    @js
+    def store_replaced_local(holder: Holder) -> int:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            box = Holder(item)
+            items: list[StoredBase] = [item]
+            items.append(item)
+            mapped: dict[str, StoredBase] = {"item": item}
+            return (read_base(box.item) + read_base(items[0])
+                    + read_base(items[1]) + read_base(mapped["item"]))
+        return 0
+
+    @js
     def keep_guarded_snapshot(holder: Holder) -> int:
         item = holder.item
         if isinstance(item, StoredChild):
@@ -3483,6 +3552,12 @@ REPLACED_ATTRIBUTE_CONTRACT = _contract(
          "replace_guarded_attribute(Holder(StoredChild())) != 4"),
         ("failed guard leaves the base value alone",
          "replace_guarded_attribute(Holder(StoredBase())) != 0"),
+        ("copying a replaced field into an existing local drops its old subtype",
+         "replace_through_local(Holder(StoredChild())) != 4"),
+        ("returning a replaced field through a base local needs no subtype cast",
+         "read_base(return_replaced_local(Holder(StoredChild()))) != 4"),
+        ("base-typed storage does not restore the replaced field's subtype",
+         "store_replaced_local(Holder(StoredChild())) != 16"),
         ("local snapshot remains valid after its source field changes",
          "keep_guarded_snapshot(Holder(StoredChild())) != 7"),
     ),

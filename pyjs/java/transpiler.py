@@ -916,9 +916,6 @@ class JVMEmitter:
                         add(name, _numeric_descriptor(storage_format) or value_type)
                         if storage_format is not None:
                             self.slot_numeric_formats[name] = storage_format
-                elif isinstance(statement, FieldStore):
-                    value_type = self.expression_type(statement.value)
-                    add(f"__field_{value_type}", value_type)
                 elif isinstance(statement, IteratorCreate):
                     descriptor = self.iterator_descriptor(statement)
                     self.iterators[statement.name] = descriptor
@@ -1003,10 +1000,20 @@ class JVMEmitter:
                             "Java constructor declaration", node,
                         )
                     evaluation, _ordered = self.constructor_arguments(node)
+                    layout = self.classes.get(node.value_type) or self.native_layouts.get(node.value_type)
+                    initializer = layout.constructor
+                    parameters = self.application_parameters(initializer) if initializer is not None else []
+                    expected = {parameter.arg: self.parameter_type(parameter) for parameter in parameters}
                     slots = {}
                     for name, value in evaluation:
                         slot = f"__object_{object_index}_{name}"
-                        add(slot, self.expression_type(value))
+                        value_type = self.expression_type(value)
+                        wanted = expected[name]
+                        if (_is_reference_descriptor(value_type) and _is_reference_descriptor(wanted)
+                                and (self.compatible(value_type, wanted)
+                                     or self.compatible(wanted, value_type))):
+                            value_type = wanted
+                        add(slot, value_type)
                         slots[name] = slot
                     self.object_argument_slots[node] = slots
                     object_index += 1
@@ -1062,7 +1069,7 @@ class JVMEmitter:
                 self.restore_exception_context()
                 self.code.emit(0xB1)
                 return
-            value_type = self.expression(node.value)
+            value_type = self.expression(node.value, expected=self.return_type)
             if self.return_type == "V" and value_type == "N":
                 self.code.emit(0x57)
                 self.restore_exception_context()
@@ -1098,8 +1105,9 @@ class JVMEmitter:
                     node.value,
                 ):
                     return
-                value_type = self.expression(node.value)
-                self.store(self.target_name(node.target), value_type)
+                name = self.target_name(node.target)
+                value_type = self.expression(node.value, expected=self.slot_types[name])
+                self.store(name, value_type)
             return
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             if isinstance(node.targets[0], ast.Attribute) and self.static_field_store(
@@ -1107,13 +1115,11 @@ class JVMEmitter:
                 node.value,
             ):
                 return
-            value_type = self.expression(node.value)
-            self.store(self.target_name(node.targets[0]), value_type)
+            name = self.target_name(node.targets[0])
+            value_type = self.expression(node.value, expected=self.slot_types[name])
+            self.store(name, value_type)
             return
         if isinstance(node, FieldStore):
-            value_type = self.expression(node.value)
-            scratch = f"__field_{value_type}"
-            self.store(scratch, value_type)
             (
                 receiver_type,
                 owner,
@@ -1125,6 +1131,9 @@ class JVMEmitter:
             ) = self.field(node.target)
             if not writable:
                 raise JVMUnsupported(f"JVM field {owner}.{name} is read-only", node)
+            value_type = self.expression(node.value, expected=semantic_type)
+            scratch = self.allocate_temporary(value_type, "field.value")
+            self.store(scratch, value_type)
             # Native declarations have explicit ABI overrides; generated
             # fields must instead accept their declared semantic layout.
             if owner in self.class_files and not (
@@ -1177,7 +1186,10 @@ class JVMEmitter:
             return
         if isinstance(node, Jump):
             target = blocks[node.target]
-            values = [self.expression(value) for value in node.arguments]
+            values = [
+                self.expression(value, expected=self.slot_types[argument.name])
+                for argument, value in zip(target.arguments, node.arguments, strict=True)
+            ]
             for argument, value_type in reversed(
                 list(zip(target.arguments, values, strict=True))
             ):
@@ -1189,21 +1201,28 @@ class JVMEmitter:
             node,
         )
 
-    def expression(self, node) -> str:
-        result = self._expression(node)
-        if (isinstance(node, ast.Name) and _is_reference_descriptor(result)
+    def refine_reference(self, node, actual: str, expected: str) -> str:
+        if (isinstance(node, ast.Name) and _is_reference_descriptor(actual)
+                and _is_reference_descriptor(expected)
+                and not self.compatible(actual, expected)
+                and self.compatible(expected, actual)
                 and hasattr(node, "obj")
                 and isinstance(analyzed_value_object(node), Instance)):
             narrowed = analyzed_value_type(node)
-            if isinstance(narrowed, Class) and (narrowed in self.classes or narrowed in self.native_classes):
-                expected = self.value_type(narrowed)
-                if not self.compatible(result, expected) and self.compatible(expected, result):
-                    # Flow analysis can refine a base-typed local without
-                    # changing its JVM slot's declared storage type.
-                    # Attribute refinements can outlive calls that replace
-                    # the field, so they cannot justify an implicit cast.
-                    self.checkcast(expected)
-                    result = expected
+            if (isinstance(narrowed, Class)
+                    and (narrowed in self.classes or narrowed in self.native_classes)
+                    and self.compatible(self.value_type(narrowed), expected)):
+                # Only a consumer requiring a narrower JVM descriptor needs a
+                # cast. A copied field refinement may be stale even on a Name;
+                # it must not add a cast to an already base-compatible use.
+                self.checkcast(expected)
+                return expected
+        return actual
+
+    def expression(self, node, *, expected: str | None = None) -> str:
+        result = self._expression(node)
+        if expected is not None:
+            result = self.refine_reference(node, result, expected)
         if getattr(node, "jvm_truth_length", False) and result != "Z":
             if result != "J":
                 raise JVMUnsupported("JVM __len__ truth tests require an integer result", node)
@@ -1540,7 +1559,7 @@ class JVMEmitter:
                     self.context_call("context", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
                     return "Ljava/lang/Throwable;"
                 if target in self.functions and target.cls in self.classes:
-                    receiver = self.expression(node.value)
+                    receiver = self.expression(node.value, expected=self.class_descriptor(target.cls))
                     if not self.compatible(receiver, self.class_descriptor(target.cls)):
                         raise JVMUnsupported("JVM property getter has an incompatible receiver", node)
                     reference = self.class_file.method_reference(
@@ -2009,6 +2028,7 @@ class JVMEmitter:
                     self.native_class_name(target.cls),
                 )
                 expected_receiver = f"L{owner};"
+                receiver_type = self.refine_reference(node.func.value, receiver_type, expected_receiver)
                 if not (
                     owner == "java/lang/Object"
                     and _is_reference_descriptor(receiver_type)
@@ -2074,6 +2094,7 @@ class JVMEmitter:
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
                 expected_receiver = self.class_descriptor(target.cls)
+                receiver_type = self.refine_reference(node.func.value, receiver_type, expected_receiver)
                 if not self.compatible(receiver_type, expected_receiver):
                     raise JVMUnsupported(
                         f"JVM call to {target.name} has incompatible arguments",
@@ -2346,6 +2367,7 @@ class JVMEmitter:
                 and argument_types[0] == "J"
             ):
                 item_type = self.list_item_type(semantic_receiver)
+                argument_types[1] = self.refine_reference(node.args[1], argument_types[1], item_type)
                 if not self.compatible(argument_types[1], item_type):
                     raise JVMUnsupported("JVM list insertion has an incompatible value", node)
                 self.convert_native_argument(argument_types[1], item_type, node.args[1])
@@ -2376,6 +2398,7 @@ class JVMEmitter:
             ):
                 list_type = analyzed_value_type(node.func.value)
                 item_type = self.list_item_type(list_type)
+                argument_types[1] = self.refine_reference(node.args[1], argument_types[1], item_type)
                 if not self.compatible(argument_types[1], item_type):
                     raise JVMUnsupported(
                         "JVM list assignment has an incompatible value",
@@ -2706,7 +2729,7 @@ class JVMEmitter:
         )
         for element in node.source.elts:
             self.code.emit(0x59)
-            actual = self.expression(element)
+            actual = self.expression(element, expected=item_type)
             if not self.compatible(actual, item_type):
                 raise JVMUnsupported("JVM list literal changes item type", element)
             self.convert_native_argument(actual, item_type, element)
@@ -2734,11 +2757,11 @@ class JVMEmitter:
             if key is None:
                 raise JVMUnsupported("JVM dictionary unpacking is not implemented", node)
             self.code.emit(0x59)
-            actual_key = self.expression(key)
+            actual_key = self.expression(key, expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary literal changes key type", key)
             self.convert_native_argument(actual_key, key_type, key)
-            actual_value = self.expression(value)
+            actual_value = self.expression(value, expected=value_type)
             if not self.compatible(actual_value, value_type):
                 raise JVMUnsupported("JVM dictionary literal changes value type", value)
             self.convert_native_argument(actual_value, value_type, value)
@@ -2778,6 +2801,7 @@ class JVMEmitter:
         if target.name == "__contains__" and len(node.args) == 1:
             actual = (self.load(leading_argument) if leading_argument is not None
                       else self.expression(node.args[0]))
+            actual = self.refine_reference(node.args[0], actual, key_type)
             if not self.compatible(actual, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual, key_type, node.args[0])
@@ -2797,11 +2821,11 @@ class JVMEmitter:
             self.code.emit(0x85)
             return "J"
         if target.name == "__setitem__" and len(node.args) == 2:
-            actual_key = self.expression(node.args[0])
+            actual_key = self.expression(node.args[0], expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
-            actual_value = self.expression(node.args[1])
+            actual_value = self.expression(node.args[1], expected=value_descriptor)
             if not self.compatible(actual_value, value_descriptor):
                 raise JVMUnsupported(
                     "JVM dictionary value has an incompatible type", node
@@ -2818,7 +2842,7 @@ class JVMEmitter:
             self.code.emit(0x57)
             return "V"
         if target.name in {"__getitem__", "pop"} and len(node.args) == 1:
-            actual_key = self.expression(node.args[0])
+            actual_key = self.expression(node.args[0], expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
@@ -2863,7 +2887,7 @@ class JVMEmitter:
             self.dictionary_value_cast(value_descriptor)
             return value_descriptor
         if target.name in {"get", "pop"} and len(node.args) in {1, 2}:
-            actual_key = self.expression(node.args[0])
+            actual_key = self.expression(node.args[0], expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
@@ -2879,7 +2903,7 @@ class JVMEmitter:
                 self.code.emit(0xB6, get.to_bytes(2, "big"))
                 self.checkcast(value_descriptor)
                 return value_descriptor
-            default_type = self.expression(node.args[1])
+            default_type = self.expression(node.args[1], expected=value_descriptor)
             if default_type == "N" and not _is_reference_descriptor(value_descriptor):
                 raise JVMUnsupported("JVM scalar dictionary get requires a matching default", node)
             if default_type != "N" and not self.compatible(
@@ -2953,7 +2977,7 @@ class JVMEmitter:
                 self.code.emit(0x59)
                 self.long_constant(index)
                 self.code.emit(0x88)
-                actual = self.expression(value)
+                actual = self.expression(value, expected=descriptor[1:])
                 if not self.compatible(actual, descriptor[1:]):
                     raise JVMUnsupported("JVM variadic tuple literal changes item type", value)
                 self.convert_native_argument(actual, descriptor[1:], value)
@@ -2978,7 +3002,7 @@ class JVMEmitter:
         ):
             self.code.emit(0x59)
             descriptor = self.value_type(field_type)
-            actual = self.expression(element)
+            actual = self.expression(element, expected=descriptor)
             if not self.compatible(actual, descriptor):
                 raise JVMUnsupported("JVM tuple literal changes item type", element)
             self.convert_native_argument(actual, descriptor, element)
@@ -3040,7 +3064,7 @@ class JVMEmitter:
         if self.expression(node.call.func.value) != descriptor:
             raise JVMUnsupported("JVM list append has incompatible receiver", node)
         item_type = self.list_item_type(list_type)
-        actual = self.expression(node.call.args[0])
+        actual = self.expression(node.call.args[0], expected=item_type)
         if not self.compatible(actual, item_type):
             raise JVMUnsupported("JVM list append has incompatible value", node)
         self.convert_native_argument(actual, item_type, node.call.args[0])
@@ -3377,7 +3401,7 @@ class JVMEmitter:
         evaluation, ordered = self.constructor_arguments(node)
         slots = self.object_argument_slots[node]
         for name, argument in evaluation:
-            argument_type = self.expression(argument)
+            argument_type = self.expression(argument, expected=self.slot_types[slots[name]])
             self.store(slots[name], argument_type)
         class_index = self.class_file.constants.class_(owner)
         self.code.emit(0xBB, class_index.to_bytes(2, "big"))
@@ -3475,7 +3499,7 @@ class JVMEmitter:
         evaluation, ordered = self.constructor_arguments(node)
         slots = self.object_argument_slots[node]
         for name, argument in evaluation:
-            argument_type = self.expression(argument)
+            argument_type = self.expression(argument, expected=self.slot_types[slots[name]])
             self.store(slots[name], argument_type)
         class_index = self.class_file.constants.class_(owner)
         self.code.emit(0xBB, class_index.to_bytes(2, "big"))
@@ -3607,6 +3631,7 @@ class JVMEmitter:
             for index, ((_name, argument), parameter) in enumerate(zip(evaluation, parameters, strict=True)):
                 actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
                           else self.expression(argument))
+                actual = self.refine_reference(argument, actual, self.parameter_type(parameter))
                 self.application_argument(actual, parameter, node, function)
             return
         slots = {}
@@ -3618,8 +3643,12 @@ class JVMEmitter:
                 slot = self.allocate_temporary(actual, "call.argument")
                 self.store(slot, actual)
                 slots[name] = slot
+        arguments = dict(evaluation)
         for name, parameter in zip(ordered, parameters, strict=True):
-            self.application_argument(self.load(slots[name]), parameter, node, function)
+            actual = self.refine_reference(
+                arguments[name], self.load(slots[name]), self.parameter_type(parameter),
+            )
+            self.application_argument(actual, parameter, node, function)
 
     def application_argument(self, actual: str, parameter, node: ast.Call, function: Function) -> None:
         semantic = self.parameter_type(parameter)
@@ -3637,7 +3666,7 @@ class JVMEmitter:
         if any(parameter not in {value, "Ljava/lang/Object;"}
                for value, parameter in zip(actual, expected, strict=True)):
             raise JVMUnsupported("JVM __exit__ requires reference-compatible exception details", node)
-        self.expression(node.func.value)
+        self.expression(node.func.value, expected=self.class_descriptor(method.cls))
         if node.exceptional:
             self.expression(node.exception)
             get_class = self.class_file.method_reference(
@@ -5353,6 +5382,7 @@ class JVMEmitter:
         for index, (argument, wanted) in enumerate(zip(values, expected, strict=True)):
             actual = (self.load(leading_argument) if index == 0 and leading_argument is not None
                       else self.expression(argument))
+            actual = self.refine_reference(argument, actual, wanted)
             self.convert_native_argument(actual, wanted, call)
 
     def convert_native_argument(
@@ -5363,6 +5393,7 @@ class JVMEmitter:
         *,
         fragment=None,
     ) -> None:
+        actual = self.refine_reference(node, actual, expected)
         if actual == "N" and _is_reference_descriptor(expected):
             return
         if SCALAR_BOXES.get(actual) == expected:

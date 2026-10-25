@@ -94,6 +94,20 @@ def main() -> str:
     assert len(received) == 2
 
 
+def test_explicit_referer_reaches_the_server(tmp_path, endpoint):
+    url, received = endpoint
+    result = run_jvm(IMPORTS + f'''
+def main() -> str:
+    transport = JVMTransport([("Referer", "https://example.test/"), ("X-CSRFToken", "token")])
+    return run_sync(transport.request({url + '/echo'!r}, "ready")).body
+''', tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ready"
+    assert len(received) == 1
+    assert received[0][1]["Referer"] == "https://example.test/"
+    assert received[0][1]["X-CSRFToken"] == "token"
+
+
 def test_transport_timeout_keeps_native_exception(tmp_path, endpoint):
     url, _ = endpoint
     result = run_jvm(IMPORTS + f'''
