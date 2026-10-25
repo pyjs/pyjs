@@ -9,6 +9,10 @@
   signed installers. Browser and desktop pages with managed npm imports now
   load their generated JavaScript as a module.
 
+- The local Stripe simulator supports explicit and clock-driven checkout
+  expiry, blocks payment after expiry, and supports invoice retrieval and
+  customer/status-filtered forward pagination through the official SDK.
+
 - Django queryset pagination preserves timestamp and time microseconds in
   cursor boundaries and query fingerprints, avoiding skipped or repeated rows
   when ordered values fall within the same millisecond.

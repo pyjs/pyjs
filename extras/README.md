@@ -16,6 +16,13 @@ uv add "pyjs[stripe]"
 
 ## Stripe
 
+The local simulator also supports explicit or clock-driven checkout expiry
+and invoice retrieval/listing with customer, subscription and status filters.
+Invoice lists support `limit` and forward `starting_after` pagination; reverse
+pagination and other unsupported options (including expansion) are rejected.
+Expired sessions cannot accept payment or complete
+authentication. It remains a development simulator, not a Stripe replacement.
+
 `pyjs_extras.stripe` provides five deliberately separate surfaces:
 
 - `browser` contains typed Stripe.js declarations for transpiled code.
