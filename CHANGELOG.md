@@ -3,7 +3,8 @@
 ## Unreleased
 
 - JVM method receivers and arguments retain class refinements from type guards
-  even when their local slot has a broader declared type.
+  even when their local slot has a broader declared type. Implicit casts apply
+  to local values, not mutable attribute refinements.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.
@@ -11,13 +12,16 @@
   and represented numeric fields across JavaScript, JVM, and LLVM lowering.
 - JVM clients generate typed remote operations from ordinary API declarations
   without including server bodies. Nested model results and structured errors
-  are decoded on the client. This does not add cancellation, streams,
+  are decoded on the client. Generated codec bindings do not conflict with
+  builtin-named parameters, and malformed numeric statuses retain the normal
+  operation-error fallback. This does not add cancellation, streams,
   resource relationships, or nonblocking execution.
 - JVM transports support isolated in-memory cookie sessions, GET bootstrap,
   and UTF-8 form submission for Django login/logout. CSRF headers remain
   explicit; credential persistence and lifecycle handling stay with the app.
 - JVM list and application-length truth tests reject negative lengths even
-  under negation. Explicit-separator string splitting supports bounded splits
+  under negation while preserving boolean length results as zero or one.
+  Explicit-separator string splitting supports bounded splits
   and preserves trailing empty fields; whitespace splitting remains unsupported.
 
 - JVM nullable integers and floats retain `None` through calls, fields, and

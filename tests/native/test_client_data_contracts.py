@@ -7,6 +7,7 @@ from tests.backend_semantics import (
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
+    REPLACED_ATTRIBUTE_CONTRACT,
 )
 
 
@@ -31,4 +32,9 @@ def main() -> str:
 
 def test_narrowed_receivers_and_arguments_keep_their_refined_type(tmp_path):
     result = LLVM().assert_matches_python(NARROWED_METHOD_CONTRACT.source, directory=tmp_path)
+    assert result.native.returncode == 0
+
+
+def test_replaced_attributes_do_not_keep_stale_refinements(tmp_path):
+    result = LLVM().assert_matches_python(REPLACED_ATTRIBUTE_CONTRACT.source, directory=tmp_path)
     assert result.native.returncode == 0

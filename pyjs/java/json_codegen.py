@@ -62,7 +62,7 @@ class JSONCodegen:
         if annotation is type(None):
             return "None"
         if annotation in (str, bool, int, float):
-            return annotation.__name__
+            return self.type_name(annotation)
         if is_model(annotation):
             return self.type_name(annotation)
         origin, args = get_origin(annotation), get_args(annotation)
@@ -71,9 +71,9 @@ class JSONCodegen:
         if origin in (Union, UnionType) and len(args) == 2 and type(None) in args:
             return " | ".join(self._annotation(value, depth + 1) for value in args)
         if origin is list and len(args) == 1:
-            return f"list[{self._annotation(args[0], depth + 1)}]"
+            return f"{self.type_name(list)}[{self._annotation(args[0], depth + 1)}]"
         if origin is dict and len(args) == 2 and args[0] is str:
-            return f"dict[str, {self._annotation(args[1], depth + 1)}]"
+            return f"{self.type_name(dict)}[{self.type_name(str)}, {self._annotation(args[1], depth + 1)}]"
         raise TypeError(f"Unsupported JVM JSON schema: {annotation!r}")
 
     def validate(self, annotation, parents=()):
@@ -106,10 +106,10 @@ class JSONCodegen:
         elif annotation is bool:
             expression = f"('true' if {value} else 'false')"
         elif annotation is int:
-            expression = f"str({value})"
+            expression = f"{self.type_name(str)}({value})"
         elif annotation is float:
             self.emit(f"if {value} != {value} or {value} > 1.7976931348623157e308 or {value} < -1.7976931348623157e308:")
-            self.emit("    raise ValueError('JSON numbers must be finite')")
+            self.emit(f"    raise {self.type_name(ValueError)}('JSON numbers must be finite')")
             expression = f"_pyjs_double({value})"
         elif origin in (Union, UnionType):
             self.emit(f"if {value} is None:")
@@ -165,7 +165,7 @@ class JSONCodegen:
         elif origin is Literal:
             self.emit(f"{result} = {reader}.string()")
             self.emit("if " + " and ".join(f"{result} != {value!r}" for value in args) + ":")
-            self.emit("    raise ValueError('Invalid JSON literal value')")
+            self.emit(f"    raise {self.type_name(ValueError)}('Invalid JSON literal value')")
             narrowed = self.name()
             self.emit(f"{narrowed} = _pyjs_cast({self.annotation(annotation)}, {result})")
             result = narrowed
@@ -226,7 +226,7 @@ class JSONCodegen:
             self.emit("else:")
             self.level += 1
         if annotation.model_config.get("extra") == "forbid":
-            self.emit("raise ValueError('Unexpected JSON model field')")
+            self.emit(f"raise {self.type_name(ValueError)}('Unexpected JSON model field')")
         else:
             self.emit(f"{reader}.skip({63 - depth})")
         if fields:
@@ -239,7 +239,7 @@ class JSONCodegen:
         for name, field, value, seen in fields:
             if field.is_required():
                 self.emit(f"if not {seen}:")
-                self.emit(f"    raise ValueError({'Missing JSON model field: ' + name!r})")
+                self.emit(f"    raise {self.type_name(ValueError)}({'Missing JSON model field: ' + name!r})")
             field_type = self.annotation(field.annotation)
             arguments.append(f"{name}=_pyjs_cast({field_type}, {value})")
         self.emit(f"{result} = {self.annotation(annotation)}({', '.join(arguments)})")

@@ -90,7 +90,7 @@ def parse_operation_error(source: str, response_status: int) -> OperationError:
                     break
                 reader.expect(",")
         reader.finish()
-    except ValueError:
+    except (ValueError, OverflowError):
         issues = []
     if not issues:
         issues.append(OperationIssue(source, [], response_status, "Request failed"))

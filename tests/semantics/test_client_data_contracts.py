@@ -6,6 +6,7 @@ from tests.backend_semantics import (
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
+    REPLACED_ATTRIBUTE_CONTRACT,
 )
 from tests.semantics.helpers import assert_semantics
 
@@ -27,3 +28,7 @@ asyncio.run(main())
 
 def test_narrowed_receivers_and_arguments_keep_their_refined_type():
     assert_semantics(NARROWED_METHOD_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_replaced_attributes_do_not_keep_stale_refinements():
+    assert_semantics(REPLACED_ATTRIBUTE_CONTRACT.print_source + "\nmain()\n")

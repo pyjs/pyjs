@@ -85,6 +85,13 @@ def test_narrowed_receiver_contract_keeps_wasm_inheritance_boundary():
         transpile_webassembly(NARROWED_METHOD_CONTRACT.source)
 
 
+def test_replaced_attribute_contract_keeps_wasm_inheritance_boundary():
+    from tests.backend_semantics import REPLACED_ATTRIBUTE_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(REPLACED_ATTRIBUTE_CONTRACT.source)
+
+
 def test_explicit_split_keeps_wasm_string_boundary():
     from tests.backend_semantics import EXPLICIT_SPLIT_CONTRACT
 

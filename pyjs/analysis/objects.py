@@ -483,10 +483,12 @@ def resolve_imported(
             return existing
     if isinstance(obj, typing.TypeAliasType) and inspect.getmodule(obj) is None:
         raise TypeError("Type aliases require an importable defining module")
-    builtins = current_module.scope.BUILTINS
+    builtin_module = current_module.scope.BUILTINS
     name = getattr(obj, "__name__", "").removeprefix("_")
-    declaration = builtins.scope.names.get(name)
-    if declaration is not None and declaration.py_obj is obj:
+    declaration = builtin_module.scope.names.get(name)
+    if declaration is not None and (
+        declaration.py_obj is obj or getattr(builtins, name, None) is obj
+    ):
         # Library mappings may resolve public APIs to builtin declarations.
         # Rebuilding them as application classes loses their canonical type.
         return declaration
@@ -529,7 +531,8 @@ def resolve_imported(
 
 def traverse_imported(obj_name: str, obj: object, current_module: Module):
     if existing := current_module.scope.names.get(obj_name):
-        if existing.py_obj is not obj:
+        if (existing.py_obj is not obj
+                and resolve_imported(obj, current_module, obj_name) is not existing):
             raise NameError(f"Imported object conflicts with existing `{obj_name}`.")
         return
     imported_object = resolve_imported(obj, current_module, obj_name)

@@ -734,6 +734,9 @@ with `pyjs template`.
   `get()` and `post_form()` support session bootstrap and ordinary Django
   login/logout, retaining redirects so the app can inspect their status.
   CSRF headers remain explicit and must follow token rotation after login.
+  For Django over HTTPS, also send an `Origin` matching the trusted server
+  origin (or a matching HTTPS `Referer`); a CSRF token alone is insufficient.
+  Native Java HTTP does not add those browser headers automatically.
   Managed cookies cannot be combined with explicit Cookie headers. Credential
   headers are not origin-scoped: keep a transport per trusted server/account.
   Do not install a process-global CookieHandler while using managed sessions:

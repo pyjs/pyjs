@@ -3435,6 +3435,60 @@ NARROWED_METHOD_CONTRACT = _contract(
 )
 
 
+REPLACED_ATTRIBUTE_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class StoredBase:
+        def value(self) -> int:
+            return 4
+
+    @js
+    class StoredChild(StoredBase):
+        def value(self) -> int:
+            return 7
+
+    @js
+    class Holder:
+        def __init__(self, item: StoredBase):
+            self.item = item
+
+        def reset(self) -> None:
+            self.item = StoredBase()
+
+    @js
+    def read_base(value: StoredBase) -> int:
+        return value.value()
+
+    @js
+    def replace_guarded_attribute(holder: Holder) -> int:
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            return read_base(holder.item)
+        return 0
+
+    @js
+    def keep_guarded_snapshot(holder: Holder) -> int:
+        item = holder.item
+        if isinstance(item, StoredChild):
+            holder.reset()
+            return item.value()
+        return 0
+    ''',
+    "replaced_attribute_result",
+    "",
+    (
+        ("attribute replacement does not retain the old subtype",
+         "replace_guarded_attribute(Holder(StoredChild())) != 4"),
+        ("failed guard leaves the base value alone",
+         "replace_guarded_attribute(Holder(StoredBase())) != 0"),
+        ("local snapshot remains valid after its source field changes",
+         "keep_guarded_snapshot(Holder(StoredChild())) != 7"),
+    ),
+)
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -5846,10 +5900,33 @@ LIST_TRUTH_CONTRACT = _contract(
             result += 2
         result += 4 if truth_values(full, events) else 8
         return result + len(events) * 100
+
+    @js
+    class BooleanLength:
+        def __init__(self, full: bool):
+            self.full = full
+            self.calls = 0
+
+        def __len__(self) -> bool:
+            self.calls += 1
+            return self.full
+
+    @js
+    def boolean_length_result(full: bool) -> int:
+        value = BooleanLength(full)
+        result = 0
+        if value:
+            result += 1
+        if not value:
+            result += 2
+        result += 4 if value else 8
+        return result + value.calls * 100
     ''',
     "list_truth_contract", "",
     (("empty branches and single evaluation", "truth_result(False) != 310"),
-     ("nonempty branches and single evaluation", "truth_result(True) != 305")),
+     ("nonempty branches and single evaluation", "truth_result(True) != 305"),
+     ("false length is an integer zero", "boolean_length_result(False) != 310"),
+     ("true length is an integer one", "boolean_length_result(True) != 305")),
 )
 
 

@@ -191,3 +191,34 @@ def main() -> str:
     result = run_jvm(source, tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "found:4"
+
+
+@pytest.mark.parametrize("name", ["str", "list", "dict", "int", "bool", "float", "ValueError"])
+def test_proxy_parameters_do_not_shadow_generated_builtin_bindings(tmp_path, name):
+    source = f'''
+from pyjs.java import run_sync
+from pyjs.server import API, mutation
+from pyjs.server.transport import ClientTransport, TransportResponse
+from tests.java.json_models import Item
+class Client(API):
+    @mutation
+    async def echo(self, {name}: int) -> list[dict[str, Item | None]]:
+        raise RuntimeError("server only")
+class Transport(ClientTransport):
+    async def request(self, url: str, body: str, timeout_ms: int = 0) -> TransportResponse:
+        assert body == '{{"{name}":17}}'
+        return TransportResponse(200, '[{{"item":{{"name":"saved","count":17}},"empty":null}}]')
+async def execute() -> str:
+    api = Client("https://example.test/api", transport=Transport())
+    values = await api.echo({name}=17)
+    assert values[0]["empty"] is None
+    item = values[0]["item"]
+    if item is None:
+        return "missing"
+    return item.name + ":" + str(item.count)
+def main() -> str:
+    return run_sync(execute())
+'''
+    result = run_jvm(source, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "saved:17"

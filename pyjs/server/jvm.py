@@ -41,7 +41,8 @@ def _read_body(stream: InputStream, limit: int) -> str:
 class JVMTransport(ClientTransport):
     """POST JSON over native HTTP(S), retaining non-success response bodies.
 
-    Headers are explicit, including authentication and CSRF if needed. An
+    Headers are explicit, including authentication and CSRF if needed. Django
+    HTTPS POSTs also need a matching Origin or HTTPS Referer header. An
     optional CookieManager keeps a private, in-memory session; no global
     cookie handler is installed. Do not reuse credential headers across origins.
     Redirects are returned without following them. Native I/O exceptions propagate.

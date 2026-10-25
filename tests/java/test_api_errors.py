@@ -4,7 +4,7 @@ import pytest
 
 from pyjs.server.jvm_errors import parse_operation_error
 from tests.java.test_context_managers import assert_text_matches_python
-from tests.java.test_exceptions import assert_compiles_to_android_dex
+from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
 
 
 def error_corpus():
@@ -41,6 +41,40 @@ def test_operation_error_decoder_matches_host(tmp_path):
 
 def test_operation_error_decoder_compiles_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(error_corpus(), tmp_path)
+
+
+@pytest.mark.parametrize("status", ["bad", "9223372036854775808", "-9223372036854775809"])
+def test_malformed_status_stays_inside_the_proxy_operation_error_boundary(tmp_path, status):
+    body = json.dumps({"errors": [{"title": "Failure", "detail": "unavailable", "status": status}]})
+    source = f'''
+from pyjs.java import run_sync
+from pyjs.server import API, query
+from pyjs.server.errors import OperationError
+from pyjs.server.transport import ClientTransport, TransportResponse
+class Service(API):
+    @query
+    async def read(self) -> str:
+        return "server only"
+class Transport(ClientTransport):
+    async def request(self, url: str, body: str, timeout_ms: int = 0) -> TransportResponse:
+        return TransportResponse(503, {body!r})
+async def execute() -> str:
+    try:
+        await Service("https://example.test/api", transport=Transport()).read()
+    except OperationError as error:
+        assert len(error.issues) == 1
+        issue = error.issues[0]
+        assert issue.status == 503
+        assert issue.title == "Request failed"
+        assert issue.detail == {body!r}
+        return "fallback retained"
+    return "missing error"
+def main() -> str:
+    return run_sync(execute())
+'''
+    result = run_jvm(source, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "fallback retained"
 
 
 @pytest.mark.parametrize(("pointer", "expected"), [

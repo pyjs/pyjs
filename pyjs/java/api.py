@@ -73,7 +73,7 @@ def operation_source(operation):
     result_type = hints.get("return")
     generator.validate(result_type)
     parts, reader = generator.name(), generator.name()
-    generator.emit(f"{parts}: list[str] = ['{{']")
+    generator.emit(f"{parts}: {generator.annotation(list[str])} = ['{{']")
     for index, parameter in enumerate(parameters):
         prefix = ("," if index else "") + quote(parameter.name) + ":"
         generator.emit(f"{parts}.append({prefix!r})")
