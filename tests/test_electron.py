@@ -9,7 +9,7 @@ from pyjs.tooling import electron
 
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
-    monkeypatch.setattr(electron.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(electron, "runtime_layout", lambda system: ("electron", "resources/app"))
     directory = tmp_path / "runtime"
     directory.mkdir()
     (directory / "electron").write_text("runtime")
