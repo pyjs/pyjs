@@ -98,7 +98,7 @@ def build_application(
         if output.is_relative_to(host):
             raise ValueError("Electron output cannot be inside the host directory")
     executable, app_path = runtime_layout(platform.system())
-    runtime = runtime.resolve() if runtime is not None else managed_runtime()
+    runtime = (runtime if runtime is not None else managed_runtime()).resolve()
     if not (runtime / executable).is_file():
         raise ValueError(f"Electron runtime is missing {executable}: {runtime}")
     if output.is_relative_to(runtime):
@@ -115,8 +115,12 @@ def build_application(
         # Independent files: modifying the packaged app must never corrupt the cache.
         shutil.copytree(runtime, application, symlinks=True)
         app = application / app_path
-        if app.exists():
-            raise ValueError("Electron runtime already contains resources/app")
+        # Preserve portable internal links (including macOS frameworks), but
+        # never follow a resources link back into the supplied distribution.
+        if not app.resolve().is_relative_to(application.resolve()):
+            raise ValueError("Electron runtime application path escapes the copied distribution")
+        if app.exists() or app.is_symlink() or app.with_suffix(".asar").exists():
+            raise ValueError("Electron runtime already contains resources/app or app.asar")
         app.mkdir(parents=True)
         renderer.rename(app / "renderer")
         start = "const window = createWindow(); await window.loadFile(renderer);"
@@ -129,5 +133,9 @@ def build_application(
         (app / "package.json").write_text(json.dumps({
             "name": "pyjs-desktop-app", "version": "0.1.0", "main": "main.cjs", "private": True,
         }) + "\n", encoding="utf-8")
+        # Catch destinations created while compiling. Callers must still use
+        # distinct destinations: a check followed by rename is not a lock.
+        if output.exists() or output.is_symlink():
+            raise FileExistsError(f"Refusing to overwrite {output}; choose a new output directory")
         application.rename(output)
     return output / executable

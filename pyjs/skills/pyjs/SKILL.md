@@ -69,6 +69,18 @@ startup and captured output count for both targets. It does not benchmark
 interactive input or pass program arguments. See the README for a complete
 copy/paste example and current native limitations.
 
+For a desktop UI, use `pyjs build my_app:main --target electron -o dist/my-app`
+with a new output directory. This packages the hydrated page and Python source
+maps with stock Electron; it needs no Python or HTTP server at runtime.
+`--electron-runtime PATH` reuses a host-platform distribution offline.
+`--electron-host DIRECTORY` copies a trusted, self-contained Node host whose
+`main.cjs` exports `async start({app, BrowserWindow, createWindow, renderer})`.
+Keep UI state and DOM work in the renderer and make service IPC coarse-grained.
+Existing HTTP backends are not translated automatically. The default renderer
+has no Node globals, but its `file://` page can read accessible local files;
+only package trusted UI. OS sandbox setup, signing and installers are separate
+deployment steps. See the README's stock Electron section.
+
 ## Documentation
 
 Run `pyjs --version`, then use the resources shipped with that installed

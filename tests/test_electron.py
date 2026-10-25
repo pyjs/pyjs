@@ -72,6 +72,109 @@ def test_failure_does_not_publish_partial_output(tmp_path, runtime):
     assert not list(tmp_path.glob("pyjs-electron-*"))
 
 
+@pytest.mark.parametrize("internal", [False, True])
+def test_runtime_resources_links_stay_inside_copy(tmp_path, runtime, internal):
+    resources = runtime / "resources"
+    resources.rename(runtime / "resource-data")
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    try:
+        resources.symlink_to("resource-data" if internal else shared, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable")
+    output = tmp_path / "app"
+    if internal:
+        electron.build_application(output, page, runtime=runtime)
+        assert (output / "resources/app/renderer/sample.main.html").is_file()
+        assert (output / "resource-data/app/main.cjs").is_file()
+    else:
+        with pytest.raises(ValueError, match="escapes the copied distribution"):
+            electron.build_application(output, page, runtime=runtime)
+        assert not output.exists()
+    assert not (runtime / "resource-data/app").exists()
+    assert list(shared.iterdir()) == []
+    assert not list(tmp_path.glob("pyjs-electron-*"))
+
+
+def test_managed_runtime_alias_cannot_contain_output(tmp_path, runtime, monkeypatch):
+    alias = tmp_path / "cache-alias"
+    try:
+        alias.symlink_to(runtime, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable")
+    monkeypatch.setattr(electron, "managed_runtime", lambda: alias)
+    def render(directory):
+        pytest.fail("Unsafe output must be rejected before rendering")
+    with pytest.raises(ValueError, match="inside the runtime directory"):
+        electron.build_application(runtime / "app", render)
+    assert not list(runtime.glob("pyjs-electron-*"))
+
+
+def test_destination_created_during_render_is_preserved(tmp_path, runtime):
+    output = tmp_path / "app"
+    inode = []
+    def render(directory):
+        output.mkdir()
+        inode.append(output.stat().st_ino)
+        return page(directory)
+    with pytest.raises(FileExistsError):
+        electron.build_application(output, render, runtime=runtime)
+    assert output.stat().st_ino == inode[0]
+    assert list(output.iterdir()) == []
+
+
+@pytest.mark.parametrize("name", ["app", "app.asar"])
+def test_existing_runtime_application_is_preserved(tmp_path, runtime, name):
+    existing = runtime / "resources" / name
+    existing.write_text("original")
+    output = tmp_path / "app"
+    with pytest.raises(ValueError, match="already contains"):
+        electron.build_application(output, page, runtime=runtime)
+    assert existing.read_text() == "original"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("target", ["js", "electron"])
+def test_npm_page_loads_as_a_module(tmp_path, runtime, monkeypatch, target):
+    from pyjs.tooling.npm import ManagedNpmProject
+
+    module_name = f"npm_sample_{target}"
+    (tmp_path / f"{module_name}.py").write_text('''from pyjs import js
+from pyjs.tooling.npm import NpmImport, NpmPackage
+from pyjs.web.domx import CustomElement, tag
+__pyjs_npm_imports__ = (NpmImport(NpmPackage("example", "1.2.3"), "$example"),)
+@js
+def answer() -> str: ...
+answer.source("return $example.answer;")
+@js
+class NpmSample(CustomElement):
+    def __init__(self):
+        super().__init__()
+        tag(self, "waiting")
+    def connectedCallback(self):
+        self.setAttribute("data-answer", answer())
+def main():
+    return NpmSample()
+''')
+    def copy_vendor(self, imports, destination):
+        destination.write_text("export const $example = {answer: 'loaded'};\n")
+        return destination
+    monkeypatch.setattr(ManagedNpmProject, "copy_vendor", copy_vendor)
+    monkeypatch.syspath_prepend(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    arguments = ["build", module_name, "--target", target]
+    renderer = tmp_path
+    if target == "electron":
+        output = tmp_path / "built"
+        arguments += ["-o", str(output), "--electron-runtime", str(runtime)]
+        renderer = output / "resources/app/renderer"
+    assert main(arguments) == 0
+    html = (renderer / f"{module_name}.main.html").read_text()
+    assert 'type="module"' in html
+    assert "import " in (renderer / f"{module_name}.main.js").read_text()
+    assert (renderer / "pyjs-vendor.js").is_file()
+
+
 def test_existing_output_and_recursive_host_rejected(tmp_path, runtime):
     output = tmp_path / "existing"
     output.mkdir()

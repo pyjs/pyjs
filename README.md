@@ -352,12 +352,25 @@ The first build provisions Electron 45.0.0 through its exact npm package using
 PyJS's managed Node tooling. The build runs Electron's own installer, which
 verifies its published checksums. This requires network access. Use
 `--electron-runtime PATH` to reuse an existing host-platform Electron
-distribution offline. The output must not already exist.
+distribution offline. The output must not already exist. Use a distinct output
+directory for each concurrent build; concurrent modification of the destination
+is unsupported. Runtime links used for application resources must resolve inside
+the copied distribution, and the runtime must not contain a pre-existing app.
+
+Linux still requires a working Chromium sandbox. Systems that restrict
+unprivileged user namespaces may require an administrator-configured AppArmor
+policy or a correctly installed root-owned setuid sandbox helper. Packaging does
+not configure the operating system or disable Electron's sandbox; handle this in
+your installation process.
 
 The default window uses a sandboxed renderer with context isolation and no
 Node globals. UI code, state and DOM access stay in the renderer. Existing
 HTTP backend routes are not automatically translated into desktop services.
-For filesystem or other OS services, pass `--electron-host host-directory`.
+Pages load from `file://`, which can read user-accessible local files despite
+the renderer sandbox. There is no default Content Security Policy restricting
+outbound connections. These defaults are for trusted application UI, not a
+boundary for running untrusted content. For Node filesystem operations (such as
+writes) or other OS services, pass `--electron-host host-directory`.
 That directory must contain `main.cjs` exporting
 `async start({app, BrowserWindow, createWindow, renderer})`; its sibling files
 are copied with it. For example:

@@ -832,7 +832,7 @@ def _build_browser(args, command_parser: argparse.ArgumentParser, directory: Pat
                 f"'pyjs npm sync {args.module}'"
             )
 
-    print(f"Writing {module_name}:{entry} JavaScript to ./{js_file_name}")
+    print(f"Writing {module_name}:{entry} JavaScript to {directory / js_file_name}")
     source_map_name = f"{js_file_name}.map"
     (directory / js_file_name).write_text(
         generated.with_source_mapping_url(source_map_name),
@@ -844,18 +844,19 @@ def _build_browser(args, command_parser: argparse.ArgumentParser, directory: Pat
     )
     if vendor is not None:
         vendor_output = directory / "pyjs-vendor.js"
-        print(f"Writing managed JavaScript dependencies to ./{vendor_output}")
+        print(f"Writing managed JavaScript dependencies to {vendor_output}")
 
     if args.only_js:
         return directory / js_file_name
 
     css_file_name = f"{file_stem}.css"
-    print(f"Writing {module_name}:{entry} CSS to ./{css_file_name}")
+    print(f"Writing {module_name}:{entry} CSS to {directory / css_file_name}")
     (directory / css_file_name).write_text(css, encoding="utf-8")
 
-    html = page(entry_point(*entry_args), js_file_name, css_file_name, "text/javascript")
+    script_type = "module" if generated.npm_imports else "text/javascript"
+    html = page(entry_point(*entry_args), js_file_name, css_file_name, script_type)
     html_file_name = f"{file_stem}.html"
-    print(f"Writing {module_name}:{entry} HTML to ./{html_file_name}")
+    print(f"Writing {module_name}:{entry} HTML to {directory / html_file_name}")
     (directory / html_file_name).write_text(html, encoding="utf-8")
     return directory / html_file_name
 
