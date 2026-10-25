@@ -276,6 +276,12 @@ class StripeSimulator:
         params = self._query(environ)
         if "ending_before" in params:
             raise SimulatorHTTPError(400, "invalid_request_error", "Only starting_after pagination is supported")
+        supported = {"customer", "subscription", "status", "limit", "starting_after"}
+        if unsupported := sorted(params.keys() - supported):
+            raise SimulatorHTTPError(
+                400, "invalid_request_error",
+                f"Unsupported invoice list parameter: {unsupported[0]}",
+            )
         try:
             limit = int(params.get("limit", "10"))
         except ValueError:

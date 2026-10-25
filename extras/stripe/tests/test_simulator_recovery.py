@@ -92,6 +92,23 @@ def test_invoice_sdk_pagination_filters_and_lookup():
             invoices.list({"starting_after": "missing"})
 
 
+@pytest.mark.parametrize("parameters, field", [
+    ({"created": {"gte": 9999999999}}, "created[gte]"),
+    ({"collection_method": "send_invoice"}, "collection_method"),
+    ({"due_date": {"lte": 1}}, "due_date[lte]"),
+    ({"expand": ["data.customer"]}, "expand[0]"),
+])
+def test_invoice_list_rejects_unsupported_options(parameters, field):
+    with SimulatorServer() as simulator:
+        gateway = StripeGateway("sk_test_local", api_base=simulator.url)
+        complete(checkout(gateway))
+        with pytest.raises(InvalidRequestError) as error:
+            gateway.client.v1.invoices.list(parameters)
+        assert error.value.http_status == 400
+        assert error.value.user_message == f"Unsupported invoice list parameter: {field}"
+        assert len(gateway.client.v1.invoices.list().data) == 1
+
+
 def test_checkout_expiry_validation_and_invoice_uses_selected_price():
     with SimulatorServer() as simulator:
         gateway = StripeGateway("sk_test_local", api_base=simulator.url)
