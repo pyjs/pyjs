@@ -2,6 +2,7 @@ import hashlib
 import json
 import types
 from collections.abc import Sequence
+from datetime import datetime, time
 from typing import Union, cast, get_args, get_origin
 
 from asgiref.sync import sync_to_async
@@ -67,12 +68,21 @@ class QuerySetPageResult:
         )(self, result_type)
 
 
+class _CursorJSONEncoder(DjangoJSONEncoder):
+    def default(self, value):
+        # Cursor comparisons require exact database values. Django's public JSON
+        # encoding rounds temporal values down to milliseconds, skipping rows.
+        if isinstance(value, datetime) or isinstance(value, time) and value.utcoffset() is None:
+            return value.isoformat()
+        return super().default(value)
+
+
 class _CursorSerializer:
     @staticmethod
     def dumps(value) -> bytes:
         return json.dumps(
             value,
-            cls=DjangoJSONEncoder,
+            cls=_CursorJSONEncoder,
             separators=(",", ":"),
         ).encode()
 
@@ -119,7 +129,7 @@ def _query_fingerprint(queryset: QuerySet, ordering: tuple[str, ...]) -> str:
     sql, parameters = queryset.order_by().query.sql_with_params()
     source = json.dumps(
         (sql, parameters, ordering),
-        cls=DjangoJSONEncoder,
+        cls=_CursorJSONEncoder,
         separators=(",", ":"),
     ).encode()
     return hashlib.sha256(source).hexdigest()

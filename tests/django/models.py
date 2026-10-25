@@ -1,6 +1,11 @@
 from django.db import models
 
 
+class EventRecord(models.Model):
+    occurred_at = models.DateTimeField()
+    clock = models.TimeField()
+
+
 class AuthorRecord(models.Model):
     name = models.CharField(max_length=100)
 
