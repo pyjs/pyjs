@@ -148,8 +148,8 @@ def parser() -> argparse.ArgumentParser:
     subcommands = command.add_subparsers(dest="command")
 
     build = subcommands.add_parser("build", help="build a browser application or native executable")
-    build.add_argument("--target", choices=("js", "native"), default="js")
-    build.add_argument("-o", "--output", type=Path, help="native executable destination")
+    build.add_argument("--target", choices=("js", "native", "electron"), default="js")
+    build.add_argument("-o", "--output", type=Path, help="native executable or Electron application directory")
     build.add_argument(
         "module",
         help="module (or native Python file), optionally followed by :function",
@@ -161,6 +161,9 @@ def parser() -> argparse.ArgumentParser:
         help="include and call the entry-point function in the browser bundle",
     )
     build.add_argument("--args", help="JSON list of arguments passed to the entry point")
+
+    build.add_argument("--electron-runtime", type=Path, help="existing Electron distribution directory")
+    build.add_argument("--electron-host", type=Path, help="desktop host directory containing main.cjs")
 
     serve = subcommands.add_parser("serve", help="serve a PyJS web application")
     serve.add_argument(
@@ -744,6 +747,24 @@ def _benchmark_javascript(
 
 
 def _build(args, command_parser: argparse.ArgumentParser) -> int:
+    if args.target != "electron" and (args.electron_runtime or args.electron_host):
+        command_parser.error("--electron-runtime and --electron-host require --target electron")
+    if args.target == "electron":
+        from pyjs.tooling.electron import build_application
+
+        if args.only_js or args.include_main:
+            command_parser.error("Electron builds require a hydrated page; omit --only-js and --include-main")
+        if args.output is None:
+            command_parser.error("Electron builds require --output DIRECTORY")
+        try:
+            executable = build_application(
+                args.output, lambda directory: _build_browser(args, command_parser, directory),
+                runtime=args.electron_runtime, host=args.electron_host,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            command_parser.error(str(error))
+        print(f"Run: {executable}")
+        return 0
     if args.target == "native":
         from pyjs.native.cli import build
 
@@ -762,7 +783,12 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
         except Exception as error:
             return _compilation_error(error, args)
     if args.output is not None:
-        command_parser.error("--output is only supported for native builds")
+        command_parser.error("--output is only supported for native and Electron builds")
+    _build_browser(args, command_parser, Path.cwd())
+    return 0
+
+
+def _build_browser(args, command_parser: argparse.ArgumentParser, directory: Path) -> Path:
     if args.module.endswith(".py"):
         suggestion = f"perhaps try: {Path(args.module).stem}"
         command_parser.error(
@@ -798,7 +824,7 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
         try:
             vendor = project.copy_vendor(
                 generated.npm_imports,
-                Path("pyjs-vendor.js"),
+                directory / "pyjs-vendor.js",
             )
         except RuntimeError:
             command_parser.error(
@@ -806,32 +832,33 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
                 f"'pyjs npm sync {args.module}'"
             )
 
-    print(f"Writing {module_name}:{entry} JavaScript to ./{js_file_name}")
+    print(f"Writing {module_name}:{entry} JavaScript to {directory / js_file_name}")
     source_map_name = f"{js_file_name}.map"
-    Path(js_file_name).write_text(
+    (directory / js_file_name).write_text(
         generated.with_source_mapping_url(source_map_name),
         encoding="utf-8",
     )
-    Path(source_map_name).write_text(
+    (directory / source_map_name).write_text(
         generated.source_map.to_json(),
         encoding="utf-8",
     )
     if vendor is not None:
-        vendor_output = Path("pyjs-vendor.js")
-        print(f"Writing managed JavaScript dependencies to ./{vendor_output}")
+        vendor_output = directory / "pyjs-vendor.js"
+        print(f"Writing managed JavaScript dependencies to {vendor_output}")
 
     if args.only_js:
-        return 0
+        return directory / js_file_name
 
     css_file_name = f"{file_stem}.css"
-    print(f"Writing {module_name}:{entry} CSS to ./{css_file_name}")
-    Path(css_file_name).write_text(css, encoding="utf-8")
+    print(f"Writing {module_name}:{entry} CSS to {directory / css_file_name}")
+    (directory / css_file_name).write_text(css, encoding="utf-8")
 
-    html = page(entry_point(*entry_args), js_file_name, css_file_name, "text/javascript")
+    script_type = "module" if generated.npm_imports else "text/javascript"
+    html = page(entry_point(*entry_args), js_file_name, css_file_name, script_type)
     html_file_name = f"{file_stem}.html"
-    print(f"Writing {module_name}:{entry} HTML to ./{html_file_name}")
-    Path(html_file_name).write_text(html, encoding="utf-8")
-    return 0
+    print(f"Writing {module_name}:{entry} HTML to {directory / html_file_name}")
+    (directory / html_file_name).write_text(html, encoding="utf-8")
+    return directory / html_file_name
 
 
 def _configured_application(command_parser: argparse.ArgumentParser) -> str:

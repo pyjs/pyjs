@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Package Python UI entries with stock Electron using
+  `pyjs build my_app --target electron -o dist/my-app`. Builds include Python
+  source maps and a sandboxed renderer; optional app-owned Node hosts provide
+  desktop services. Outputs are host-platform application directories, not
+  signed installers. Browser and desktop pages with managed npm imports now
+  load their generated JavaScript as a module.
+
 - Django queryset pagination preserves timestamp and time microseconds in
   cursor boundaries and query fingerprints, avoiding skipped or repeated rows
   when ordered values fall within the same millisecond.
