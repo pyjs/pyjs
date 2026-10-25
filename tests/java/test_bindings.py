@@ -313,6 +313,28 @@ def main() -> int:
     assert "generated_static_binding" in compilation.classes
 
 
+def test_generated_static_interface_function_retains_interface_owner():
+    from dataclasses import replace
+
+    interface = replace(WIDGET, access=0x0601)
+    source = render_jvm_bindings(Classpath(OBJECT, interface), (
+        JVMClassBinding("sample.Widget", methods=(
+            JVMMethodBinding("create", "()Lsample/Widget;", "create_widget"),
+        )),
+    ))
+    assert '''@jvm.native(
+    "sample/Widget",
+    name="create",
+    interface=True,
+)
+def create_widget() -> Widget:
+    pass
+''' in source
+    source += "\ndef main() -> int:\n    create_widget()\n    return 0\n"
+    compilation = transpile_jvm(source)
+    assert compilation.classes["PyjsProgram$native$InterfaceCalls"][6:8] == b"\x00\x34"
+
+
 def test_reuses_external_native_class_declarations():
     source = render_jvm_bindings(
         Classpath(OBJECT, WIDGET),

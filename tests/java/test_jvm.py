@@ -1620,8 +1620,8 @@ def test_jvm_native_declarations_validate_and_expose_one_record():
         jvm.native("bad//Owner")(lambda: None)
     with pytest.raises(TypeError, match="not supported"):
         jvm.native("java/lang/Object", invocation="interface")(lambda: None)
-    with pytest.raises(TypeError, match="require a class"):
-        jvm.native("java/lang/Runnable", interface=True)(lambda: None)
+    with pytest.raises(TypeError, match="require static invocation"):
+        jvm.native("java/lang/Runnable", interface=True, invocation="virtual")(lambda: None)
     with pytest.raises(TypeError, match="non-empty string"):
         jvm.field(name="")
     with pytest.raises(TypeError, match="must be a bool"):

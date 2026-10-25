@@ -301,6 +301,7 @@ class JVMEmitter:
         self.classes: dict[Class, ClassIR] = {}
         self.native_classes: set[Class] = set()
         self.native_interfaces: set[Class] = set()
+        self.static_interface_bridges = {}
         self.native_layouts: dict[Class, ClassIR] = {}
         self.native_exception_types: dict[str, Class] = {}
         self.code = Bytecode()
@@ -2601,6 +2602,8 @@ class JVMEmitter:
                         f"JVM native invocation {invocation} is not implemented",
                         node,
                     )
+                if backend_metadata(target.py_func, "jvm", "interface", False):
+                    owner, name = self.static_interface_bridge(owner, name, target)
                 reference = self.class_file.method_reference(
                     owner,
                     name,
@@ -2696,6 +2699,37 @@ class JVMEmitter:
             )
             return "V"
         raise JVMUnsupported("JVM indirect calls are not implemented", node)
+
+    def static_interface_bridge(self, owner: str, name: str, target: Function) -> tuple[str, str]:
+        # invokestatic InterfaceMethodref needs Java 8 class files. Ordinary
+        # emitted methods use Java 5 verification (no StackMapTable). Isolate
+        # the newer instruction in a branchless forwarding method, whose
+        # implicit empty stack-map table is sufficient under Java 8 rules.
+        descriptor = self.native_descriptor(target)
+        key = (owner, name, descriptor)
+        if key in self.static_interface_bridges:
+            return self.static_interface_bridges[key]
+        bridge_name = self.main_class_name + "$native$InterfaceCalls"
+        bridge = self.class_files.get(bridge_name)
+        if bridge is None:
+            bridge = ClassFile(bridge_name, major_version=52)
+            self.class_files[bridge_name] = bridge
+        method_name = "call" + str(len(bridge.methods))
+        code = Bytecode()
+        slot = 0
+        for parameter in self.native_parameter_types(target):
+            kind = parameter[0]
+            opcode = {"J": 0x16, "F": 0x17, "D": 0x18, "L": 0x19, "[": 0x19}.get(kind, 0x15)
+            code.emit(opcode, slot.to_bytes(1, "big"))
+            slot += 2 if kind in {"J", "D"} else 1
+        reference = bridge.interface_method_reference(owner, name, descriptor)
+        code.emit(0xB8, reference.to_bytes(2, "big"))
+        returned = descriptor.split(")", 1)[1][0]
+        code.emit({"V": 0xB1, "J": 0xAD, "F": 0xAE, "D": 0xAF,
+                   "L": 0xB0, "[": 0xB0}.get(returned, 0xAC))
+        bridge.add_method(Method(0x0009, method_name, descriptor, code.render(), max(slot, 2), slot))
+        self.static_interface_bridges[key] = (bridge_name, method_name)
+        return bridge_name, method_name
 
     def immediate_async_call(self, value: ast.expr, source: ast.AST) -> str:
         if not isinstance(value, ast.Call):

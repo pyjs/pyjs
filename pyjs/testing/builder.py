@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import linecache
 import sys
+import sysconfig
 import types
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,7 @@ from pyjs.tooling.npm import NpmImport
 
 ENTRYPOINT_MODULE = "__pyjs_test_entrypoint__"
 PYJS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+PYTHON_LIBRARY_ROOTS = tuple({Path(sysconfig.get_path(name)).resolve() for name in ("purelib", "platlib")})
 
 
 def compute_testing_signature() -> str:
@@ -113,13 +115,53 @@ def module_is_from_project(module: types.ModuleType, project_root: Path) -> bool
         paths.extend(Path(path) for path in module_path)
     # The repository root can also be the pytest project root. Keep the compiler
     # modules loaded while replacing only the application and test modules.
+    # A project-local virtual environment is not application source: reloading
+    # pytest changes Session identity underneath already collected fixtures.
     return any(
-        is_within(path, project_root) and not is_within(path, PYJS_PACKAGE_ROOT) for path in paths
+        is_within(path, project_root) and not is_within(path, PYJS_PACKAGE_ROOT)
+        and not any(is_within(path, library) for library in PYTHON_LIBRARY_ROOTS)
+        for path in paths
     )
 
 
-def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
+@dataclass
+class _ProjectImportState:
+    modules: dict[str, types.ModuleType | None]
+    bindings: list[tuple[types.ModuleType, str, types.ModuleType]]
+
+    def restore(self) -> None:
+        # Restore the cache as well as package attributes: the next generation
+        # must be able to discover and detach these same host modules again.
+        sys.modules.update(self.modules)
+        for parent, name, module in self.bindings:
+            setattr(parent, name, module)
+
+
+def clear_project_modules(project_root: Path, module_names: list[str]) -> _ProjectImportState:
     importlib.invalidate_caches()
+    # Django owns registered model classes for the lifetime of its app registry.
+    # Reimporting their modules while compiling a client replaces registry
+    # entries but leaves existing model/relationship references stale. Loaded
+    # admin autodiscovery modules also own process-lifetime registrations. Do not
+    # import or initialize optional Django just to discover this boundary.
+    django_apps = sys.modules.get("django.apps")
+    registry = getattr(django_apps, "apps", None)
+    registered_modules = (
+        {model.__module__ for model in registry.get_models(include_auto_created=True)}
+        if registry is not None and registry.models_ready else set()
+    )
+    if registry is not None and registry.models_ready:
+        admin_names = tuple(config.name + ".admin" for config in registry.get_app_configs())
+        admin_prefixes = tuple(name + "." for name in admin_names)
+        registered_modules.update(
+            name for name in list(sys.modules) if name in admin_names or name.startswith(admin_prefixes)
+        )
+    # A cached child must remain attached to its original package ancestry:
+    # importing it does not reattach it to a newly imported parent package.
+    preserved = set(registered_modules)
+    for name in registered_modules:
+        parts = name.split(".")
+        preserved.update(".".join(parts[:index]) for index in range(1, len(parts)))
     selected_names: set[str] = set()
     for module_name in module_names:
         parts = module_name.split(".")
@@ -127,16 +169,25 @@ def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     # Resolve namespace-package paths before removing any parent. Their lazy
     # __path__ lookup consults sys.modules[parent] after cache invalidation.
     removed = [
-        name for name, module in list(sys.modules.items())
-        if name in selected_names or (
+        (name, module) for name, module in list(sys.modules.items())
+        if name not in preserved and (name in selected_names or (
             module is not None and module_is_from_project(module, project_root)
-        )
+        ))
     ]
-    for name in removed:
+    state = _ProjectImportState(dict(removed), [])
+    for name, module in removed:
         sys.modules.pop(name, None)
+        parent_name, _, child_name = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        # Retained packages must not expose stale non-model child modules via
+        # `from package import child`, which can skip sys.modules entirely.
+        if module is not None and parent is not None and vars(parent).get(child_name) is module:
+            state.bindings.append((parent, child_name, module))
+            delattr(parent, child_name)
     for path in list(sys.path_importer_cache):
         if path and is_within(Path(path), project_root):
             sys.path_importer_cache.pop(path, None)
+    return state
 
 
 @contextmanager
@@ -146,8 +197,14 @@ def fresh_project_imports(
     generation: str,
     module_names: list[str],
 ) -> Iterator[None]:
-    """Import one generation of project modules without reusing project bytecode."""
-    clear_project_modules(project_root, module_names)
+    """Import a generation without project bytecode or stale client children.
+
+    Registered Django models, loaded admin modules and their package ancestry
+    remain process-owned; changing those requires restarting the process.
+    Host modules and package bindings are restored after the build, including
+    when compilation fails. This process-global import boundary is serial.
+    """
+    host = clear_project_modules(project_root, module_names)
     project_path = str(project_root)
     sys.path.insert(0, project_path)
     previous_pycache_prefix = sys.pycache_prefix
@@ -159,11 +216,14 @@ def fresh_project_imports(
     try:
         yield
     finally:
-        clear_project_modules(project_root, module_names)
-        sys.dont_write_bytecode = previous_dont_write_bytecode
-        sys.pycache_prefix = previous_pycache_prefix
-        with contextlib.suppress(ValueError):
-            sys.path.remove(project_path)
+        try:
+            clear_project_modules(project_root, module_names)
+        finally:
+            host.restore()
+            sys.dont_write_bytecode = previous_dont_write_bytecode
+            sys.pycache_prefix = previous_pycache_prefix
+            with contextlib.suppress(ValueError):
+                sys.path.remove(project_path)
 
 
 def load_entrypoint_module(source: str, filename: Path) -> types.ModuleType:

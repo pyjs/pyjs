@@ -1,6 +1,9 @@
 import gc
 import importlib
+import os
+import subprocess
 import sys
+import types
 import weakref
 
 import pytest
@@ -16,6 +19,131 @@ from pyjs.testing.builder import (
     generate_entrypoint_source,
 )
 from pyjs.tooling.npm import NpmImport, NpmPackage
+
+
+def test_project_import_cleanup_preserves_local_environment_dependencies(tmp_path, monkeypatch):
+    library = tmp_path / ".venv" / "lib" / "site-packages"
+    monkeypatch.setattr(builder_module, "PYTHON_LIBRARY_ROOTS", (library,))
+    dependency = types.ModuleType("environment_dependency")
+    dependency.__file__ = str(library / "environment_dependency" / "__init__.py")
+    dependency.__path__ = [str(library / "environment_dependency")]
+    application = types.ModuleType("application_source")
+    application.__file__ = str(tmp_path / "application_source.py")
+    monkeypatch.setitem(sys.modules, dependency.__name__, dependency)
+    monkeypatch.setitem(sys.modules, application.__name__, application)
+    builder_module.clear_project_modules(tmp_path, [application.__name__])
+    assert sys.modules[dependency.__name__] is dependency
+    assert application.__name__ not in sys.modules
+
+
+def test_project_import_cleanup_preserves_registered_model_identity(tmp_path, monkeypatch):
+    model_module = types.ModuleType("registered_models")
+    model_module.__file__ = str(tmp_path / "registered_models.py")
+    model = type("Record", (), {"__module__": "registered_models"})
+    model_module.Record = model
+    registry = types.SimpleNamespace(models_ready=True, get_app_configs=lambda: [],
+                                     get_models=lambda **kwargs: [model])
+    monkeypatch.setitem(sys.modules, "django.apps", types.SimpleNamespace(apps=registry))
+    monkeypatch.setitem(sys.modules, "registered_models", model_module)
+    builder_module.clear_project_modules(tmp_path, [])
+    assert sys.modules["registered_models"].Record is model
+    registry.models_ready = False
+    builder_module.clear_project_modules(tmp_path, [])
+    assert "registered_models" not in sys.modules
+
+
+@pytest.mark.parametrize("namespace_parent", [False, True])
+@pytest.mark.parametrize("admin_package", [False, True])
+def test_fresh_imports_preserve_django_package_links_and_reload_clients(tmp_path, namespace_parent, admin_package):
+    package = tmp_path / "model_host" / "app"
+    package.mkdir(parents=True)
+    if not namespace_parent:
+        (package.parent / "__init__.py").touch()
+    (package / "__init__.py").touch()
+    (package / "choices.py").write_text("LABEL = 'original'\n")
+    (package / "models.py").write_text(
+        "from django.db import models\nimport model_host.app.choices\n"
+        "class Record(models.Model):\n"
+        "    def label(self):\n        return model_host.app.choices.LABEL\n")
+    if admin_package:
+        (package / "admin").mkdir()
+        (package / "admin/__init__.py").write_text("from . import registration\n")
+        (package / "admin/registration.py").write_text(
+            "from django.contrib import admin\nfrom ..models import Record\nadmin.site.register(Record)\n")
+    else:
+        (package / "admin.py").write_text(
+            "from django.contrib import admin\nfrom .models import Record\nadmin.site.register(Record)\n")
+    api_source = "import model_host.app.models\nRecord = model_host.app.models.Record\nVERSION = 1\n"
+    (package / "api.py").write_text(api_source)
+    (package / "client.py").write_text("from model_host.app import api\nVERSION = api.VERSION\n")
+    (package / "views.py").write_text(
+        "import model_host.app.api\nfrom django.http import HttpResponse\n"
+        "from django.urls import path\n"
+        "def index(request):\n    return HttpResponse(str(model_host.app.api.VERSION))\n"
+        "urlpatterns = [path('', index)]\n")
+    script = '''
+import importlib
+import sys
+import warnings
+from pathlib import Path
+from django.conf import settings
+settings.configure(INSTALLED_APPS=["django.contrib.contenttypes", "django.contrib.auth",
+                                  "django.contrib.admin", "model_host.app"], SECRET_KEY="test-only",
+                   ROOT_URLCONF="model_host.app.views")
+import django
+django.setup()
+from django.apps import apps
+from django.contrib import admin
+from django.test import Client
+import model_host.app.api
+from pyjs.testing.builder import fresh_project_imports
+
+original = model_host.app.models.Record
+old_api = model_host.app.api
+old_admin = model_host.app.admin
+old_registration = getattr(old_admin, "registration", None)
+host = Client()
+assert host.get("/").content == b"1"
+old_choices = model_host.app.choices
+warnings.simplefilter("error", RuntimeWarning)
+path = Path("model_host/app/api.py")
+source = path.read_text()
+for version in (2, 3, 4):
+    path.write_text(source.replace("VERSION = 1", f"VERSION = {version}"))
+    try:
+        with fresh_project_imports(Path.cwd(), Path("cache"), str(version), ["model_host.app.client"]):
+            import model_host.app.models
+            assert model_host.app.models.Record is original
+            assert apps.get_model("app", "Record") is original
+            import model_host.app.admin
+            assert model_host.app.admin is old_admin
+            if old_registration is not None:
+                assert importlib.import_module("model_host.app.admin.registration") is old_registration
+            assert admin.site.is_registered(original)
+            client = importlib.import_module("model_host.app.client")
+            assert client.VERSION == version
+            assert model_host.app.api is not old_api
+            assert model_host.app.api.Record is original
+            if version == 3:
+                raise ValueError("failed compilation")
+    except ValueError as error:
+        assert version == 3 and str(error) == "failed compilation"
+    assert model_host.app.api is old_api
+    assert sys.modules["model_host.app.api"] is old_api
+    assert model_host.app.choices is old_choices
+    assert model_host.app.models.Record is original
+    assert model_host.app.admin is old_admin
+    assert "model_host.app.client" not in sys.modules
+    assert not hasattr(model_host.app, "client")
+    assert host.get("/").content == b"1"
+    assert original().label() == "original"
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(builder_module.PYJS_PACKAGE_ROOT.parent)},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_project_import_cleanup_handles_nested_namespace_packages(tmp_path, monkeypatch):

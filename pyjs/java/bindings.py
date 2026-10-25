@@ -482,8 +482,10 @@ class _SourceRenderer:
             "@jvm.native(",
             f'    "{owner}",',
             f'    name="{method.name}",',
-            ")",
         ]
+        if self.classes[owner].access & _INTERFACE:
+            lines.append("    interface=True,")
+        lines.append(")")
         signature = (
             f"def {python_name}({', '.join(arguments)}) -> "
             f"{self._type(result, nullable_return)}:"

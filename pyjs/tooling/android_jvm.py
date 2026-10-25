@@ -82,6 +82,7 @@ class AndroidJVMApplication:
     application_class: str | None = None
     permissions: tuple[str, ...] = ()
     network_security_config: str | None = None
+    manifest_overlays: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         identifier = r"[A-Za-z_][A-Za-z0-9_]*"
@@ -332,6 +333,16 @@ class AndroidJVMBuilder:
 
             manifest = build / "AndroidManifest.xml"
             manifest.write_text(self._manifest(application, target_sdk))
+            from .android_manifest import merge_android_manifests
+
+            manifest = merge_android_manifests(
+                manifest, build / "merged-manifest.xml",
+                aars=dependencies.aars if dependencies is not None else (),
+                overlays=application.manifest_overlays,
+                java_home=self.sdk.java_home,
+                cache=Path.home() / ".cache" / "pyjs" / "android-manifest",
+                runner=self.sdk.runner,
+            )
             unaligned = build / "unaligned.apk"
             dependency_classes = self._link_resources(
                 application,

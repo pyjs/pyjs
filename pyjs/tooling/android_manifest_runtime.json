@@ -1,0 +1,405 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "group": "com.android.tools.analytics-library",
+      "name": "protos",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "54a932e1559e3b4a68dfd0d52f22bcf436802f063fef6cb32003f91c7dd43c60"
+    },
+    {
+      "group": "com.android.tools.analytics-library",
+      "name": "shared",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "6d1e9fe43d27fc1aa99e5792285905c7f8d081d96747aadb1e76cc08dffdb53d"
+    },
+    {
+      "group": "com.android.tools.build",
+      "name": "aapt2-proto",
+      "version": "9.4.1-15978811",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "5bcdd71fde7863c68c67ee4a69cf86206fbd3a2de66f5a3e4625ce5fb4ead2b5"
+    },
+    {
+      "group": "com.android.tools.build",
+      "name": "manifest-merger",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "a8ade13523ccf3289fdb4946fcf23831d2eac8ad8b216f63a74850d46cdc8dd4"
+    },
+    {
+      "group": "com.android.tools.ddms",
+      "name": "ddmlib",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "ad7b49fc07ca341d205fb7eb17cd0610a18cd1678e55b6b4a869bbdee3fbf0e3"
+    },
+    {
+      "group": "com.android.tools.layoutlib",
+      "name": "layoutlib-api",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "24d9d0877a956ebd6e586640147bc6bd52ce904f0e6ab740be0899271e354543"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "annotations",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "32e90226ae4c7b59ed61b06689ae8356bab080cd79f6569455fd92925439a339"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "common",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "cace5b28f2342119fe1a2db5baa36f8bd3391a086788e04fb8326bb70d6c4989"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "dvlib",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "ff910a7349bc7f22ed2601ee48ad27a6c5bd27b59f82c4610a12d0a4c468bf45"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "repository",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "9fd419f3307be633aaf7b02b52832521c1300d4bf9058cee83bb11139990a7f9"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "sdk-common",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "0ef83f5f212f2fce8300a167ba256d1cd81e4cda6adc868f7025a8dbdd2ae14f"
+    },
+    {
+      "group": "com.android.tools",
+      "name": "sdklib",
+      "version": "32.4.1",
+      "extension": "jar",
+      "repository": "google",
+      "sha256": "d0bbe0e03155a7bdd9bac03567b6b26797f81a778f55d5eadc3e71e7a0a27434"
+    },
+    {
+      "group": "com.google.code.findbugs",
+      "name": "jsr305",
+      "version": "3.0.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+    },
+    {
+      "group": "com.google.code.gson",
+      "name": "gson",
+      "version": "2.11.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b"
+    },
+    {
+      "group": "com.google.errorprone",
+      "name": "error_prone_annotations",
+      "version": "2.36.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "77440e270b0bc9a249903c5a076c36a722c4886ca4f42675f2903a1c53ed61a5"
+    },
+    {
+      "group": "com.google.guava",
+      "name": "failureaccess",
+      "version": "1.0.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064"
+    },
+    {
+      "group": "com.google.guava",
+      "name": "guava",
+      "version": "33.4.0-jre",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "b918c98a7e44dbe94ebd9fe3e40cddaadb5a93e6a78eb6008b42df237241e538"
+    },
+    {
+      "group": "com.google.guava",
+      "name": "listenablefuture",
+      "version": "9999.0-empty-to-avoid-conflict-with-guava",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
+    },
+    {
+      "group": "com.google.j2objc",
+      "name": "j2objc-annotations",
+      "version": "3.0.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "88241573467ddca44ffd4d74aa04c2bbfd11bf7c17e0c342c94c9de7a70a7c64"
+    },
+    {
+      "group": "com.google.jimfs",
+      "name": "jimfs",
+      "version": "1.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "c4828e28d7c0a930af9387510b3bada7daa5c04d7c25a75c7b8b081f1c257ddd"
+    },
+    {
+      "group": "com.google.protobuf",
+      "name": "protobuf-java",
+      "version": "3.25.5",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753"
+    },
+    {
+      "group": "com.sun.istack",
+      "name": "istack-commons-runtime",
+      "version": "3.0.8",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "4ffabb06be454a05e4398e20c77fa2b6308d4b88dfbef7ca30a76b5b7d5505ef"
+    },
+    {
+      "group": "com.sun.xml.fastinfoset",
+      "name": "FastInfoset",
+      "version": "1.2.16",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "056f3a1e144409f21ed16afc26805f58e9a21f3fce1543c42d400719d250c511"
+    },
+    {
+      "group": "commons-codec",
+      "name": "commons-codec",
+      "version": "1.17.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "f9f6cb103f2ddc3c99a9d80ada2ae7bf0685111fd6bffccb72033d1da4e6ff23"
+    },
+    {
+      "group": "commons-io",
+      "name": "commons-io",
+      "version": "2.16.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "f41f7baacd716896447ace9758621f62c1c6b0a91d89acee488da26fc477c84f"
+    },
+    {
+      "group": "commons-logging",
+      "name": "commons-logging",
+      "version": "1.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "daddea1ea0be0f56978ab3006b8ac92834afeefbd9b7e4e6316fca57df0fa636"
+    },
+    {
+      "group": "jakarta.activation",
+      "name": "jakarta.activation-api",
+      "version": "1.2.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "8b0a0f52fa8b05c5431921a063ed866efaa41dadf2e3a7ee3e1961f2b0d9645b"
+    },
+    {
+      "group": "jakarta.xml.bind",
+      "name": "jakarta.xml.bind-api",
+      "version": "2.3.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "69156304079bdeed9fc0ae3b39389f19b3cc4ba4443bc80508995394ead742ea"
+    },
+    {
+      "group": "javax.inject",
+      "name": "javax.inject",
+      "version": "1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
+    },
+    {
+      "group": "net.java.dev.jna",
+      "name": "jna-platform",
+      "version": "5.6.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "9ecea8bf2b1b39963939d18b70464eef60c508fed8820f9dcaba0c35518eabf7"
+    },
+    {
+      "group": "net.java.dev.jna",
+      "name": "jna",
+      "version": "5.6.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "5557e235a8aa2f9766d5dc609d67948f2a8832c2d796cea9ef1d6cbe0b3b7eaf"
+    },
+    {
+      "group": "net.sf.kxml",
+      "name": "kxml2",
+      "version": "2.3.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "f264dd9f79a1fde10ce5ecc53221eff24be4c9331c830b7d52f2f08a7b633de2"
+    },
+    {
+      "group": "org.apache.commons",
+      "name": "commons-compress",
+      "version": "1.27.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "293d80f54b536b74095dcd7ea3cf0a29bbfc3402519281332495f4420d370d16"
+    },
+    {
+      "group": "org.apache.commons",
+      "name": "commons-lang3",
+      "version": "3.16.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "08709dd74d602b705ce4017d26544210056a4ba583d5b20c09373406fe7a00f8"
+    },
+    {
+      "group": "org.apache.httpcomponents",
+      "name": "httpclient",
+      "version": "4.5.6",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "c03f813195e7a80e3608d0ddd8da80b21696a4c92a6a2298865bf149071551c7"
+    },
+    {
+      "group": "org.apache.httpcomponents",
+      "name": "httpcore",
+      "version": "4.4.16",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "6c9b3dd142a09dc468e23ad39aad6f75a0f2b85125104469f026e52a474e464f"
+    },
+    {
+      "group": "org.apache.httpcomponents",
+      "name": "httpmime",
+      "version": "4.5.6",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "0b2b1102c18d3c7e05a77214b9b7501a6f6056174ae5604e0e256776eda7553e"
+    },
+    {
+      "group": "org.bouncycastle",
+      "name": "bcpkix-jdk18on",
+      "version": "1.80.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "d43bacacb557e7e9dd6e03f03ca56213214a646cee584e2c657b0e0b0db4a3f5"
+    },
+    {
+      "group": "org.bouncycastle",
+      "name": "bcprov-jdk18on",
+      "version": "1.80.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "b33227f07dce264daf1aac2e798ef109a4901f31abedac53635746dd93679d3b"
+    },
+    {
+      "group": "org.bouncycastle",
+      "name": "bcutil-jdk18on",
+      "version": "1.80.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "bc78d32d7ffb141ee27e4fb77df04259d842c899e7e8eaf912f990d7253bd3b4"
+    },
+    {
+      "group": "org.checkerframework",
+      "name": "checker-qual",
+      "version": "3.43.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "3fbc2e98f05854c3df16df9abaa955b91b15b3ecac33623208ed6424640ef0f6"
+    },
+    {
+      "group": "org.glassfish.jaxb",
+      "name": "jaxb-runtime",
+      "version": "2.3.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "e6e0a1e89fb6ff786279e6a0082d5cef52dc2ebe67053d041800737652b4fd1b"
+    },
+    {
+      "group": "org.glassfish.jaxb",
+      "name": "txw2",
+      "version": "2.3.2",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "4a6a9f483388d461b81aa9a28c685b8b74c0597993bf1884b04eddbca95f48fe"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "name": "kotlin-reflect",
+      "version": "2.2.10",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "c48db4f8cd1bfd67f72d59255065fb41bfda43ca2942dac4d9deb897aa126ba4"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "name": "kotlin-stdlib-jdk7",
+      "version": "2.2.10",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "cf95eccc6cc784dff479dee0b8834f3584b93292cc5d91972e82f5d7b9e13e3b"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "name": "kotlin-stdlib-jdk8",
+      "version": "2.2.10",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "8974bfdd08b1d81843fe8d11f0729ab6e5b3c1f88d671ebe0c006358129ce149"
+    },
+    {
+      "group": "org.jetbrains.kotlin",
+      "name": "kotlin-stdlib",
+      "version": "2.2.10",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "9c67cc79efd6b9215b49d2a4308f5f3433537376c7c88e89bdd6729bd096e61a"
+    },
+    {
+      "group": "org.jetbrains.kotlinx",
+      "name": "kotlinx-coroutines-core-jvm",
+      "version": "1.9.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "ad89c2892235e670f222d819cb3d81188143cb19a05b59df9889ae4269f5c70a"
+    },
+    {
+      "group": "org.jetbrains",
+      "name": "annotations",
+      "version": "23.0.0",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05"
+    },
+    {
+      "group": "org.jvnet.staxex",
+      "name": "stax-ex",
+      "version": "1.8.1",
+      "extension": "jar",
+      "repository": "central",
+      "sha256": "20522549056e9e50aa35ef0b445a2e47a53d06be0b0a9467d704e2483ffb049a"
+    }
+  ]
+}
