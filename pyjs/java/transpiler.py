@@ -1219,6 +1219,23 @@ class JVMEmitter:
                 return expected
         return actual
 
+    def virtual_target(self, target: Function, receiver: str) -> Function:
+        """Use a declaration the stored receiver can call without narrowing."""
+        if self.compatible(receiver, self.class_descriptor(target.cls)):
+            return target
+        owner = self.classes[target.cls].base
+        while owner in self.classes:
+            for inherited in self.virtual_methods.get(target.name, ()):
+                if (inherited.cls is owner
+                        and self.compatible(receiver, self.class_descriptor(owner))
+                        and self.function_name(inherited) == self.function_name(target)
+                        and self.descriptor(inherited) == self.descriptor(target)):
+                    # The analyzed subtype can come from a stale field guard.
+                    # invokevirtual still dispatches to real subtype overrides.
+                    return inherited
+            owner = self.classes[owner].base
+        return target
+
     def expression(self, node, *, expected: str | None = None) -> str:
         result = self._expression(node)
         if expected is not None:
@@ -1559,7 +1576,12 @@ class JVMEmitter:
                     self.context_call("context", "(Ljava/lang/Throwable;)Ljava/lang/Throwable;")
                     return "Ljava/lang/Throwable;"
                 if target in self.functions and target.cls in self.classes:
-                    receiver = self.expression(node.value, expected=self.class_descriptor(target.cls))
+                    receiver = self.expression(node.value)
+                    if not self.is_super_call(node.value):
+                        target = self.virtual_target(target, receiver)
+                    receiver = self.refine_reference(
+                        node.value, receiver, self.class_descriptor(target.cls),
+                    )
                     if not self.compatible(receiver, self.class_descriptor(target.cls)):
                         raise JVMUnsupported("JVM property getter has an incompatible receiver", node)
                     reference = self.class_file.method_reference(
@@ -2093,6 +2115,11 @@ class JVMEmitter:
                     )
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
+                if not is_super:
+                    declaration = self.virtual_target(target, receiver_type)
+                    if declaration is not target:
+                        semantic_receiver = declaration.cls
+                        target = declaration
                 expected_receiver = self.class_descriptor(target.cls)
                 receiver_type = self.refine_reference(node.func.value, receiver_type, expected_receiver)
                 if not self.compatible(receiver_type, expected_receiver):
@@ -4091,7 +4118,7 @@ class JVMEmitter:
                 attribute,
             )
         return (
-            self.class_descriptor(receiver_type),
+            self.class_descriptor(owner),
             self.class_name(owner),
             field.name,
             _numeric_descriptor(field.numeric_format)

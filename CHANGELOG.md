@@ -5,7 +5,11 @@
 - JVM method receivers and arguments retain class refinements from type guards
   even when their local slot has a broader declared type. Reference casts are
   inserted where a typed consumer requires them, not on base-compatible uses
-  of locals that may have copied stale attribute refinements.
+  of locals that may have copied stale attribute refinements. Overridden
+  methods and properties keep their base declarations reachable; JVM virtual
+  dispatch and inherited field access use compatible declaring owners.
+  This is not a general mutable-field flow-analysis repair: compiler-generated
+  indexed/chained assignment temporaries can still retain stale refinements.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.

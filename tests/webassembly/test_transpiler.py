@@ -92,6 +92,14 @@ def test_replaced_attribute_contract_keeps_wasm_inheritance_boundary():
         transpile_webassembly(REPLACED_ATTRIBUTE_CONTRACT.source)
 
 
+@pytest.mark.parametrize("case", ["local_method", "local_property", "field_store"])
+def test_replaced_receiver_keeps_wasm_inheritance_boundary(case):
+    from tests.backend_semantics import REPLACED_RECEIVER_CONTRACTS
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(REPLACED_RECEIVER_CONTRACTS[case].source)
+
+
 def test_explicit_split_keeps_wasm_string_boundary():
     from tests.backend_semantics import EXPLICIT_SPLIT_CONTRACT
 

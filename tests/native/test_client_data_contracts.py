@@ -8,6 +8,7 @@ from tests.backend_semantics import (
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
     REPLACED_ATTRIBUTE_CONTRACT,
+    REPLACED_RECEIVER_CONTRACTS,
 )
 
 
@@ -38,3 +39,9 @@ def test_narrowed_receivers_and_arguments_keep_their_refined_type(tmp_path):
 def test_replaced_attributes_do_not_keep_stale_refinements(tmp_path):
     result = LLVM().assert_matches_python(REPLACED_ATTRIBUTE_CONTRACT.source, directory=tmp_path)
     assert result.native.returncode == 0
+
+
+@pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)
+def test_replaced_receivers_keep_base_declarations_reachable(contract, tmp_path):
+    result = LLVM().assert_matches_python(contract.source, directory=tmp_path)
+    assert result.native.returncode == 0, contract.failure(result.native.returncode)

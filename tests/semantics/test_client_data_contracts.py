@@ -7,6 +7,7 @@ from tests.backend_semantics import (
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
     REPLACED_ATTRIBUTE_CONTRACT,
+    REPLACED_RECEIVER_CONTRACTS,
 )
 from tests.semantics.helpers import assert_semantics
 
@@ -32,3 +33,8 @@ def test_narrowed_receivers_and_arguments_keep_their_refined_type():
 
 def test_replaced_attributes_do_not_keep_stale_refinements():
     assert_semantics(REPLACED_ATTRIBUTE_CONTRACT.print_source + "\nmain()\n")
+
+
+@pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)
+def test_replaced_receivers_keep_base_declarations_reachable(contract):
+    assert_semantics(contract.print_source + "\nmain()\n")

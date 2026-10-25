@@ -1,5 +1,7 @@
 import pytest
 
+from pyjs.java import JVMUnsupported, transpile_jvm
+from pyjs.java.classpath import read_jvm_class
 from tests.backend_semantics import (
     AWAIT_ATTRIBUTE_SOURCE,
     DICTIONARY_POP_CONTRACT,
@@ -7,6 +9,7 @@ from tests.backend_semantics import (
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
     REPLACED_ATTRIBUTE_CONTRACT,
+    REPLACED_RECEIVER_CONTRACTS,
 )
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_matches_python
@@ -31,3 +34,53 @@ def test_narrowed_receivers_and_arguments_keep_their_refined_type(tmp_path):
 
 def test_replaced_attributes_do_not_keep_stale_refinements(tmp_path):
     assert_matches_python(REPLACED_ATTRIBUTE_CONTRACT.source, tmp_path)
+
+
+@pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)
+def test_replaced_receivers_keep_base_declarations_reachable(contract, tmp_path):
+    # Each consumer compiles alone: another base call must not retain its body.
+    assert_matches_python(contract.source, tmp_path)
+
+
+@pytest.mark.parametrize(("case", "retained", "omitted"), [
+    ("local_method", "value", "amount"),
+    ("local_property", "amount", "value"),
+])
+def test_receiver_reachability_retains_only_the_called_base_member(case, retained, omitted):
+    compilation = transpile_jvm(REPLACED_RECEIVER_CONTRACTS[case].source)
+    base = read_jvm_class(compilation.classes["PyjsProgram$StoredBase"])
+    methods = {method.name for method in base.methods}
+    assert retained in methods
+    assert omitted not in methods
+
+
+@pytest.mark.parametrize(("base", "child", "arguments"), [
+    ("first: int = 1", "first: int = 2", ""),
+    ("first: int, second: int", "second: int, first: int", "first=1, second=2"),
+])
+def test_replaced_receiver_cannot_select_incompatible_override_bindings(base, child, arguments):
+    with pytest.raises(JVMUnsupported, match=(
+        "JVM virtual call to value has incompatible keyword or default "
+        "binding in override Child.value"
+    )):
+        transpile_jvm(f'''
+class Base:
+    def value(self, {base}) -> int:
+        return 4
+class Child(Base):
+    def value(self, {child}) -> int:
+        return 7
+class Holder:
+    def __init__(self, item: Base):
+        self.item = item
+    def reset(self) -> None:
+        self.item = Base()
+def main() -> int:
+    holder = Holder(Child())
+    item: Base = Base()
+    if isinstance(holder.item, Child):
+        holder.reset()
+        item = holder.item
+        return item.value({arguments})
+    return 0
+''')

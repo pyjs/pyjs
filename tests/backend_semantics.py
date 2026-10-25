@@ -3564,6 +3564,78 @@ REPLACED_ATTRIBUTE_CONTRACT = _contract(
 )
 
 
+REPLACED_RECEIVER_CONTRACTS = {
+    name: _contract(
+        dedent('''
+        from pyjs import js
+
+        @js
+        class StoredBase:
+            def __init__(self):
+                self.tag = 4
+
+            def value(self, extra: int = 2) -> int:
+                return 4 + extra
+
+            @property
+            def amount(self) -> int:
+                return 4
+
+        @js
+        class StoredChild(StoredBase):
+            def __init__(self):
+                super().__init__()
+                self.tag = 7
+
+            def value(self, extra: int = 2) -> int:
+                return 7 + extra
+
+            @property
+            def amount(self) -> int:
+                return 7
+
+        @js
+        class Holder:
+            def __init__(self, item: StoredBase):
+                self.item = item
+
+            def reset(self) -> None:
+                self.item = StoredBase()
+        ''') + dedent('''
+        @js
+        def consume(holder: Holder, replace: bool) -> int:
+            item: StoredBase = StoredBase()
+            if isinstance(holder.item, StoredChild):
+                if replace:
+                    holder.reset()
+                item = holder.item
+        ''') + indent(body, "        ") + "\n    return 0\n",
+        name,
+        "",
+        (
+            ("replaced receiver uses the base member",
+             f"consume(Holder(StoredChild()), True) != {base_result}"),
+            ("unchanged receiver retains subtype dispatch",
+             f"consume(Holder(StoredChild()), False) != {child_result}"),
+            ("failed guard skips the member",
+             "consume(Holder(StoredBase()), True) != 0"),
+        ),
+    )
+    for name, body, base_result, child_result in (
+        ("local_method", "return item.value(3)", 7, 10),
+        ("field_method", "return holder.item.value(3)", 7, 10),
+        ("local_default", "return item.value()", 6, 9),
+        ("local_keyword", "return item.value(extra=3)", 7, 10),
+        ("local_property", "return item.amount", 4, 7),
+        ("field_property", "return holder.item.amount", 4, 7),
+        ("local_field_read", "return item.tag", 4, 7),
+        ("field_read", "return holder.item.tag", 4, 7),
+        ("local_field_store", "item.tag = 11\nreturn holder.item.tag", 11, 11),
+        ("field_store", "holder.item.tag = 11\nreturn item.tag", 11, 11),
+    )
+}
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js
