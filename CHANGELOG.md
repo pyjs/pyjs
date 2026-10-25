@@ -8,6 +8,10 @@
   declarations. SDK incompatibilities and unresolved placeholders fail early.
 - JVM native function bindings can call static interface methods with
   `interface=True`, including factories used by AndroidX callback APIs.
+- Fresh browser/Android test imports preserve dependencies installed in a
+  project-local virtual environment, keeping pytest session fixtures usable
+  after compiled tests run. Already registered Django model modules retain
+  their registry identity rather than being reimported during compilation.
 
 - Package Python UI entries with stock Electron using
   `pyjs build my_app --target electron -o dist/my-app`. Builds include Python

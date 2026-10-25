@@ -1,6 +1,7 @@
 import gc
 import importlib
 import sys
+import types
 import weakref
 
 import pytest
@@ -16,6 +17,37 @@ from pyjs.testing.builder import (
     generate_entrypoint_source,
 )
 from pyjs.tooling.npm import NpmImport, NpmPackage
+
+
+def test_project_import_cleanup_preserves_local_environment_dependencies(tmp_path, monkeypatch):
+    library = tmp_path / ".venv" / "lib" / "site-packages"
+    monkeypatch.setattr(builder_module, "PYTHON_LIBRARY_ROOTS", (library,))
+    dependency = types.ModuleType("environment_dependency")
+    dependency.__file__ = str(library / "environment_dependency" / "__init__.py")
+    dependency.__path__ = [str(library / "environment_dependency")]
+    application = types.ModuleType("application_source")
+    application.__file__ = str(tmp_path / "application_source.py")
+    monkeypatch.setitem(sys.modules, dependency.__name__, dependency)
+    monkeypatch.setitem(sys.modules, application.__name__, application)
+    builder_module.clear_project_modules(tmp_path, [application.__name__])
+    assert sys.modules[dependency.__name__] is dependency
+    assert application.__name__ not in sys.modules
+
+
+def test_project_import_cleanup_preserves_registered_model_identity(tmp_path, monkeypatch):
+    model_module = types.ModuleType("registered_models")
+    model_module.__file__ = str(tmp_path / "registered_models.py")
+    model = type("Record", (), {"__module__": "registered_models"})
+    model_module.Record = model
+    registry = types.SimpleNamespace(models_ready=True,
+                                     get_models=lambda **kwargs: [model])
+    monkeypatch.setitem(sys.modules, "django.apps", types.SimpleNamespace(apps=registry))
+    monkeypatch.setitem(sys.modules, "registered_models", model_module)
+    builder_module.clear_project_modules(tmp_path, [])
+    assert sys.modules["registered_models"].Record is model
+    registry.models_ready = False
+    builder_module.clear_project_modules(tmp_path, [])
+    assert "registered_models" not in sys.modules
 
 
 def test_project_import_cleanup_handles_nested_namespace_packages(tmp_path, monkeypatch):

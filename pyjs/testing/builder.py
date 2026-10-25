@@ -3,6 +3,7 @@ import hashlib
 import importlib
 import linecache
 import sys
+import sysconfig
 import types
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,7 @@ from pyjs.tooling.npm import NpmImport
 
 ENTRYPOINT_MODULE = "__pyjs_test_entrypoint__"
 PYJS_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+PYTHON_LIBRARY_ROOTS = tuple({Path(sysconfig.get_path(name)).resolve() for name in ("purelib", "platlib")})
 
 
 def compute_testing_signature() -> str:
@@ -113,13 +115,27 @@ def module_is_from_project(module: types.ModuleType, project_root: Path) -> bool
         paths.extend(Path(path) for path in module_path)
     # The repository root can also be the pytest project root. Keep the compiler
     # modules loaded while replacing only the application and test modules.
+    # A project-local virtual environment is not application source: reloading
+    # pytest changes Session identity underneath already collected fixtures.
     return any(
-        is_within(path, project_root) and not is_within(path, PYJS_PACKAGE_ROOT) for path in paths
+        is_within(path, project_root) and not is_within(path, PYJS_PACKAGE_ROOT)
+        and not any(is_within(path, library) for library in PYTHON_LIBRARY_ROOTS)
+        for path in paths
     )
 
 
 def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     importlib.invalidate_caches()
+    # Django owns registered model classes for the lifetime of its app registry.
+    # Reimporting their modules while compiling a client replaces registry
+    # entries but leaves existing model/relationship references stale. Do not
+    # import or initialize optional Django just to discover this boundary.
+    django_apps = sys.modules.get("django.apps")
+    registry = getattr(django_apps, "apps", None)
+    model_modules = (
+        {model.__module__ for model in registry.get_models(include_auto_created=True)}
+        if registry is not None and registry.models_ready else set()
+    )
     selected_names: set[str] = set()
     for module_name in module_names:
         parts = module_name.split(".")
@@ -128,9 +144,9 @@ def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     # __path__ lookup consults sys.modules[parent] after cache invalidation.
     removed = [
         name for name, module in list(sys.modules.items())
-        if name in selected_names or (
+        if name not in model_modules and (name in selected_names or (
             module is not None and module_is_from_project(module, project_root)
-        )
+        ))
     ]
     for name in removed:
         sys.modules.pop(name, None)
