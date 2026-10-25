@@ -128,14 +128,27 @@ def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     importlib.invalidate_caches()
     # Django owns registered model classes for the lifetime of its app registry.
     # Reimporting their modules while compiling a client replaces registry
-    # entries but leaves existing model/relationship references stale. Do not
+    # entries but leaves existing model/relationship references stale. Loaded
+    # admin autodiscovery modules also own process-lifetime registrations. Do not
     # import or initialize optional Django just to discover this boundary.
     django_apps = sys.modules.get("django.apps")
     registry = getattr(django_apps, "apps", None)
-    model_modules = (
+    registered_modules = (
         {model.__module__ for model in registry.get_models(include_auto_created=True)}
         if registry is not None and registry.models_ready else set()
     )
+    if registry is not None and registry.models_ready:
+        admin_names = tuple(config.name + ".admin" for config in registry.get_app_configs())
+        admin_prefixes = tuple(name + "." for name in admin_names)
+        registered_modules.update(
+            name for name in sys.modules if name in admin_names or name.startswith(admin_prefixes)
+        )
+    # A cached child must remain attached to its original package ancestry:
+    # importing it does not reattach it to a newly imported parent package.
+    preserved = set(registered_modules)
+    for name in registered_modules:
+        parts = name.split(".")
+        preserved.update(".".join(parts[:index]) for index in range(1, len(parts)))
     selected_names: set[str] = set()
     for module_name in module_names:
         parts = module_name.split(".")
@@ -143,13 +156,19 @@ def clear_project_modules(project_root: Path, module_names: list[str]) -> None:
     # Resolve namespace-package paths before removing any parent. Their lazy
     # __path__ lookup consults sys.modules[parent] after cache invalidation.
     removed = [
-        name for name, module in list(sys.modules.items())
-        if name not in model_modules and (name in selected_names or (
+        (name, module) for name, module in list(sys.modules.items())
+        if name not in preserved and (name in selected_names or (
             module is not None and module_is_from_project(module, project_root)
         ))
     ]
-    for name in removed:
+    for name, module in removed:
         sys.modules.pop(name, None)
+        parent_name, _, child_name = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        # Retained packages must not expose stale non-model child modules via
+        # `from package import child`, which can skip sys.modules entirely.
+        if module is not None and parent is not None and vars(parent).get(child_name) is module:
+            delattr(parent, child_name)
     for path in list(sys.path_importer_cache):
         if path and is_within(Path(path), project_root):
             sys.path_importer_cache.pop(path, None)
@@ -162,7 +181,11 @@ def fresh_project_imports(
     generation: str,
     module_names: list[str],
 ) -> Iterator[None]:
-    """Import one generation of project modules without reusing project bytecode."""
+    """Import a generation without project bytecode or stale client children.
+
+    Registered Django models, loaded admin modules and their package ancestry
+    remain process-owned; changing those requires restarting the process.
+    """
     clear_project_modules(project_root, module_names)
     project_path = str(project_root)
     sys.path.insert(0, project_path)

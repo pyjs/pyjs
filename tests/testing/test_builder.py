@@ -1,5 +1,7 @@
 import gc
 import importlib
+import os
+import subprocess
 import sys
 import types
 import weakref
@@ -39,7 +41,7 @@ def test_project_import_cleanup_preserves_registered_model_identity(tmp_path, mo
     model_module.__file__ = str(tmp_path / "registered_models.py")
     model = type("Record", (), {"__module__": "registered_models"})
     model_module.Record = model
-    registry = types.SimpleNamespace(models_ready=True,
+    registry = types.SimpleNamespace(models_ready=True, get_app_configs=lambda: [],
                                      get_models=lambda **kwargs: [model])
     monkeypatch.setitem(sys.modules, "django.apps", types.SimpleNamespace(apps=registry))
     monkeypatch.setitem(sys.modules, "registered_models", model_module)
@@ -48,6 +50,73 @@ def test_project_import_cleanup_preserves_registered_model_identity(tmp_path, mo
     registry.models_ready = False
     builder_module.clear_project_modules(tmp_path, [])
     assert "registered_models" not in sys.modules
+
+
+@pytest.mark.parametrize("namespace_parent", [False, True])
+@pytest.mark.parametrize("admin_package", [False, True])
+def test_fresh_imports_preserve_django_package_links_and_reload_clients(tmp_path, namespace_parent, admin_package):
+    package = tmp_path / "model_host" / "app"
+    package.mkdir(parents=True)
+    if not namespace_parent:
+        (package.parent / "__init__.py").touch()
+    (package / "__init__.py").touch()
+    (package / "models.py").write_text(
+        "from django.db import models\nclass Record(models.Model):\n    pass\n")
+    if admin_package:
+        (package / "admin").mkdir()
+        (package / "admin/__init__.py").write_text("from . import registration\n")
+        (package / "admin/registration.py").write_text(
+            "from django.contrib import admin\nfrom ..models import Record\nadmin.site.register(Record)\n")
+    else:
+        (package / "admin.py").write_text(
+            "from django.contrib import admin\nfrom .models import Record\nadmin.site.register(Record)\n")
+    api_source = "import model_host.app.models\nRecord = model_host.app.models.Record\nVERSION = 1\n"
+    (package / "api.py").write_text(api_source)
+    (package / "client.py").write_text("from model_host.app import api\nVERSION = api.VERSION\n")
+    script = '''
+import importlib
+import warnings
+from pathlib import Path
+from django.conf import settings
+settings.configure(INSTALLED_APPS=["django.contrib.contenttypes", "django.contrib.auth",
+                                  "django.contrib.admin", "model_host.app"], SECRET_KEY="test-only")
+import django
+django.setup()
+from django.apps import apps
+from django.contrib import admin
+import model_host.app.api
+from pyjs.testing.builder import fresh_project_imports
+
+original = model_host.app.models.Record
+old_api = model_host.app.api
+old_admin = model_host.app.admin
+old_registration = getattr(old_admin, "registration", None)
+path = Path("model_host/app/api.py")
+path.write_text(path.read_text().replace("VERSION = 1", "VERSION = 2"))
+warnings.simplefilter("error", RuntimeWarning)
+with fresh_project_imports(Path.cwd(), Path("cache"), "next", ["model_host.app.client"]):
+    import model_host.app.models
+    assert model_host.app.models.Record is original
+    assert apps.get_model("app", "Record") is original
+    import model_host.app.admin
+    assert model_host.app.admin is old_admin
+    if old_registration is not None:
+        assert importlib.import_module("model_host.app.admin.registration") is old_registration
+    assert admin.site.is_registered(original)
+    client = importlib.import_module("model_host.app.client")
+    assert client.VERSION == 2
+    assert model_host.app.api is not old_api
+    assert model_host.app.api.Record is original
+assert not hasattr(model_host.app, "api")
+assert model_host.app.models.Record is original
+assert model_host.app.admin is old_admin
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(builder_module.PYJS_PACKAGE_ROOT.parent)},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_project_import_cleanup_handles_nested_namespace_packages(tmp_path, monkeypatch):

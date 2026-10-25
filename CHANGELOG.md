@@ -10,8 +10,9 @@
   `interface=True`, including factories used by AndroidX callback APIs.
 - Fresh browser/Android test imports preserve dependencies installed in a
   project-local virtual environment, keeping pytest session fixtures usable
-  after compiled tests run. Already registered Django model modules retain
-  their registry identity rather than being reimported during compilation.
+  after compiled tests run. Registered Django models, loaded admin modules and
+  their parent packages retain identity while client children reload without
+  stale package bindings or duplicate admin registration.
 
 - Package Python UI entries with stock Electron using
   `pyjs build my_app --target electron -o dist/my-app`. Builds include Python

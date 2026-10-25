@@ -656,6 +656,14 @@ Browser tests retain console output and errors. Tests that render meaningful
 UI retain their iframe preview, and render assertions can compare screenshots
 against checked-in PNG baselines.
 
+Fresh browser/Android compilation reloads project client and test modules,
+not dependencies installed inside a project-local virtual environment. When
+Django's app registry is already initialized, registered model modules, loaded
+admin autodiscovery modules and their parent packages retain their identity.
+Restart the test process after changing those modules; unrelated client
+children still reload normally. Other import-time registries must tolerate
+reloading or stay outside client/test module imports.
+
 ## Commands
 
 | Command | Purpose |
