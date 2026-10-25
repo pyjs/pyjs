@@ -12,7 +12,9 @@
   project-local virtual environment, keeping pytest session fixtures usable
   after compiled tests run. Registered Django models, loaded admin modules and
   their parent packages retain identity while client children reload without
-  stale package bindings or duplicate admin registration.
+  stale package bindings or duplicate admin registration. Host imports are
+  restored after each build, including failures, so server views and model
+  methods remain callable after compiling their clients.
 
 - Package Python UI entries with stock Electron using
   `pyjs build my_app --target electron -o dist/my-app`. Builds include Python

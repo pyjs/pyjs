@@ -662,7 +662,10 @@ Django's app registry is already initialized, registered model modules, loaded
 admin autodiscovery modules and their parent packages retain their identity.
 Restart the test process after changing those modules; unrelated client
 children still reload normally. Other import-time registries must tolerate
-reloading or stay outside client/test module imports.
+reloading or stay outside client/test module imports. After each build, host
+modules and package bindings are restored, including on compilation errors,
+so Django views and model methods continue using their original imports.
+Build generations mutate process-global imports and must run serially.
 
 ## Commands
 
