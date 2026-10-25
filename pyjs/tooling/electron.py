@@ -88,6 +88,9 @@ def build_application(
     output = output.expanduser().absolute()
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"Refusing to overwrite {output}; choose a new output directory")
+    # Resolve parent aliases before comparing with the source directories. The
+    # original-path check above must still reject dangling output symlinks.
+    output = output.resolve()
     if host is not None:
         host = host.resolve()
         if not (host / "main.cjs").is_file():

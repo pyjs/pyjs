@@ -93,6 +93,36 @@ def test_default_host_keeps_renderer_sandboxed(tmp_path, runtime):
     assert "action: 'deny'" in host
 
 
+@pytest.mark.parametrize("source", ["host", "runtime"])
+def test_output_cannot_alias_a_source_directory(tmp_path, runtime, source):
+    host = tmp_path / "host"
+    host.mkdir()
+    (host / "main.cjs").write_text("")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(host if source == "host" else runtime, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable")
+    def render(directory):
+        pytest.fail("Unsafe output must be rejected before rendering")
+    with pytest.raises(ValueError, match=f"inside the {source} directory"):
+        electron.build_application(alias / "built", render, runtime=runtime, host=host)
+    assert not list(host.glob("pyjs-electron-*"))
+    assert not list(runtime.glob("pyjs-electron-*"))
+
+
+def test_dangling_output_symlink_is_preserved(tmp_path, runtime):
+    output = tmp_path / "existing-link"
+    try:
+        output.symlink_to(tmp_path / "missing", target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable")
+    with pytest.raises(FileExistsError):
+        electron.build_application(output, page, runtime=runtime)
+    assert output.is_symlink()
+    assert not (tmp_path / "missing").exists()
+
+
 @pytest.mark.parametrize("system,executable,app", [
     ("Linux", "electron", "resources/app"),
     ("Windows", "electron.exe", "resources/app"),
