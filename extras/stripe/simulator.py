@@ -128,8 +128,14 @@ class StripeSimulator:
             return self._object("price", path.rsplit("/", 1)[-1])
         if method == "POST" and path == "/v1/checkout/sessions":
             return self._create_checkout(path, environ)
+        if method == "POST" and path.startswith("/v1/checkout/sessions/") and path.endswith("/expire"):
+            return self._expire_checkout(path, environ)
         if method == "GET" and path.startswith("/v1/checkout/sessions/"):
-            return self._object("checkout.session", path.rsplit("/", 1)[-1])
+            return self._json(self._checkout_session(path.rsplit("/", 1)[-1]))
+        if method == "GET" and path == "/v1/invoices":
+            return self._list_invoices(environ)
+        if method == "GET" and path.startswith("/v1/invoices/"):
+            return self._object("invoice", path.rsplit("/", 1)[-1])
         if method == "POST" and path == "/v1/billing_portal/sessions":
             return self._create_portal(path, environ)
         if method == "GET" and path == "/v1/customers":
@@ -203,6 +209,13 @@ class StripeSimulator:
             return self._json(existing)
         form = self._form(environ)
         price_id = form.get("line_items[0][price]", "")
+        now = self.store.now()
+        try:
+            expires_at = int(form.get("expires_at", str(now + 86400)))
+        except ValueError:
+            raise SimulatorHTTPError(400, "invalid_request_error", "Invalid checkout expiry") from None
+        if not now + 1800 <= expires_at <= now + 86400:
+            raise SimulatorHTTPError(400, "invalid_request_error", "Checkout expiry must be 30 minutes to 24 hours away")
         if self.store.get("price", price_id) is None:
             raise SimulatorHTTPError(
                 400,
@@ -215,6 +228,8 @@ class StripeSimulator:
         value = {
             "id": session_id,
             "object": "checkout.session",
+            "created": now,
+            "expires_at": expires_at,
             "mode": form.get("mode", "subscription"),
             "client_reference_id": form.get("client_reference_id"),
             "customer": form.get("customer") or None,
@@ -232,6 +247,52 @@ class StripeSimulator:
         self.store.put("checkout.session", value)
         self.store.remember(path, key, value)
         return self._json(value)
+
+    def _checkout_session(self, session_id: str) -> dict[str, Any]:
+        session = self._required("checkout.session", session_id)
+        if session["status"] == "open" and session.get("expires_at", float("inf")) <= self.store.now():
+            session = self._expire_session(session)
+        return session
+
+    def _expire_session(self, session: dict[str, Any]) -> dict[str, Any]:
+        session.update(status="expired", url=None)
+        session.pop("card_number", None)
+        self.store.put("checkout.session", session)
+        self._emit("checkout.session.expired", session)
+        return session
+
+    def _expire_checkout(self, path: str, environ):
+        key = environ.get("HTTP_IDEMPOTENCY_KEY", "")
+        if existing := self.store.idempotent(path, key):
+            return self._json(existing)
+        session = self._checkout_session(path.split("/")[-2])
+        if session["status"] != "open":
+            raise SimulatorHTTPError(400, "invalid_request_error", "Only an open checkout can expire")
+        session = self._expire_session(session)
+        self.store.remember(path, key, session)
+        return self._json(session)
+
+    def _list_invoices(self, environ):
+        params = self._query(environ)
+        if "ending_before" in params:
+            raise SimulatorHTTPError(400, "invalid_request_error", "Only starting_after pagination is supported")
+        try:
+            limit = int(params.get("limit", "10"))
+        except ValueError:
+            raise SimulatorHTTPError(400, "invalid_request_error", "Invalid invoice limit") from None
+        if not 1 <= limit <= 100:
+            raise SimulatorHTTPError(400, "invalid_request_error", "Invoice limit must be 1 to 100")
+        invoices = sorted(reversed(self.store.list("invoice")), key=lambda value: value["created"], reverse=True)
+        for field in ("customer", "subscription", "status"):
+            if field in params:
+                invoices = [invoice for invoice in invoices if invoice.get(field) == params[field]]
+        if cursor := params.get("starting_after"):
+            positions = [index for index, invoice in enumerate(invoices) if invoice["id"] == cursor]
+            if not positions:
+                raise SimulatorHTTPError(400, "invalid_request_error", "Unknown invoice cursor")
+            invoices = invoices[positions[0] + 1:]
+        return self._json({"object": "list", "data": invoices[:limit],
+                           "has_more": len(invoices) > limit, "url": "/v1/invoices"})
 
     def _create_portal(self, path: str, environ):
         key = environ.get("HTTP_IDEMPOTENCY_KEY", "")
@@ -264,12 +325,14 @@ class StripeSimulator:
         *,
         authenticated: bool = False,
     ):
-        session = self._required("checkout.session", session_id)
+        session = self._checkout_session(session_id)
         form = self._form(environ)
         card_number = form.get("card_number", session.get("card_number", ""))
         card_number = card_number.replace(" ", "")
         if session["status"] == "complete":
             return self._redirect(self._success_url(session))
+        if session["status"] != "open":
+            raise SimulatorHTTPError(400, "invalid_request_error", "Checkout has expired")
         if card_number == DECLINED_CARD:
             return self._checkout_page(session_id, "Your card was declined.", 402)
         if card_number == AUTHENTICATION_CARD and not authenticated:
@@ -398,9 +461,9 @@ class StripeSimulator:
                 "subscription": subscription["id"],
                 "status": "draft",
                 "paid": False,
-                "amount_due": self.options.unit_amount,
+                "amount_due": subscription["items"]["data"][0]["price"]["unit_amount"],
                 "amount_paid": 0,
-                "currency": self.options.currency,
+                "currency": subscription["items"]["data"][0]["price"]["currency"],
                 "attempt_count": 0,
                 "attempted": False,
                 "auto_advance": True,
@@ -609,10 +672,12 @@ class StripeSimulator:
         error: str = "",
         status: int = 200,
     ):
-        session = self._required("checkout.session", session_id)
+        session = self._checkout_session(session_id)
         price = self._required("price", session["price_id"])
         if session["status"] == "complete":
             return self._redirect(self._success_url(session))
+        if session["status"] != "open":
+            return self._html(self._document("Checkout expired", "<main><h1>Checkout expired</h1></main>"), 410)
         error_html = f'<p class="error">{escape(error)}</p>' if error else ""
         body = f"""
         <main>
@@ -720,6 +785,8 @@ class StripeSimulator:
                 400, "invalid_request_error", "days must be between 1 and 366"
             )
         now = self.store.advance(days * 24 * 60 * 60)
+        for session in self.store.list("checkout.session"):
+            self._checkout_session(session["id"])
         changed: list[str] = []
         for subscription in self.store.list("subscription"):
             if subscription["status"] in {"canceled", "unpaid"}:
