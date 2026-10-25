@@ -335,6 +335,47 @@ pyjs build hello_pyjs.hello_pyjs:main
 
 Use `--only-js` when only the browser bundle is needed.
 
+### Stock Electron applications
+
+Package a Python UI as a desktop application:
+
+```bash
+pyjs build my_app:main --target electron -o dist/my-app
+```
+
+The build includes the generated HTML, CSS, JavaScript and Python source maps,
+plus the stock Electron runtime. Python and an HTTP server are not needed to run
+it. Run `dist/my-app/electron` on Linux, `dist/my-app/electron.exe` on Windows,
+or open `dist/my-app/Electron.app` on macOS. These are application directories,
+not signed installers; distribution, signing and updates remain separate steps.
+The first build provisions Electron 45.0.0 through its exact npm package using
+PyJS's managed Node tooling. The build runs Electron's own installer, which
+verifies its published checksums. This requires network access. Use
+`--electron-runtime PATH` to reuse an existing host-platform Electron
+distribution offline. The output must not already exist.
+
+The default window uses a sandboxed renderer with context isolation and no
+Node globals. UI code, state and DOM access stay in the renderer. Existing
+HTTP backend routes are not automatically translated into desktop services.
+For filesystem or other OS services, pass `--electron-host host-directory`.
+That directory must contain `main.cjs` exporting
+`async start({app, BrowserWindow, createWindow, renderer})`; its sibling files
+are copied with it. For example:
+
+```javascript
+exports.start = async ({createWindow, renderer}) => {
+  const window = createWindow({title: 'My application'});
+  await window.loadFile(renderer);
+};
+```
+
+A custom host owns its preload, IPC handlers and window creation, including
+validating service inputs and keeping any Node dependencies self-contained.
+`createWindow` applies the default window restrictions; callers can customize
+options explicitly. Keep IPC coarse-grained: send a file or a batch of results,
+while updating the UI locally. The host runs with Node privileges; only package
+trusted application code. Source maps embed the Python sources for debugging.
+
 ## Application model
 
 An application entry point returns a server-rendered DOM tree. Classes
