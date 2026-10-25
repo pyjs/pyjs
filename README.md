@@ -724,12 +724,24 @@ with `pyjs template`.
   and broader platform coverage remain in progress.
 - `AndroidJVMApplication.permissions` explicitly requests manifest permissions
   such as `("android.permission.INTERNET",)`. No permissions are added by
-  default. `network_security_config="@xml/network_policy"` links an app-owned
+  default without dependencies. AAR manifests contribute their permissions,
+  activities, services, providers and metadata through Android's official
+  manifest merger. Incompatible minimum SDKs, unresolved placeholders and
+  attribute conflicts fail the build. Set `manifest_overlays=(Path(...),)`
+  for explicit application overrides using Android's `tools:` directives.
+  The merger uses a cached, checksum-locked host-only classpath and JDK 21;
+  Gradle is not needed to build an application.
+  `network_security_config="@xml/network_policy"` links an app-owned
   XML resource from `resources`; Android 7 and newer apply that policy instead
   of the manifest's default `usesCleartextTraffic="false"`. For local HTTP
   testing, allow only the emulator host `10.0.2.2` in a development resource,
   not all hosts. Supply a production policy when building for deployment.
   See the [Android network-security guide][android-network-security].
+- Static native interface factories can be declared as standalone functions
+  using `@jvm.native("java/util/List", name="of", interface=True)`. PyJS emits
+  a small Java 8 forwarding class, keeping ordinary generated control flow
+  on its existing verifier contract. This does not add interface default
+  methods or arbitrary native Python `staticmethod` declarations.
 - JVM exception handling supports ordered handlers, reraising, assertions,
   and `finally`, including cleanup across returns, breaks and continues.
   Builtin exceptions can be constructed, stored in fields or collections,

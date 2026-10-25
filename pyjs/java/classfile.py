@@ -244,6 +244,7 @@ class ClassFile:
     constants: ConstantPool = field(default_factory=ConstantPool)
     fields: list[Field] = field(default_factory=list)
     methods: list[Method] = field(default_factory=list)
+    major_version: int = 49
 
     def method_reference(self, owner: str, name: str, descriptor: str) -> int:
         return self.constants.method(owner, name, descriptor)
@@ -295,10 +296,10 @@ class ClassFile:
                     ">IHH",
                     0xCAFEBABE,
                     0,
-                    52
+                    max(self.major_version, 52)
                     if any(field.type_annotations for field in self.fields)
                     or any(method.type_annotations for method in self.methods)
-                    else 49,
+                    else self.major_version,
                 ),
                 self.constants.render(),
                 _u2(self.access),

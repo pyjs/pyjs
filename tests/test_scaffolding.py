@@ -350,6 +350,7 @@ def test_examples_distribution_maps_its_source_root_to_pyjs_examples():
         "skills/pyjs/SKILL.md",
         "testing/android_device_runtime.json",
         "testing/android_runtime.json",
+        "tooling/android_manifest_runtime.json",
     ]
     assert core["tool"]["setuptools"]["package-data"]["pyjs.android"] == [
         "*.json"

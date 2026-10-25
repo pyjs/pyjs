@@ -649,8 +649,8 @@ def _jvm_native(
     def decorate(target):
         if not is_cls_or_func(target):
             raise TypeError("@jvm.native requires a function or class.")
-        if interface and not inspect.isclass(target):
-            raise TypeError("@jvm.native interface bindings require a class.")
+        if interface and not inspect.isclass(target) and invocation != "static":
+            raise TypeError("@jvm.native interface functions require static invocation.")
         _set_backend_decoration(
             target,
             "jvm",

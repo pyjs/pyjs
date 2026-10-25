@@ -106,6 +106,7 @@ namespaces = false
     "skills/pyjs/SKILL.md",
     "testing/android_device_runtime.json",
     "testing/android_runtime.json",
+    "tooling/android_manifest_runtime.json",
 ]
 "pyjs.android" = ["*.json"]
 "pyjs.native" = ["UNICODE-LICENSE.txt", "PYTHON-LICENSE.txt"]
