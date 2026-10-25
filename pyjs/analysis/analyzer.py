@@ -15205,18 +15205,21 @@ class CallGraphVisitor(ast.NodeVisitor):
         value = analyzed_value_object(receiver)
         if not isinstance(value, Instance):
             return
-        declared = value.storage_declaration.cls
-        if (not isinstance(declared, Class) or declared is value.cls
-                or declared.container.scope.is_builtins
-                or not is_subclass(func.cls, declared)):
-            return
+        declared = value.storage_declaration
+        if isinstance(declared, Instance):
+            declared = declared.cls
         # A mutable field's refinement can outlive a mutation. Keep the stored
         # receiver's member available, not only the selected subtype override.
-        inherited = declared.find_attrs(func.name)
-        if func.is_property_setter and isinstance(inherited, Function):
-            inherited = inherited.property_setter
-        if isinstance(inherited, Function) and inherited is not func:
-            self.enter_virtual(inherited)
+        for member in get_type_members(declared):
+            if (not isinstance(member, Class) or member is value.cls
+                    or member.container.scope.is_builtins
+                    or not is_subclass(func.cls, member)):
+                continue
+            inherited = member.find_attrs(func.name)
+            if func.is_property_setter and isinstance(inherited, Function):
+                inherited = inherited.property_setter
+            if isinstance(inherited, Function) and inherited is not func:
+                self.enter_virtual(inherited)
 
     def enter_virtual_reference(self, func: Function, receiver):
         self.retain_receiver_declaration(func, receiver)

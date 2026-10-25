@@ -3566,7 +3566,7 @@ REPLACED_ATTRIBUTE_CONTRACT = _contract(
 
 REPLACED_RECEIVER_CONTRACTS = {
     name: _contract(
-        dedent('''
+        dedent(f'''
         from pyjs import js
 
         @js
@@ -3596,7 +3596,7 @@ REPLACED_RECEIVER_CONTRACTS = {
 
         @js
         class Holder:
-            def __init__(self, item: StoredBase):
+            def __init__(self, item: {"StoredBase | None" if name.startswith("nullable_") else "StoredBase"}):
                 self.item = item
 
             def reset(self) -> None:
@@ -3632,6 +3632,8 @@ REPLACED_RECEIVER_CONTRACTS = {
         ("field_read", "return holder.item.tag", 4, 7),
         ("local_field_store", "item.tag = 11\nreturn holder.item.tag", 11, 11),
         ("field_store", "holder.item.tag = 11\nreturn item.tag", 11, 11),
+        ("nullable_method", "return holder.item.value(3)", 7, 10),
+        ("nullable_property", "return holder.item.amount", 4, 7),
     )
 }
 
