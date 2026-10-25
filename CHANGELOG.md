@@ -8,6 +8,8 @@
   of locals that may have copied stale attribute refinements. Overridden
   methods and properties keep their base declarations reachable; JVM virtual
   dispatch and inherited field access use compatible declaring owners.
+  Keyword/default binding checks stay within the stored receiver's hierarchy,
+  excluding unrelated siblings of an inherited method's declaring class.
   This is not a general mutable-field flow-analysis repair: compiler-generated
   indexed/chained assignment temporaries can still retain stale refinements.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,

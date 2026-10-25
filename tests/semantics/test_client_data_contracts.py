@@ -6,6 +6,7 @@ from tests.backend_semantics import (
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
+    RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
     REPLACED_RECEIVER_CONTRACTS,
 )
@@ -37,4 +38,9 @@ def test_replaced_attributes_do_not_keep_stale_refinements():
 
 @pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)
 def test_replaced_receivers_keep_base_declarations_reachable(contract):
+    assert_semantics(contract.print_source + "\nmain()\n")
+
+
+@pytest.mark.parametrize("contract", RECEIVER_DOMAIN_CONTRACTS.values(), ids=RECEIVER_DOMAIN_CONTRACTS)
+def test_virtual_bindings_use_the_stored_receiver_domain(contract):
     assert_semantics(contract.print_source + "\nmain()\n")

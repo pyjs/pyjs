@@ -107,6 +107,13 @@ def test_explicit_split_keeps_wasm_string_boundary():
         transpile_webassembly(EXPLICIT_SPLIT_CONTRACT.source)
 
 
+def test_receiver_domain_keeps_wasm_inheritance_boundary():
+    from tests.backend_semantics import RECEIVER_DOMAIN_CONTRACTS
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(RECEIVER_DOMAIN_CONTRACTS["default"].source)
+
+
 def test_list_truth_contract_wasm_boundary():
     from tests.backend_semantics import LIST_TRUTH_CONTRACT
 

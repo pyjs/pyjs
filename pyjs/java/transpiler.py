@@ -2116,10 +2116,7 @@ class JVMEmitter:
                 return self.convert_native_result(target)
             if target in self.functions and target.cls in self.classes:
                 if not is_super:
-                    declaration = self.virtual_target(target, receiver_type)
-                    if declaration is not target:
-                        semantic_receiver = declaration.cls
-                        target = declaration
+                    target = self.virtual_target(target, receiver_type)
                 expected_receiver = self.class_descriptor(target.cls)
                 receiver_type = self.refine_reference(node.func.value, receiver_type, expected_receiver)
                 if not self.compatible(receiver_type, expected_receiver):
@@ -2128,7 +2125,7 @@ class JVMEmitter:
                         node,
                     )
                 if not is_super:
-                    self.validate_virtual_arguments(node, target, semantic_receiver)
+                    self.validate_virtual_arguments(node, target, receiver_type)
                 self.application_arguments(node, target, leading_argument)
                 reference = self.class_file.method_reference(
                     self.class_name(target.cls),
@@ -3615,7 +3612,7 @@ class JVMEmitter:
             and not isinstance(node.operand.value, bool)
         )
 
-    def validate_virtual_arguments(self, node, function, receiver):
+    def validate_virtual_arguments(self, node, function, receiver: str):
         if not node.keywords and len(node.args) == len(self.application_parameters(function)):
             return
         supplied = {id(value) for value in node.args}
@@ -3631,8 +3628,11 @@ class JVMEmitter:
 
         expected = binding(function)
         for implementation in self.virtual_methods.get(function.name, ()):
+            # A base declaration can be inherited by a narrower stored domain.
+            # Its unrelated siblings cannot receive this call, while descendants
+            # of the stored domain still can, even after stale field narrowing.
             if implementation is function or not self.compatible(
-                self.class_descriptor(implementation.cls), self.class_descriptor(receiver),
+                self.class_descriptor(implementation.cls), receiver,
             ):
                 continue
             try:

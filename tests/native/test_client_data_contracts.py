@@ -7,6 +7,7 @@ from tests.backend_semantics import (
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
+    RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
     REPLACED_RECEIVER_CONTRACTS,
 )
@@ -43,5 +44,17 @@ def test_replaced_attributes_do_not_keep_stale_refinements(tmp_path):
 
 @pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)
 def test_replaced_receivers_keep_base_declarations_reachable(contract, tmp_path):
+    result = LLVM().assert_matches_python(contract.source, directory=tmp_path)
+    assert result.native.returncode == 0, contract.failure(result.native.returncode)
+
+
+@pytest.mark.parametrize("contract", [
+    pytest.param(contract, id=name, marks=pytest.mark.xfail(
+        strict=True, raises=AssertionError,
+        reason="Existing LLVM stale-field dispatch selects the leaf instead of an inherited root method",
+    ) if name.startswith("replaced_") else ())
+    for name, contract in RECEIVER_DOMAIN_CONTRACTS.items()
+])
+def test_virtual_bindings_use_the_stored_receiver_domain(contract, tmp_path):
     result = LLVM().assert_matches_python(contract.source, directory=tmp_path)
     assert result.native.returncode == 0, contract.failure(result.native.returncode)

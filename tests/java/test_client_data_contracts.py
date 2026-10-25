@@ -8,6 +8,7 @@ from tests.backend_semantics import (
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
     NARROWED_METHOD_CONTRACT,
+    RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
     REPLACED_RECEIVER_CONTRACTS,
 )
@@ -40,6 +41,23 @@ def test_replaced_attributes_do_not_keep_stale_refinements(tmp_path):
 def test_replaced_receivers_keep_base_declarations_reachable(contract, tmp_path):
     # Each consumer compiles alone: another base call must not retain its body.
     assert_matches_python(contract.source, tmp_path)
+
+
+@pytest.mark.parametrize("contract", RECEIVER_DOMAIN_CONTRACTS.values(), ids=RECEIVER_DOMAIN_CONTRACTS)
+def test_virtual_bindings_use_the_stored_receiver_domain(contract, tmp_path):
+    assert_matches_python(contract.source, tmp_path)
+
+
+@pytest.mark.parametrize("case", ["default", "keyword"])
+def test_virtual_binding_checks_still_include_siblings_inside_the_stored_domain(case):
+    source = RECEIVER_DOMAIN_CONTRACTS[case].source
+    source = source.replace("class Sibling(Root):", "class Sibling(Middle):")
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(source, filename="domains.py")
+    assert str(caught.value) == (
+        "JVM virtual call to value has incompatible keyword or default binding "
+        "in override Sibling.value at line 33 while compiling domains.guarded"
+    )
 
 
 @pytest.mark.parametrize(("case", "retained", "omitted"), [

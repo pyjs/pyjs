@@ -3638,6 +3638,74 @@ REPLACED_RECEIVER_CONTRACTS = {
 }
 
 
+RECEIVER_DOMAIN_CONTRACTS = {
+    name: _contract(
+        dedent('''
+        from pyjs import js
+
+        @js
+        class Root:
+            def value(self, number: int = 1) -> int:
+                return number
+
+        @js
+        class Middle(Root):
+            pass
+
+        @js
+        class Leaf(Middle):
+            def value(self, number: int = 1) -> int:
+                return number + 10
+
+        @js
+        class Sibling(Root):
+            def value(self, other: int = 2) -> int:
+                return other + 20
+
+        @js
+        class Holder:
+            def __init__(self, item: Middle):
+                self.item = item
+
+            def reset(self) -> None:
+                self.item = Middle()
+        ''') + dedent(f'''
+        @js
+        def guarded(item: Middle) -> int:
+            if isinstance(item, Leaf):
+                return item.value({arguments})
+            return 0
+
+        @js
+        def replaced(holder: Holder) -> int:
+            if isinstance(holder.item, Leaf):
+                holder.reset()
+                return holder.item.value({arguments})
+            return 0
+        '''),
+        name,
+        "",
+        (
+            ("an unrelated sibling must not affect guarded argument binding",
+             "guarded(Leaf()) != 11"),
+            ("a failed guard remains uncalled", "guarded(Middle()) != 0"),
+            ("the incompatible sibling is independently reachable",
+             "Sibling().value(2) != 22"),
+            ("a leaf-typed receiver retains its own declaration",
+             "Leaf().value() != 11"),
+        ) + ((
+            ("replacement uses the stored middle domain and root declaration",
+             "replaced(Holder(Leaf())) != 1"),
+        ) if name.startswith("replaced_") else ()),
+    )
+    for name, arguments in (
+        ("default", ""), ("keyword", "number=1"), ("positional", "1"),
+        ("replaced_default", ""), ("replaced_keyword", "number=1"),
+        ("replaced_positional", "1"),
+    )
+}
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js
