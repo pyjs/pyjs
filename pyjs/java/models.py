@@ -104,4 +104,5 @@ def _class_info(cls):
         body.append(f"        self.{name} = {name}")
     signature = "self, *, " + ", ".join(parameters) if parameters else "self"
     initializer = f"    def __init__({signature}):\n" + "\n".join(body or ["        pass"]) + "\n"
-    return LibraryClassInfo(annotations, defaults, tuple(required), opaque=True, initializer=initializer)
+    return LibraryClassInfo(annotations, defaults, tuple(required), opaque=True,
+                            methods={"__init__": initializer})

@@ -719,8 +719,8 @@ with `pyjs template`.
   Custom validators/serializers, initialization hooks, aliases, generic models,
   mutable defaults/factories, frozen fields, and dynamic extras are rejected.
   Field access is supported; model equality, dumping, and JSON validation are
-  not yet implemented. This is groundwork for typed API proxies, not parity
-  with Pydantic's host runtime.
+  not yet implemented. Typed API codecs are separate from Pydantic's host
+  runtime.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
@@ -728,9 +728,36 @@ with `pyjs template`.
   Set a finite request timeout for network operations; zero disables the
   connect/read timeouts. These are not total-request deadlines.
   Calls block the calling JVM thread despite the async interface: use an
-  explicit worker, never Android's UI thread. This is a transport foundation,
-  not yet generated JVM API proxies, Pydantic decoding, session management,
-  cancellation, or lifecycle-aware delivery. Native I/O exceptions propagate.
+  explicit worker, never Android's UI thread. Native I/O exceptions propagate.
+  An optional `cookies=CookieManager()` from `pyjs.java.net` provides an
+  isolated in-memory cookie jar without installing a global cookie handler.
+  `get()` and `post_form()` support session bootstrap and ordinary Django
+  login/logout, retaining redirects so the app can inspect their status.
+  CSRF headers remain explicit and must follow token rotation after login.
+  For Django over HTTPS, also send an HTTPS `Referer` from the trusted server
+  origin; a CSRF token alone is insufficient. This is the portable choice:
+  desktop OpenJDK silently drops explicit `Origin` headers. Native Java HTTP
+  does not add these browser headers automatically.
+  Managed cookies cannot be combined with explicit Cookie headers. Credential
+  headers are not origin-scoped: keep a transport per trusted server/account.
+  Do not install a process-global CookieHandler while using managed sessions:
+  Java HTTP also consults that global handler. Requests reject one already
+  installed rather than mix its credentials with the transport's private jar.
+  Cookie persistence, cancellation, and lifecycle-aware delivery remain
+  application responsibilities.
+- JVM clients compile ordinary `API` query, mutation, and action methods into
+  typed remote operations, including nested API children and inherited methods.
+  Pass an absolute HTTP(S) API root and a finite `timeout_ms`; there is no
+  implicit browser origin for the default relative `/api` path on JVM.
+  Server operation bodies are not analyzed or emitted. Supported schemas are
+  scalar values, string literals, nullable values, lists, string-keyed mappings,
+  and the plain Pydantic models described above. Results are decoded by schema;
+  Pydantic coercion and constraints remain server-side. The compiler rejects
+  recursive schemas, excessive API graphs, streams, JSON:API resources,
+  relationships, variadic operation parameters, and custom API initialization.
+  Operation errors preserve their status, code, title, detail, and field path;
+  malformed error bodies become a generic `OperationError` retaining the body.
+  Calls still block their thread despite their async signatures.
 - `pyjs.java.json.JSONReader` provides typed JSON tokens for schema-directed
   decoding without building an untyped object tree. Call `finish()` after
   reading the root value. `skip()` validates unknown values with a default
@@ -740,12 +767,15 @@ with `pyjs template`.
   `integer()` requires a signed 64-bit integer token; `floating()` accepts
   finite binary64 values, preserving negative zero and ordinary underflow.
   Both reject overflow instead of silently wrapping or producing infinity.
-  These helpers do not yet implement Pydantic decoding or typed API proxies.
+  Generated operation codecs use these tokens without an untyped object tree.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
   values with reference keys. Iteration and live, reusable key views preserve
   insertion order. Updating values does not invalidate an iterator; changing
   its key set raises `RuntimeError`. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
+  `pop` returns and removes present values, evaluates explicit defaults eagerly,
+  and raises `KeyError` for absent keys when no default was supplied.
+  `copy` creates a shallow, insertion-ordered copy with independent keys.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
   String and nullable-string keys retain Python-style quoted messages;

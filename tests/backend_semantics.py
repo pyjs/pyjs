@@ -3397,6 +3397,342 @@ PROPERTY_FIELD_OVERRIDE_CONTRACT = _contract(
 )
 
 
+NARROWED_METHOD_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class ReceiverBase:
+        pass
+
+    @js
+    class ReceiverChild(ReceiverBase):
+        def value(self) -> int:
+            return 5
+
+        @property
+        def amount(self) -> int:
+            return self.value()
+
+    @js
+    class ReceiverOverride(ReceiverChild):
+        def value(self) -> int:
+            return 7
+
+    @js
+    class ReceiverBox:
+        def __init__(self, item: ReceiverChild):
+            self.item = item
+
+    @js
+    def accept_child(value: ReceiverChild) -> int:
+        return value.value()
+
+    @js
+    def guarded_receiver(value: ReceiverBase) -> int:
+        if not isinstance(value, ReceiverChild):
+            return 0
+        return value.value() + accept_child(value)
+
+    @js
+    def keep_child(value: ReceiverBase) -> ReceiverChild:
+        if isinstance(value, ReceiverChild):
+            return value
+        return ReceiverChild()
+
+    @js
+    def guarded_consumers(value: ReceiverBase) -> int:
+        if not isinstance(value, ReceiverChild):
+            return 0
+        first: ReceiverChild = value
+        second = value
+        box = ReceiverBox(value)
+        box.item = value
+        items: list[ReceiverChild] = [value]
+        items.append(value)
+        items.insert(0, value)
+        items[1] = value
+        mapped: dict[str, ReceiverChild] = {"item": value}
+        mapped["item"] = value
+        return (first.value() + second.value() + box.item.value()
+                + items[0].value() + items[1].value() + mapped["item"].value()
+                + value.amount + accept_child(value=value) + keep_child(value).value()
+                + mapped.get("missing", value).value())
+    ''',
+    "narrowed_method_result",
+    "",
+    (
+        ("failed type guard does not call the child method", "guarded_receiver(ReceiverBase()) != 0"),
+        ("guard refines both receiver and argument", "guarded_receiver(ReceiverChild()) != 10"),
+        ("refined calls preserve virtual dispatch", "guarded_receiver(ReceiverOverride()) != 14"),
+        ("typed consumers retain guarded values", "guarded_consumers(ReceiverChild()) != 50"),
+        ("stored guarded values retain virtual dispatch", "guarded_consumers(ReceiverOverride()) != 70"),
+        ("failed guards skip typed consumers", "guarded_consumers(ReceiverBase()) != 0"),
+    ),
+)
+
+
+REPLACED_ATTRIBUTE_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class StoredBase:
+        def value(self) -> int:
+            return 4
+
+    @js
+    class StoredChild(StoredBase):
+        def value(self) -> int:
+            return 7
+
+    @js
+    class Holder:
+        def __init__(self, item: StoredBase):
+            self.item = item
+
+        def reset(self) -> None:
+            self.item = StoredBase()
+
+    @js
+    def read_base(value: StoredBase) -> int:
+        return value.value()
+
+    @js
+    def replace_guarded_attribute(holder: Holder) -> int:
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            return read_base(holder.item)
+        return 0
+
+    @js
+    def replace_through_local(holder: Holder) -> int:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            return read_base(item)
+        return 0
+
+    @js
+    def return_replaced_local(holder: Holder) -> StoredBase:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            return item
+        return item
+
+    @js
+    def store_replaced_local(holder: Holder) -> int:
+        item: StoredBase = StoredBase()
+        if isinstance(holder.item, StoredChild):
+            holder.reset()
+            item = holder.item
+            box = Holder(item)
+            items: list[StoredBase] = [item]
+            items.append(item)
+            mapped: dict[str, StoredBase] = {"item": item}
+            return (read_base(box.item) + read_base(items[0])
+                    + read_base(items[1]) + read_base(mapped["item"]))
+        return 0
+
+    @js
+    def keep_guarded_snapshot(holder: Holder) -> int:
+        item = holder.item
+        if isinstance(item, StoredChild):
+            holder.reset()
+            return item.value()
+        return 0
+    ''',
+    "replaced_attribute_result",
+    "",
+    (
+        ("attribute replacement does not retain the old subtype",
+         "replace_guarded_attribute(Holder(StoredChild())) != 4"),
+        ("failed guard leaves the base value alone",
+         "replace_guarded_attribute(Holder(StoredBase())) != 0"),
+        ("copying a replaced field into an existing local drops its old subtype",
+         "replace_through_local(Holder(StoredChild())) != 4"),
+        ("returning a replaced field through a base local needs no subtype cast",
+         "read_base(return_replaced_local(Holder(StoredChild()))) != 4"),
+        ("base-typed storage does not restore the replaced field's subtype",
+         "store_replaced_local(Holder(StoredChild())) != 16"),
+        ("local snapshot remains valid after its source field changes",
+         "keep_guarded_snapshot(Holder(StoredChild())) != 7"),
+    ),
+)
+
+
+REPLACED_RECEIVER_CONTRACTS = {
+    name: _contract(
+        dedent(f'''
+        from pyjs import js
+
+        @js
+        class StoredBase:
+            def __init__(self):
+                self.tag = 4
+
+            def value(self, extra: int = 2) -> int:
+                return 4 + extra
+
+            @property
+            def amount(self) -> int:
+                return 4
+
+        @js
+        class StoredChild(StoredBase):
+            def __init__(self):
+                super().__init__()
+                self.tag = 7
+
+            def value(self, extra: int = 2) -> int:
+                return 7 + extra
+
+            @property
+            def amount(self) -> int:
+                return 7
+
+        @js
+        class Holder:
+            def __init__(self, item: {"StoredBase | None" if name.startswith("nullable_") else "StoredBase"}):
+                self.item = item
+
+            def reset(self) -> None:
+                self.item = StoredBase()
+        ''') + dedent('''
+        @js
+        def consume(holder: Holder, replace: bool) -> int:
+            item: StoredBase = StoredBase()
+            if isinstance(holder.item, StoredChild):
+                if replace:
+                    holder.reset()
+                item = holder.item
+        ''') + indent(body, "        ") + "\n    return 0\n",
+        name,
+        "",
+        (
+            ("replaced receiver uses the base member",
+             f"consume(Holder(StoredChild()), True) != {base_result}"),
+            ("unchanged receiver retains subtype dispatch",
+             f"consume(Holder(StoredChild()), False) != {child_result}"),
+            ("failed guard skips the member",
+             "consume(Holder(StoredBase()), True) != 0"),
+        ),
+    )
+    for name, body, base_result, child_result in (
+        ("local_method", "return item.value(3)", 7, 10),
+        ("field_method", "return holder.item.value(3)", 7, 10),
+        ("local_default", "return item.value()", 6, 9),
+        ("local_keyword", "return item.value(extra=3)", 7, 10),
+        ("local_property", "return item.amount", 4, 7),
+        ("field_property", "return holder.item.amount", 4, 7),
+        ("local_field_read", "return item.tag", 4, 7),
+        ("field_read", "return holder.item.tag", 4, 7),
+        ("local_field_store", "item.tag = 11\nreturn holder.item.tag", 11, 11),
+        ("field_store", "holder.item.tag = 11\nreturn item.tag", 11, 11),
+        ("nullable_method", "return holder.item.value(3)", 7, 10),
+        ("nullable_property", "return holder.item.amount", 4, 7),
+    )
+}
+
+
+RECEIVER_DOMAIN_CONTRACTS = {
+    name: _contract(
+        dedent('''
+        from pyjs import js
+
+        @js
+        class Root:
+            def value(self, number: int = 1) -> int:
+                return number
+
+        @js
+        class Middle(Root):
+            pass
+
+        @js
+        class Leaf(Middle):
+            def value(self, number: int = 1) -> int:
+                return number + 10
+
+        @js
+        class Sibling(Root):
+            def value(self, other: int = 2) -> int:
+                return other + 20
+
+        @js
+        class Holder:
+            def __init__(self, item: Middle):
+                self.item = item
+
+            def reset(self) -> None:
+                self.item = Middle()
+        ''') + dedent(f'''
+        @js
+        def guarded(item: Middle) -> int:
+            if isinstance(item, Leaf):
+                return item.value({arguments})
+            return 0
+
+        @js
+        def replaced(holder: Holder) -> int:
+            if isinstance(holder.item, Leaf):
+                holder.reset()
+                return holder.item.value({arguments})
+            return 0
+        '''),
+        name,
+        "",
+        (
+            ("an unrelated sibling must not affect guarded argument binding",
+             "guarded(Leaf()) != 11"),
+            ("a failed guard remains uncalled", "guarded(Middle()) != 0"),
+            ("the incompatible sibling is independently reachable",
+             "Sibling().value(2) != 22"),
+            ("a leaf-typed receiver retains its own declaration",
+             "Leaf().value() != 11"),
+        ) + ((
+            ("replacement uses the stored middle domain and root declaration",
+             "replaced(Holder(Leaf())) != 1"),
+        ) if name.startswith("replaced_") else ()),
+    )
+    for name, arguments in (
+        ("default", ""), ("keyword", "number=1"), ("positional", "1"),
+        ("replaced_default", ""), ("replaced_keyword", "number=1"),
+        ("replaced_positional", "1"),
+    )
+}
+
+
+DICTIONARY_POP_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def fallback(values: dict[str, int], events: list[int]) -> int:
+        events.append(len(values))
+        return values.pop("first") + 1
+    ''',
+    "dictionary_pop_result",
+    '''
+    values = {"first": 3, "last": 7}
+    copied = values.copy()
+    events: list[int] = []
+    first = values.pop("first", fallback(values, events))
+    last = values.pop("last")
+    missing = values.pop("missing", 9)
+    ''',
+    (
+        ("default is evaluated eagerly before removal", "first != 4 or events[0] != 2"),
+        ("present values are returned and removed", "last != 7 or len(values) != 0"),
+        ("absent keys return the explicit default", "missing != 9"),
+        ("copy retains entries independently of removals", "len(copied) != 2 or copied['first'] != 3"),
+    ),
+)
+
+
 DICTIONARY_KEYS_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -5729,6 +6065,102 @@ STRING_SEARCH_CASES = (
     ("a😀b", "\ude00b"), ("\ud83d", "\ud83d"), ("\ude00", "\ude00"),
     ("😀\ud83d", "\ud83d"), ("😀\ude00", "\ude00"),
     ("😀-\ud83d-x", "\ud83d"), ("\ude00-😀", "\ude00"),
+)
+
+
+AWAIT_ATTRIBUTE_SOURCE = '''
+from pyjs import js, int8
+
+@js
+class AwaitValue:
+    def __init__(self, text: str):
+        self.text = text
+        self.number: int8 = int8(127)
+    @property
+    def title(self) -> str:
+        return self.text + "!"
+    def label(self) -> str:
+        return self.text + "?"
+
+@js
+async def make_await_value(events: list[int]) -> AwaitValue:
+    events.append(1)
+    return AwaitValue("ready")
+
+@js
+async def await_attributes() -> str:
+    events: list[int] = []
+    text = (await make_await_value(events)).text
+    title = (await make_await_value(events)).title
+    label = (await make_await_value(events)).label()
+    number = (await make_await_value(events)).number + 1
+    return text + title + label + ":" + str(number) + ":" + str(len(events))
+'''
+
+
+LIST_TRUTH_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def truth_values(full: bool, events: list[int]) -> list[int]:
+        events.append(1)
+        return [7] if full else []
+
+    @js
+    def truth_result(full: bool) -> int:
+        events: list[int] = []
+        result = 0
+        if truth_values(full, events):
+            result += 1
+        if not truth_values(full, events):
+            result += 2
+        result += 4 if truth_values(full, events) else 8
+        return result + len(events) * 100
+
+    @js
+    class BooleanLength:
+        def __init__(self, full: bool):
+            self.full = full
+            self.calls = 0
+
+        def __len__(self) -> bool:
+            self.calls += 1
+            return self.full
+
+    @js
+    def boolean_length_result(full: bool) -> int:
+        value = BooleanLength(full)
+        result = 0
+        if value:
+            result += 1
+        if not value:
+            result += 2
+        result += 4 if value else 8
+        return result + value.calls * 100
+    ''',
+    "list_truth_contract", "",
+    (("empty branches and single evaluation", "truth_result(False) != 310"),
+     ("nonempty branches and single evaluation", "truth_result(True) != 305"),
+     ("false length is an integer zero", "boolean_length_result(False) != 310"),
+     ("true length is an integer one", "boolean_length_result(True) != 305")),
+)
+
+
+EXPLICIT_SPLIT_CONTRACT = _contract(
+    "from pyjs import js",
+    "explicit_split_contract",
+    '''
+    parts = "a.*b.*".split(".*")
+    parts.append("end")
+    unicode_parts = "é😀雪😀".split("😀", 1)
+    limited = "a/b/c".split("/", maxsplit=0)
+    empty = "".split("/")
+    ''',
+    (("literal separator and mutable result", '"|".join(parts) != "a|b||end"'),
+     ("Unicode and maximum splits", '"|".join(unicode_parts) != "é|雪😀"'),
+     ("zero maximum preserves original", '"|".join(limited) != "a/b/c"'),
+     ("empty input retains one empty field", 'len(empty) != 1 or empty[0] != ""')),
 )
 
 

@@ -39,6 +39,13 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     supports_exception_causes = True
     supports_exception_args = True
 
+    def truth_test(self, node, test):
+        result = super().truth_test(node, test)
+        if (isinstance(result, ast.Call)
+                and getattr(getattr(result.func, "obj", None), "name", None) == "__len__"):
+            result.jvm_truth_length = True
+        return result
+
     def visit_FunctionDef(self, node):
         result = super().visit_FunctionDef(node)
         if not self.pending_flow_widenings:
@@ -302,14 +309,25 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
     refine_lifetimes(entry_point)
 
 
+class JVMImports(NativeProtocolMappings):
+    def class_info(self, cls):
+        if hasattr(cls, "__pyjs_operations__"):
+            from .api import class_info
+
+            if info := class_info(cls):
+                return info
+        return super().class_info(cls)
+
+
 JVM_ENVIRONMENT = create_analysis_environment(
     "jvm",
     native_builtins,
     inference_visitor=JVMInferenceVisitor,
-    library_mappings=NativeProtocolMappings(
+    library_mappings=JVMImports(
         libraries=(MODEL_LIBRARY,),
         stdlib_imports={
             ("typing", "cast"): ("pyjs.stdlib.typing", "cast"),
+            ("pyjs.server", "API"): ("pyjs.server.jvm_client", "API"),
         }
     ),
     analyze_all_definitions=False,

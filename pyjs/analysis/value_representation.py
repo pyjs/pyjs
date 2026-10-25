@@ -3,13 +3,10 @@ import ast
 from pyjs.numeric import NumericFormat, integer_literal
 
 from .objects import (
-    Call,
     CallableClass,
     Class,
     Function,
-    IfExp,
     Instance,
-    Subscript,
     UnionType,
     same_analyzer_type,
 )
@@ -25,14 +22,14 @@ def _type_members(value_type):
 
 
 def analyzed_value_object(value):
-    return value.value_obj if isinstance(value, (Call, Subscript, IfExp)) else value.obj
+    return getattr(value, "value_obj", value.obj)
 
 
 def _stored_representation(value):
     representation = getattr(value, "representation", None)
     if representation is not None:
         return representation
-    if not hasattr(value, "obj") and not isinstance(value, (Call, Subscript, IfExp)):
+    if not hasattr(value, "obj"):
         return None
     value_obj = analyzed_value_object(value)
     return value_obj.representation if isinstance(value_obj, Instance) else None
@@ -203,7 +200,7 @@ def analyzed_representation(value) -> ValueRepresentation | None:
     representation = _stored_representation(value)
     if representation is not None:
         return representation
-    if not hasattr(value, "obj") and not isinstance(value, (Call, Subscript, IfExp)):
+    if not hasattr(value, "obj"):
         return None
     value_obj = analyzed_value_object(value)
     if isinstance(value_obj, Function):

@@ -579,8 +579,11 @@ def test_writes_to_common_fields_on_union_typed_values_match_python():
         print(right.value)
         """
     )
-def test_narrowed_properties_still_invoke_the_getter():
-    assert_semantics('''
+
+
+@pytest.mark.parametrize("annotation", ["int | str", "int | str | None"])
+def test_narrowed_properties_still_invoke_the_getter(annotation):
+    assert_semantics(f'''
         from pyjs import js
 
         @js
@@ -588,7 +591,7 @@ def test_narrowed_properties_still_invoke_the_getter():
             def __init__(self):
                 self.reads = 0
             @property
-            def item(self) -> int | str:
+            def item(self) -> {annotation}:
                 self.reads += 1
                 return 1 if self.reads == 1 else 'changed'
 

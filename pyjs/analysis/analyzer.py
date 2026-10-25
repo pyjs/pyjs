@@ -15201,7 +15201,28 @@ class CallGraphVisitor(ast.NodeVisitor):
         self.mark_virtual_visited(func)
         self.enter_overrides(func, func.cls)
 
+    def retain_receiver_declaration(self, func: Function, receiver):
+        value = analyzed_value_object(receiver)
+        if not isinstance(value, Instance):
+            return
+        declared = value.storage_declaration
+        if isinstance(declared, Instance):
+            declared = declared.cls
+        # A mutable field's refinement can outlive a mutation. Keep the stored
+        # receiver's member available, not only the selected subtype override.
+        for member in get_type_members(declared):
+            if (not isinstance(member, Class) or member is value.cls
+                    or member.container.scope.is_builtins
+                    or not is_subclass(func.cls, member)):
+                continue
+            inherited = member.find_attrs(func.name)
+            if func.is_property_setter and isinstance(inherited, Function):
+                inherited = inherited.property_setter
+            if isinstance(inherited, Function) and inherited is not func:
+                self.enter_virtual(inherited)
+
     def enter_virtual_reference(self, func: Function, receiver):
+        self.retain_receiver_declaration(func, receiver)
         receiver_type = analyzed_value_type(receiver)
         if (not func.cls.container.scope.is_builtins or receiver_type is func.cls
                 or contains_type_variable(receiver_type)):
@@ -15899,11 +15920,13 @@ class CallGraphVisitor(ast.NodeVisitor):
     def visit_Attribute(self, node: ast.Attribute):
         if setters := getattr(node, "property_setters", ()):
             for setter in dict.fromkeys(setters):
+                self.retain_receiver_declaration(setter, node.value)
                 self.enter_virtual(setter)
             self.generic_visit(node)
             return
         if getters := getattr(node, "property_getters", ()):
             for getter in dict.fromkeys(getters):
+                self.retain_receiver_declaration(getter, node.value)
                 self.enter_virtual(getter)
             self.generic_visit(node)
             return

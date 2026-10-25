@@ -1440,6 +1440,8 @@ class NativeInferenceVisitor(IRInferenceVisitor):
         cursor = analyzed_value_type(acquired)
         if is_builtin_class(cursor, "Generator"):
             result.obj = cursor.generic_types["R"]
+            result.value_obj = (result.obj("__await_result__", self.scope, self.func)
+                                if isinstance(result.obj, Class) else result.obj)
             representation = analyzed_representation(acquired)
             set_analyzed_representation(result, representation.arguments[2] if representation else None)
         return result

@@ -71,6 +71,66 @@ def test_dictionary_iteration_keeps_explicit_wasm_boundary():
         transpile_webassembly(DICTIONARY_KEYS_CONTRACT.source)
 
 
+def test_dictionary_pop_keeps_explicit_wasm_boundary():
+    from tests.backend_semantics import DICTIONARY_POP_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type dict__str_int is not implemented$"):
+        transpile_webassembly(DICTIONARY_POP_CONTRACT.source)
+
+
+def test_narrowed_receiver_contract_keeps_wasm_inheritance_boundary():
+    from tests.backend_semantics import NARROWED_METHOD_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(NARROWED_METHOD_CONTRACT.source)
+
+
+def test_replaced_attribute_contract_keeps_wasm_inheritance_boundary():
+    from tests.backend_semantics import REPLACED_ATTRIBUTE_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(REPLACED_ATTRIBUTE_CONTRACT.source)
+
+
+@pytest.mark.parametrize("case", ["local_method", "local_property", "field_store"])
+def test_replaced_receiver_keeps_wasm_inheritance_boundary(case):
+    from tests.backend_semantics import REPLACED_RECEIVER_CONTRACTS
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(REPLACED_RECEIVER_CONTRACTS[case].source)
+
+
+def test_explicit_split_keeps_wasm_string_boundary():
+    from tests.backend_semantics import EXPLICIT_SPLIT_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(EXPLICIT_SPLIT_CONTRACT.source)
+
+
+def test_receiver_domain_keeps_wasm_inheritance_boundary():
+    from tests.backend_semantics import RECEIVER_DOMAIN_CONTRACTS
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
+        transpile_webassembly(RECEIVER_DOMAIN_CONTRACTS["default"].source)
+
+
+def test_list_truth_contract_wasm_boundary():
+    from tests.backend_semantics import LIST_TRUTH_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly call target __len__ is not implemented at line 5$"):
+        transpile_webassembly(LIST_TRUTH_CONTRACT.source)
+
+
+def test_awaited_attribute_contract_keeps_wasm_string_boundary():
+    from tests.backend_semantics import AWAIT_ATTRIBUTE_SOURCE
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(AWAIT_ATTRIBUTE_SOURCE + '''
+async def main() -> str:
+    return await await_attributes()
+''')
+
+
 def test_optional_float_contract_keeps_explicit_wasm_boundary():
     from tests.backend_semantics import OPTIONAL_FLOAT_CONTRACT
 

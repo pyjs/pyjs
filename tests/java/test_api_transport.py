@@ -3,6 +3,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -93,6 +94,20 @@ def main() -> str:
     assert len(received) == 2
 
 
+def test_explicit_referer_reaches_the_server(tmp_path, endpoint):
+    url, received = endpoint
+    result = run_jvm(IMPORTS + f'''
+def main() -> str:
+    transport = JVMTransport([("Referer", "https://example.test/"), ("X-CSRFToken", "token")])
+    return run_sync(transport.request({url + '/echo'!r}, "ready")).body
+''', tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ready"
+    assert len(received) == 1
+    assert received[0][1]["Referer"] == "https://example.test/"
+    assert received[0][1]["X-CSRFToken"] == "token"
+
+
 def test_transport_timeout_keeps_native_exception(tmp_path, endpoint):
     url, _ = endpoint
     result = run_jvm(IMPORTS + f'''
@@ -161,12 +176,11 @@ def main() -> str:
     assert result.stdout == "rejected"
 
 
-@pytest.fixture(scope="module")
-def django_endpoint(tmp_path_factory):
-    log_path = tmp_path_factory.mktemp("django-transport") / "server.log"
+@contextmanager
+def django_server(module, log_path, *arguments):
     with log_path.open("wb") as log:
         process = subprocess.Popen(
-            [sys.executable, "-m", "tests.java.api_transport_server"],
+            [sys.executable, "-m", module, *arguments],
             stdout=log, stderr=subprocess.STDOUT,
         )
         try:
@@ -187,6 +201,13 @@ def django_endpoint(tmp_path_factory):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+
+
+@pytest.fixture(scope="module")
+def django_endpoint(tmp_path_factory):
+    log_path = tmp_path_factory.mktemp("django-transport") / "server.log"
+    with django_server("tests.java.api_transport_server", log_path) as url:
+        yield url
 
 
 @pytest.mark.parametrize(("draft", "credential", "csrf", "status"), [

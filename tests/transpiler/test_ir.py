@@ -641,6 +641,60 @@ def test_lazy_module_imports_share_objects_in_both_resolution_orders(first):
         assert sum(value.name == "VALUES" for value in analysis.entry_point.compilation_objects) == 1
 
 
+@pytest.mark.parametrize("name", ["factory", "Record"])
+def test_same_module_import_resolution_materializes_deferred_definitions(name):
+    from pyjs.analysis.objects import (
+        Class,
+        DeferredDefinition,
+        Function,
+        resolve_imported,
+    )
+
+    with analyze_ir('''
+        class Record:
+            pass
+
+        def factory() -> Record:
+            return Record()
+
+        def main() -> int:
+            return 42
+    ''') as analysis:
+        module = analysis.entry_point.container
+        deferred = module.scope.names[name]
+        assert isinstance(deferred, DeferredDefinition)
+        resolved = resolve_imported(deferred.py_obj, module)
+        assert isinstance(resolved, Function if name == "factory" else Class)
+        assert resolved is module.search(name)
+        assert resolve_imported(deferred.py_obj, module) is resolved
+
+
+@pytest.mark.parametrize("backend", ["js", "native", "java", "webassembly"])
+@pytest.mark.parametrize("name", ["str", "int", "float", "bool", "list", "dict", "ValueError"])
+def test_imported_builtins_keep_canonical_identity_across_aliases(backend, name):
+    import builtins
+
+    from pyjs.analysis.analyzer import JS_ENVIRONMENT
+    from pyjs.analysis.objects import resolve_imported, traverse_imported
+    from pyjs.java.analysis import JVM_ENVIRONMENT
+    from pyjs.webassembly.analysis import WEBASSEMBLY_ENVIRONMENT
+
+    environment = {"js": JS_ENVIRONMENT, "native": NATIVE_ENVIRONMENT,
+                   "java": JVM_ENVIRONMENT, "webassembly": WEBASSEMBLY_ENVIRONMENT}[backend]
+    with analyze_source("def main() -> int:\n    return 42\n", wrap=False,
+                        environment=environment) as analysis:
+        module = analysis.entry_point.container
+        value = getattr(builtins, name)
+        expected = module.scope.BUILTINS.scope.names[name]
+        assert resolve_imported(value, module) is expected
+        for alias in ("first", "second", "first"):
+            traverse_imported(alias, value, module)
+            assert module.search(alias) is expected
+        other = int if value is str else str
+        with pytest.raises(NameError, match="^Imported object conflicts with existing `first`\\.$"):
+            traverse_imported("first", other, module)
+
+
 def test_bound_callback_lifetime_retains_its_receiver():
     with analyze_ir('''
         from typing import Callable

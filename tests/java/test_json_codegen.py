@@ -9,6 +9,11 @@ from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_compiles_to_android_dex
 
 
+def codec_imports(generator):
+    return "\n".join(f"from {value.__module__} import {value.__name__} as {name}"
+                     for name, value in generator.imports.items()) + "\n"
+
+
 def codec_source(annotation):
     generator = JSONCodegen()
     generator.validate(annotation)
@@ -18,10 +23,8 @@ def codec_source(annotation):
     generator.emit("parts: list[str] = []")
     generator.encode(annotation, value, "parts")
     generator.emit("return ''.join(parts)")
-    imports = [f"from {value.__module__} import {value.__name__} as {name}"
-               for name, value in generator.imports.items()]
     body = "\n".join("    " + line for line in generator.lines)
-    return "\n".join(imports) + "\n\ndef roundtrip(source: str) -> str:\n" + body + "\n"
+    return codec_imports(generator) + "\n\ndef roundtrip(source: str) -> str:\n" + body + "\n"
 
 
 def model_corpus():
@@ -74,9 +77,8 @@ def test_generated_encoder_reads_subclasses_through_base_model_fields(tmp_path):
     generator.encode(list[Item], "values", "parts")
     generator.emit("return ''.join(parts)")
     body = "\n".join("    " + line for line in generator.lines)
-    assert_text_matches_python('''
+    assert_text_matches_python(codec_imports(generator) + '''
 from tests.java.json_models import Item, ChildItem
-from pyjs.java.json import quote as _pyjs_quote
 def encode(values: list[Item]) -> str:
 ''' + body + '''
 def main() -> str:
@@ -151,8 +153,7 @@ def test_generated_float_encoder_rejects_nonfinite_values_on_jvm(tmp_path):
     generator.encode(float, "value", "parts")
     generator.emit("return ''.join(parts)")
     body = "\n".join("    " + line for line in generator.lines)
-    assert_text_matches_python('''from pyjs.java import parse_double
-from pyjs.java import double_to_string as _pyjs_double
+    assert_text_matches_python(codec_imports(generator) + '''from pyjs.java import parse_double
 def encode(value: float) -> str:
 ''' + body + '''
 def main() -> str:
