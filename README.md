@@ -371,16 +371,56 @@ the renderer sandbox. There is no default Content Security Policy restricting
 outbound connections. These defaults are for trusted application UI, not a
 boundary for running untrusted content. For Node filesystem operations (such as
 writes) or other OS services, pass `--electron-host host-directory`.
-That directory must contain `main.cjs` exporting
-`async start({app, BrowserWindow, createWindow, renderer})`; its sibling files
-are copied with it. For example:
+A Python host package contains `main.py` with an async `main(context)` entry
+and, optionally, `preload.py` with a zero-argument `main()`. The build compiles
+both entries and their reachable dependencies into self-contained CommonJS
+files with Python source maps. Nothing is compiled at application launch.
+For example, `desktop_host/main.py`:
 
-```javascript
-exports.start = async ({createWindow, renderer}) => {
-  const window = createWindow({title: 'My application'});
-  await window.loadFile(renderer);
-};
+```python
+from pyjs import js
+from pyjs.electron import HostContext, WindowOptions
+
+@js
+async def main(context: HostContext):
+    window = context.createWindow(WindowOptions("My application"))
+    await window.loadFile(context.renderer)
 ```
+
+`pyjs.electron` exposes typed window, IPC, context-bridge and debugger operations;
+`pyjs.node` exposes typed filesystem, process and timer operations. These are
+JavaScript-host APIs, not CPython implementations of Node. A sandboxed preload
+can use Electron's bridge/IPC APIs but cannot use Node filesystem or subprocess
+bindings. Keep it limited to a small, fixed capability surface. Its Python
+imports are bundled; it does not load other JavaScript files at runtime.
+The host package must be importable and have a unique module name in a build
+process. Existing JavaScript hosts with `main.cjs` exporting `async start(context)`
+remain supported; their files are copied unchanged. If both main files exist,
+Python takes precedence.
+
+Build standalone Node programs from an importable Python module with:
+
+```bash
+pyjs build my_service:main --target node -o dist/service.cjs
+node --enable-source-maps dist/service.cjs
+```
+
+The generated module exports `main` without calling it when imported. Direct
+execution awaits it and reports failures with a nonzero exit status. Source maps
+point back to Python. Use `pyjs.node.json` to exchange ordinary Python dictionaries
+with JSON host APIs. Other Python standard-library modules are not automatically
+translated into Node APIs.
+
+Python-authored Node tests use `@js` and `pytest.mark.pyjs_node` and run with
+`pytest --pyjs-target=node`. Each zero-argument, module-level test is compiled
+and executed in an isolated Node process, including async tests. Fixtures and
+parametrized arguments are not transported into Node; host-side autouse fixtures
+may prepare external resources or environment variables. Ordinary pytest runs
+skip Node-only tests. An entry that exits with an unfinished await fails rather
+than silently passing. Tests time out after 60 seconds; timeout and interruption
+cleanup also terminates child processes still descended from the test, including
+detached children. Tests must not daemonize processes that outlive their parents.
+Generated bundles belong in build/test output, not Git.
 
 A custom host owns its preload, IPC handlers and window creation, including
 validating service inputs and keeping any Node dependencies self-contained.

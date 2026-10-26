@@ -1,0 +1,236 @@
+"""Typed Node runtime operations for Python-authored CommonJS applications."""
+from collections.abc import Awaitable, Callable
+
+from pyjs import js
+
+
+@js.native
+class FileInfo:
+    def __init__(self):
+        self.size: int = 0
+        self.mtimeMs: float = 0.0
+    def isFile(self) -> bool: ...
+    def isDirectory(self) -> bool: ...
+
+
+@js.native
+class DirectoryEntry:
+    def __init__(self):
+        self.name: str = ""
+    def isFile(self) -> bool: ...
+    def isDirectory(self) -> bool: ...
+
+
+@js.native
+class Timer:
+    def unref(self) -> None: ...
+
+
+@js.inline("require('node:path').join({a}, {b})")
+def join(a: str, b: str) -> str: ...
+
+@js.inline("require('node:path').resolve({value})")
+def resolve(value: str) -> str: ...
+
+@js.inline("require('node:path').relative({root}, {value})")
+def relative(root: str, value: str) -> str: ...
+
+@js.inline("require('node:path').dirname({value})")
+def dirname(value: str) -> str: ...
+
+@js.inline("require('node:path').basename({value})")
+def basename(value: str) -> str: ...
+
+@js.inline("require('node:path').isAbsolute({value})")
+def is_absolute(value: str) -> bool: ...
+
+@js.inline("require('node:path').sep")
+def separator() -> str: ...
+
+@js.inline("require('node:url').pathToFileURL({value}).href")
+def file_url(value: str) -> str: ...
+
+@js.inline("require('node:os').homedir()")
+def home_directory() -> str: ...
+
+@js.inline("require('node:os').tmpdir()")
+def temp_directory() -> str: ...
+
+@js.inline("process.cwd()")
+def cwd() -> str: ...
+
+@js.inline("process.argv")
+def arguments() -> list[str]: ...
+
+@js.inline("process.platform")
+def platform() -> str: ...
+
+@js.inline("process.pid")
+def process_id() -> int: ...
+
+@js.inline("process.execPath")
+def executable() -> str: ...
+
+@js.inline("(process.env[{name}] ?? '')")
+def environment(name: str) -> str: ...
+
+@js.inline("(process.env[{name}] = {value})")
+def set_environment(name: str, value: str) -> None: ...
+
+@js.inline("delete process.env[{name}]")
+def remove_environment(name: str) -> None: ...
+
+@js.inline("require('node:fs').realpathSync({value})")
+def realpath_sync(value: str) -> str: ...
+
+@js.inline("require('node:fs').readFileSync({filename}, 'utf8')")
+def read_text_sync(filename: str) -> str: ...
+
+@js.inline("require('node:fs').writeFileSync({filename}, {text}, {{mode: 0o600}})")
+def write_text_sync(filename: str, text: str) -> None: ...
+
+@js.inline("require('node:fs').appendFileSync({filename}, {text})")
+def append_text_sync(filename: str, text: str) -> None: ...
+
+@js.inline("require('node:fs').mkdirSync({path}, {{recursive: true, mode: 0o700}})")
+def mkdir_sync(path: str) -> None: ...
+
+@js.inline("require('node:fs').renameSync({source}, {target})")
+def rename_sync(source: str, target: str) -> None: ...
+
+@js.inline("require('node:fs').unlinkSync({path})")
+def unlink_sync(path: str) -> None: ...
+
+@js.inline("require('node:fs').openSync({path}, 'wx', 0o600)")
+def open_exclusive(path: str) -> int: ...
+
+@js.inline("require('node:fs').writeFileSync({fd}, {text})")
+def write_descriptor(fd: int, text: str) -> None: ...
+
+@js.inline("require('node:fs').closeSync({fd})")
+def close_descriptor(fd: int) -> None: ...
+
+@js.inline("require('node:fs').statSync({path})")
+def stat_sync(path: str) -> FileInfo: ...
+
+@js.inline("require('node:fs').existsSync({path})")
+def exists(path: str) -> bool: ...
+
+@js.inline("require('node:fs/promises').realpath({path})")
+async def realpath(path: str) -> str: ...
+
+@js.inline("require('node:fs/promises').readFile({filename}, 'utf8')")
+async def read_text(filename: str) -> str: ...
+
+@js.inline("require('node:fs/promises').writeFile({filename}, {text}, 'utf8')")
+async def write_text(filename: str, text: str) -> None: ...
+
+@js.inline("require('node:fs/promises').stat({path})")
+async def stat(path: str) -> FileInfo: ...
+
+@js.inline("require('node:fs/promises').readdir({path}, {{withFileTypes: true}})")
+async def readdir(path: str) -> list[DirectoryEntry]: ...
+
+@js.inline("require('node:fs/promises').mkdtemp({prefix})")
+async def mkdtemp(prefix: str) -> str: ...
+
+@js.inline("require('node:fs/promises').mkdir({path}, {{recursive: true}})")
+async def mkdir(path: str) -> None: ...
+
+@js.inline("require('node:fs/promises').symlink({source}, {target})")
+async def symlink(source: str, target: str) -> None: ...
+
+@js.inline("require('node:fs/promises').rm({path}, {{recursive: true, force: true}})")
+async def remove_tree(path: str) -> None: ...
+
+@js.inline("require('node:crypto').createHash('sha256').update({text}).digest('hex')")
+def sha256(text: str) -> str: ...
+
+@js.inline("Buffer.byteLength({text})")
+def byte_length(text: str) -> int: ...
+
+@js.inline("process.kill({pid}, {signal})")
+def kill(pid: int, signal: str | int) -> None: ...
+
+@js.inline("({error}.code ?? '')")
+def error_code(error: Exception) -> str: ...
+
+@js.inline("setTimeout({callback}, {milliseconds})")
+def set_timeout(callback: Callable[[], None], milliseconds: int) -> Timer: ...
+
+@js.inline("clearTimeout({timer})")
+def clear_timeout(timer: Timer | None) -> None: ...
+
+@js.inline("(milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))({milliseconds})")
+async def sleep(milliseconds: int) -> None: ...
+
+@js.inline("Date.now()")
+def now() -> int: ...
+
+@js.inline("process.stdout.write({text})")
+def write_stdout(text: str) -> None: ...
+
+@js.inline("(process.exitCode = {code})")
+def set_exit_code(code: int) -> None: ...
+
+@js.inline("__dirname")
+def bundle_directory() -> str: ...
+
+
+@js.inline("require('node:util').promisify(require('node:child_process').execFile)({command}, {args}, {{cwd: {directory}, maxBuffer: {limit}, timeout: {timeout}}}).then(result => result.stdout)")
+async def execute(command: str, args: list[str], directory: str,
+                  limit: int, timeout: int) -> str: ...
+
+
+@js.native
+class ChildProcess:
+    def __init__(self):
+        self.pid: int = 0
+        self.exitCode: int | None = None
+    def kill(self, signal: str = "SIGTERM") -> None: ...
+
+
+@js.native
+class LineReader:
+    def close(self) -> None: ...
+
+
+@js.inline("require('node:child_process').spawn({command}, {args}, {{cwd: {directory}, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32'}})")
+def spawn(command: str, args: list[str], directory: str) -> ChildProcess: ...
+
+@js.inline("{child}.stdin.on('error', () => {{}}).end({text})")
+def send_stdin(child: ChildProcess, text: str) -> None: ...
+
+@js.inline("((child, callback) => child.stderr.on('data', data => callback(data.toString())))({child}, {callback})")
+def on_stderr(child: ChildProcess, callback: Callable[[str], None]) -> None: ...
+
+@js.inline("((child, callback) => child.stdout.on('data', data => callback(data.length)))({child}, {callback})")
+def on_stdout_size(child: ChildProcess, callback: Callable[[int], None]) -> None: ...
+
+@js.inline("{child}.on('error', {callback})")
+def on_error(child: ChildProcess, callback: Callable[[Exception], None]) -> None: ...
+
+@js.inline("((child, callback) => child.on('close', code => callback(code ?? -1)))({child}, {callback})")
+def on_close(child: ChildProcess, callback: Callable[[int], None]) -> None: ...
+
+@js.inline("(child => new Promise(resolve => child.once('close', resolve)))({child})")
+async def wait_closed(child: ChildProcess) -> None: ...
+
+@js.inline("require('node:readline').createInterface({{input: {child}.stdout}}).on('line', {callback})")
+def read_lines(child: ChildProcess, callback: Callable[[str], None]) -> LineReader: ...
+
+@js.inline("require('node:readline').createInterface({{input: process.stdin}}).on('line', {callback}).on('close', {closed})")
+def read_stdin_lines(callback: Callable[[str], None], closed: Callable[[], Awaitable[None]]) -> LineReader: ...
+
+@js.inline("process.on({signal}, {callback})")
+def on_signal(signal: str, callback: Callable[[], Awaitable[None]]) -> None: ...
+
+@js.inline("((callback, end) => process.stdin.on('data', data => callback(data.toString())).on('end', end))({data}, {end})")
+def read_stdin(data: Callable[[str], None], end: Callable[[], None]) -> None: ...
+
+@js.inline("setInterval({callback}, {milliseconds})")
+def set_interval(callback: Callable[[], None], milliseconds: int) -> Timer: ...
+
+
+@js.inline("{task}.catch({callback})")
+def catch_task(task: object, callback: Callable[[Exception], None]) -> None: ...

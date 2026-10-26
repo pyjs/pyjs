@@ -1,5 +1,6 @@
 """Desktop packaging contracts, without downloading an Electron runtime."""
 import json
+import sys
 
 import pytest
 
@@ -291,3 +292,97 @@ def test_missing_npm_runtime_is_not_cached(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="host runtime"):
         electron.managed_runtime()
     assert list((tmp_path / "pyjs/electron").iterdir()) == []
+
+
+def test_python_host_and_preload_are_compiled_not_copied(tmp_path, runtime, monkeypatch):
+    host = tmp_path / "typed_desktop_host"
+    host.mkdir()
+    (host / "__init__.py").write_text("")
+    (host / "main.py").write_text('''from pyjs import js
+from pyjs.electron import HostContext
+@js
+async def main(context: HostContext):
+    context.app.setName("Example")
+''')
+    (host / "preload.py").write_text('''from pyjs import js
+from pyjs.electron import expose
+@js.dictionary
+class Bridge:
+    def __init__(self, title: str):
+        self.title = title
+@js
+def main():
+    expose("example", Bridge("Example"))
+''')
+    (host / "unused.txt").write_text("not a runtime dependency")
+    monkeypatch.syspath_prepend(tmp_path)
+    output = tmp_path / "app"
+    try:
+        electron.build_application(output, page, runtime=runtime, host=host)
+        compiled = output / "resources/app/host"
+        assert {p.name for p in compiled.iterdir()} == {
+            "main.cjs", "main.cjs.map", "preload.cjs", "preload.cjs.map",
+        }
+        script = (compiled / "main.cjs").read_text()
+        assert "module.exports = {start: __pyjsEntry__.main}" in script
+        preload = (compiled / "preload.cjs").read_text()
+        assert "module.exports =" not in preload
+        assert "require('electron').contextBridge.exposeInMainWorld" in preload
+        for name in ("main", "preload"):
+            source_map = json.loads((compiled / f"{name}.cjs.map").read_text())
+            assert any(source.endswith(f"{name}.py") for source in source_map["sources"])
+    finally:
+        import sys
+        for name in ("typed_desktop_host.main", "typed_desktop_host.preload", "typed_desktop_host"):
+            sys.modules.pop(name, None)
+
+
+@pytest.fixture
+def python_host(tmp_path, monkeypatch):
+    host = tmp_path / "host_diagnostics"
+    host.mkdir()
+    (host / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(tmp_path)
+    yield host
+    for name in list(sys.modules):
+        if name == host.name or name.startswith(host.name + "."):
+            sys.modules.pop(name, None)
+
+
+def test_python_host_can_reexport_entry(python_host, tmp_path, runtime):
+    (python_host / "main.py").write_text("from .implementation import main\n")
+    (python_host / "implementation.py").write_text('''from pyjs import js
+from pyjs.electron import HostContext
+@js
+def main(context: HostContext):
+    context.app.setName("Example")
+''')
+    output = tmp_path / "app"
+    electron.build_application(output, page, runtime=runtime, host=python_host)
+    source_map = json.loads((output / "resources/app/host/main.cjs.map").read_text())
+    assert any(source.endswith("implementation.py") for source in source_map["sources"])
+
+
+@pytest.mark.parametrize("source,diagnostic", [
+    ("from .missing import main\n", "host_diagnostics.missing"),
+    ('''from pathlib import Path
+from pyjs import js
+@js
+def main():
+    return Path(".")
+''', "Path"),
+])
+def test_python_host_cli_formats_errors(python_host, tmp_path, runtime, monkeypatch,
+                                       capsys, source, diagnostic):
+    import pyjs.cli
+    (python_host / "main.py").write_text(source)
+    monkeypatch.setattr(pyjs.cli, "_build_browser", lambda args, parser, directory: page(directory))
+    output = tmp_path / "app"
+    with pytest.raises(SystemExit) as error:
+        main(["build", "sample", "--target", "electron", "-o", str(output),
+              "--electron-runtime", str(runtime), "--electron-host", str(python_host)])
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert diagnostic in stderr
+    assert "Traceback" not in stderr
+    assert not output.exists()
