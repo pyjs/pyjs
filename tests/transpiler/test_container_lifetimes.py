@@ -1,5 +1,8 @@
+from contextlib import nullcontext
+
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.analysis.lifetime import LifetimeBoundary, refine_lifetimes
 from pyjs.analysis.source import analyze_source
 from pyjs.java.analysis import JVM_ENVIRONMENT
@@ -171,7 +174,12 @@ def main() -> Box:
     ("dict[Box, int]", "source.keys()"),
 ])
 def test_view_and_iterator_sources_propagate_wrapper_containment(environment, annotation, expression):
-    with analyze_source(f'''
+    # JVM's specialized sort currently rejects key callbacks before lowering.
+    # Other supported view/iterator shapes retain the common lifetime contract.
+    boundary = (pytest.raises(CompilationError, match="JVM sorted.*key callbacks")
+                if environment is JVM_ENVIRONMENT and expression.startswith("sorted(")
+                else nullcontext())
+    with boundary, analyze_source(f'''
 class Box:
     pass
 def store(target: list[Box], source: {annotation}) -> None:
