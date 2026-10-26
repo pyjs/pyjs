@@ -143,11 +143,6 @@ available for every released version.
 
 ## Web UI
 
-- For atomic IndexedDB writes, call `transaction_result(transaction, operation)`
-  immediately after creating the transaction. The async operation may await
-  its IndexedDB requests, but not timers or network I/O. It resolves only after
-  commit and aborts on operation failure; request success alone is not a
-  durable-save acknowledgement.
 - Start with components from `pyjs.web.ui` for ordinary application controls
   and layouts instead of hand-crafting equivalent HTML and CSS.
 - Run `pyjs template pyjs_examples.components` to browse current component
@@ -161,6 +156,12 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- For atomic IndexedDB writes, import `transaction_result` and `request_result`
+  from `pyjs.web.indexeddb`. Call `transaction_result(transaction, operation)`
+  immediately after creating the transaction. The async operation may await
+  its IndexedDB requests, but not timers or network I/O. It resolves only after
+  commit and aborts on operation failure; request success alone is not a
+  durable-save acknowledgement.
 
 ## Django applications
 

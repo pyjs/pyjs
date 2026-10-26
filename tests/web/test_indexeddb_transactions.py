@@ -2,7 +2,9 @@
 import pytest
 
 from pyjs import js
+from pyjs.testing.web import wait_for_event
 from pyjs.web.crypto import crypto
+from pyjs.web.dom import DOMException
 from pyjs.web.indexeddb import (
     IDBDatabase,
     IDBTransaction,
@@ -34,6 +36,11 @@ class Operation:
             return 7
         store = self.transaction.objectStore("records")
         await request_result(store.add("first", "one"))
+        if self.mode == "outlived":
+            # Wait for actual auto-commit, not a timing-dependent sleep. The
+            # helper must reject even though this operation eventually returns.
+            await wait_for_event(self.transaction, "complete")
+            return 7
         if self.mode == "raise":
             raise ValueError("operation failed after first write")
         if self.mode == "duplicate":
@@ -64,6 +71,8 @@ async def check_transaction(mode: str, succeeds: bool) -> None:
         assert operation.calls == 1
         if mode == "raise":
             assert message == "operation failed after first write"
+        if mode == "outlived":
+            assert message == "IndexedDB operation outlived its transaction"
         # A committed transaction can no longer be aborted. This assertion
         # fails if the helper resolves as soon as the last request succeeds.
         if succeeds:
@@ -79,7 +88,8 @@ async def check_transaction(mode: str, succeeds: bool) -> None:
     try:
         store = reopened.transaction("records").objectStore("records")
         count = await request_result(store.count())
-        assert count == (2 if succeeds and mode != "empty" else 0)
+        expected = 1 if mode == "outlived" else (2 if succeeds and mode != "empty" else 0)
+        assert count == expected
     finally:
         reopened.close()
         await request_result(indexedDB.deleteDatabase(name))
@@ -108,3 +118,29 @@ async def test_request_failure_rolls_back_prior_writes():
 @js
 async def test_abort_after_successful_request_rejects_operation_result():
     await check_transaction("abort", False)
+
+
+@js
+async def test_outlived_operation_reports_failure_without_claiming_rollback():
+    await check_transaction("outlived", False)
+
+
+@js
+async def test_finished_transaction_rejects_before_empty_operation_runs():
+    name = "finished-transaction-" + crypto.randomUUID()
+    database = await open_database(name, 1, create_store)
+    try:
+        transaction = database.transaction("records", "readwrite")
+        await wait_for_event(transaction, "complete")
+        operation = Operation(transaction, "empty")
+        failed = False
+        try:
+            await transaction_result(transaction, operation.run)
+        except DOMException as error:
+            assert error.name == "InvalidStateError"
+            failed = True
+        assert failed
+        assert operation.calls == 0
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(name))

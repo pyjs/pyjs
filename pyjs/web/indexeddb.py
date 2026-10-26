@@ -490,34 +490,18 @@ async def request_result[T](request: IDBRequest[T]) -> T: ...
 async def request_values(request: IDBRequest[list[object]]) -> list[object]: ...
 
 
-@js.inline("""((transaction, operation) => new Promise((resolve, reject) => {{
-    let result, ready = false, settled = false;
-    const finish = (success, value) => {{
-        if (settled) return;
-        settled = true;
-        transaction.removeEventListener('complete', complete);
-        transaction.removeEventListener('abort', abort);
-        if (success) resolve(value); else reject(value);
-    }};
-    const complete = () => finish(ready, ready ? result : new Error('IndexedDB operation outlived its transaction'));
-    const abort = () => finish(false, transaction.error ?? new Error('IndexedDB transaction aborted'));
-    transaction.addEventListener('complete', complete, {{once: true}});
-    transaction.addEventListener('abort', abort, {{once: true}});
-    const fail = error => {{
-        try {{ transaction.abort(); }} catch {{}}
-        finish(false, error);
-    }};
-    try {{
-        Promise.resolve(operation()).then(value => {{result = value; ready = true;}}, fail);
-    }} catch (error) {{ fail(error); }}
-}}))({transaction}, {operation})""")
-async def transaction_result[T](transaction: IDBTransaction,
-                                operation: Callable[[], Awaitable[T]]) -> T:
+@js.inline(
+    "((transaction, operation) => new Promise((resolve, reject) => {{\n    // objectStore checks finished state without issuing a request. An empty\n    // versionchange transaction may have no stores yet (NotFoundError).\n    try {{ transaction.objectStore(transaction.objectStoreNames[0] ?? ''); }}\n    catch (error) {{ if (error.name !== 'NotFoundError') throw error; }}\n    let result, ready = false, settled = false;\n    const finish = (success, value) => {{\n        if (settled) return;\n        settled = true;\n        transaction.removeEventListener('complete', complete);\n        transaction.removeEventListener('abort', abort);\n        if (success) resolve(value); else reject(value);\n    }};\n    const complete = () => finish(ready, ready ? result : new Error('IndexedDB operation outlived its transaction'));\n    const abort = () => finish(false, transaction.error ?? new Error('IndexedDB transaction aborted'));\n    transaction.addEventListener('complete', complete, {{once: true}});\n    transaction.addEventListener('abort', abort, {{once: true}});\n    const fail = error => {{\n        try {{ transaction.abort(); }} catch {{}}\n        finish(false, error);\n    }};\n    try {{\n        Promise.resolve(operation()).then(value => {{result = value; ready = true;}}, fail);\n    }} catch (error) {{ fail(error); }}\n}}))({transaction}, {operation})"
+)
+async def transaction_result[T](
+    transaction: IDBTransaction, operation: Callable[[], Awaitable[T]]
+) -> T:
     """Run an operation and await transaction completion, aborting on failure.
 
     Call immediately after creating the transaction, before yielding. The
     operation may await requests in this transaction, but not timers, network
     I/O, or other work that lets IndexedDB auto-commit. Listeners are installed
     before the operation runs. Request success alone is not commit success.
+    An already-finished transaction rejects without invoking the operation.
     """
     ...
