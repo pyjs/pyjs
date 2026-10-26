@@ -22,6 +22,8 @@ class BuildVersion:
 class SharedPreferencesEditor:
     def commit(self) -> bool: ...
 
+    def clear(self) -> SharedPreferencesEditor: ...
+
     @jvm.native(
         "android/content/SharedPreferences$Editor",
         name="putString",
