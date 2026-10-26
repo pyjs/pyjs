@@ -6,6 +6,7 @@ from tests.backend_semantics import (
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
+    LOCAL_COLLECTION_CONTRACT,
     NARROWED_METHOD_CONTRACT,
     RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
@@ -13,7 +14,7 @@ from tests.backend_semantics import (
 )
 
 
-@pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT], ids=["truth", "split", "pop"])
+@pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT, LOCAL_COLLECTION_CONTRACT], ids=["truth", "split", "pop", "local-collections"])
 def test_client_data_contract(contract, tmp_path):
     result = LLVM().assert_matches_python(contract.source, directory=tmp_path)
     assert result.native.returncode == 0, contract.failure(result.native.returncode)

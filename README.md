@@ -1022,8 +1022,18 @@ with `pyjs template`.
   database work should run on a worker, not the UI thread.
   Cursor rows are limited by Android's `CursorWindow`; use a statement's
   `simpleQueryForString()` for large scalar text instead of a cursor row.
-- JVM `list(existing_list)` copies the list storage while retaining shared
-  references to its items. Empty copies can grow normally. Source and result
+- JVM `sorted()` supports lists, strings, sets and dictionary keys with stable
+  ordering, including `reverse=True`. It uses only `<`, leaves the input
+  unchanged, and bounds comparisons to O(n log n). Key callbacks, other
+  iterable kinds and fixed-width item representations remain explicit
+  compilation boundaries.
+- JVM reference-valued sets support literals, empty construction, iteration,
+  membership, truth, length, `add`, `discard`, `clear` and shallow `copy`.
+  Numeric members, custom equality/hash, set algebra and iterable construction
+  remain unsupported; unsupported operations fail during compilation.
+- JVM `list(existing_list)` and `existing_list.copy()` copy list storage while
+  retaining shared references to its items. Empty copies can grow normally.
+  Source and result
   must have matching item storage and representation; converting other
   iterable kinds or item layouts remains unsupported.
 - JVM custom Python exception classes retain inherited catches, typed fields,

@@ -5,6 +5,7 @@ from tests.backend_semantics import (
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
+    LOCAL_COLLECTION_CONTRACT,
     NARROWED_METHOD_CONTRACT,
     RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
@@ -13,7 +14,7 @@ from tests.backend_semantics import (
 from tests.semantics.helpers import assert_semantics
 
 
-@pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT], ids=["truth", "split", "pop"])
+@pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT, LOCAL_COLLECTION_CONTRACT], ids=["truth", "split", "pop", "local-collections"])
 def test_client_data_contract(contract):
     assert_semantics(contract.print_source + "\nmain()\n")
 

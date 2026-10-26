@@ -3802,6 +3802,34 @@ RECEIVER_DOMAIN_CONTRACTS = {
 }
 
 
+LOCAL_COLLECTION_CONTRACT = _contract(
+    "from pyjs import js",
+    "local_collection_result",
+    '''
+    values = ["z", "a", "a", "雪", "😀", "\\ue000"]
+    ordered = sorted(values)
+    descending = sorted(values, reverse=True)
+    copied = values.copy()
+    copied.append("new")
+    seen: set[str] = set()
+    seen.add("a")
+    seen.add("z")
+    seen.add("a")
+    retained = seen.copy()
+    seen.discard("a")
+    seen.discard("missing")
+    seen.clear()
+    ''',
+    (
+        ("sort uses Python Unicode order", "ordered[0] != 'a' or ordered[5] != '😀'"),
+        ("reverse retains all duplicates", "descending[0] != '😀' or descending[5] != 'a'"),
+        ("sort and copy leave input unchanged", "values[0] != 'z' or len(values) != 6 or len(copied) != 7"),
+        ("sets retain unique items and copy independently", "len(retained) != 2 or 'a' not in retained"),
+        ("cleared set is false", "bool(seen)"),
+    ),
+)
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js

@@ -15,6 +15,11 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- JVM programs support stable `sorted()` over ordinary lists, strings and hash
+  keys, shallow `list.copy()`, and basic reference-valued sets. Sorting leaves
+  source containers unchanged; unsupported callbacks and represented items
+  receive explicit compilation errors.
+
 - Dictionary `pop(key, default)` accepts a fallback outside the stored value
   type, matching `get()`, including `None` for non-nullable reference values.
 
