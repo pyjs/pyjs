@@ -78,6 +78,13 @@ entry `async main(context)` and optional `preload.py` entry `main()` into
 self-contained CommonJS bundles. Use typed `pyjs.node` and `pyjs.electron`
 bindings; keep Node filesystem/process code out of sandboxed preloads. Legacy
 JavaScript hosts with `main.cjs` exporting `async start(context)` remain supported.
+For server-backed hosts, `pyjs.electron.session` provides partitioned sessions,
+protocol handlers and Chromium fetch. Use the same partition in
+`WebPreferences`; opt into `bypassCustomProtocolHandlers` only when forwarding
+an intercepted request. `pyjs.electron.window` provides native menus and URL
+guards. Its `create_window` leaves navigation policy to the caller, unlike
+the blanket blocker in `context.createWindow`; install guards before loading
+content. `allow_requests` replaces the session's previous request filter.
 Build-time compilation preserves Python source maps and needs no Python at launch.
 `pyjs build my_service:main --target node -o dist/service.cjs` builds a standalone
 Node program. Mark Python-authored Node tests with `pytest.mark.pyjs_node` and
