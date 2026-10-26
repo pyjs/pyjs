@@ -10,9 +10,19 @@ class Event:
 
 
 @js.native
+class CommandLine:
+    def hasSwitch(self, name: str) -> bool: ...
+
+
+@js.native
 class App:
+    def __init__(self):
+        self.commandLine: CommandLine = CommandLine()
     def setName(self, name: str) -> None: ...
+    def setAppUserModelId(self, name: str) -> None: ...
     def setDesktopName(self, name: str) -> None: ...
+    def getPath(self, name: str) -> str: ...
+    def setPath(self, name: str, path: str) -> None: ...
     def quit(self) -> None: ...
     def on(self, name: str, callback: Callable[[Event], None]) -> None: ...
 
@@ -44,20 +54,33 @@ class IpcEvent:
 
 @js.dictionary
 class WebPreferences:
-    def __init__(self, preload: str, partition: str = ""):
-        self.preload = preload
-        if partition:
+    def __init__(self, preload: str | None = None, partition: str | None = None,
+                 sandbox: bool = True, contextIsolation: bool = True,
+                 nodeIntegration: bool = False, webSecurity: bool = True,
+                 webviewTag: bool = False):
+        if preload is not None:
+            self.preload = preload
+        if partition is not None:
             self.partition = partition
+        self.sandbox = sandbox
+        self.contextIsolation = contextIsolation
+        self.nodeIntegration = nodeIntegration
+        self.webSecurity = webSecurity
+        self.webviewTag = webviewTag
 
 
 @js.dictionary
 class WindowOptions:
     def __init__(self, title: str, webPreferences: WebPreferences | None = None,
-                 width: int = 1280, height: int = 900):
+                 width: int = 1280, height: int = 900, minWidth: int = 0,
+                 minHeight: int = 0, backgroundColor: str = "#fff"):
         self.title = title
         self.width = width
         self.height = height
         self.webPreferences = webPreferences
+        self.minWidth = minWidth
+        self.minHeight = minHeight
+        self.backgroundColor = backgroundColor
 
 
 @js.native
@@ -65,6 +88,7 @@ class BrowserWindow:
     def __init__(self):
         self.webContents: WebContents = WebContents()
     def isDestroyed(self) -> bool: ...
+    def focus(self) -> None: ...
     def destroy(self) -> None: ...
     async def loadURL(self, url: str) -> None: ...
     async def loadFile(self, filename: str) -> None: ...
