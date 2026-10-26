@@ -11,10 +11,6 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
-- Android clients can use typed SQLite database, cursor and prepared-statement
-  APIs for transactional local storage, with parameter binding and catchable
-  native database exceptions.
-
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
@@ -34,6 +30,9 @@
   merger, retaining library components, provider metadata and permissions.
   Explicit application overlays resolve conflicts without dropping library
   declarations. SDK incompatibilities and unresolved placeholders fail early.
+- Android clients can use typed SQLite database, cursor and prepared-statement
+  APIs for transactional local storage, with parameter binding and catchable
+  native database exceptions.
 - Android shared-preference editors expose `clear()`, retaining native
   deferred commit and chaining semantics for local-storage cleanup.
 - JVM native function bindings can call static interface methods with

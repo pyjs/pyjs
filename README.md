@@ -1014,6 +1014,8 @@ with `pyjs template`.
   `finally` block. Call `setTransactionSuccessful()` only after all operations
   succeed. These APIs block and transactions belong to one thread; application
   database work should run on a worker, not the UI thread.
+  Cursor rows are limited by Android's `CursorWindow`; use a statement's
+  `simpleQueryForString()` for large scalar text instead of a cursor row.
 - JVM `list(existing_list)` copies the list storage while retaining shared
   references to its items. Empty copies can grow normally. Source and result
   must have matching item storage and representation; converting other

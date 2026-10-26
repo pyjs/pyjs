@@ -2,6 +2,8 @@
 
 These are native, blocking APIs. Use a worker for application I/O and keep a
 transaction on one thread. Closing a database must not race its active users.
+Cursor rows are bounded by Android's CursorWindow; simpleQueryForString reads
+large scalar text without that per-row window limit.
 """
 
 from pyjs import jvm
