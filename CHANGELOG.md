@@ -15,6 +15,9 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- Dictionary `pop(key, default)` accepts a fallback outside the stored value
+  type, matching `get()`, including `None` for non-nullable reference values.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and

@@ -3819,12 +3819,17 @@ DICTIONARY_POP_CONTRACT = _contract(
     first = values.pop("first", fallback(values, events))
     last = values.pop("last")
     missing = values.pop("missing", 9)
+    strings = {"present": "value"}
+    optional_present = strings.pop("present", None)
+    optional_missing = strings.pop("missing", None)
     ''',
     (
         ("default is evaluated eagerly before removal", "first != 4 or events[0] != 2"),
         ("present values are returned and removed", "last != 7 or len(values) != 0"),
         ("absent keys return the explicit default", "missing != 9"),
         ("copy retains entries independently of removals", "len(copied) != 2 or copied['first'] != 3"),
+        ("nullable fallback does not replace a present value", "optional_present != 'value'"),
+        ("nullable fallback is valid for a non-nullable mapping", "optional_missing is not None"),
     ),
 )
 
