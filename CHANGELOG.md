@@ -11,6 +11,11 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- Pydantic client models support `model_dump_json()` and
+  `model_validate_json(text)` in JavaScript and JVM programs, reusing typed
+  client schemas for local persistence. JVM codecs cover the existing finite,
+  acyclic API schema subset; full Pydantic validation stays on the server.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and

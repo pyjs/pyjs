@@ -620,6 +620,7 @@ class JVMEmitter:
             (function.cls, function.name): function
             for function in functions
             if function.cls in self.classes and function.name != "__init__"
+            and not self.model_json_factory(function)
         }
         self.virtual_methods = {}
         for (owner, name), implementation in methods.items():
@@ -734,7 +735,7 @@ class JVMEmitter:
             )
             for parameter in self.application_parameters(function)
         ]
-        if function.cls in self.classes:
+        if function.cls in self.classes and not self.model_json_factory(function):
             parameters.insert(0, ("self", self.class_descriptor(function.cls)))
         self.prepare_locals(function, parameters)
         self.return_type = self.function_return_type(function)
@@ -789,7 +790,7 @@ class JVMEmitter:
         return Method(
             # Reachable module functions live on the root class, but generated
             # application classes call them as siblings rather than JVM nestmates.
-            0x0001 if function.cls in self.classes else 0x0009,
+            0x0001 if function.cls in self.classes and not self.model_json_factory(function) else 0x0009,
             self.function_name(function),
             self.descriptor(function),
             self.code.render(),
@@ -1853,6 +1854,14 @@ class JVMEmitter:
             self.code.emit(0xB8, reference.to_bytes(2, "big"))
             return "J"
         if isinstance(node.func, ast.Attribute) and isinstance(target, Function):
+            if self.model_json_factory(target):
+                if not isinstance(getattr(node.func.value, "obj", None), Class):
+                    raise JVMUnsupported("JVM model JSON decoding requires a statically named model class", node)
+                self.application_arguments(node, target)
+                reference = self.class_file.method_reference(
+                    self.function_owner(target), target.name, self.descriptor(target))
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                return self.function_return_type(target)
             if target.is_classmethod:
                 raise JVMUnsupported("JVM Python classmethod calls are not implemented", node)
             is_super = self.is_super_call(node.func.value)
@@ -5309,6 +5318,11 @@ class JVMEmitter:
         code = code or self.code
         class_file = class_file or self.class_file
         code.throw_new(class_file, class_name)
+
+    @staticmethod
+    def model_json_factory(function: Function) -> bool:
+        from .models import is_json_factory
+        return is_json_factory(function)
 
     def descriptor(self, function: Function) -> str:
         parameters = "".join(

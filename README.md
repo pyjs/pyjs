@@ -850,9 +850,14 @@ with `pyjs template`.
   coercion and `Field` constraints remain server-side, not JVM validators.
   Custom validators/serializers, initialization hooks, aliases, generic models,
   mutable defaults/factories, frozen fields, and dynamic extras are rejected.
-  Field access is supported; model equality, dumping, and JSON validation are
-  not yet implemented. Typed API codecs are separate from Pydantic's host
-  runtime.
+  Field access, `instance.model_dump_json()` and
+  `Model.model_validate_json(text)` are supported. JSON methods use the typed
+  API codec: finite scalars, string literals, nullable values, lists,
+  string-key dictionaries, and acyclic models. They validate structure, not
+  Pydantic coercion or `Field` constraints. Nested fields serialize their
+  declared model shape, excluding subclass-only fields. Custom JSON method
+  overrides and optional Pydantic method arguments are not supported.
+  Model equality and dictionary dumping are not yet implemented.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
