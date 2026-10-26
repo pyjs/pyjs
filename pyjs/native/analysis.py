@@ -233,6 +233,7 @@ class NativeInferenceVisitor(IRInferenceVisitor):
         return InferenceVisitor.visit_IfExp(self, node)
 
     def prepare_conditional_values(self, body, orelse):
+        super().prepare_conditional_values(body, orelse)
         dom_types.join_values(self, (body, orelse))
 
     def apply_literal_type(self, value, expected_type):

@@ -11,6 +11,10 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- Empty list and dictionary branches inherit an unambiguous sibling's storage
+  type before conditional lowering, including nested fresh empty lists and
+  fixed-width items. Existing container aliases keep their storage and identity.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
