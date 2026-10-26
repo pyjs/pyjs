@@ -7,6 +7,10 @@
   handling, and native menus. Window preferences default to sandboxing and
   isolation; hosts can retain a server origin without exposing Node to pages.
 
+- IndexedDB `transaction_result()` waits for the transaction to commit,
+  propagates aborts and request failures, and rolls back when the supplied
+  operation fails. This supports atomic local saves across related records.
+
 - Write Electron hosts and sandboxed preloads in Python, compiled with source
   maps during application builds. Typed Node/Electron bindings support host
   services without shipping Python at runtime. Standalone `--target node`
