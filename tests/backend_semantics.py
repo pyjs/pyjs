@@ -6171,6 +6171,8 @@ LIST_REVERSE_CONTRACT = _contract(
     values = [1, 2, 3, 4, 5]
     alias = values
     result = values.reverse()
+    even = [1, 2, 3, 4]
+    even.reverse()
     empty: list[int] = []
     empty.reverse()
     empty.append(42)
@@ -6188,7 +6190,8 @@ LIST_REVERSE_CONTRACT = _contract(
     nested[1].append(3)
     ''',
     (("returns None", "result is not None"),
-     ("reverses in place", "alias is not values or alias[0] != 5 or alias[4] != 1"),
+     ("reverses in place", "alias is not values or alias[0] != 5 or alias[1] != 4 or alias[2] != 3 or alias[3] != 2 or alias[4] != 1"),
+     ("reverses even length", "even[0] != 4 or even[1] != 3 or even[2] != 2 or even[3] != 1"),
      ("empty remains growable", "len(empty) != 1 or empty[0] != 42"),
      ("one item unchanged", "singleton[0] != 7"),
      ("booleans", "pair[0] or not pair[1]"),

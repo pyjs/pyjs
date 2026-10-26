@@ -18,12 +18,14 @@ def test_reverse_twice_preserves_storage_and_allows_growth(tmp_path, kind, value
         def main() -> int:
             values: list[{kind}] = {values}
             first = values[0]
-            last = values[-1]
             count = len(values)
+            original: list[{kind}] = {values}
             values.reverse()
-            assert values[0] == last and values[-1] == first
+            for index in range(count):
+                assert values[index] == original[count - index - 1]
             values.reverse()
-            assert values[0] == first and values[-1] == last
+            for index in range(count):
+                assert values[index] == original[index]
             values.append(first)
             assert len(values) == count + 1 and values[-1] == first
             return 42

@@ -11,9 +11,6 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
-- JVM lists support in-place `reverse()`, retaining aliases, element identities
-  and fixed-width numeric representations without allocating a replacement list.
-
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
@@ -92,6 +89,8 @@
   under negation while preserving boolean length results as zero or one.
   Explicit-separator string splitting supports bounded splits
   and preserves trailing empty fields; whitespace splitting remains unsupported.
+- JVM lists support in-place `reverse()`, retaining aliases, element identities
+  and fixed-width numeric representations without allocating a replacement list.
 
 - JVM nullable integers and floats retain `None` through calls, fields, and
   collections, with exact numeric equality and Python-compatible truth tests.
