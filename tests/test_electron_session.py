@@ -25,6 +25,14 @@ const session = {
   setPermissionRequestHandler: callback => recorded.permission = callback,
   webRequest: {onBeforeRequest: callback => recorded.filter = callback},
   fetch: async (request, options) => {
+    if (request.url.endsWith('/redirect')) {
+      assert.deepEqual(options, recorded.defaultFetch ? undefined : {bypassCustomProtocolHandlers:false});
+      recorded.defaultFetch = true;
+      const effective = new Request(request, options);
+      assert.equal(effective.redirect, 'error');
+      assert.equal(effective.credentials, 'omit');
+      return new Response('ok');
+    }
     assert.equal(request.headers.get('X-Desktop'), '1');
     assert.equal(await request.text(), 'original');
     assert.deepEqual(options, {credentials:'include', redirect:'follow', bypassCustomProtocolHandlers:true});
@@ -74,6 +82,18 @@ const context = {app: {
       assert.equal(prevented, !allowed);
     }
   }
+  let decisions = 0;
+  assert.throws(() => recorded.filter({url:'https://raising.test'}, decision => {
+    decisions++;
+    assert.deepEqual(decision, {cancel:true});
+  }), /policy failed/);
+  assert.equal(decisions, 1);
+  for (const event of ['will-navigate', 'will-redirect']) {
+    let prevented = false;
+    assert.throws(() => events[event]({preventDefault: () => prevented = true},
+      'https://raising.test'), /policy failed/);
+    assert.equal(prevented, true);
+  }
   let prevented = false;
   events['will-attach-webview']({preventDefault: () => prevented = true});
   assert.equal(prevented, true);
@@ -93,5 +113,7 @@ const context = {app: {
         "allowed 1 https://example.test", "allowed 2 https://example.test",
         "allowed 3 https://example.test", "allowed 4 https://other.test",
         "allowed 5 https://other.test", "allowed 6 https://other.test",
+        "allowed 7 https://raising.test", "allowed 8 https://raising.test",
+        "allowed 9 https://raising.test",
         "popup https://example.test https://other.test", "account https://example.test",
     ]

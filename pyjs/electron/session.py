@@ -18,10 +18,12 @@ class Protocol:
 
 @js.dictionary
 class FetchOptions:
-    def __init__(self, credentials: str = "same-origin", redirect: str = "follow",
+    def __init__(self, credentials: str | None = None, redirect: str | None = None,
                  bypassCustomProtocolHandlers: bool = False):
-        self.credentials = credentials
-        self.redirect = redirect
+        if credentials is not None:
+            self.credentials = credentials
+        if redirect is not None:
+            self.redirect = redirect
         self.bypassCustomProtocolHandlers = bypassCustomProtocolHandlers
 
 
@@ -30,7 +32,7 @@ class Session:
     def __init__(self):
         self.protocol: Protocol = Protocol()
 
-    async def fetch(self, request: Request | str, options: FetchOptions) -> Response: ...
+    async def fetch(self, request: Request | str, options: FetchOptions | None = None) -> Response: ...
 
 
 @js.inline("require('electron').session.fromPartition({partition})")
@@ -43,11 +45,12 @@ def deny_permissions(session: Session) -> None:
     ...
 
 
-@js.inline("((session, allowed) => session.webRequest.onBeforeRequest((details, done) => done({{cancel: !allowed(details.url)}})))({session}, {allowed})")
+@js.inline("((session, allowed) => session.webRequest.onBeforeRequest((details, done) => {{ let permit = false; try {{ permit = allowed(details.url); }} finally {{ done({{cancel: !permit}}); }} }}))({session}, {allowed})")
 def allow_requests(session: Session, allowed: Callable[[str], bool]) -> None:
     """Replace the session's request filter with a synchronous URL predicate.
 
     Electron permits one listener for this event; registering again replaces it.
     Redirect hops also pass through the filter. False cancels the request.
+    Predicate exceptions cancel before propagating to the host's error handler.
     """
     ...

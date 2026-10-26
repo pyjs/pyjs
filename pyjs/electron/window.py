@@ -16,9 +16,12 @@ def create_window(options: WindowOptions) -> BrowserWindow:
     ...
 
 
-@js.inline("((contents, allowed) => {{ const guard = (event, url) => {{ if (!allowed(url)) event.preventDefault(); }}; contents.on('will-navigate', guard); contents.on('will-redirect', guard); }})({contents}, {allowed})")
+@js.inline("((contents, allowed) => {{ const guard = (event, url) => {{ let permit = false; try {{ permit = allowed(url); }} finally {{ if (!permit) event.preventDefault(); }} }}; contents.on('will-navigate', guard); contents.on('will-redirect', guard); }})({contents}, {allowed})")
 def allow_navigation(contents: WebContents, allowed: Callable[[str], bool]) -> None:
-    """Guard main-frame user navigations and redirects, not host loadURL calls."""
+    """Guard main-frame user navigations and redirects, not host loadURL calls.
+
+    Predicate exceptions cancel before propagating to the host's error handler.
+    """
     ...
 
 

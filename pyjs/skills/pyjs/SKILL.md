@@ -85,6 +85,8 @@ an intercepted request. `pyjs.electron.window` provides native menus and URL
 guards. Its `create_window` leaves navigation policy to the caller, unlike
 the blanket blocker in `context.createWindow`; install guards before loading
 content. `allow_requests` replaces the session's previous request filter.
+Navigation/request predicate exceptions cancel before propagating to the host's
+error handler. Unset fetch options preserve the input Request's own modes.
 Build-time compilation preserves Python source maps and needs no Python at launch.
 `pyjs build my_service:main --target node -o dist/service.cjs` builds a standalone
 Node program. Mark Python-authored Node tests with `pytest.mark.pyjs_node` and

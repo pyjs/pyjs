@@ -27,6 +27,8 @@ class Controller:
     def allowed(self, url: str) -> bool:
         self.count += 1
         print("allowed", self.count, url)
+        if url == "https://raising.test":
+            raise ValueError("policy failed")
         return url == self.origin
 
     def popup(self, url: str) -> None:
@@ -62,7 +64,10 @@ async def main(context: HostContext) -> None:
     forwarded = Request(request)
     forwarded.headers.set("X-Desktop", "1")
     response = await session.fetch(forwarded, FetchOptions(
-        credentials="include", bypassCustomProtocolHandlers=True))
+        credentials="include", redirect="follow", bypassCustomProtocolHandlers=True))
     assert await response.text() == "accepted"
+    strict = Request("https://example.test/redirect", redirect="error", credentials="omit")
+    await session.fetch(strict, FetchOptions())
+    await session.fetch(strict)
     await window.loadURL("https://example.test")
     window.focus()
