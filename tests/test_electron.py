@@ -291,3 +291,46 @@ def test_missing_npm_runtime_is_not_cached(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="host runtime"):
         electron.managed_runtime()
     assert list((tmp_path / "pyjs/electron").iterdir()) == []
+
+
+def test_python_host_and_preload_are_compiled_not_copied(tmp_path, runtime, monkeypatch):
+    host = tmp_path / "typed_desktop_host"
+    host.mkdir()
+    (host / "__init__.py").write_text("")
+    (host / "main.py").write_text('''from pyjs import js
+from pyjs.electron import HostContext
+@js
+async def main(context: HostContext):
+    context.app.setName("Example")
+''')
+    (host / "preload.py").write_text('''from pyjs import js
+from pyjs.electron import expose
+@js.dictionary
+class Bridge:
+    def __init__(self, title: str):
+        self.title = title
+@js
+def main():
+    expose("example", Bridge("Example"))
+''')
+    (host / "unused.txt").write_text("not a runtime dependency")
+    monkeypatch.syspath_prepend(tmp_path)
+    output = tmp_path / "app"
+    try:
+        electron.build_application(output, page, runtime=runtime, host=host)
+        compiled = output / "resources/app/host"
+        assert {p.name for p in compiled.iterdir()} == {
+            "main.cjs", "main.cjs.map", "preload.cjs", "preload.cjs.map",
+        }
+        script = (compiled / "main.cjs").read_text()
+        assert "module.exports = {start: __pyjsEntry__.main}" in script
+        preload = (compiled / "preload.cjs").read_text()
+        assert "module.exports =" not in preload
+        assert "require('electron').contextBridge.exposeInMainWorld" in preload
+        for name in ("main", "preload"):
+            source_map = json.loads((compiled / f"{name}.cjs.map").read_text())
+            assert any(source.endswith(f"{name}.py") for source in source_map["sources"])
+    finally:
+        import sys
+        for name in ("typed_desktop_host.main", "typed_desktop_host.preload", "typed_desktop_host"):
+            sys.modules.pop(name, None)

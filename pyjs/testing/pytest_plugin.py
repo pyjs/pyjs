@@ -190,7 +190,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("pyjs")
     group.addoption(
         "--pyjs-target",
-        choices=["python", "web", "android"],
+        choices=["python", "web", "android", "node"],
         default=None,
         help="Run ordinary Python tests, web tests, or opt-in Android device tests.",
     )
@@ -323,6 +323,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "pyjs_node: compile and run a zero-argument test in Node")
     config.addinivalue_line(
         "markers",
         "pyjs_web: run a test only with --pyjs-target=web",
@@ -382,6 +383,7 @@ def is_web_test(item: pytest.Item) -> bool:
         and item.get_closest_marker("pyjs_python") is None
         and item.get_closest_marker("pyjs_android") is None
         and item.get_closest_marker("pyjs_android_jvm") is None
+        and item.get_closest_marker("pyjs_node") is None
     )
 
 
@@ -398,6 +400,13 @@ def is_android_jvm_test_for_runtime(item: pytest.Item, runtime: str) -> bool:
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
     target = item.config.getoption("--pyjs-target")
+    node_test = item.get_closest_marker("pyjs_node") is not None
+    if target == "node":
+        if not node_test:
+            pytest.skip("not a Node test")
+        return
+    if node_test:
+        pytest.skip("Node-only test")
     android_test = item.get_closest_marker("pyjs_android") is not None
     android_jvm_test = is_android_jvm_test(item)
     android_runtime = item.config.getoption("--pyjs-android-runtime") or "host"
@@ -427,6 +436,8 @@ def pyjs_artifacts_dir(request: pytest.FixtureRequest) -> Path:
 @pytest.hookimpl(tryfirst=True)
 def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> object | None:
     target = pyfuncitem.config.getoption("--pyjs-target")
+    if target == "node":
+        return run_node_item(pyfuncitem)
     if target == "android" and is_android_jvm_test(pyfuncitem):
         return run_android_jvm_item(pyfuncitem)
     if target != "web":
@@ -1153,3 +1164,39 @@ async def exchange_run_request(
         )
     except TimeoutError as exc:
         raise TimeoutError("Timed out waiting for pyjs daemon response") from exc
+
+
+def run_node_item(item: pytest.Function) -> bool:
+    import inspect
+    import tempfile
+
+    from pyjs.analysis.diagnostics import CompilationError, format_compilation_error
+    from pyjs.tooling.node import Node
+    from pyjs.tooling.node_build import build_node
+
+    if item.cls is not None or inspect.signature(item.obj).parameters or hasattr(item, "callspec"):
+        raise pytest.UsageError("Compiled Node tests must be module-level, zero-argument, and unparametrized")
+    try:
+        with tempfile.TemporaryDirectory(prefix="pyjs-node-test-") as directory:
+            output = build_node(item.obj, Path(directory) / "test.cjs")
+            node = Node()
+            process = subprocess.Popen(
+                [node.executable, "--enable-source-maps", output],
+                env={**os.environ, **node.environment()}, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=os.name != "nt",
+            )
+            try:
+                stdout, stderr = process.communicate(timeout=60)
+            except subprocess.TimeoutExpired:
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+                stdout, stderr = process.communicate()
+                pytest.fail("Node test timed out after 60 seconds\n" + stdout + stderr, pytrace=False)
+            if process.returncode:
+                pytest.fail(stdout + stderr, pytrace=False)
+    except CompilationError as error:
+        pytest.fail(format_compilation_error(error), pytrace=False)
+    return True

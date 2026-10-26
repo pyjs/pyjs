@@ -81,9 +81,10 @@ def build_application(
 ) -> Path:
     """Publish a new application directory only after the whole build succeeds.
 
-    A custom host's main.cjs exports async start({app, BrowserWindow,
-    createWindow, renderer}). It owns preload/service wiring and window creation.
-    Its sibling files are copied verbatim; it must be self-contained at runtime.
+    A Python host package provides main.py with async main(context), and an
+    optional preload.py main(). Both are compiled with source maps. A legacy
+    JavaScript host's main.cjs exports async start(context); that directory is
+    copied verbatim. Hosts own preload/service wiring and window creation.
     """
     output = output.expanduser().absolute()
     if output.exists() or output.is_symlink():
@@ -93,8 +94,8 @@ def build_application(
     output = output.resolve()
     if host is not None:
         host = host.resolve()
-        if not (host / "main.cjs").is_file():
-            raise ValueError("--electron-host must contain main.cjs")
+        if not any((host / name).is_file() for name in ("main.cjs", "main.py")):
+            raise ValueError("--electron-host must contain main.py or main.cjs")
         if output.is_relative_to(host):
             raise ValueError("Electron output cannot be inside the host directory")
     executable, app_path = runtime_layout(platform.system())
@@ -125,7 +126,10 @@ def build_application(
         renderer.rename(app / "renderer")
         start = "const window = createWindow(); await window.loadFile(renderer);"
         if host is not None:
-            shutil.copytree(host, app / "host")
+            if (host / "main.py").is_file():
+                _compile_python_host(host, app / "host")
+            else:
+                shutil.copytree(host, app / "host")
             start = "await require('./host/main.cjs').start({app, BrowserWindow, createWindow, renderer});"
         (app / "main.cjs").write_text(
             MAIN.replace("__HTML__", json.dumps(html.name)).replace("__START__", start), encoding="utf-8",
@@ -139,3 +143,46 @@ def build_application(
             raise FileExistsError(f"Refusing to overwrite {output}; choose a new output directory")
         application.rename(output)
     return output / executable
+
+
+def _compile_python_host(host: Path, output: Path) -> None:
+    """Compile a Python package's main and optional sandboxed preload entries."""
+    import sys
+
+    from pyjs.tooling.node_build import build_node, resolve_entry
+
+    # Resolve the package root rather than copying source modules into the app.
+    parts = [host.name]
+    parent = host.parent
+    while (parent / "__init__.py").is_file():
+        parts.insert(0, parent.name)
+        parent = parent.parent
+    path = str(parent)
+    sys.path.insert(0, path)
+    try:
+        module = ".".join(parts)
+        entry = resolve_entry(module + ".main")
+        import inspect
+        if Path(inspect.getfile(entry)).resolve() != host / "main.py":
+            raise ValueError("Electron host package name is already imported from another directory")
+        build_node(entry, output / "main.cjs",
+                   export_name="start", executable=False)
+        if (host / "preload.py").is_file():
+            # Sandboxed preloads cannot import other files. Bundle all Python
+            # dependencies and invoke the entry without CommonJS module globals.
+            from pyjs.javascript.transpiler import bundle_with_source_map
+            preload = resolve_entry(module + ".preload")
+            if Path(inspect.getfile(preload)).resolve() != host / "preload.py":
+                raise ValueError("Electron preload package name is already imported from another directory")
+            generated, _ = bundle_with_source_map(
+                preload, include_main=True,
+                include_css=False, filename="preload.cjs",
+            )
+            if generated.npm_imports:
+                raise ValueError("Sandboxed preloads cannot use browser npm imports")
+            (output / "preload.cjs").write_text(
+                generated.with_source_mapping_url("preload.cjs.map"), encoding="utf-8",
+            )
+            (output / "preload.cjs.map").write_text(generated.source_map.to_json(), encoding="utf-8")
+    finally:
+        sys.path.remove(path)

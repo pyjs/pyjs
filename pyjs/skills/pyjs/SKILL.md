@@ -73,8 +73,17 @@ For a desktop UI, use `pyjs build my_app:main --target electron -o dist/my-app`
 with a new output directory. This packages the hydrated page and Python source
 maps with stock Electron; it needs no Python or HTTP server at runtime.
 `--electron-runtime PATH` reuses a host-platform distribution offline.
-`--electron-host DIRECTORY` copies a trusted, self-contained Node host whose
-`main.cjs` exports `async start({app, BrowserWindow, createWindow, renderer})`.
+`--electron-host DIRECTORY` compiles an importable Python package's `main.py`
+entry `async main(context)` and optional `preload.py` entry `main()` into
+self-contained CommonJS bundles. Use typed `pyjs.node` and `pyjs.electron`
+bindings; keep Node filesystem/process code out of sandboxed preloads. Legacy
+JavaScript hosts with `main.cjs` exporting `async start(context)` remain supported.
+Build-time compilation preserves Python source maps and needs no Python at launch.
+`pyjs build my_service:main --target node -o dist/service.cjs` builds a standalone
+Node program. Mark Python-authored Node tests with `pytest.mark.pyjs_node` and
+`@js`, then run `pytest --pyjs-target=node`. Compiled Node tests are zero-argument
+module-level functions; pytest fixtures and parametrized arguments are not
+transported, but host-side autouse fixtures can prepare resources.
 Keep UI state and DOM work in the renderer and make service IPC coarse-grained.
 Existing HTTP backends are not translated automatically. The default renderer
 has no Node globals, but its `file://` page can read accessible local files;

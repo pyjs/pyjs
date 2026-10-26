@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Write Electron hosts and sandboxed preloads in Python, compiled with source
+  maps during application builds. Typed Node/Electron bindings support host
+  services without shipping Python at runtime. Standalone `--target node`
+  builds and `pytest --pyjs-target=node` run Python-authored services and tests
+  in Node, while existing CommonJS hosts remain supported.
+
 - Android application builds merge AAR manifests with Android's official
   merger, retaining library components, provider metadata and permissions.
   Explicit application overlays resolve conflicts without dropping library

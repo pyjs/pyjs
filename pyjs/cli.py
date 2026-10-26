@@ -148,8 +148,8 @@ def parser() -> argparse.ArgumentParser:
     subcommands = command.add_subparsers(dest="command")
 
     build = subcommands.add_parser("build", help="build a browser application or native executable")
-    build.add_argument("--target", choices=("js", "native", "electron"), default="js")
-    build.add_argument("-o", "--output", type=Path, help="native executable or Electron application directory")
+    build.add_argument("--target", choices=("js", "native", "electron", "node"), default="js")
+    build.add_argument("-o", "--output", type=Path, help="native executable, Node .cjs file, or Electron application directory")
     build.add_argument(
         "module",
         help="module (or native Python file), optionally followed by :function",
@@ -163,7 +163,7 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--args", help="JSON list of arguments passed to the entry point")
 
     build.add_argument("--electron-runtime", type=Path, help="existing Electron distribution directory")
-    build.add_argument("--electron-host", type=Path, help="desktop host directory containing main.cjs")
+    build.add_argument("--electron-host", type=Path, help="desktop host package containing main.py (or a self-contained main.cjs host)")
 
     serve = subcommands.add_parser("serve", help="serve a PyJS web application")
     serve.add_argument(
@@ -749,6 +749,21 @@ def _benchmark_javascript(
 def _build(args, command_parser: argparse.ArgumentParser) -> int:
     if args.target != "electron" and (args.electron_runtime or args.electron_host):
         command_parser.error("--electron-runtime and --electron-host require --target electron")
+    if args.target == "node":
+        from pyjs.tooling.node_build import build_node, resolve_entry
+
+        if args.output is None:
+            command_parser.error("Node builds require --output FILE.cjs")
+        if args.only_js or args.include_main or args.args:
+            command_parser.error("Node builds do not accept browser build options")
+        try:
+            result = build_node(resolve_entry(args.module), args.output)
+        except CompilationError as error:
+            command_parser.error(format_compilation_error(error))
+        except (OSError, RuntimeError, ValueError, ImportError, AttributeError) as error:
+            command_parser.error(str(error))
+        print(f"Run: node --enable-source-maps {result}")
+        return 0
     if args.target == "electron":
         from pyjs.tooling.electron import build_application
 
