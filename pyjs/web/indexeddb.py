@@ -1,3 +1,5 @@
+from collections.abc import Awaitable, Callable
+
 from pyjs import js
 from pyjs.web.dom import DOMException
 from pyjs.web.events import Event, EventTarget
@@ -486,3 +488,36 @@ async def request_result[T](request: IDBRequest[T]) -> T: ...
 
 @js.inline(_rewrite_request_result)
 async def request_values(request: IDBRequest[list[object]]) -> list[object]: ...
+
+
+@js.inline("""((transaction, operation) => new Promise((resolve, reject) => {{
+    let result, ready = false, settled = false;
+    const finish = (success, value) => {{
+        if (settled) return;
+        settled = true;
+        transaction.removeEventListener('complete', complete);
+        transaction.removeEventListener('abort', abort);
+        if (success) resolve(value); else reject(value);
+    }};
+    const complete = () => finish(ready, ready ? result : new Error('IndexedDB operation outlived its transaction'));
+    const abort = () => finish(false, transaction.error ?? new Error('IndexedDB transaction aborted'));
+    transaction.addEventListener('complete', complete, {{once: true}});
+    transaction.addEventListener('abort', abort, {{once: true}});
+    const fail = error => {{
+        try {{ transaction.abort(); }} catch {{}}
+        finish(false, error);
+    }};
+    try {{
+        Promise.resolve(operation()).then(value => {{result = value; ready = true;}}, fail);
+    }} catch (error) {{ fail(error); }}
+}}))({transaction}, {operation})""")
+async def transaction_result[T](transaction: IDBTransaction,
+                                operation: Callable[[], Awaitable[T]]) -> T:
+    """Run an operation and await transaction completion, aborting on failure.
+
+    Call immediately after creating the transaction, before yielding. The
+    operation may await requests in this transaction, but not timers, network
+    I/O, or other work that lets IndexedDB auto-commit. Listeners are installed
+    before the operation runs. Request success alone is not commit success.
+    """
+    ...
