@@ -974,6 +974,11 @@ with `pyjs template`.
   Compiled tests select the single most-derived Application owner; unrelated
   owners require separate test selections. Application state lasts only for
   the current process, not across process termination.
+- `pyjs.java.uuid` provides `random_uuid()` and `parse_uuid()` returning a
+  native `UUID` with `toString()`, `version()`, and `variant()`. Parsing follows
+  the platform's `UUID.fromString` rules, which can differ across Java and
+  Android releases; it is not a strict canonical-text validator. Catch native
+  parse errors with `pyjs.java.errors.IllegalArgumentException`.
 - `pyjs.java.concurrent` provides native `Runnable` and `Thread`;
   `pyjs.android.dispatch` provides `Handler` and `main_looper()`.
   `Handler.post()` reports queue acceptance, not completed or durable work.
