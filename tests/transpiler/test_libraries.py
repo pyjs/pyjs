@@ -503,16 +503,56 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                 }
 
                 export function model_values(model) {
-                    const dump = (value) => {
-                        if (Array.isArray(value)) return value.map(dump);
-                        if (value instanceof Set) return [...value].map(dump);
-                        if (value instanceof Map) {
-                            return new Map([...value].map(([key, item]) => [key, dump(item)]));
+                    const resolve = descriptor => Array.isArray(descriptor) && descriptor[0] === 'model'
+                        ? globalThis.$pyjsModels?.get(descriptor[1]) : descriptor;
+                    const matches = (value, descriptor) => {
+                        descriptor = resolve(descriptor);
+                        if (typeof descriptor === 'function') return value instanceof descriptor;
+                        if (descriptor === 'NoneType') return value === null;
+                        if (descriptor === 'object') return true;
+                        if (descriptor === 'str') return typeof value === 'string';
+                        if (descriptor === 'bool') return typeof value === 'boolean';
+                        if (descriptor === 'int') return Number.isInteger(value);
+                        if (descriptor === 'float') return typeof value === 'number';
+                        if (descriptor === 'Date') return value instanceof Date;
+                        if (!Array.isArray(descriptor)) return false;
+                        const [kind, ...members] = descriptor;
+                        if (kind === 'literal') return members.includes(value);
+                        if (kind === 'union') return members.some(member => matches(value, member));
+                        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0]));
+                        if (kind === 'tuple') return Array.isArray(value) && value.length === members.length
+                            && value.every((item, index) => matches(item, members[index]));
+                        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0]));
+                        if (kind === 'dict') return value instanceof Map && [...value].every(
+                            ([key, item]) => matches(key, members[0]) && matches(item, members[1]));
+                        return false;
+                    };
+                    const dump = (value, descriptor = null) => {
+                        descriptor = resolve(descriptor);
+                        if (value === null || value === undefined) return value;
+                        if (Array.isArray(descriptor) && descriptor[0] === 'union') {
+                            const members = descriptor.slice(1).map(resolve);
+                            descriptor = members.find(member => typeof member === 'function'
+                                && value.constructor === member)
+                                ?? members.find(member => matches(value, member))
+                                ?? members.find(member => member !== 'NoneType');
                         }
-                        if (value !== null && value.constructor?.__pyjs_fields__) {
-                            return new Map([...value.constructor.__pyjs_fields__.keys()].map(
-                                (name) => [name, dump(value[name])]
-                            ));
+                        const fields = typeof descriptor === 'function' && descriptor.__pyjs_fields__
+                            ? descriptor.__pyjs_fields__
+                            : value.constructor?.__pyjs_fields__;
+                        if (fields) {
+                            return new Map([...fields].map(([name, field]) => [name, dump(value[name], field)]));
+                        }
+                        const kind = Array.isArray(descriptor) ? descriptor[0] : null;
+                        if (Array.isArray(value)) {
+                            return value.map((item, index) => dump(item,
+                                kind === 'tuple' ? descriptor[index + 1] : kind === 'list' ? descriptor[1] : null));
+                        }
+                        if (value instanceof Set) return [...value].map(item => dump(item,
+                            kind === 'set' ? descriptor[1] : null));
+                        if (value instanceof Map) {
+                            return new Map([...value].map(([key, item]) => [key, dump(item,
+                                kind === 'dict' ? descriptor[2] : null)]));
                         }
                         return value;
                     };
