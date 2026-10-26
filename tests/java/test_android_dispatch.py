@@ -63,3 +63,22 @@ def test_background_task_posts_an_acknowledgement_to_the_main_loop() -> None:
     worker.join()
     assert task.accepted
     run_on_main(CheckAcknowledgement(acknowledgement))
+
+
+class BackgroundDelayedPost(Runnable):
+    def __init__(self, acknowledgement: Acknowledgement):
+        self.acknowledgement = acknowledgement
+        self.accepted = False
+
+    def run(self) -> None:
+        self.accepted = Handler(main_looper()).postDelayed(self.acknowledgement, 0)
+
+
+def test_delayed_handler_dispatch_does_not_require_an_attached_view() -> None:
+    acknowledgement = Acknowledgement()
+    task = BackgroundDelayedPost(acknowledgement)
+    worker = Thread(task)
+    worker.start()
+    worker.join()
+    assert task.accepted
+    run_on_main(CheckAcknowledgement(acknowledgement))

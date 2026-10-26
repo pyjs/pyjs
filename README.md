@@ -986,6 +986,8 @@ with `pyjs template`.
   `pyjs.java.concurrent.AtomicBoolean` provides release/acquire publication
   for worker results; pending edits still require successful persistence to
   survive process termination.
+  `Handler.postDelayed(task, delay_ms)` schedules on the handler's loop without
+  an attached view; guard stale callbacks after lifecycle or account changes.
 - JVM `list(existing_list)` copies the list storage while retaining shared
   references to its items. Empty copies can grow normally. Source and result
   must have matching item storage and representation; converting other
