@@ -6164,6 +6164,40 @@ EXPLICIT_SPLIT_CONTRACT = _contract(
 )
 
 
+LIST_REVERSE_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_reverse_contract",
+    '''
+    values = [1, 2, 3, 4, 5]
+    alias = values
+    result = values.reverse()
+    empty: list[int] = []
+    empty.reverse()
+    empty.append(42)
+    singleton = [7]
+    singleton.reverse()
+    pair = [True, False]
+    pair.reverse()
+    represented = [int8(127), int8(-128)]
+    represented.reverse()
+    floating = [float32(16777216), float32(2)]
+    floating.reverse()
+    nested = [[1], [2]]
+    original = nested[0]
+    nested.reverse()
+    nested[1].append(3)
+    ''',
+    (("returns None", "result is not None"),
+     ("reverses in place", "alias is not values or alias[0] != 5 or alias[4] != 1"),
+     ("empty remains growable", "len(empty) != 1 or empty[0] != 42"),
+     ("one item unchanged", "singleton[0] != 7"),
+     ("booleans", "pair[0] or not pair[1]"),
+     ("fixed-width integer representation", "int(represented[1] + 1) != -128"),
+     ("fixed-width float representation", "int(floating[1] + 1) != 16777216"),
+     ("references are shallow", "nested[1] is not original or len(original) != 2")),
+)
+
+
 PORTABLE_FAILURE_SOURCES = {
     "division by zero": """
 from pyjs import int8
