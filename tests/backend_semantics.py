@@ -221,6 +221,38 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
 )
 
 
+FIXED_TUPLE_ASSIGNMENT_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def pair(events: list[int]) -> tuple[int, tuple[str, bool]]:
+        events.append(1)
+        return (7, ("nested", True))
+    ''',
+    "fixed_tuple_assignment",
+    '''
+    events: list[int] = []
+    number, (text, flag) = pair(events)
+    left, right = 1, 2
+    left, right = right, left
+    repeated, repeated = (3, 4)
+    [first, second] = (5, 6)
+    total = 0
+    for value, (label, enabled) in [(8, ("row", True)), (9, ("row", False))]:
+        if enabled:
+            total += value + len(label)
+    ''',
+    (
+        ("nested fields and evaluate once", 'number != 7 or text != "nested" or not flag or len(events) != 1'),
+        ("swap snapshots both operands", "left != 2 or right != 1"),
+        ("repeated target is assigned left to right", "repeated != 4"),
+        ("list target syntax", "first != 5 or second != 6"),
+        ("nested iterator targets", "total != 11"),
+    ),
+)
+
+
 SEQUENCE_CONSTRUCTOR_REPRESENTATION_CONTRACT = _contract(
     '''
     from pyjs import js, int8, int64

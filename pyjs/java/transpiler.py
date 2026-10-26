@@ -908,6 +908,9 @@ class JVMEmitter:
                 elif isinstance(statement, ast.Assign):
                     value_type = self.expression_type(statement.value)
                     for target in statement.targets:
+                        if isinstance(target, (ast.Tuple, ast.List)):
+                            self.add_iterator_target(add, target, analyzed_value_type(statement.value))
+                            continue
                         if isinstance(target, ast.Attribute):
                             field = self.native_field(target)
                             if field is not None and field.static:
@@ -949,8 +952,6 @@ class JVMEmitter:
                         self.slot_numeric_formats[self.target_name(statement.target)] = (
                             storage_format
                         )
-                    if isinstance(statement.target, (ast.List, ast.Tuple)):
-                        add(f"{statement.iterator}.item", descriptor[1])
                 for node in ast.walk(statement):
                     if isinstance(node, ast.Call):
                         target = analyzed_value_object(node.func)
@@ -1111,6 +1112,10 @@ class JVMEmitter:
                 self.store(name, value_type)
             return
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            if isinstance(node.targets[0], (ast.Tuple, ast.List)):
+                descriptor = self.expression(node.value)
+                self.assign_tuple_target(node.targets[0], descriptor, analyzed_value_type(node.value))
+                return
             if isinstance(node.targets[0], ast.Attribute) and self.static_field_store(
                 node.targets[0],
                 node.value,
@@ -3195,7 +3200,11 @@ class JVMEmitter:
 
     def add_iterator_target(self, add, target, item_value_type) -> None:
         if isinstance(target, (ast.Name, ast.arg)):
-            add(self.target_name(target), self.value_type(item_value_type))
+            name = self.target_name(target)
+            storage_format = self.local_numeric_format(target)
+            add(name, _numeric_descriptor(storage_format) or self.value_type(item_value_type))
+            if storage_format is not None:
+                self.slot_numeric_formats[name] = storage_format
             return
         if not isinstance(target, (ast.List, ast.Tuple)):
             raise JVMUnsupported("unsupported JVM iterator target", target)
@@ -3428,15 +3437,19 @@ class JVMEmitter:
         item_type: str,
         semantic_item,
     ) -> None:
-        if isinstance(node.target, (ast.Name, ast.arg)):
-            self.store(self.target_name(node.target), item_type)
+        self.assign_tuple_target(node.target, item_type, semantic_item)
+
+    def assign_tuple_target(self, target, descriptor: str, semantic_item) -> None:
+        """Consume one value; nested tuples assign their leaves left to right."""
+        if isinstance(target, (ast.Name, ast.arg)):
+            self.store(self.target_name(target), descriptor)
             return
-        scratch = f"{node.iterator}.item"
-        self.store(scratch, item_type)
+        scratch = self.allocate_temporary(descriptor, "unpack.item")
+        self.store(scratch, descriptor)
         owner = self.tuple_class_name(semantic_item)
-        for index, (target, field_type) in enumerate(
+        for index, (element, field_type) in enumerate(
             zip(
-                node.target.elts,
+                target.elts,
                 semantic_item.generic_types.values(),
                 strict=True,
             )
@@ -3449,7 +3462,7 @@ class JVMEmitter:
                 descriptor,
             )
             self.code.emit(0xB4, reference.to_bytes(2, "big"))
-            self.store(self.target_name(target), descriptor)
+            self.assign_tuple_target(element, descriptor, field_type)
 
     def object_new(self, node: ObjectNew) -> str:
         value_type = node.value_type
