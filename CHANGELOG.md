@@ -11,6 +11,10 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- Android clients can use typed SQLite database, cursor and prepared-statement
+  APIs for transactional local storage, with parameter binding and catchable
+  native database exceptions.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and

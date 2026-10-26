@@ -1008,6 +1008,12 @@ with `pyjs template`.
   survive process termination.
   `Handler.postDelayed(task, delay_ms)` schedules on the handler's loop without
   an attached view; guard stale callbacks after lifecycle or account changes.
+- `pyjs.android.sqlite` exposes Android's database, cursor, prepared-statement
+  and exception APIs. Bind values instead of interpolating SQL, close cursors
+  and statements, and pair `beginTransaction()` with `endTransaction()` in a
+  `finally` block. Call `setTransactionSuccessful()` only after all operations
+  succeed. These APIs block and transactions belong to one thread; application
+  database work should run on a worker, not the UI thread.
 - JVM `list(existing_list)` copies the list storage while retaining shared
   references to its items. Empty copies can grow normally. Source and result
   must have matching item storage and representation; converting other
