@@ -21,6 +21,8 @@
   merger, retaining library components, provider metadata and permissions.
   Explicit application overlays resolve conflicts without dropping library
   declarations. SDK incompatibilities and unresolved placeholders fail early.
+- Android shared-preference editors expose `clear()`, retaining native
+  deferred commit and chaining semantics for local-storage cleanup.
 - JVM native function bindings can call static interface methods with
   `interface=True`, including factories used by AndroidX callback APIs.
 - Fresh browser/Android test imports preserve dependencies installed in a
