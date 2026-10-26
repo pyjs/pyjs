@@ -99,3 +99,51 @@ def main() -> str:
 '''
     with pytest.raises(CompilationError, match="model operations"):
         transpile_jvm(source)
+
+
+@pytest.mark.parametrize("definition,constructor", [
+    ("choice: Left | Right", "Child(name='child', choice=Left(name='nested'))"),
+    ("def model_dump_json(self) -> str:\n        return 'custom'", "Child(name='child')"),
+    ("@classmethod\n    def model_validate_json(cls, text: str):\n        return cls(name='custom')", "Child(name='child')"),
+])
+@pytest.mark.parametrize("operation", ["dump", "decode", "parent_view"])
+def test_unsupported_child_codec_cannot_fall_through_to_parent(definition, constructor, operation):
+    source = f'''from pydantic import BaseModel
+class Left(BaseModel):
+    name: str
+class Right(BaseModel):
+    title: str
+class Parent(BaseModel):
+    name: str
+class Child(Parent):
+    {definition}
+def dump_parent(value: Parent) -> str:
+    return value.model_dump_json()
+def main() -> str:
+    value = {constructor}
+    return value.name
+'''
+    transpile_jvm(source)  # Unsupported codecs do not forbid field-only use.
+    call = {"dump": "value.model_dump_json()",
+            "decode": "Child.model_validate_json('{}').name",
+            "parent_view": "dump_parent(value)"}[operation]
+    with pytest.raises(CompilationError, match="model operations"):
+        transpile_jvm(source.replace("return value.name", "return " + call))
+
+
+def test_shadowing_codec_diagnostic_is_located():
+    source = '''from pydantic import BaseModel
+class Parent(BaseModel):
+    name: str
+class Child(Parent):
+    def model_dump_json(self) -> str:
+        return 'custom'
+def main() -> str:
+    return Child(name='x').model_dump_json()
+'''
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm(source)
+    assert str(caught.value) == (
+        "JVM client models support typed construction and fields, not model operations "
+        "[PYJS2001] (_pyjs_java_.py, line 5)"
+    )

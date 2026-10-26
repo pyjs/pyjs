@@ -480,12 +480,14 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         if (kind === 'dict') {
                             const entries = value instanceof Map
                                 ? [...value.entries()]
-                                : value !== null && typeof value === 'object'
+                                : value !== null && typeof value === 'object' && !Array.isArray(value)
                                     ? Object.entries(value)
                                     : null;
                             if (entries === null) fail(path, 'dict');
                             return new Map(entries.map(([key, item]) => [
-                                validate(key, members[0], `${path}.key`),
+                                validate(!(value instanceof Map) && members[0] === 'float'
+                                    && typeof key === 'string' && key.trim() !== '' && Number.isFinite(Number(key))
+                                    ? Number(key) : key, members[0], `${path}.key`),
                                 validate(item, members[1], `${path}[${key}]`),
                             ]));
                         }
@@ -505,9 +507,10 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                 export function model_values(model) {
                     const resolve = descriptor => Array.isArray(descriptor) && descriptor[0] === 'model'
                         ? globalThis.$pyjsModels?.get(descriptor[1]) : descriptor;
-                    const matches = (value, descriptor) => {
+                    const matches = (value, descriptor, exact = false) => {
                         descriptor = resolve(descriptor);
-                        if (typeof descriptor === 'function') return value instanceof descriptor;
+                        if (typeof descriptor === 'function') return exact
+                            ? value?.constructor === descriptor : value instanceof descriptor;
                         if (descriptor === 'NoneType') return value === null;
                         if (descriptor === 'object') return true;
                         if (descriptor === 'str') return typeof value === 'string';
@@ -518,13 +521,13 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         if (!Array.isArray(descriptor)) return false;
                         const [kind, ...members] = descriptor;
                         if (kind === 'literal') return members.includes(value);
-                        if (kind === 'union') return members.some(member => matches(value, member));
-                        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0]));
+                        if (kind === 'union') return members.some(member => matches(value, member, exact));
+                        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0], exact));
                         if (kind === 'tuple') return Array.isArray(value) && value.length === members.length
-                            && value.every((item, index) => matches(item, members[index]));
-                        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0]));
+                            && value.every((item, index) => matches(item, members[index], exact));
+                        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0], exact));
                         if (kind === 'dict') return value instanceof Map && [...value].every(
-                            ([key, item]) => matches(key, members[0]) && matches(item, members[1]));
+                            ([key, item]) => matches(key, members[0], exact) && matches(item, members[1], exact));
                         return false;
                     };
                     const dump = (value, descriptor = null) => {
@@ -532,8 +535,7 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         if (value === null || value === undefined) return value;
                         if (Array.isArray(descriptor) && descriptor[0] === 'union') {
                             const members = descriptor.slice(1).map(resolve);
-                            descriptor = members.find(member => typeof member === 'function'
-                                && value.constructor === member)
+                            descriptor = members.find(member => matches(value, member, true))
                                 ?? members.find(member => matches(value, member))
                                 ?? members.find(member => member !== 'NoneType');
                         }

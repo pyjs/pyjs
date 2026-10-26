@@ -129,12 +129,14 @@ assign_model_values.source(
         if (kind === 'dict') {
             const entries = value instanceof Map
                 ? [...value.entries()]
-                : value !== null && typeof value === 'object'
+                : value !== null && typeof value === 'object' && !Array.isArray(value)
                     ? Object.entries(value)
                     : null;
             if (entries === null) fail(path, 'dict');
             return new Map(entries.map(([key, item]) => [
-                validate(key, members[0], `${path}.key`),
+                validate(!(value instanceof Map) && members[0] === 'float'
+                    && typeof key === 'string' && key.trim() !== '' && Number.isFinite(Number(key))
+                    ? Number(key) : key, members[0], `${path}.key`),
                 validate(item, members[1], `${path}[${key}]`),
             ]));
         }
@@ -162,9 +164,10 @@ model_values.source(
     """
     const resolve = descriptor => Array.isArray(descriptor) && descriptor[0] === 'model'
         ? globalThis.$pyjsModels?.get(descriptor[1]) : descriptor;
-    const matches = (value, descriptor) => {
+    const matches = (value, descriptor, exact = false) => {
         descriptor = resolve(descriptor);
-        if (typeof descriptor === 'function') return value instanceof descriptor;
+        if (typeof descriptor === 'function') return exact
+            ? value?.constructor === descriptor : value instanceof descriptor;
         if (descriptor === 'NoneType') return value === null;
         if (descriptor === 'object') return true;
         if (descriptor === 'str') return typeof value === 'string';
@@ -175,13 +178,13 @@ model_values.source(
         if (!Array.isArray(descriptor)) return false;
         const [kind, ...members] = descriptor;
         if (kind === 'literal') return members.includes(value);
-        if (kind === 'union') return members.some(member => matches(value, member));
-        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0]));
+        if (kind === 'union') return members.some(member => matches(value, member, exact));
+        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0], exact));
         if (kind === 'tuple') return Array.isArray(value) && value.length === members.length
-            && value.every((item, index) => matches(item, members[index]));
-        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0]));
+            && value.every((item, index) => matches(item, members[index], exact));
+        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0], exact));
         if (kind === 'dict') return value instanceof Map && [...value].every(
-            ([key, item]) => matches(key, members[0]) && matches(item, members[1]));
+            ([key, item]) => matches(key, members[0], exact) && matches(item, members[1], exact));
         return false;
     };
     const dump = (value, descriptor = null) => {
@@ -189,8 +192,7 @@ model_values.source(
         if (value === null || value === undefined) return value;
         if (Array.isArray(descriptor) && descriptor[0] === 'union') {
             const members = descriptor.slice(1).map(resolve);
-            descriptor = members.find(member => typeof member === 'function'
-                && value.constructor === member)
+            descriptor = members.find(member => matches(value, member, true))
                 ?? members.find(member => matches(value, member))
                 ?? members.find(member => member !== 'NoneType');
         }
@@ -224,7 +226,12 @@ def encode_model_json(values: dict[str, object]) -> str:
 
 
 encode_model_json.source("""
-    return JSON.stringify(values, (_key, value) => {
+    return JSON.stringify(values, function(key, value) {
+        // Date and datetime currently share a client descriptor. Reject this
+        // ambiguity rather than persisting a timezone-shifted calendar date.
+        if (this[key] instanceof Date) {
+            throw new TypeError('Client JSON date/datetime serialization is not supported');
+        }
         if (typeof value === 'number' && !Number.isFinite(value)) {
             throw new TypeError('JSON numbers must be finite');
         }
@@ -240,7 +247,20 @@ def decode_model_json(source: str) -> dict[str, object]:
     return json.loads(source)
 
 
-decode_model_json.source("return JSON.parse(source);")
+decode_model_json.source("""
+    try {
+        return JSON.parse(source, (key, value) => {
+            if (typeof value === 'number' && !Number.isFinite(value)) {
+                throw new RangeError('JSON numbers must be finite');
+            }
+            return value;
+        });
+    } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        // ValueError is represented by RangeError in compiled JavaScript.
+        throw new RangeError(error.message, {cause: error});
+    }
+""")
 
 
 @js
@@ -260,11 +280,19 @@ class BaseModel:
         return model_values(self)
 
     def model_dump_json(self) -> str:
-        return encode_model_json(model_values(self))
+        try:
+            return encode_model_json(model_values(self))
+        except TypeError as error:
+            raise ValueError(str(error))  # noqa: B904 - JS has no Python exception chaining.
 
     @classmethod
     def model_validate_json(cls, json_data: str) -> Self:
-        return cls.model_validate(decode_model_json(json_data))
+        try:
+            return cls.model_validate(decode_model_json(json_data))
+        except TypeError as error:
+            # Pydantic ValidationError is a ValueError. Keep malformed JSON
+            # and schema failures catchable through that shared contract.
+            raise ValueError(str(error))  # noqa: B904 - JS has no Python exception chaining.
 
 
 def _class_info(

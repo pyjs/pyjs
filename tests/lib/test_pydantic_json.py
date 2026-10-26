@@ -1,4 +1,6 @@
 """Client JSON methods round-trip typed models without a server request."""
+from datetime import date
+
 import pytest
 from pydantic import BaseModel
 
@@ -34,6 +36,52 @@ class Choice(BaseModel):
     items: list[Entry] | list[Other]
 
 
+@js
+class DateEnvelope(BaseModel):
+    items: list[date]
+
+
+@js
+class Numbers(BaseModel):
+    value: float
+
+
+@pytest.mark.pyjs_web
+@js
+def test_client_json_rejects_ambiguous_dates_instead_of_shifting_timezone():
+    value = DateEnvelope.model_validate_json('{"items":["2024-01-01"]}')
+    rejected = False
+    try:
+        value.model_dump_json()
+    except ValueError as error:
+        rejected = "date/datetime" in str(error)
+    assert rejected
+
+
+@pytest.mark.pyjs_web
+@js
+def test_client_json_rejects_nonfinite_numbers_with_value_error():
+    for value in [float("nan"), float("inf"), float("-inf")]:
+        rejected = False
+        try:
+            Numbers(value=value).model_dump_json()
+        except ValueError:
+            rejected = True
+        assert rejected
+
+
+@pytest.mark.pyjs_web
+@js
+def test_client_json_rejects_numeric_overflow_during_decode():
+    for document in ['{"value":1e400}', '{"value":-1e400}']:
+        rejected = False
+        try:
+            Numbers.model_validate_json(document)
+        except ValueError:
+            rejected = True
+        assert rejected
+
+
 @pytest.mark.pyjs_web
 @js
 def test_client_json_round_trip_preserves_unicode_and_fields():
@@ -67,11 +115,12 @@ def test_client_json_uses_declared_nested_model_fields():
 @pytest.mark.pyjs_web
 @js
 def test_client_json_rejects_invalid_documents():
-    for document in ["null", "[]", "{}", '{"title":42}', '{"title":"ok"}trailing']:
+    for document in ["{", "null", "[]", "{}", '{"title":42}',
+                     '{"title":"ok","count":1.5}', '{"title":"ok"}trailing']:
         rejected = False
         try:
             Entry.model_validate_json(document)
-        except Exception:
+        except ValueError:
             rejected = True
         assert rejected
 

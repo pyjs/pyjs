@@ -48,6 +48,24 @@ def is_json_factory(function):
             and "model_validate_json" in function.cls.library_info.methods)
 
 
+def unsupported_json_codec() -> None:
+    """Analyzer sentinel for an unsupported model's shadowing codec methods."""
+    raise NotImplementedError("Unsupported JVM model JSON codec")
+
+
+def field_only_codecs(info, cls):
+    # Own stubs prevent lookup from falling through to a generated parent
+    # codec. They remain lazy: field construction still needs no JSON support.
+    return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
+        methods={**info.methods,
+            "model_dump_json": "    def model_dump_json(self) -> str:\n        _pyjs_no_codec()\n",
+            "model_validate_json": (
+                "    @classmethod\n"
+                "    def model_validate_json(cls, json_data: str) -> _pyjs_model_type:\n"
+                "        _pyjs_no_codec()\n")},
+        imports={"_pyjs_no_codec": unsupported_json_codec, "_pyjs_model_type": cls})
+
+
 def field_type(annotation):
     if get_origin(annotation) is Annotated:
         annotation = get_args(annotation)[0]
@@ -131,7 +149,7 @@ def _class_info(cls):
             break
         if any(name in vars(base) for name in ("model_dump_json", "model_validate_json")):
             # Field-only lowering must not silently replace an application codec.
-            return info
+            return field_only_codecs(info, cls)
     generator = JSONCodegen()
     try:
         generator.validate(cls)
@@ -152,7 +170,7 @@ def _class_info(cls):
         # Construction supports more field types than the wire codec. Keep
         # such models constructible; calls fall through to the focused model
         # operation diagnostic, not a partially generated implementation.
-        return info
+        return field_only_codecs(info, cls)
     return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
                             methods={**info.methods, "model_dump_json": encode,
                                      "model_validate_json": decode}, imports=generator.imports)
