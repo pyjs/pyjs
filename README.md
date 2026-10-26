@@ -418,6 +418,9 @@ descriptors in `finally` with `pyjs.node.close_descriptor`. Requested
 `nofollow`/`nonblocking` flags fail explicitly when the platform lacks them;
 no-follow protects only the final path component. These low-level operations
 do not provide path containment, a snapshot, a lock or a filesystem transaction.
+`FileInfo` uses Node's Number-valued metadata. Compare `dev` and `ino` as file
+identity only after checking `Number.isSafeInteger` for both values; large
+filesystem identifiers can lose precision, especially on Windows.
 `open_directory` returns an async `Directory` handle for incremental `read()`
 calls (ending with `None`); call `close()` in `finally`. Unlike `readdir`, it
 does not first materialize every entry in a large directory. Keep backup,

@@ -23,10 +23,16 @@ async def open_directory(path: str) -> Directory:
 @js
 def open_readonly(path: str, *, nofollow: bool = False, nonblocking: bool = False) -> int:
     """Open without creating/truncating; unsupported requested flags raise."""
+    # A normal function boundary preserves source-order keyword evaluation.
+    return _open_readonly(path, nofollow, nonblocking)
 
 
-@open_readonly.inline
-def open_readonly(path, nofollow="false", nonblocking="false", **kwargs):
+@js
+def _open_readonly(path: str, nofollow: bool, nonblocking: bool) -> int: ...
+
+
+@_open_readonly.inline
+def _open_readonly(path, nofollow, nonblocking, **kwargs):
     return f"""((path, nofollow, nonblocking) => {{
     const fs = require('node:fs');
     let flags = fs.constants.O_RDONLY;

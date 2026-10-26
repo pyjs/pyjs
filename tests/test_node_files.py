@@ -171,8 +171,8 @@ def test_final_symlink_rejection_and_nonblocking_special_file(tmp_path):
 
 
 def test_unsupported_requested_flags_fail_instead_of_becoming_zero(tmp_path):
-    # Exercise the unsupported-platform branch on every CI host, rather than
-    # trusting that a native constants lookup silently defaults safely.
+    # Exercise the unsupported-platform branch on this host instead of
+    # relying on the native platform to lack the requested constant.
     execute(unsupported_flag_contract, tmp_path, """
 const Module = require('node:module'), load = Module._load;
 Module._load = function(name, ...args) {
@@ -182,3 +182,25 @@ Module._load = function(name, ...args) {
 };
 require(process.argv[1]).main();
 """)
+
+
+@js
+def flag(events: list[str], name: str) -> bool:
+    events.append(name)
+    return False
+
+
+@js
+def keyword_order_contract():
+    events: list[str] = []
+    descriptor = open_readonly(join(arguments()[-1], "plain"), nonblocking=flag(events, "nonblocking"),
+                               nofollow=flag(events, "nofollow"))
+    try:
+        assert events == ["nonblocking", "nofollow"]
+    finally:
+        close_descriptor(descriptor)
+
+
+def test_keyword_flags_are_evaluated_once_in_source_order(tmp_path):
+    (tmp_path / "plain").write_text("unchanged")
+    execute(keyword_order_contract, tmp_path)
