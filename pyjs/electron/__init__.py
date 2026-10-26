@@ -86,16 +86,16 @@ class Response:
         self.body = body
 
 
-@js.inline("require('electron').ipcMain.handle({channel}, (event, url, options) => {callback}(event, url, JSON.stringify(options ?? {{}})))")
+@js.inline("((channel, callback) => require('electron').ipcMain.handle(channel, (event, url, options) => callback(event, url, JSON.stringify(options ?? {{}}))))({channel}, {callback})")
 def handle(channel: str, callback: Callable[[IpcEvent, str, str], Awaitable[Response]]) -> None: ...
 
 @js.inline("{debugger}.sendCommand({method}, JSON.parse({params})).then(value => JSON.stringify(value))")
 async def send_command(debugger: Debugger, method: str, params: str) -> str: ...
 
-@js.inline("{debugger}.on('message', (_event, method, params) => {callback}(method, JSON.stringify(params)))")
+@js.inline("((target, callback) => target.on('message', (_event, method, params) => callback(method, JSON.stringify(params))))({debugger}, {callback})")
 def on_debug_message(debugger: Debugger, callback: Callable[[str, str], None]) -> None: ...
 
-@js.inline("{debugger}.on('detach', (_event, reason) => {callback}(reason))")
+@js.inline("((target, callback) => target.on('detach', (_event, reason) => callback(reason)))({debugger}, {callback})")
 def on_debug_detach(debugger: Debugger, callback: Callable[[str], None]) -> None: ...
 
 @js.inline("{window}.loadFile({filename}, {{query: {{debugTarget: '1'}}}})")

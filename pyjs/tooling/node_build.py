@@ -31,8 +31,16 @@ def build_node(entry: Callable, output: Path, *, export_name: str = "main",
     if executable:
         suffix += (
             "if (require.main === module) {\n"
-            f"  Promise.resolve().then(() => module.exports.{export_name}()).catch(error => {{\n"
-            "    console.error(error); process.exitCode = 1;\n"
+            "  let settled = false;\n"
+            "  process.on('exit', () => {\n"
+            "    if (!settled) {\n"
+            "      console.error('Node entry did not complete'); process.exitCode = 1;\n"
+            "    }\n"
+            "  });\n"
+            f"  Promise.resolve().then(() => module.exports.{export_name}()).then(() => {{\n"
+            "    settled = true;\n"
+            "  }, error => {\n"
+            "    settled = true; console.error(error); process.exitCode = 1;\n"
             "  });\n}\n"
         )
     prefix = "#!/usr/bin/env node\n" if executable else ""

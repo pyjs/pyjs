@@ -776,7 +776,9 @@ def _build(args, command_parser: argparse.ArgumentParser) -> int:
                 args.output, lambda directory: _build_browser(args, command_parser, directory),
                 runtime=args.electron_runtime, host=args.electron_host,
             )
-        except (OSError, RuntimeError, ValueError) as error:
+        except CompilationError as error:
+            command_parser.error(format_compilation_error(error))
+        except (OSError, RuntimeError, ValueError, ImportError, AttributeError) as error:
             command_parser.error(str(error))
         print(f"Run: {executable}")
         return 0

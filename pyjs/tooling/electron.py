@@ -147,9 +147,10 @@ def build_application(
 
 def _compile_python_host(host: Path, output: Path) -> None:
     """Compile a Python package's main and optional sandboxed preload entries."""
+    import importlib
     import sys
 
-    from pyjs.tooling.node_build import build_node, resolve_entry
+    from pyjs.tooling.node_build import build_node
 
     # Resolve the package root rather than copying source modules into the app.
     parts = [host.name]
@@ -161,21 +162,20 @@ def _compile_python_host(host: Path, output: Path) -> None:
     sys.path.insert(0, path)
     try:
         module = ".".join(parts)
-        entry = resolve_entry(module + ".main")
-        import inspect
-        if Path(inspect.getfile(entry)).resolve() != host / "main.py":
+        main_module = importlib.import_module(module + ".main")
+        if Path(main_module.__file__).resolve() != host / "main.py":
             raise ValueError("Electron host package name is already imported from another directory")
-        build_node(entry, output / "main.cjs",
+        build_node(main_module.main, output / "main.cjs",
                    export_name="start", executable=False)
         if (host / "preload.py").is_file():
             # Sandboxed preloads cannot import other files. Bundle all Python
             # dependencies and invoke the entry without CommonJS module globals.
             from pyjs.javascript.transpiler import bundle_with_source_map
-            preload = resolve_entry(module + ".preload")
-            if Path(inspect.getfile(preload)).resolve() != host / "preload.py":
+            preload_module = importlib.import_module(module + ".preload")
+            if Path(preload_module.__file__).resolve() != host / "preload.py":
                 raise ValueError("Electron preload package name is already imported from another directory")
             generated, _ = bundle_with_source_map(
-                preload, include_main=True,
+                preload_module.main, include_main=True,
                 include_css=False, filename="preload.cjs",
             )
             if generated.npm_imports:

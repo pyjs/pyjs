@@ -416,7 +416,11 @@ Python-authored Node tests use `@js` and `pytest.mark.pyjs_node` and run with
 and executed in an isolated Node process, including async tests. Fixtures and
 parametrized arguments are not transported into Node; host-side autouse fixtures
 may prepare external resources or environment variables. Ordinary pytest runs
-skip Node-only tests. Generated bundles belong in build/test output, not Git.
+skip Node-only tests. An entry that exits with an unfinished await fails rather
+than silently passing. Tests time out after 60 seconds; timeout and interruption
+cleanup also terminates child processes still descended from the test, including
+detached children. Tests must not daemonize processes that outlive their parents.
+Generated bundles belong in build/test output, not Git.
 
 A custom host owns its preload, IPC handlers and window creation, including
 validating service inputs and keeping any Node dependencies self-contained.

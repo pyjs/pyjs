@@ -161,7 +161,7 @@ def set_timeout(callback: Callable[[], None], milliseconds: int) -> Timer: ...
 @js.inline("clearTimeout({timer})")
 def clear_timeout(timer: Timer | None) -> None: ...
 
-@js.inline("new Promise(resolve => setTimeout(resolve, {milliseconds}))")
+@js.inline("(milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))({milliseconds})")
 async def sleep(milliseconds: int) -> None: ...
 
 @js.inline("Date.now()")
@@ -201,19 +201,19 @@ def spawn(command: str, args: list[str], directory: str) -> ChildProcess: ...
 @js.inline("{child}.stdin.on('error', () => {{}}).end({text})")
 def send_stdin(child: ChildProcess, text: str) -> None: ...
 
-@js.inline("{child}.stderr.on('data', data => {callback}(data.toString()))")
+@js.inline("((child, callback) => child.stderr.on('data', data => callback(data.toString())))({child}, {callback})")
 def on_stderr(child: ChildProcess, callback: Callable[[str], None]) -> None: ...
 
-@js.inline("{child}.stdout.on('data', data => {callback}(data.length))")
+@js.inline("((child, callback) => child.stdout.on('data', data => callback(data.length)))({child}, {callback})")
 def on_stdout_size(child: ChildProcess, callback: Callable[[int], None]) -> None: ...
 
 @js.inline("{child}.on('error', {callback})")
 def on_error(child: ChildProcess, callback: Callable[[Exception], None]) -> None: ...
 
-@js.inline("{child}.on('close', code => {callback}(code ?? -1))")
+@js.inline("((child, callback) => child.on('close', code => callback(code ?? -1)))({child}, {callback})")
 def on_close(child: ChildProcess, callback: Callable[[int], None]) -> None: ...
 
-@js.inline("new Promise(resolve => {child}.once('close', resolve))")
+@js.inline("(child => new Promise(resolve => child.once('close', resolve)))({child})")
 async def wait_closed(child: ChildProcess) -> None: ...
 
 @js.inline("require('node:readline').createInterface({{input: {child}.stdout}}).on('line', {callback})")
@@ -225,7 +225,7 @@ def read_stdin_lines(callback: Callable[[str], None], closed: Callable[[], Await
 @js.inline("process.on({signal}, {callback})")
 def on_signal(signal: str, callback: Callable[[], Awaitable[None]]) -> None: ...
 
-@js.inline("process.stdin.on('data', data => {data}(data.toString())).on('end', {end})")
+@js.inline("((callback, end) => process.stdin.on('data', data => callback(data.toString())).on('end', end))({data}, {end})")
 def read_stdin(data: Callable[[str], None], end: Callable[[], None]) -> None: ...
 
 @js.inline("setInterval({callback}, {milliseconds})")
