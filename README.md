@@ -411,6 +411,15 @@ point back to Python. Use `pyjs.node.json` to exchange ordinary Python dictionar
 with JSON host APIs. Other Python standard-library modules are not automatically
 translated into Node APIs.
 
+For bounded host reads, `pyjs.node.files` provides `open_readonly`, `fstat`
+and `read_into` with caller-owned byte buffers and descriptors. It also exposes
+`lstat`, `fsync` and no-replace hard-link publication through `link`. Close
+descriptors in `finally` with `pyjs.node.close_descriptor`. Requested
+`nofollow`/`nonblocking` flags fail explicitly when the platform lacks them;
+no-follow protects only the final path component. These low-level operations
+do not provide path containment, a snapshot, a lock or a filesystem transaction.
+Keep backup/recovery and directory validation in the application host.
+
 Python-authored Node tests use `@js` and `pytest.mark.pyjs_node` and run with
 `pytest --pyjs-target=node`. Each zero-argument, module-level test is compiled
 and executed in an isolated Node process, including async tests. Fixtures and
