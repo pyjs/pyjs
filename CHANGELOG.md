@@ -55,6 +55,9 @@
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.
+- `pyjs.java.uuid` exposes Java UUID generation, parsing and string conversion
+  on JVM and Android. Native `IllegalArgumentException` is catchable through
+  `pyjs.java.errors`; UUID parsing retains Java's acceptance rules.
 - Immediately awaited objects preserve instance fields, properties, methods,
   and represented numeric fields across JavaScript, JVM, and LLVM lowering.
 - JVM clients generate typed remote operations from ordinary API declarations
