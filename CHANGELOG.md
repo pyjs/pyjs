@@ -8,7 +8,8 @@
 
 - Node hosts can perform bounded descriptor reads, inspect symlinks and file
   identity, flush descriptors, and publish hard links without replacing an
-  existing destination. Unsupported requested open flags fail explicitly.
+  existing destination. Incremental directory handles avoid materializing a
+  whole directory. Unsupported requested open flags fail explicitly.
 
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup

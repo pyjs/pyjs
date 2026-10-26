@@ -17,7 +17,15 @@ from pyjs.node import (
     read_text_sync,
     write_descriptor,
 )
-from pyjs.node.files import fstat, fsync, link, lstat, open_readonly, read_into
+from pyjs.node.files import (
+    fstat,
+    fsync,
+    link,
+    lstat,
+    open_directory,
+    open_readonly,
+    read_into,
+)
 from pyjs.tooling.node import Node
 from pyjs.tooling.node_build import build_node
 
@@ -107,6 +115,28 @@ def unsupported_flag_contract():
     assert refused
 
 
+@js
+async def directory_contract():
+    directory = await open_directory(join(arguments()[-1], "entries"))
+    names: list[str] = []
+    try:
+        entry = await directory.read()
+        while entry is not None:
+            assert entry.isFile() and not entry.isSymbolicLink()
+            names.append(entry.name)
+            entry = await directory.read()
+        assert await directory.read() is None
+    finally:
+        await directory.close()
+    assert sorted(names) == ["a", "b"]
+    closed = False
+    try:
+        await directory.read()
+    except Exception as error:
+        closed = error_code(error) == "ERR_DIR_CLOSED"
+    assert closed
+
+
 def execute(entry, tmp_path, script=None):
     program = build_node(entry, tmp_path / "test.cjs", executable=script is None)
     command = [str(Node().executable)]
@@ -121,6 +151,14 @@ def test_descriptor_reads_and_no_replace_publication(tmp_path):
     execute(descriptor_contract, tmp_path)
     assert (tmp_path / "data").read_text() == "hello"
     assert not (tmp_path / "missing").exists()
+
+
+def test_incremental_directory_enumeration_and_close(tmp_path):
+    directory = tmp_path / "entries"
+    directory.mkdir()
+    (directory / "a").touch()
+    (directory / "b").touch()
+    execute(directory_contract, tmp_path)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="O_NOFOLLOW, O_NONBLOCK and mkfifo are POSIX")

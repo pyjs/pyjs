@@ -6,7 +6,18 @@ the final path component only; ancestor directories remain the caller's concern.
 """
 from pyjs import js
 from pyjs.javascript import Uint8Array
-from pyjs.node import FileInfo
+from pyjs.node import DirectoryEntry, FileInfo
+
+
+@js.native
+class Directory:
+    async def read(self) -> DirectoryEntry | None: ...
+    async def close(self) -> None: ...
+
+
+@js.inline("require('node:fs/promises').opendir({path})")
+async def open_directory(path: str) -> Directory:
+    """Read entries incrementally; callers close the handle in finally."""
 
 
 @js

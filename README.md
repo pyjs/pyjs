@@ -418,7 +418,10 @@ descriptors in `finally` with `pyjs.node.close_descriptor`. Requested
 `nofollow`/`nonblocking` flags fail explicitly when the platform lacks them;
 no-follow protects only the final path component. These low-level operations
 do not provide path containment, a snapshot, a lock or a filesystem transaction.
-Keep backup/recovery and directory validation in the application host.
+`open_directory` returns an async `Directory` handle for incremental `read()`
+calls (ending with `None`); call `close()` in `finally`. Unlike `readdir`, it
+does not first materialize every entry in a large directory. Keep backup,
+recovery and directory validation in the application host.
 
 Python-authored Node tests use `@js` and `pytest.mark.pyjs_node` and run with
 `pytest --pyjs-target=node`. Each zero-argument, module-level test is compiled
