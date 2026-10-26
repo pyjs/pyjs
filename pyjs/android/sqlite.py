@@ -23,6 +23,11 @@ class SQLiteConstraintException(SQLiteException):
     pass
 
 
+@jvm.native("android/database/sqlite/SQLiteDoneException")
+class SQLiteDoneException(SQLiteException):
+    pass
+
+
 @jvm.native("android/database/Cursor", interface=True)
 class Cursor:
     def moveToNext(self) -> bool: ...
@@ -46,6 +51,7 @@ class SQLiteStatement:
     def execute(self) -> None: ...
     def executeInsert(self) -> int: ...
     def executeUpdateDelete(self) -> i32: ...
+    def simpleQueryForString(self) -> str | None: ...
     def close(self) -> None: ...
 
 

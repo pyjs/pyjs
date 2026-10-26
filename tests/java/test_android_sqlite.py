@@ -1,12 +1,48 @@
 """The same native SQLite contract runs under Robolectric and on a device."""
 import pytest
 
-from pyjs.android.sqlite import SQLiteConstraintException, open_database
+from pyjs.android.sqlite import (
+    SQLiteConstraintException,
+    SQLiteDoneException,
+    open_database,
+)
 from pyjs.android.testing import application_context
 from pyjs.java import JVMArray, i32
 from pyjs.java.io import create_temp_file
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+def test_scalar_query_reads_values_larger_than_a_cursor_window() -> None:
+    database = open_database(":memory:")
+    try:
+        database.execSQL("CREATE TABLE records (key TEXT PRIMARY KEY, value TEXT)")
+        value = "雪" * 900_000 + "\x00end"
+        statement = database.compileStatement("INSERT INTO records VALUES (?, ?)")
+        try:
+            statement.bindString(i32(1), "large")
+            statement.bindString(i32(2), value)
+            statement.executeInsert()
+        finally:
+            statement.close()
+        statement = database.compileStatement("SELECT value FROM records WHERE key = ?")
+        try:
+            statement.bindString(i32(1), "large")
+            assert statement.simpleQueryForString() == value
+            statement.bindString(i32(1), "missing")
+            missing = False
+            try:
+                statement.simpleQueryForString()
+            except SQLiteDoneException:
+                missing = True
+            assert missing
+            database.execSQL("INSERT INTO records VALUES ('null', NULL)")
+            statement.bindString(i32(1), "null")
+            assert statement.simpleQueryForString() is None
+        finally:
+            statement.close()
+    finally:
+        database.close()
 
 
 def test_bound_unicode_values_nulls_and_64_bit_numbers_survive_reopen() -> None:
