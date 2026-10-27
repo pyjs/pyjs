@@ -2142,6 +2142,30 @@ class Transpiler(_Unparser):
             )
 
     def visit_ChainedCompare(self, node):
+        if any(isinstance(value, ast.Await) for value in ast.walk(node)):
+            # Ordinary arrow bindings cannot contain an awaited later operand.
+            # Keep one async scope, evaluate each operand once, and retain the
+            # failed comparison value just as the synchronous && chain does.
+            self.write("(await (async () => { ")
+            for index, operand in enumerate(node.operands):
+                self.write("const ")
+                self.traverse(node.temporaries[index])
+                self.write(" = ")
+                self.traverse(operand)
+                self.write("; ")
+                if index == 0:
+                    continue
+                if index == len(node.operands) - 1:
+                    self.write("return ")
+                    self.traverse(node.comparisons[index - 1])
+                    self.write("; ")
+                else:
+                    self.write(f"const $comparison{index} = ")
+                    self.traverse(node.comparisons[index - 1])
+                    self.write(f"; if (!$comparison{index}) return $comparison{index}; ")
+            self.write("})())")
+            return
+
         def emit_comparison(index):
             temporary = node.temporaries[index + 1]
             self.write("((")

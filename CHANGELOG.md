@@ -6,6 +6,10 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
+- JavaScript chained comparisons can await any operand without generating
+  invalid synchronous arrow functions. Operands still run once, in order,
+  and later operands are skipped after a failed comparison.
+
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.

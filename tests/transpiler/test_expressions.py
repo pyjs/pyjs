@@ -1222,6 +1222,34 @@ def test_chained_comparisons_bind_each_operand_once():
     )
 
 
+def test_awaited_chained_comparison_has_one_async_evaluation_scope():
+    at(
+        '''
+        @js
+        async def value(item: int) -> int:
+            return item
+        async def main() -> bool:
+            return 1 < await value(2) < 3
+        ''',
+        '''
+        async def value(item: int) -> int:
+            return item
+
+        async def main() -> bool:
+            return $chained_compare(1, await value(2), 3; $compare0.[int]__lt__!($compare1) and $compare1.[int]__lt__!($compare2))
+        ''',
+        '''
+        export async function value(item) {
+            return item;
+        }
+
+        export async function main() {
+            return (await (async () => { const $compare0 = 1; const $compare1 = await value(2); const $comparison1 = $compare0 < $compare1; if (!$comparison1) return $comparison1; const $compare2 = 3; return $compare1 < $compare2; })());
+        }
+        ''',
+    )
+
+
 def test_positive_and_negative_numeric_values():
     at(
         """
