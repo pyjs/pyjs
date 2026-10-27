@@ -490,6 +490,18 @@ def test_instance_assertion_contract_keeps_the_wasm_exception_boundary():
         transpile_webassembly(ASSERT_INSTANCE_STATE_CONTRACT.source)
 
 
+def test_literal_tuple_instance_contract_keeps_wasm_single_target_boundary():
+    from tests.backend_semantics import ISINSTANCE_LITERAL_TUPLE_CONTRACT
+    with pytest.raises(CompilationError, match="to isinstance expects type"):
+        transpile_webassembly(ISINSTANCE_LITERAL_TUPLE_CONTRACT.source)
+
+
+def test_positional_minmax_contract_keeps_wasm_builtin_boundary():
+    from tests.backend_semantics import POSITIONAL_MINMAX_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="call target min is not implemented"):
+        transpile_webassembly(POSITIONAL_MINMAX_CONTRACT.source)
+
+
 def test_webassembly_reversed_protocol_contract(tmp_path):
     test_webassembly_runs_shared_numeric_contracts(tmp_path, REVERSED_PROTOCOL_CONTRACT)
 

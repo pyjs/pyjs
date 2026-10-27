@@ -39,6 +39,7 @@ from pyjs.analysis.objects import (
 from pyjs.analysis.objects import (
     ChainedCompare,
     Class,
+    EvaluateOnce,
     Function,
     GenericClass,
     Instance,
@@ -1334,6 +1335,23 @@ class JVMEmitter:
         raise JVMUnsupported("JVM branch conditions must be bool", node)
 
     def _expression(self, node) -> str:
+        if isinstance(node, EvaluateOnce):
+            result = self.expression(node.value)
+            temporary = self.allocate_temporary(result, "evaluate.once")
+            self.store(temporary, result)
+            mappings = (self.slots, self.slot_types, self.slot_numeric_formats)
+            previous = [mapping.get(node.parameter) for mapping in mappings]
+            self.slots[node.parameter] = self.slots[temporary]
+            self.slot_types[node.parameter] = result
+            self.slot_numeric_formats.pop(node.parameter, None)
+            try:
+                return self.expression(node.body)
+            finally:
+                for mapping, saved in zip(mappings, previous, strict=True):
+                    if saved is None:
+                        mapping.pop(node.parameter, None)
+                    else:
+                        mapping[node.parameter] = saved
         if isinstance(node, ChainedCompare):
             return self.chained_comparison(node)
         if isinstance(node, ContextExitCall):
@@ -1865,13 +1883,12 @@ class JVMEmitter:
             native_builtins._min,
             native_builtins._max,
         }:
-            if len(node.args) != 2 or node.keywords:
+            if len(node.args) < 2 or node.keywords:
                 raise JVMUnsupported(
-                    "JVM min and max take two positional integer arguments",
+                    "JVM min and max require at least two positional integer arguments",
                     node,
                 )
-            argument_types = [self.expression(argument) for argument in node.args]
-            if argument_types != ["J", "J"]:
+            if self.expression(node.args[0]) != "J":
                 raise JVMUnsupported(
                     "JVM min and max currently require integer arguments",
                     node,
@@ -1882,7 +1899,10 @@ class JVMEmitter:
                 name,
                 "(JJ)J",
             )
-            self.code.emit(0xB8, reference.to_bytes(2, "big"))
+            for argument in node.args[1:]:
+                if self.expression(argument) != "J":
+                    raise JVMUnsupported("JVM min and max currently require integer arguments", node)
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
             return "J"
         if isinstance(node.func, ast.Attribute) and isinstance(target, Function):
             if self.model_json_factory(target):

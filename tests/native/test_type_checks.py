@@ -3,7 +3,15 @@ import pytest
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import ASSERT_INSTANCE_STATE_CONTRACT
+from tests.backend_semantics import (
+    ASSERT_INSTANCE_STATE_CONTRACT,
+    ISINSTANCE_LITERAL_TUPLE_CONTRACT,
+)
+
+
+def test_shared_literal_tuple_instance_contract():
+    result = LLVM().assert_matches_python(ISINSTANCE_LITERAL_TUPLE_CONTRACT.source)
+    assert result.native.returncode == 0
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
