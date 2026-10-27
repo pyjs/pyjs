@@ -1634,6 +1634,8 @@ class JVMEmitter:
 
     def call(self, node: ast.Call) -> str:
         target = getattr(node.func, "obj", None)
+        if isinstance(target, Function) and target.py_func is native_builtins._unpack_starred:
+            raise JVMUnsupported("JVM starred unpacking is not implemented", node)
         if isinstance(target, Function) and target.py_func is format_exception:
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported("format_exception() requires one positional exception", node)

@@ -48,3 +48,12 @@ def main() -> int:
     first, second = [1, 2]
     return first + second
 ''')
+
+
+def test_starred_assignment_keeps_explicit_boundary():
+    with pytest.raises(JVMUnsupported, match="JVM starred unpacking is not implemented"):
+        transpile_jvm('''
+def main() -> int:
+    first, *rest = (1, 2, 3)
+    return first
+''')

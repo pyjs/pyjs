@@ -6,10 +6,6 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
-- JVM fixed tuples can be unpacked into local names, including nested tuples,
-  swaps and repeated targets. Nested tuple iteration uses the same assignment
-  rules. Variable-length unpacking remains unsupported.
-
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.
@@ -78,6 +74,11 @@
   excluding unrelated siblings of an inherited method's declaring class.
   This is not a general mutable-field flow-analysis repair: compiler-generated
   indexed/chained assignment temporaries can still retain stale refinements.
+- JVM fixed tuples can be unpacked into local names, including nested tuples,
+  swaps and repeated targets. Nested tuple iteration uses the same assignment
+  rules. Ordinary unpacked values clear earlier inferred numeric formats,
+  avoiding unintended fixed-width truncation. Variable-length unpacking remains
+  unsupported, with an explicit diagnostic for starred targets.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.

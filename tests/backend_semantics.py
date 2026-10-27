@@ -223,7 +223,7 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
 
 FIXED_TUPLE_ASSIGNMENT_CONTRACT = _contract(
     '''
-    from pyjs import js
+    from pyjs import js, int8
 
     @js
     def pair(events: list[int]) -> tuple[int, tuple[str, bool]]:
@@ -238,6 +238,16 @@ FIXED_TUPLE_ASSIGNMENT_CONTRACT = _contract(
     left, right = right, left
     repeated, repeated = (3, 4)
     [first, second] = (5, 6)
+    ordinary = int8(0)
+    ordinary, unused = 300, 1
+    arithmetic = int8(0)
+    arithmetic, unused = 100, 1
+    arithmetic += 100
+    nested = int8(0)
+    _, (nested,) = 1, (300,)
+    retained, cleared = int8(0), int8(0)
+    retained, cleared = int8(127), 300
+    retained += int8(1)
     total = 0
     for value, (label, enabled) in [(8, ("row", True)), (9, ("row", False))]:
         if enabled:
@@ -249,6 +259,9 @@ FIXED_TUPLE_ASSIGNMENT_CONTRACT = _contract(
         ("repeated target is assigned left to right", "repeated != 4"),
         ("list target syntax", "first != 5 or second != 6"),
         ("nested iterator targets", "total != 11"),
+        ("ordinary rebinding clears represented storage", "ordinary != 300 or arithmetic != 200"),
+        ("nested ordinary rebinding", "nested != 300"),
+        ("mixed represented and ordinary leaves", "retained != -128 or cleared != 300"),
     ),
 )
 

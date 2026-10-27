@@ -4745,15 +4745,19 @@ class InferenceVisitor(ast.NodeVisitor):
         return assignment
 
     def apply_unpack_target_representation(self, target, representation) -> None:
-        if representation is None:
-            return
         if isinstance(target, ast.Name):
             value = self.scope.lookup(target.id)
             if isinstance(value, Instance):
+                if representation is None and value.has_declared_type:
+                    return
                 apply_representation(value, representation)
             return
         if isinstance(target, (ast.Tuple, ast.List)):
-            if representation.array is not None and representation.arguments:
+            if representation is None:
+                # Ordinary values clear an inferred representation just as a
+                # scalar assignment does, including nested tuple leaves.
+                item_representations = (None,) * len(target.elts)
+            elif representation.array is not None and representation.arguments:
                 item_representations = representation.arguments * len(target.elts)
             elif representation.array is not None:
                 item_representation = direct_representation(

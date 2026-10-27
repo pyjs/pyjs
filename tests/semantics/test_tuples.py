@@ -1,4 +1,4 @@
-from pyjs.testing.helpers import at
+from pyjs.testing.helpers import assert_module_analysis_transpile, at
 from tests.backend_semantics import (
     FIXED_TUPLE_ASSIGNMENT_CONTRACT,
     REFERENCE_TUPLE_CONTRACT,
@@ -10,6 +10,32 @@ from .helpers import assert_semantics
 
 def test_fixed_tuple_assignment_contract():
     assert_semantics(FIXED_TUPLE_ASSIGNMENT_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_unpacking_clears_inferred_numeric_representation():
+    assert_module_analysis_transpile('''
+from pyjs import js, int8
+@js
+def main() -> int:
+    number = int8(0)
+    number, other = 100, 1
+    number += 100
+    return number
+''', '''
+def main() -> int:
+    number: int = int(0)
+    number, other = (100, 1)
+    number = number.[int]__add__!(100)
+    return number
+''', '''
+export function main() {
+    var number = ((0 << 24) >> 24);
+    var [number, other] = [100, 1];
+    number = number + 100;
+    return number;
+}
+''')
+
 
 def test_shared_reference_tuple_contract():
     assert_semantics(REFERENCE_TUPLE_CONTRACT.print_source + "\nmain()\n")
