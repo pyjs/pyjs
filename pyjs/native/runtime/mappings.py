@@ -192,6 +192,18 @@ def find(value: Pointer, key: Pointer, key_size: int, kind: int8) -> int:
     length = load_integer(value)
     keys = load_pointer(byte_offset(value, KEYS))
     index = 0
+    if kind == 2 and key_size == 8:
+        # Integer equality cannot call application code. Hoist the query and
+        # kind dispatch out of the dense scan; retain first-match ordering.
+        # Do not read the query for an empty mapping.
+        if length == 0:
+            return -1
+        integer = load_integer(key)
+        while index < length:
+            if load_integer(byte_offset(keys, index * 8)) == integer:
+                return index
+            index += 1
+        return -1
     while index < length:
         if key_equal(byte_offset(keys, index * key_size), key, kind):
             return index

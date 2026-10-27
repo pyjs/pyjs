@@ -20,6 +20,7 @@ def mapping_runtime(request, tmp_path_factory):
         "pyjs.dict.append.hashed": mappings.append_hashed,
         "pyjs.dict.remove.index": mappings.remove_index,
         "pyjs.dict.find.hashed": mappings.find_hashed,
+        "pyjs.dict.find": mappings.find,
         "pyjs.dict.lookup": mappings.lookup,
         "pyjs.dict.pop.into": mappings.pop_into,
         "pyjs.dict.copy": mappings.copy_mapping,
@@ -42,6 +43,59 @@ def mapping_runtime(request, tmp_path_factory):
     library = runtime_library(request, tmp_path_factory,
                               lambda: transpile_llvm('def main() -> int: return len({1: 2})'))
     return runtime_functions(operations, library)
+
+
+def test_integer_find_keeps_full_width_first_match_and_empty_safety(mapping_runtime):
+    keys = (ctypes.c_int64 * 6)(-9223372036854775808, 0, 4294967296,
+                              9223372036854775807, -1, 0)
+    header = mappings._Dict(length=len(keys), capacity=len(keys), keys=ctypes.addressof(keys))
+    value = Pointer(ctypes.addressof(header))
+    for item, expected in [(-9223372036854775808, 0), (0, 1), (4294967296, 2),
+                           (9223372036854775807, 3), (-1, 4), (1, -1), (4294967295, -1)]:
+        query = ctypes.c_int64(item)
+        assert mapping_runtime("pyjs.dict.find", value, Pointer(ctypes.addressof(query)), 8, int8(2)) == expected
+    # Empty storage has no keys and need not dereference even the query.
+    header.length = 0
+    header.keys = None
+    assert mapping_runtime("pyjs.dict.find", value, Pointer(0), 8, int8(2)) == -1
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_integer_mapping_lookup_mutations_and_set_users(tmp_path, optimize):
+    result = LLVM().assert_matches_python('''
+        def main() -> str:
+            keys = [-9223372036854775808, 0, 4294967296, 9223372036854775807, -1]
+            values: dict[int, int] = {}
+            for key in keys:
+                values[key] = values.get(key, 0) + 1
+            for key in keys:
+                values[key] = values[key] + 2
+            before = values.copy()
+            output = [repr(values)]
+            for key in keys:
+                output.append(str(values.pop(key)))
+                output.append(str(values.get(key, -99)))
+            output.append(str(len(values)))
+            for key in keys:
+                values.setdefault(key, 7)
+                values.setdefault(key, 9)
+            output.append(repr(values))
+            del values[4294967296]
+            values[4294967296] = 10
+            output.append(repr(values))
+            output.append(repr(before))
+            members = {0, 4294967296, -1}
+            output.append(str(1 in members))
+            output.append(str(4294967296 in members))
+            members.discard(4294967296)
+            output.append(str(4294967296 in members))
+            members.add(4294967296)
+            output.append(str(4294967296 in members))
+            values.clear()
+            output.append(str(values.get(-1, 42)))
+            return "|".join(output)
+    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    assert not result.native.stderr
 
 
 def test_distinct_mapping_payload_owners_survive_growth_and_failure(mapping_runtime):

@@ -5105,11 +5105,14 @@ class FunctionEmitter:
             else:
                 _, value = self.expression(node.iterable)
                 start, stop, step = self.range_values(value)
-            # A resumed frame can outlive the arena of the host call that
-            # created its cursor. Keep its counter/limit/step on the managed
-            # heap just like reference-bearing sequence cursors.
+            # This cursor is compiler-private, contains only integers, and is
+            # reused on loop re-entry. Hoist its storage to the function entry
+            # so nested loops neither allocate in the arena nor grow the stack.
+            # Suspended frames can outlive the host call's arena, so retain
+            # upstream's managed-heap cursor across generator/coroutine resumes.
             iterator = (gc_layouts.allocate(self, ("i64", "i64", "i64"), layout="%pyjs.range.iterator")
-                        if self.generator_frame else self.arena_allocate("pyjs.range.iterator"))
+                        if self.generator_frame is not None
+                        else self.emit_value("alloca %pyjs.range.iterator"))
             for index, value in enumerate((start, stop, step)):
                 field = self.new_temporary()
                 self.emit_line(
@@ -6416,8 +6419,14 @@ class FunctionEmitter:
                 message = "pop index out of range"
             elif operation in {"__setitem__", "__delitem__"}:
                 message = "list assignment index out of range"
-            self.guard_index(node, integer(0, -1), length, message)
-            slot = self.emit_value(f"call ptr @pyjs.list.get(ptr {receiver}, i64 {integer(0, -1)}, i64 {size})")
+            index = integer(0, -1)
+            actual = self.guard_index(node, index, length, message)
+            # The guard has normalized negative indices and raised IndexError
+            # on failure. Use that checked position directly; list.get would
+            # normalize and check it again with an uncatchable runtime trap.
+            data_field = collection_ops.field(self, receiver, "pyjs.list", 2)
+            data = self.emit_value(f"load ptr, ptr {data_field}")
+            slot = self.emit_value(f"getelementptr {kind}, ptr {data}, i64 {actual}")
             if operation == "__setitem__":
                 arguments[1] = self.coerce_value(*arguments[1], kind, node.args[1], semantic=item_type,
                                                 representation=item_representation)
@@ -6425,7 +6434,7 @@ class FunctionEmitter:
                 return "void", ""
             result = self.emit_value(f"load {kind}, ptr {slot}") if operation != "__delitem__" else ""
             if operation != "__getitem__":
-                success(f"call i1 @pyjs.list.remove(ptr {receiver}, i64 {integer(0, -1)}, i64 {size})")
+                success(f"call i1 @pyjs.list.remove(ptr {receiver}, i64 {index}, i64 {size})")
             return ("void", "") if operation == "__delitem__" else (kind, result)
         if operation == "insert":
             arguments[1] = self.coerce_value(*arguments[1], kind, node.args[1], semantic=item_type,
@@ -6974,11 +6983,13 @@ class FunctionEmitter:
         return self.emit_value(f"trunc i128 {value} to i64")
 
     def guard_index(self, node, index, length, message):
+        """Return the normalized index on the guard's successful edge."""
         negative = self.emit_value(f"icmp slt i64 {index}, 0")
         offset = self.emit_value(f"add i64 {index}, {length}")
         actual = self.emit_value(f"select i1 {negative}, i64 {offset}, i64 {index}")
         valid = self.emit_value(f"icmp ult i64 {actual}, {length}")
         self.guard_exception(node, valid, "IndexError", message)
+        return actual
 
     def guard_exception(self, node, valid, name, message):
         if not self.module.uses_exceptions:
