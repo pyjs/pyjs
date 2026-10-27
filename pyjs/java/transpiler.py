@@ -2270,7 +2270,8 @@ class JVMEmitter:
                 )
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
                 return "Ljava/lang/String;"
-            if (semantic_receiver.generic_name == "list" and target.name == "remove"
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "remove"
                     and (node.keywords or len(node.args) != 1)):
                 raise JVMUnsupported("JVM list.remove requires one positional argument", node)
             argument_types = (
@@ -2278,6 +2279,7 @@ class JVMEmitter:
                 else [self.expression(argument) for argument in node.args]
             )
             if (target.name in {"__contains__", "remove"}
+                    and isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list"
                     and len(argument_types) == 1):
                 item_type = self.list_item_type(semantic_receiver)
