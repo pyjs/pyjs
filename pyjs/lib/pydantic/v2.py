@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Self
 
 from pyjs import js
+from pyjs.analysis.libraries import LibraryClassInfo
 
 
 @js
@@ -32,6 +33,12 @@ assign_model_values.source(
         model.constructor.__pyjs_defaults__ || []
     ));
     const fields = model.constructor.__pyjs_fields__ || new Map();
+    const config = model.constructor.__pyjs_config__ || new Map();
+    if (config.get('extra') === 'forbid') {
+        for (const name of Object.keys(data)) {
+            if (!fields.has(name)) throw new TypeError(`Unexpected field: ${name}`);
+        }
+    }
     const fail = (path, expected) => {
         throw new TypeError(`${path} must be ${expected}`);
     };
@@ -91,7 +98,8 @@ assign_model_values.source(
         }
         if (descriptor === 'int') {
             if (typeof value === 'number' && Number.isInteger(value)) return value;
-            if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value.trim())) {
+            if (!config.get('strict') && typeof value === 'string'
+                    && /^[+-]?[0-9]+$/.test(value.trim())) {
                 return Number(value);
             }
             fail(path, 'int');
@@ -171,7 +179,9 @@ assign_model_values.source(
             return new Map(entries.map(([key, item]) => {
                 let typedKey = key;
                 if (!(value instanceof Map)) {
-                    if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
+                    if (members[0] === 'int' && /^[+-]?[0-9]+$/.test(key.trim())) {
+                        typedKey = Number(key);
+                    } else if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
                         typedKey = Number(key);
                     } else if (members[0] === 'bool' && (key === 'true' || key === 'false')) {
                         typedKey = key === 'true';
@@ -338,7 +348,7 @@ class BaseModel:
 
 def _class_info(
     model: type,
-) -> tuple[dict[str, object], dict[str, object], tuple[str, ...]]:
+) -> LibraryClassInfo:
     annotations = {}
     defaults = {}
     required = []
@@ -356,4 +366,9 @@ def _class_info(
             defaults[name] = field.default_factory()
         else:
             defaults[name] = field.default
-    return annotations, defaults, tuple(required)
+    config = {
+        name: model.model_config[name]
+        for name in ("extra", "strict")
+        if name in model.model_config
+    }
+    return LibraryClassInfo(annotations, defaults, tuple(required), config=config)

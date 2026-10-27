@@ -16,6 +16,12 @@
   such as an Android TextView subclass overriding View's drawing callback.
 - Tuple class-check diagnostics retain the original subject's source location.
 
+- JavaScript Pydantic model decoding honors `extra="forbid"`, including
+  nested, inherited and empty models. Explicit `extra="ignore"` overrides
+  remain supported. Strict models no longer coerce integer value strings;
+  JSON object keys still decode to their declared numeric key types.
+  This does not add the full Pydantic validator or configuration surface.
+
 - JVM class checks accept literal tuples, including nested and empty tuples.
   The checked expression runs once; existing native and emitted-class
   restrictions remain unchanged.

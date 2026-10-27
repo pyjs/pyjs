@@ -350,6 +350,42 @@ def test_pydantic_models_keep_typed_fields_and_use_the_v2_client_base():
     )
 
 
+def test_pydantic_model_config_is_inherited_and_explicitly_overridden():
+    assert_transpile(
+        """
+        from pydantic import BaseModel, ConfigDict
+
+        @js
+        class Closed(BaseModel):
+            model_config = ConfigDict(extra="forbid", strict=True)
+
+        @js
+        class Open(Closed):
+            model_config = ConfigDict(extra="ignore", strict=False)
+
+        def main():
+            return Open.model_validate_json('{}')
+        """,
+        """
+        import { BaseModel } from './pyjs.lib.pydantic.v2.js';
+
+        export class Closed extends BaseModel {
+        }
+        Closed.__pyjs_config__ = new Map([['extra', 'forbid'], ['strict', true]]);
+        Closed.__pyjs_fields__ = new Map([]);
+
+        export class Open extends Closed {
+        }
+        Open.__pyjs_config__ = new Map([['extra', 'ignore'], ['strict', false]]);
+        Open.__pyjs_fields__ = new Map([]);
+
+        export function main() {
+            return Open.model_validate_json('{}');
+        }
+        """,
+    )
+
+
 def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
     assert_compiled_sources(
         """
@@ -383,6 +419,12 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         model.constructor.__pyjs_defaults__ || []
                     ));
                     const fields = model.constructor.__pyjs_fields__ || new Map();
+                    const config = model.constructor.__pyjs_config__ || new Map();
+                    if (config.get('extra') === 'forbid') {
+                        for (const name of Object.keys(data)) {
+                            if (!fields.has(name)) throw new TypeError(`Unexpected field: ${name}`);
+                        }
+                    }
                     const fail = (path, expected) => {
                         throw new TypeError(`${path} must be ${expected}`);
                     };
@@ -442,7 +484,8 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         }
                         if (descriptor === 'int') {
                             if (typeof value === 'number' && Number.isInteger(value)) return value;
-                            if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value.trim())) {
+                            if (!config.get('strict') && typeof value === 'string'
+                                    && /^[+-]?[0-9]+$/.test(value.trim())) {
                                 return Number(value);
                             }
                             fail(path, 'int');
@@ -522,7 +565,9 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                             return new Map(entries.map(([key, item]) => {
                                 let typedKey = key;
                                 if (!(value instanceof Map)) {
-                                    if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
+                                    if (members[0] === 'int' && /^[+-]?[0-9]+$/.test(key.trim())) {
+                                        typedKey = Number(key);
+                                    } else if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
                                         typedKey = Number(key);
                                     } else if (members[0] === 'bool' && (key === 'true' || key === 'false')) {
                                         typedKey = key === 'true';

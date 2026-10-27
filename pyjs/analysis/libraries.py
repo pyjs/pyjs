@@ -21,6 +21,7 @@ class LibraryClassInfo:
     # A target can replace host methods with statically generated client code.
     methods: dict[str, str] = field(default_factory=dict)
     imports: dict[str, object] = field(default_factory=dict)
+    config: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
