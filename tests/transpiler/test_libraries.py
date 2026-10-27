@@ -386,6 +386,31 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                     const fail = (path, expected) => {
                         throw new TypeError(`${path} must be ${expected}`);
                     };
+                    const suppliedFields = (input, result) => {
+                        if (input === null || typeof input !== 'object' || result === null) return 0;
+                        const fields = result.constructor?.__pyjs_fields__;
+                        if (fields) {
+                            const data = input instanceof Map ? Object.fromEntries(input) : input;
+                            let count = 0;
+                            for (const name of fields.keys()) {
+                                if (Object.hasOwn(data, name)) {
+                                    count += 1 + suppliedFields(data[name], result[name]);
+                                }
+                            }
+                            return count;
+                        }
+                        if (result instanceof Map) {
+                            const entries = input instanceof Map ? [...input.values()] : Object.values(input);
+                            return [...result.values()].reduce(
+                                (count, item, index) => count + suppliedFields(entries[index], item), 0);
+                        }
+                        if (Array.isArray(result) || result instanceof Set) {
+                            const items = [...input];
+                            return [...result].reduce(
+                                (count, item, index) => count + suppliedFields(items[index], item), 0);
+                        }
+                        return 0;
+                    };
                     const validate = (value, descriptor, path) => {
                         if (Array.isArray(descriptor) && descriptor[0] === 'model') {
                             const modelName = descriptor[1];
@@ -447,13 +472,23 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                             fail(path, `one of ${members.join(', ')}`);
                         }
                         if (kind === 'union') {
+                            // A successful parent schema can discard fields supplied for a
+                            // child. Prefer the successful branch retaining most model fields,
+                            // including nested fields, without counting generated defaults.
+                            let best, bestCount = -1;
                             for (const member of members) {
                                 try {
-                                    return validate(value, member, path);
+                                    const result = validate(value, member, path);
+                                    const count = suppliedFields(value, result);
+                                    if (count > bestCount) {
+                                        best = result;
+                                        bestCount = count;
+                                    }
                                 } catch (error) {
                                     if (!(error instanceof TypeError)) throw error;
                                 }
                             }
+                            if (bestCount >= 0) return best;
                             fail(path, 'a valid union member');
                         }
                         if (kind === 'list') {
@@ -480,14 +515,22 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         if (kind === 'dict') {
                             const entries = value instanceof Map
                                 ? [...value.entries()]
-                                : value !== null && typeof value === 'object'
+                                : value !== null && typeof value === 'object' && !Array.isArray(value)
                                     ? Object.entries(value)
                                     : null;
                             if (entries === null) fail(path, 'dict');
-                            return new Map(entries.map(([key, item]) => [
-                                validate(key, members[0], `${path}.key`),
-                                validate(item, members[1], `${path}[${key}]`),
-                            ]));
+                            return new Map(entries.map(([key, item]) => {
+                                let typedKey = key;
+                                if (!(value instanceof Map)) {
+                                    if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
+                                        typedKey = Number(key);
+                                    } else if (members[0] === 'bool' && (key === 'true' || key === 'false')) {
+                                        typedKey = key === 'true';
+                                    }
+                                }
+                                return [validate(typedKey, members[0], `${path}.key`),
+                                        validate(item, members[1], `${path}[${key}]`)];
+                            }));
                         }
                         fail(path, String(descriptor));
                     };
@@ -503,16 +546,56 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                 }
 
                 export function model_values(model) {
-                    const dump = (value) => {
-                        if (Array.isArray(value)) return value.map(dump);
-                        if (value instanceof Set) return [...value].map(dump);
-                        if (value instanceof Map) {
-                            return new Map([...value].map(([key, item]) => [key, dump(item)]));
+                    const resolve = descriptor => Array.isArray(descriptor) && descriptor[0] === 'model'
+                        ? globalThis.$pyjsModels?.get(descriptor[1]) : descriptor;
+                    const matches = (value, descriptor, exact = false) => {
+                        descriptor = resolve(descriptor);
+                        if (typeof descriptor === 'function') return exact
+                            ? value?.constructor === descriptor : value instanceof descriptor;
+                        if (descriptor === 'NoneType') return value === null;
+                        if (descriptor === 'object') return true;
+                        if (descriptor === 'str') return typeof value === 'string';
+                        if (descriptor === 'bool') return typeof value === 'boolean';
+                        if (descriptor === 'int') return Number.isInteger(value);
+                        if (descriptor === 'float') return typeof value === 'number';
+                        if (descriptor === 'Date') return value instanceof Date;
+                        if (!Array.isArray(descriptor)) return false;
+                        const [kind, ...members] = descriptor;
+                        if (kind === 'literal') return members.includes(value);
+                        if (kind === 'union') return members.some(member => matches(value, member, exact));
+                        if (kind === 'list') return Array.isArray(value) && value.every(item => matches(item, members[0], exact));
+                        if (kind === 'tuple') return Array.isArray(value) && value.length === members.length
+                            && value.every((item, index) => matches(item, members[index], exact));
+                        if (kind === 'set') return value instanceof Set && [...value].every(item => matches(item, members[0], exact));
+                        if (kind === 'dict') return value instanceof Map && [...value].every(
+                            ([key, item]) => matches(key, members[0], exact) && matches(item, members[1], exact));
+                        return false;
+                    };
+                    const dump = (value, descriptor = null) => {
+                        descriptor = resolve(descriptor);
+                        if (value === null || value === undefined) return value;
+                        if (Array.isArray(descriptor) && descriptor[0] === 'union') {
+                            const members = descriptor.slice(1).map(resolve);
+                            descriptor = members.find(member => matches(value, member, true))
+                                ?? members.find(member => matches(value, member))
+                                ?? members.find(member => member !== 'NoneType');
                         }
-                        if (value !== null && value.constructor?.__pyjs_fields__) {
-                            return new Map([...value.constructor.__pyjs_fields__.keys()].map(
-                                (name) => [name, dump(value[name])]
-                            ));
+                        const fields = typeof descriptor === 'function' && descriptor.__pyjs_fields__
+                            ? descriptor.__pyjs_fields__
+                            : value.constructor?.__pyjs_fields__;
+                        if (fields) {
+                            return new Map([...fields].map(([name, field]) => [name, dump(value[name], field)]));
+                        }
+                        const kind = Array.isArray(descriptor) ? descriptor[0] : null;
+                        if (Array.isArray(value)) {
+                            return value.map((item, index) => dump(item,
+                                kind === 'tuple' ? descriptor[index + 1] : kind === 'list' ? descriptor[1] : null));
+                        }
+                        if (value instanceof Set) return [...value].map(item => dump(item,
+                            kind === 'set' ? descriptor[1] : null));
+                        if (value instanceof Map) {
+                            return new Map([...value].map(([key, item]) => [key, dump(item,
+                                kind === 'dict' ? descriptor[2] : null)]));
                         }
                         return value;
                     };

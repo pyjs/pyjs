@@ -35,7 +35,7 @@ from .exceptions import (
     nullable_exception,
 )
 from .models import LIBRARY as MODEL_LIBRARY
-from .models import BaseModel, is_model
+from .models import BaseModel, is_model, unsupported_json_codec
 
 
 class JVMInferenceVisitor(IRInferenceVisitor):
@@ -117,6 +117,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     def validate_model_call(self, node, target, args):
         model_operation = (isinstance(target, Function) and target.cls is not None
                            and target.cls.py_obj is BaseModel)
+        model_operation |= getattr(target, "py_obj", None) is unsupported_json_codec
         if getattr(target, "py_obj", None) in {
                 native_builtins._str, native_builtins._repr, native_builtins._hash} and args:
             value_type = analyzed_value_type(args[0])

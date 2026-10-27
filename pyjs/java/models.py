@@ -28,12 +28,46 @@ class BaseModel:
 
     def __hash__(self) -> int: ...
 
+    def model_dump_json(self) -> str: ...
+
+    @classmethod
+    def model_validate_json(cls, json_data: str): ...
+
 
 def is_model(cls):
     return isinstance(cls, type) and any(
         base.__module__ == "pydantic.main" and base.__name__ == "BaseModel"
         for base in cls.__mro__[1:]
     )
+
+
+def is_json_factory(function):
+    return (function.is_classmethod and function.name == "model_validate_json"
+            and function.cls is not None and is_model(function.cls.py_obj)
+            and function.cls.library_info is not None
+            and "model_validate_json" in function.cls.library_info.methods)
+
+
+def unsupported_json_codec() -> None:
+    """Analyzer sentinel for an unsupported model's shadowing codec methods."""
+    raise NotImplementedError("Unsupported JVM model JSON codec")
+
+
+def field_only_codecs(info, cls):
+    from .json_codegen import JSONCodegen
+
+    generator = JSONCodegen()
+    return_type = generator.type_name(cls)
+    # Own stubs prevent lookup from falling through to a generated parent
+    # codec. They remain lazy: field construction still needs no JSON support.
+    return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
+        methods={**info.methods,
+            "model_dump_json": "    def model_dump_json(self) -> str:\n        _pyjs_no_codec()\n",
+            "model_validate_json": (
+                "    @classmethod\n"
+                f"    def model_validate_json(cls, json_data: str) -> {return_type}:\n"
+                "        _pyjs_no_codec()\n")},
+        imports={"_pyjs_no_codec": unsupported_json_codec, return_type: cls})
 
 
 def field_type(annotation):
@@ -56,7 +90,7 @@ def field_type(annotation):
     return False
 
 
-def _class_info(cls):
+def field_info(cls):
     if not is_model(cls):
         return None
     if cls.__pydantic_root_model__ or not cls.__pydantic_complete__:
@@ -106,3 +140,41 @@ def _class_info(cls):
     initializer = f"    def __init__({signature}):\n" + "\n".join(body or ["        pass"]) + "\n"
     return LibraryClassInfo(annotations, defaults, tuple(required), opaque=True,
                             methods={"__init__": initializer})
+
+
+def _class_info(cls):
+    from .json_codegen import JSONCodegen
+
+    info = field_info(cls)
+    if info is None:
+        return None
+    for base in cls.__mro__:
+        if base.__module__ == "pydantic.main" and base.__name__ == "BaseModel":
+            break
+        if any(name in vars(base) for name in ("model_dump_json", "model_validate_json")):
+            # Field-only lowering must not silently replace an application codec.
+            return field_only_codecs(info, cls)
+    generator = JSONCodegen()
+    try:
+        generator.validate(cls)
+        generator.emit("parts: list[str] = []")
+        generator.encode(cls, "self", "parts")
+        generator.emit("return ''.join(parts)")
+        encode = "    def model_dump_json(self) -> str:\n" + "\n".join(
+            "        " + line for line in generator.lines) + "\n"
+        generator.lines = []
+        generator.emit("reader = _pyjs_reader(json_data)")
+        result = generator.decode(cls, "reader")
+        generator.emit("reader.finish()")
+        generator.emit(f"return {result}")
+        decode = ("    @classmethod\n"
+                  f"    def model_validate_json(cls, json_data: str) -> {generator.annotation(cls)}:\n"
+                  + "\n".join("        " + line for line in generator.lines) + "\n")
+    except TypeError:
+        # Construction supports more field types than the wire codec. Keep
+        # such models constructible; calls fall through to the focused model
+        # operation diagnostic, not a partially generated implementation.
+        return field_only_codecs(info, cls)
+    return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
+                            methods={**info.methods, "model_dump_json": encode,
+                                     "model_validate_json": decode}, imports=generator.imports)

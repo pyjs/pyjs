@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
 from . import double_to_string
 from .json import JSONReader, quote
-from .models import _class_info, is_model
+from .models import field_info, is_model
 
 
 class JSONCodegen:
@@ -86,7 +86,7 @@ class JSONCodegen:
             if len(parents) >= 32:
                 raise TypeError("JVM JSON schemas must be acyclic and at most 32 levels deep")
             if is_model(annotation):
-                _class_info(annotation)
+                field_info(annotation)
                 children = [field.annotation for field in annotation.model_fields.values()]
             else:
                 children = [] if get_origin(annotation) is Literal else get_args(annotation)
