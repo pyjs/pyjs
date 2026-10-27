@@ -1,0 +1,5 @@
+name = "Unicode text scan"
+category = "Text · code-point iteration · comparisons"
+description = "Construct N copies of a mixed ASCII, accented and supplementary-plane string and score each Unicode character."
+sizes = [500, 5000]
+notes = "String construction is included. Python/PyJS and JavaScript iterate character strings; Java and Rust iterate scalar values without allocating a string per character. This exposes, rather than hides, representation costs. No Unicode normalization is performed."

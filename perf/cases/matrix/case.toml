@@ -1,0 +1,5 @@
+name = "Integer matrix multiplication"
+category = "Nested loops · memory access"
+description = "Multiply two deterministic square matrices with an i-j-k loop, then sum every output element."
+sizes = [24, 64]
+notes = "Flat row-major storage. Java uses long arrays; Python and Rust grow integer lists. Input allocation and output checksum are timed. All intermediate values fit the JS safe-integer domain. No BLAS, SIMD intrinsics, or parallel workers."

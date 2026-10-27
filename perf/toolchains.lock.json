@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "checked": "2026-10-26",
+  "versions": {"python": "3.15.2", "node": "26.12.1", "rustc": "1.99.1", "java": "27.0.1", "javac": "27.0.1"},
+  "sources": {
+    "python": "https://www.python.org/downloads/",
+    "node": "https://nodejs.org/dist/index.json",
+    "rustc": "https://blog.rust-lang.org/releases/",
+    "java": "https://jdk.java.net/27/"
+  },
+  "notes": "Refresh explicitly for new publication snapshots. Does not install tools. Actual executable paths and versions are recorded per run; mismatches warn. LLVM code generation belongs to the selected PyJS revision; its Clang driver version is recorded separately."
+}

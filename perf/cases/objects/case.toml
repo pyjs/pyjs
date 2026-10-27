@@ -1,0 +1,5 @@
+name = "Object allocation and traversal"
+category = "Objects · calls · allocation"
+description = "Allocate N records, each with two integer fields, then sum the result of a method on every record."
+sizes = [2000, 20000]
+notes = "Rust boxes each record to retain the object-allocation workload. Java uses object references, not a packed primitive array. Runtime GC versus deterministic deallocation remains an implementation difference."

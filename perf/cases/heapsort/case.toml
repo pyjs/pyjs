@@ -1,0 +1,5 @@
+name = "Heap sort"
+category = "Sorting · indexed mutation · helper calls"
+description = "Build a deterministic integer list, heap-sort it in place, and compute an order-sensitive checksum."
+sizes = [512, 4096]
+notes = "Same heap-sort algorithm and duplicate/negative inputs throughout; no standard-library sort. Java uses a long array; the other variants use their normal growable numeric containers. Input allocation and weighted checksum are timed."
