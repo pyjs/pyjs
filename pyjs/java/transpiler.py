@@ -2154,6 +2154,16 @@ class JVMEmitter:
                     leading_argument,
                 )
             if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "reverse"
+                    and not node.args and not node.keywords):
+                owner = self.list_class(semantic_receiver)
+                if not any(method.name == "reverse" for method in owner.methods):
+                    owner.add_method(self.list_reverse_method(owner, self.list_item_type(semantic_receiver)))
+                reference = self.class_file.method_reference(owner.name, "reverse", "()V")
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                self.code.emit(0x01)
+                return "N"
+            if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name == "__len__"
                     and not node.args and not node.keywords):
                 reference = self.class_file.field_reference(
@@ -4962,6 +4972,52 @@ class JVMEmitter:
         code.local(0x19, 1)
         code.emit(0xB0)
         return Method(0x0001, "copy", f"()L{owner};", code.render(), 5, 3)
+
+    def list_reverse_method(self, class_file: ClassFile, item_type: str) -> Method:
+        """Swap in the existing backing array: O(n) time, constant extra space."""
+        code = Bytecode()
+        data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
+        length = class_file.field_reference(class_file.name, "length", "I")
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x3A, 1)  # backing array
+        code.emit(0x03)
+        code.local(0x36, 2)  # left index
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x04)
+        code.emit(0x64)
+        code.local(0x36, 3)  # right index
+        load = self.array_load_opcode(item_type)
+        store = self.array_store_opcode(item_type)
+        local_load = {"J": 0x16, "D": 0x18, "F": 0x17, "Z": 0x15,
+                      "B": 0x15, "C": 0x15, "S": 0x15, "I": 0x15}.get(item_type, 0x19)
+        local_store = {0x16: 0x37, 0x18: 0x39, 0x17: 0x38, 0x15: 0x36, 0x19: 0x3A}[local_load]
+        code.mark("loop")
+        code.local(0x15, 2)
+        code.local(0x15, 3)
+        code.branch(0xA2, "done")
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        code.emit(load)
+        code.local(local_store, 4)
+        code.local(0x19, 1)
+        code.local(0x15, 2)
+        code.local(0x19, 1)
+        code.local(0x15, 3)
+        code.emit(load)
+        code.emit(store)
+        code.local(0x19, 1)
+        code.local(0x15, 3)
+        code.local(local_load, 4)
+        code.emit(store)
+        code.emit(0x84, bytes((2, 1)))
+        code.emit(0x84, bytes((3, 255)))
+        code.branch(0xA7, "loop")
+        code.mark("done")
+        code.emit(0xB1)
+        slots = 6 if item_type in {"J", "D"} else 5
+        return Method(0x0001, "reverse", "()V", code.render(), 6, slots)
 
     def list_append_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()

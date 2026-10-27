@@ -101,6 +101,8 @@
   under negation while preserving boolean length results as zero or one.
   Explicit-separator string splitting supports bounded splits
   and preserves trailing empty fields; whitespace splitting remains unsupported.
+- JVM lists support in-place `reverse()`, retaining aliases, element identities
+  and fixed-width numeric representations without allocating a replacement list.
 
 - JVM nullable integers and floats retain `None` through calls, fields, and
   collections, with exact numeric equality and Python-compatible truth tests.
