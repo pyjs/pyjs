@@ -934,6 +934,8 @@ with `pyjs template`.
   explicit fixed clocks/time zones. `local_date_at(fixed_clock(...))` makes
   calendar tests deterministic without replacing the process-wide time zone.
   This is a JVM API (Android API 26+), not a Python `datetime` implementation.
+  Android applications using it must set `min_sdk` to at least 26; compilation
+  does not yet diagnose lower minima or add core-library desugaring.
 - JVM list membership supports matching integer, Boolean and string items,
   including nullable strings. Floats and other mixed item domains remain
   explicit unsupported boundaries.

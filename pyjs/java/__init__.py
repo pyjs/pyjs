@@ -1,7 +1,7 @@
 """Experimental JVM bytecode backend."""
 
 import math
-import time
+import time as _time
 
 from pyjs import jvm
 from pyjs.decorators import preserves_numeric_format
@@ -62,7 +62,7 @@ class JVMArray[T]:
 @jvm.native("java/lang/System", name="currentTimeMillis")
 def current_time_millis() -> int:
     """Return wall-clock milliseconds on CPython or the JVM."""
-    return time.time_ns() // 1_000_000
+    return _time.time_ns() // 1_000_000
 
 
 @jvm.native("java/lang/Double", name="parseDouble")

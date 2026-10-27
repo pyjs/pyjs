@@ -1,8 +1,19 @@
+import importlib
 from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
 from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
+
+
+def test_calendar_import_preserves_the_cpython_wall_clock(monkeypatch):
+    from pyjs.java import current_time_millis
+
+    # A submodule binds its name in its parent package's globals. Loading the
+    # calendar API must not replace the stdlib clock used by the host helper.
+    importlib.import_module("pyjs.java.time")
+    monkeypatch.setattr(importlib.import_module("time"), "time_ns", lambda: 1_234_567_890)
+    assert current_time_millis() == 1234
 
 
 @pytest.mark.parametrize("milliseconds", [0, -1, 1772956800000, 1793518200000])
@@ -52,7 +63,7 @@ def test_calendar_arithmetic_invalid_dates_and_device_today(tmp_path):
 
 
 def test_calendar_bindings_compile_for_android(tmp_path):
-    assert_compiles_to_android_dex(CALENDAR_SOURCE, tmp_path)
+    assert_compiles_to_android_dex(CALENDAR_SOURCE, tmp_path, min_api=26)
 
 
 def test_named_zone_and_invalid_zone_id(tmp_path):
