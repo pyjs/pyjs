@@ -108,6 +108,11 @@
   collections, with exact numeric equality and Python-compatible truth tests.
   Ordinary scalar method signatures keep their primitive ABI.
 
+- JVM conditions can short-circuit mixed string, integer and Boolean operands
+  without materializing an incompatible result union. Value-returning mixed
+  unions retain their existing storage restrictions. Nullable strings preserve
+  their empty/missing false values in conditions and fallback expressions.
+
 - Android application packages can declare permissions and reference an
   app-owned network-security XML resource. Defaults still request no network
   access and retain the existing cleartext policy.

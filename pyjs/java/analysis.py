@@ -14,7 +14,15 @@ from pyjs.analysis.ir import (
     Return,
 )
 from pyjs.analysis.lifetime import refine_lifetimes
-from pyjs.analysis.objects import Class, Function, Instance, Name, StaticCast, UnionType
+from pyjs.analysis.objects import (
+    BoolOp,
+    Class,
+    Function,
+    Instance,
+    Name,
+    StaticCast,
+    UnionType,
+)
 from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
 from pyjs.python.native_libraries import NativeProtocolMappings
@@ -40,6 +48,13 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     supports_exception_args = True
 
     def truth_test(self, node, test):
+        if isinstance(test, ast.BoolOp):
+            # A condition consumes only truth, not the operand-valued union.
+            # Keep short-circuit evaluation but normalize each visited leaf at
+            # its own evaluation point, before incompatible ABIs are joined.
+            values = [self.truth_test(node, value) for value in test.values]
+            return ast.copy_location(BoolOp(JVM_ENVIRONMENT.builtins.search("bool"),
+                                           op=test.op, values=values), node)
         result = super().truth_test(node, test)
         if (isinstance(result, ast.Call)
                 and getattr(getattr(result.func, "obj", None), "name", None) == "__len__"):

@@ -11,21 +11,21 @@ from tests.backend_semantics import (
     STRING_SEARCH_CASES,
     UNION_NONE_GUARD_CONTRACT,
 )
+from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_jvm import java
 from tests.java.test_native_boundaries import run_jvm
 from tests.semantics.helpers import run_javascript, run_python
 
 
-def test_optional_truth_has_a_located_diagnostic():
-    with pytest.raises(JVMUnsupported, match="optional truth tests require narrowing first.*compiling.*check"):
-        transpile_jvm('''
-            def check(value: str | None) -> int:
-                if value:
-                    return 1
-                return 0
-            def main() -> int:
-                return check(None)
-        ''')
+def test_optional_string_truth_handles_missing_empty_and_present(tmp_path):
+    assert_text_matches_python('''
+def check(value: str | None) -> int:
+    if value:
+        return 1
+    return 0
+def main() -> str:
+    return str(check(None)) + str(check("")) + str(check("yes"))
+''', tmp_path)
 
 
 @pytest.mark.parametrize("method", ["lower", "upper"])
