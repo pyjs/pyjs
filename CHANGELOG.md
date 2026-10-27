@@ -6,6 +6,11 @@
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.
 
+- Node hosts can perform bounded descriptor reads, inspect symlinks and file
+  identity, flush descriptors, and publish hard links without replacing an
+  existing destination. Incremental directory handles avoid materializing a
+  whole directory. Unsupported requested open flags fail explicitly.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and

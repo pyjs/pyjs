@@ -9,8 +9,12 @@ class FileInfo:
     def __init__(self):
         self.size: int = 0
         self.mtimeMs: float = 0.0
+        self.ctimeMs: float = 0.0
+        self.dev: int = 0
+        self.ino: int = 0
     def isFile(self) -> bool: ...
     def isDirectory(self) -> bool: ...
+    def isSymbolicLink(self) -> bool: ...
 
 
 @js.native
@@ -19,6 +23,7 @@ class DirectoryEntry:
         self.name: str = ""
     def isFile(self) -> bool: ...
     def isDirectory(self) -> bool: ...
+    def isSymbolicLink(self) -> bool: ...
 
 
 @js.native
