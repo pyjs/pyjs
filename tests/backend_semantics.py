@@ -5230,6 +5230,85 @@ UNION_REFLECTED_ARITHMETIC_CONTRACT = _contract(
 )
 
 
+CONDITIONAL_EMPTY_COLLECTIONS = _contract(
+    '''
+    from pyjs import js, int8
+
+    @js
+    def choose_list(flag: bool, values: list[int]) -> list[int]:
+        selected = values if flag else []
+        selected.append(7)
+        return selected
+
+    @js
+    def choose_nested(flag: bool, values: list[list[int]]) -> list[list[int]]:
+        selected = [[]] if flag else values
+        selected[0].append(7)
+        return selected
+
+    @js
+    def choose_represented(flag: bool, values: list[int8]) -> list[int8]:
+        selected = values if flag else []
+        selected.append(int8(127))
+        return selected
+    ''',
+    "conditional_empty_result",
+    '''
+        values = [3]
+        fresh = choose_list(False, values)
+        same = choose_list(True, values)
+        second = choose_list(False, values)
+        same.append(8)
+        fresh.append(9)
+        nested = [[3]]
+        fresh_nested = choose_nested(True, nested)
+        same_nested = choose_nested(False, nested)
+        same_nested[0].append(8)
+        represented = [int8(1)]
+        fresh_represented = choose_represented(False, represented)
+        same_represented = choose_represented(True, represented)
+        same_represented.append(int8(2))
+        sibling_lists = [[[]], [[int8(127)]]]
+        sibling_lists[0][0].append(int8(127))
+    ''',
+    (
+        ("empty list has sibling item storage", "len(fresh) != 2 or fresh[0] != 7 or len(second) != 1 or second[0] != 7"),
+        ("existing list keeps identity", "len(values) != 3 or values[0] != 3 or values[1] != 7 or values[2] != 8"),
+        ("nested empty literals inherit fresh slot storage", "len(fresh_nested) != 1 or len(fresh_nested[0]) != 1 or fresh_nested[0][0] != 7 or nested[0][1] != 7"),
+        ("existing nested list keeps identity", "len(nested[0]) != 3 or nested[0][2] != 8"),
+        ("empty represented list preserves width", "int(fresh_represented[0] + 1) != -128"),
+        ("represented input is not reallocated", "len(represented) != 3 or represented[2] != 2"),
+        ("literal list siblings infer nested storage", "int(sibling_lists[0][0][0] + 1) != -128 or int(sibling_lists[1][0][0] + 1) != -128"),
+    ),
+)
+
+
+CONDITIONAL_EMPTY_MAPPING = _contract(
+    '''
+    from pyjs import js, int8
+
+    @js
+    def choose_dict(flag: bool, values: dict[str, int]) -> dict[str, int]:
+        selected = {} if flag else values
+        selected["new"] = 7
+        return selected
+    ''',
+    "conditional_mapping_result",
+    '''
+        mapping = {"old": 3}
+        fresh = choose_dict(True, mapping)
+        same = choose_dict(False, mapping)
+        sibling_mapping = {"a": [[]], "b": [[int8(127)]]}
+        sibling_mapping["a"][0].append(int8(127))
+    ''',
+    (
+        ("empty dictionary has sibling key/value storage", 'len(fresh) != 1 or fresh["new"] != 7'),
+        ("existing dictionary keeps identity", "same is not mapping or len(mapping) != 2"),
+        ("literal dictionary siblings infer nested storage", 'int(sibling_mapping["a"][0][0] + 1) != -128 or int(sibling_mapping["b"][0][0] + 1) != -128'),
+    ),
+)
+
+
 BACKEND_CONTRACTS = {
     "portable storage": PORTABLE_STORAGE,
     "portable floats": PORTABLE_FLOAT,

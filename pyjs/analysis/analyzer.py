@@ -13875,9 +13875,8 @@ class InferenceVisitor(ast.NodeVisitor):
             if len(matching) != 1:
                 continue
             value_type, representation = next(iter(matching))
-            if not isinstance(value.obj, GenericClass) and value.obj is not value_type:
+            if self.apply_literal_type(value, value_type) is None:
                 continue
-            value.obj = value_type
             self.normalize_representation(value, representation, value_type)
             typed_representations[index] = value_type, representation
         return typed_representations
@@ -14940,7 +14939,8 @@ class InferenceVisitor(ast.NodeVisitor):
             )
 
     def prepare_conditional_values(self, body, orelse):
-        """Backend policies may contextualize fresh literals before joining."""
+        """Type fresh empty branches before their allocations enter the IR."""
+        self.infer_empty_collection_literals([body, orelse])
 
     def visit_IfExp(self, node: ast.IfExp):
         test = self.visit(node.test)

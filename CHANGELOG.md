@@ -82,6 +82,11 @@
   `pyjs.java.errors`; UUID parsing retains the platform's acceptance rules.
 - Immediately awaited objects preserve instance fields, properties, methods,
   and represented numeric fields across JavaScript, JVM, and LLVM lowering.
+- Empty list and dictionary branches inherit an unambiguous sibling's storage
+  type before conditional lowering, including nested fresh empty lists and
+  fixed-width items. Nested fresh empties in list, tuple and dictionary
+  literals also inherit sibling storage. Existing container aliases keep
+  their storage and identity.
 - JVM clients generate typed remote operations from ordinary API declarations
   without including server bodies. Nested model results and structured errors
   are decoded on the client. Generated codecs alias their builtin bindings;
