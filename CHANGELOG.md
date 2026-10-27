@@ -83,6 +83,11 @@
   excluding unrelated siblings of an inherited method's declaring class.
   This is not a general mutable-field flow-analysis repair: compiler-generated
   indexed/chained assignment temporaries can still retain stale refinements.
+- JVM fixed tuples can be unpacked into local names, including nested tuples,
+  swaps and repeated targets. Nested tuple iteration uses the same assignment
+  rules. Ordinary unpacked values clear earlier inferred numeric formats,
+  avoiding unintended fixed-width truncation. Variable-length unpacking remains
+  unsupported, with an explicit diagnostic for starred targets.
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.

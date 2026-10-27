@@ -967,6 +967,9 @@ with `pyjs template`.
   Nullable strings treat both `None` and the empty string as false. Non-final
   float, collection and custom-object operands still require explicit tests.
   This does not add storage for mixed primitive/reference union values.
+- JVM fixed tuples support local unpacking, including nested tuples, swaps,
+  repeated targets and tuple items in loops. Unpacking into fields or indices,
+  starred targets and variable-length inputs remains unsupported.
 - JVM `tuple[T, ...]` supports reference-valued items, including nullable
   references and nested tuples. Literals, calls, returns and fields retain
   identity; `len`, signed integer/Boolean indexing and `for` loops work.

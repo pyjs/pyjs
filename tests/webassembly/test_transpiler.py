@@ -24,6 +24,7 @@ from tests.backend_semantics import (
     DIRECT_UNION_RESULT_CONTRACT,
     EXCEPTION_OBJECT_CONTRACT,
     FIELD_ASSIGNMENT_CONTRACT,
+    FIXED_TUPLE_ASSIGNMENT_CONTRACT,
     GENERATOR_CLEANUP_CONTRACT,
     GENERIC_OPERATOR_CONTRACT,
     GENERIC_UNION_ORDER_CONTRACT,
@@ -203,6 +204,11 @@ def test_reference_tuple_contract_keeps_the_wasm_collection_boundary():
     with pytest.raises(WebAssemblyUnsupported) as caught:
         transpile_webassembly(REFERENCE_TUPLE_CONTRACT.source)
     assert str(caught.value) == "WebAssembly value type tuple__str__variadic is not implemented"
+
+
+def test_fixed_tuple_assignment_keeps_the_wasm_collection_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type tuple__"):
+        transpile_webassembly(FIXED_TUPLE_ASSIGNMENT_CONTRACT.source)
 
 
 def test_list_copy_contract_keeps_the_wasm_constructor_boundary():
