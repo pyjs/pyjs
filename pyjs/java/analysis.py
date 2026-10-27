@@ -54,6 +54,9 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     supports_exception_causes = True
     supports_exception_args = True
 
+    def analyze_isinstance(self, call):
+        return call.isinstance(validate_numeric=False)
+
     def truth_test(self, node, test):
         if isinstance(test, ast.BoolOp):
             # A condition consumes only truth, not the operand-valued union.

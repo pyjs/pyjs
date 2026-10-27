@@ -4323,6 +4323,76 @@ TEXT_EDIT_CONTRACT = _contract(
 )
 
 
+POSITIONAL_MINMAX_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+def observed_number(events: list[int], value: int) -> int:
+    events.append(value)
+    return value
+''',
+    "positional_minmax_result",
+    '''
+        events: list[int] = []
+        low = min(observed_number(events, 7), observed_number(events, -3), observed_number(events, 9))
+        high = max(-3, 12, 4, 12)
+    ''',
+    (
+        ("minimum among three", "low != -3"),
+        ("maximum among four", "high != 12"),
+        ("arguments evaluated once", "len(events) != 3"),
+        ("arguments evaluated in order", "events[0] != 7 or events[1] != -3 or events[2] != 9"),
+        ("signed values", "min(-9007199254740991, 0, 9007199254740991) != -9007199254740991"),
+    ),
+)
+
+
+ISINSTANCE_LITERAL_TUPLE_CONTRACT = _contract(
+    '''
+from pyjs import js
+
+@js
+class Item:
+    pass
+
+@js
+class Left(Item):
+    pass
+
+@js
+class Right(Item):
+    pass
+
+@js
+def observed(events: list[int], value: Item) -> Item:
+    events.append(1)
+    return value
+
+@js
+def matches(value: Item | None) -> bool:
+    return isinstance(value, (Left, ((), Right)))
+''',
+    "isinstance_literal_tuple_result",
+    '''
+        events: list[int] = []
+        item = Right()
+        matched = isinstance(observed(events, item), (Left, (Right,)))
+        empty = isinstance(observed(events, item), ())
+        missing = isinstance(observed(events, Item()), (Left, Right))
+        conditional = isinstance(observed(events, Left()) if matched else observed(events, Item()), (Right, Left))
+    ''',
+    (
+        ("second class matches", "not matched"),
+        ("empty tuple never matches", "empty"),
+        ("nonmatching parent", "missing"),
+        ("conditional subject", "not conditional"),
+        ("subject evaluated once including empty tuple", "len(events) != 4"),
+        ("nullable and nested targets", "matches(None) or not matches(Left()) or not matches(Right())"),
+    ),
+)
+
+
 ASSERT_INSTANCE_STATE_CONTRACT = _contract(
     '''
 from pyjs import js

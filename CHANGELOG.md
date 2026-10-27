@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- JVM class checks accept literal tuples, including nested and empty tuples.
+  The checked expression runs once; existing native and emitted-class
+  restrictions remain unchanged.
+- The same single-evaluation lowering also supports application-defined
+  `__round__()` dispatch on JVM.
+- JVM integer `min()` and `max()` accept three or more positional arguments.
+  Iterable and key-function forms remain unsupported.
+
 - JVM list membership supports strings and nullable strings with value
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
