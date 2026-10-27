@@ -2976,6 +2976,51 @@ EMPTY_LITERAL_SUM_CONTRACT = _contract(
 )
 
 
+STRING_LIST_MEMBERSHIP_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def needle(events: list[str]) -> str:
+        events.append("needle")
+        return "".join(["s", "now"])
+
+    @js
+    def haystack(events: list[str]) -> list[str]:
+        events.append("haystack")
+        return ["snow", "雪", "🌱", "", "é"]
+    ''',
+    "string_list_membership",
+    '''
+    events: list[str] = []
+    found = needle(events) in haystack(events)
+    values = ["snow", "雪", "🌱", "", "é"]
+    empty: list[str] = []
+    ''',
+    (
+        ("value equality and evaluation order", 'not found or ",".join(events) != "needle,haystack"'),
+        ("Unicode and empty text", '"雪" not in values or "🌱" not in values or "" not in values'),
+        ("no normalization or case folding", '"Snow" in values or "é" in values'),
+        ("empty list", '"" in empty'),
+        ("explicit contains", 'not values.__contains__("snow") or values.__contains__("missing")'),
+    ),
+)
+
+
+NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT = _contract(
+    "from pyjs import js",
+    "nullable_string_membership",
+    '''
+    nullable: list[str | None] = ["snow", None]
+    empty: list[str] = []
+    ''',
+    (
+        ("null in empty ordinary list", "None in empty"),
+        ("null-safe membership", 'None not in nullable or "snow" not in nullable or "missing" in nullable'),
+    ),
+)
+
+
 INTEGER_LIST_MEMBERSHIP_CONTRACT = _contract(
     "from pyjs import js",
     "integer_list_membership_contract",

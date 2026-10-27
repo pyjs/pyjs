@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM list membership supports strings and nullable strings with value
+  equality, preserving ordinary `in` evaluation order and explicit
+  `__contains__` calls. Other mixed item domains remain unsupported.
+
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.

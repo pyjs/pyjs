@@ -2195,9 +2195,11 @@ class JVMEmitter:
                     and semantic_receiver.generic_name == "list"
                     and len(argument_types) == 1):
                 item_type = self.list_item_type(semantic_receiver)
-                if item_type not in {"J", "Z"} or argument_types[0] != item_type:
+                string_match = item_type == "Ljava/lang/String;" and argument_types[0] in {item_type, "N"}
+                scalar_match = item_type in {"J", "Z"} and argument_types[0] == item_type
+                if not (string_match or scalar_match):
                     raise JVMUnsupported(
-                        "JVM list membership requires matching integer or boolean items", node,
+                        "JVM list membership requires matching integer, boolean or string items", node,
                     )
                 list_class = self.list_class(semantic_receiver)
                 if not any(method.name == "contains" for method in list_class.methods):
@@ -4881,10 +4883,20 @@ class JVMEmitter:
         code.emit(0xB4, data.to_bytes(2, "big"))
         code.local(0x15, index)
         code.emit(self.array_load_opcode(item_type))
-        code.local(0x16 if item_type == "J" else 0x15, 1)
-        if item_type == "J":
+        if item_type == "Ljava/lang/String;":
+            code.local(0x19, 1)
+            equals = class_file.method_reference(
+                "java/util/Objects", "equals", "(Ljava/lang/Object;Ljava/lang/Object;)Z",
+            )
+            code.emit(0xB8, equals.to_bytes(2, "big"))
+            code.branch(0x9A, "found")
+        elif item_type == "J":
+            code.local(0x16, 1)
             code.emit(0x94)
-        code.branch(0x99 if item_type == "J" else 0x9F, "found")
+            code.branch(0x99, "found")
+        else:
+            code.local(0x15, 1)
+            code.branch(0x9F, "found")
         code.emit(0x84, bytes((index, 1)))
         code.branch(0xA7, "loop")
         code.mark("missing")
