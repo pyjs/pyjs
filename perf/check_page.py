@@ -118,7 +118,9 @@ async def check(url: str, output: Path):
               select.dispatchEvent(new Event('change'));
             })()""")
             await page.wait_for(f"document.querySelector('#snapshot')?.value === {json.dumps(other)} && location.search.includes({json.dumps(other)})", "snapshot navigation")
-            await page.wait_for("document.querySelector('.measurement').textContent !== '—'", "snapshot controls initialized")
+            # Partial or unsupported snapshots can legitimately leave the first
+            # measurement empty. Wait for client hydration, not a timing value.
+            await page.wait_for_selector('td[data-target="cpython"][data-baseline="true"]')
             assert not page.exceptions, page.exceptions
         (output / "result.json").write_text(json.dumps({"rows": count, "runtime_columns": len(LABELS), "filters": cases,
                                                        "sticky_workloads": True,
