@@ -111,6 +111,20 @@ def test_unmaterialized_range_has_a_located_boundary():
         transpile_jvm('def main() -> int:\n    return sorted(range(4))[0]\n')
 
 
+def test_union_container_has_a_located_boundary_instead_of_attribute_error():
+    with pytest.raises(CompilationError) as error:
+        transpile_jvm('''def order(values: list[str] | set[str]) -> str:
+    return ",".join(sorted(values))
+def main() -> str:
+    return order(["b", "a"]) + order({"z", "x"})
+''', filename="sort_union.py")
+    assert error.value.lineno == 2
+    assert error.value.diagnostic.code.value == "PYJS2001"
+    assert error.value.diagnostic.message == (
+        "JVM sorted() requires a list, string, set, or dictionary key collection"
+    )
+
+
 @pytest.mark.parametrize("kind", ["int8", "int64", "float32"])
 def test_represented_sort_has_an_explicit_boundary(kind):
     with pytest.raises(CompilationError, match=r"JVM sorted\(\) fixed-width item representations") as error:

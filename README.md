@@ -1027,10 +1027,14 @@ with `pyjs template`.
   unchanged, and bounds comparisons to O(n log n). Key callbacks, other
   iterable kinds and fixed-width item representations remain explicit
   compilation boundaries.
+  NaNs and inconsistent comparators have no guaranteed order; their output
+  and comparison-call sequence may differ from CPython's sorting algorithm.
 - JVM reference-valued sets support literals, empty construction, iteration,
   membership, truth, length, `add`, `discard`, `clear` and shallow `copy`.
   Numeric members, custom equality/hash, set algebra and iterable construction
   remain unsupported; unsupported operations fail during compilation.
+  Structural mutation during iteration raises `RuntimeError`, including
+  same-size remove/add changes that CPython may let continue.
 - JVM `list(existing_list)` and `existing_list.copy()` copy list storage while
   retaining shared references to its items. Empty copies can grow normally.
   Source and result

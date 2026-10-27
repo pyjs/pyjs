@@ -15,14 +15,6 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
-- JVM programs support stable `sorted()` over ordinary lists, strings and hash
-  keys, shallow `list.copy()`, and basic reference-valued sets. Sorting leaves
-  source containers unchanged; unsupported callbacks and represented items
-  receive explicit compilation errors.
-
-- Dictionary `pop(key, default)` accepts a fallback outside the stored value
-  type, matching `get()`, including `None` for non-nullable reference values.
-
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
@@ -90,6 +82,13 @@
 - JVM dictionaries support `pop`, including eager defaults, nullable values,
   missing-key errors, and iterator invalidation after removal. Shallow `copy`
   preserves insertion order without sharing key-set mutations.
+- JVM programs support stable `sorted()` over ordinary lists, strings and hash
+  keys, shallow `list.copy()`, and basic reference-valued sets. Sorting leaves
+  source containers unchanged; unsupported callbacks and represented items
+  receive explicit compilation errors.
+
+- Dictionary `pop(key, default)` accepts a fallback outside the stored value
+  type, matching `get()`, including `None` for non-nullable reference values.
 - `pyjs.java.uuid` exposes Java UUID generation, parsing and string conversion
   on JVM and Android. Native `IllegalArgumentException` is catchable through
   `pyjs.java.errors`; UUID parsing retains the platform's acceptance rules.

@@ -47,8 +47,8 @@ def test_set_size_mutation_during_iteration_is_catchable(tmp_path):
     try:
         for value in values:
             values.add("new")
-    except RuntimeError:
-        return "changed"
+    except RuntimeError as error:
+        return str(error)
     return "missed"
 ''', tmp_path)
 

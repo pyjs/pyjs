@@ -3320,7 +3320,7 @@ class JVMEmitter:
         self.load(f"{node.iterator}.index")
         self.code.emit(0x94)
         self.code.branch(0x99, unchanged)
-        self.throw_python("RuntimeError", ("set" if collection == "set" else "dictionary")
+        self.throw_python("RuntimeError", ("Set" if collection == "set" else "dictionary")
                           + " changed size during iteration")
         self.code.mark(unchanged)
         self.load(f"{node.iterator}.source")

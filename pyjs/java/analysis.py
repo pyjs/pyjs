@@ -134,7 +134,8 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         # and item types. Reuse that path rather than a second sort bytecode
         # emitter. Wrapped analyzed expressions preserve one evaluation.
         source = analyzed_value_type(node.args[0])
-        if source.generic_name not in {"list", "str", "dict", "KeysView", "set"}:
+        if (not isinstance(source, Class)
+                or source.generic_name not in {"list", "str", "dict", "KeysView", "set"}):
             self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                       "JVM sorted() requires a list, string, set, or dictionary key collection")
         item = analyzed_value_type(node).generic_types["V"]
