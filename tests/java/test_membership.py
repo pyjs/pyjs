@@ -4,7 +4,9 @@ from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classpath import read_jvm_class
 from tests.backend_semantics import (
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
+    NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
+    STRING_LIST_MEMBERSHIP_CONTRACT,
 )
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
@@ -13,14 +15,18 @@ from tests.java.test_exceptions import (
 )
 
 
-@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT])
+@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT, STRING_LIST_MEMBERSHIP_CONTRACT])
 def test_shared_membership_contract(tmp_path, contract):
     assert_matches_python(contract.source, tmp_path)
 
 
-@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT])
+@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT, STRING_LIST_MEMBERSHIP_CONTRACT])
 def test_membership_compiles_to_android_dex(tmp_path, contract):
     assert_compiles_to_android_dex(contract.source, tmp_path)
+
+
+def test_nullable_string_membership(tmp_path):
+    assert_matches_python(NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT.source, tmp_path)
 
 
 @pytest.mark.parametrize(("annotation", "value", "descriptor"), [
@@ -47,6 +53,7 @@ def main() -> int:
 @pytest.mark.parametrize(("kind", "needle", "contents"), [
     ("int", "42", "[-9, 0, 42]"),
     ("bool", "False", "[True, False]"),
+    ("str", '"snow"', '["rain", "snow"]'),
 ])
 def test_list_membership_observes_logical_length_and_mutation(tmp_path, kind, needle, contents):
     assert_matches_python(f'''
@@ -67,6 +74,7 @@ def main() -> int:
     ("str", '"key"', '"prefix-key"'),
     ("list[int]", "42", "[41, 42]"),
     ("list[bool]", "True", "[False, True]"),
+    ("list[str]", '"key"', '["prefix", "key"]'),
     ("dict[str, str]", '"key"', '{"key": ""}'),
 ])
 @pytest.mark.parametrize("operation", ["in", "not in", "explicit"])
@@ -198,7 +206,7 @@ def main() -> int:
 
 
 @pytest.mark.parametrize(("annotation", "contents", "needle"), [
-    ("str", '["x"]', '"x"'),
+    ("str", '["x"]', '1'),
     ("float", "[1.5]", "1.5"),
     ("int", "[1]", "True"),
 ])
@@ -207,7 +215,7 @@ def test_unsupported_list_membership_has_focused_diagnostic(annotation, contents
     with pytest.raises(JVMUnsupported) as error:
         transpile_jvm(source, filename="membership.py")
     assert str(error.value) == (
-        "JVM list membership requires matching integer or boolean items "
+        "JVM list membership requires matching integer, boolean or string items "
         "at line 3 while compiling membership.main"
     )
 

@@ -3,15 +3,21 @@ import pytest
 from pyjs.testing.helpers import at
 from tests.backend_semantics import (
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
+    NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
+    STRING_LIST_MEMBERSHIP_CONTRACT,
 )
 
 from .helpers import assert_semantics
 
 
-@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT])
+@pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT, STRING_LIST_MEMBERSHIP_CONTRACT])
 def test_shared_membership_contract(contract):
     assert_semantics(contract.print_source + "\nmain()\n")
+
+
+def test_nullable_string_membership():
+    assert_semantics(NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_empty_list_extend_and_slice_replacement_keep_destination_values():

@@ -915,8 +915,9 @@ with `pyjs template`.
   Explicit casts from present nullable numbers use the scalar ABI without
   losing integer precision. As with other static casts, callers must ensure
   the value is not `None` before casting to a non-null type.
-- JVM list membership supports matching integer or Boolean items; strings,
-  floats and mixed item domains remain explicit unsupported boundaries.
+- JVM list membership supports matching integer, Boolean and string items,
+  including nullable strings. Floats and other mixed item domains remain
+  explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,
   independently of their values. Existing reference-key storage restrictions
   still apply. Membership syntax evaluates the needle before the container,

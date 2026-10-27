@@ -48,6 +48,7 @@ from tests.backend_semantics import (
     SCALAR_MAPPING_VALUES_CONTRACT,
     SEQUENCE_REFLECTION_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
+    STRING_LIST_MEMBERSHIP_CONTRACT,
     STRUCTURAL_OPERATOR_CONTRACT,
     TEXT_SERIALIZATION_CONTRACT,
     UNICODE_CHARACTER_CONTRACT,
@@ -173,6 +174,7 @@ def test_property_getter_contract_keeps_wasm_inheritance_boundary():
 @pytest.mark.parametrize(("contract", "message"), [
     (INTEGER_LIST_MEMBERSHIP_CONTRACT, "WebAssembly call target __contains__ is not implemented"),
     (STRING_DICTIONARY_MEMBERSHIP_CONTRACT, "WebAssembly value type dict__str_str is not implemented"),
+    (STRING_LIST_MEMBERSHIP_CONTRACT, "WebAssembly value type str is not implemented"),
 ])
 def test_membership_contract_has_an_explicit_wasm_boundary(contract, message):
     with pytest.raises(WebAssemblyUnsupported) as error:
