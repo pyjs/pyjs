@@ -8,7 +8,12 @@ from pyjs.native.llvm import transpile_llvm
 from pyjs.native.runtime import arena, mappings, values
 from pyjs.native.runtime.pointers import Pointer
 from pyjs.tooling.llvm import LLVM
-from tests.native.runtime_support import runtime_functions, runtime_library, string
+from tests.native.runtime_support import (
+    MEMORY_SANITIZERS,
+    runtime_functions,
+    runtime_library,
+    string,
+)
 
 
 @pytest.fixture(scope="module", params=[None, 0, 2], ids=["CPython", "O0", "O2"])
@@ -94,7 +99,7 @@ def test_integer_mapping_lookup_mutations_and_set_users(tmp_path, optimize):
             values.clear()
             output.append(str(values.get(-1, 42)))
             return "|".join(output)
-    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    ''', directory=tmp_path, optimize=optimize, sanitizers=MEMORY_SANITIZERS)
     assert not result.native.stderr
 
 
