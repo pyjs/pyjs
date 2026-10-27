@@ -3847,6 +3847,34 @@ RECEIVER_DOMAIN_CONTRACTS = {
 }
 
 
+LOCAL_COLLECTION_CONTRACT = _contract(
+    "from pyjs import js",
+    "local_collection_result",
+    '''
+    values = ["z", "a", "a", "雪", "😀", "\\ue000"]
+    ordered = sorted(values)
+    descending = sorted(values, reverse=True)
+    copied = values.copy()
+    copied.append("new")
+    seen: set[str] = set()
+    seen.add("a")
+    seen.add("z")
+    seen.add("a")
+    retained = seen.copy()
+    seen.discard("a")
+    seen.discard("missing")
+    seen.clear()
+    ''',
+    (
+        ("sort uses Python Unicode order", "ordered[0] != 'a' or ordered[5] != '😀'"),
+        ("reverse retains all duplicates", "descending[0] != '😀' or descending[5] != 'a'"),
+        ("sort and copy leave input unchanged", "values[0] != 'z' or len(values) != 6 or len(copied) != 7"),
+        ("sets retain unique items and copy independently", "len(retained) != 2 or 'a' not in retained"),
+        ("cleared set is false", "bool(seen)"),
+    ),
+)
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js
@@ -3864,12 +3892,17 @@ DICTIONARY_POP_CONTRACT = _contract(
     first = values.pop("first", fallback(values, events))
     last = values.pop("last")
     missing = values.pop("missing", 9)
+    strings = {"present": "value"}
+    optional_present = strings.pop("present", None)
+    optional_missing = strings.pop("missing", None)
     ''',
     (
         ("default is evaluated eagerly before removal", "first != 4 or events[0] != 2"),
         ("present values are returned and removed", "last != 7 or len(values) != 0"),
         ("absent keys return the explicit default", "missing != 9"),
         ("copy retains entries independently of removals", "len(copied) != 2 or copied['first'] != 3"),
+        ("nullable fallback does not replace a present value", "optional_present != 'value'"),
+        ("nullable fallback is valid for a non-nullable mapping", "optional_missing is not None"),
     ),
 )
 

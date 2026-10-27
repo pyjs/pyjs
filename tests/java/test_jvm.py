@@ -855,14 +855,14 @@ def test_union_key_representation_contract_has_explicit_jvm_boundary():
 def test_scalar_set_relations_have_an_explicit_jvm_boundary():
     from tests.backend_semantics import SCALAR_SET_RELATIONS_CONTRACT
 
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="JVM sets currently require reference items with Java-compatible equality"):
         transpile_jvm(SCALAR_SET_RELATIONS_CONTRACT.source)
 
 
 def test_set_constructor_representation_has_an_explicit_jvm_boundary():
     from tests.backend_semantics import SET_CONSTRUCTOR_REPRESENTATION_CONTRACT
 
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="JVM sets currently require reference items with Java-compatible equality"):
         transpile_jvm(SET_CONSTRUCTOR_REPRESENTATION_CONTRACT.source)
 
 

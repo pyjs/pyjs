@@ -81,6 +81,13 @@ def test_dictionary_pop_keeps_explicit_wasm_boundary():
         transpile_webassembly(DICTIONARY_POP_CONTRACT.source)
 
 
+def test_local_collections_keep_explicit_wasm_boundary():
+    from tests.backend_semantics import LOCAL_COLLECTION_CONTRACT
+
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+        transpile_webassembly(LOCAL_COLLECTION_CONTRACT.source)
+
+
 def test_narrowed_receiver_contract_keeps_wasm_inheritance_boundary():
     from tests.backend_semantics import NARROWED_METHOD_CONTRACT
 

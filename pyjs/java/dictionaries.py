@@ -3,8 +3,9 @@
 from .classfile import Bytecode, ExceptionHandler, Method
 
 
-def emit_iterator_next(owner, throw_python):
-    name = "$dictionaryNext"
+def emit_iterator_next(owner, throw_python, *, collection="keys"):
+    kind = "set" if collection == "set" else "dictionary"
+    name = "$" + kind + "Next"
     descriptor = "(Ljava/util/Iterator;)Ljava/lang/Object;"
     if not any(method.name == name for method in owner.methods):
         code = Bytecode()
@@ -16,7 +17,8 @@ def emit_iterator_next(owner, throw_python):
         code.emit(0xB0)
         end = len(code.code)
         code.emit(0x57)
-        throw_python("RuntimeError", "dictionary keys changed during iteration", code, owner)
+        message = "set changed during iteration" if collection == "set" else "dictionary keys changed during iteration"
+        throw_python("RuntimeError", message, code, owner)
         owner.add_method(Method(
             0x0009, name, descriptor, code.render(), 8, 1,
             exception_handlers=(ExceptionHandler(

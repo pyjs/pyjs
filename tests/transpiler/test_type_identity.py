@@ -34,6 +34,13 @@ def test_imported_sorted_uses_the_selected_builtin_model(environment, expression
         def main(values: list[int]) -> list[int]:
             return {expression}
     ''', wrap=False, environment=environment) as analysis:
+        if environment is JVM_ENVIRONMENT:
+            assert analysis.types == (
+                "def main(values: list__int) -> list[int]:\n"
+                "    block entry:\n"
+                "        return load_field(new[local] Sorted__list__int_int(values), result)"
+            )
+            return
         target = "standard.sorted" if expression.startswith("standard.") else "sorted"
         assert analysis.types == (
             "def main(values: list__int) -> list[int]:\n"

@@ -4,7 +4,12 @@ import ast
 import inspect
 
 from pyjs.analysis import create_analysis_environment, super_proxy
-from pyjs.analysis.analyzer import CallGraphVisitor, analyzed_value_type, field_owner
+from pyjs.analysis.analyzer import (
+    CallGraphVisitor,
+    analyzed_representation,
+    analyzed_value_type,
+    field_owner,
+)
 from pyjs.analysis.diagnostics import DiagnosticCode
 from pyjs.analysis.ir import (
     ExceptionRaise,
@@ -15,6 +20,7 @@ from pyjs.analysis.ir import (
 )
 from pyjs.analysis.lifetime import refine_lifetimes
 from pyjs.analysis.objects import (
+    AnalyzedExpression,
     BoolOp,
     Class,
     Function,
@@ -22,6 +28,7 @@ from pyjs.analysis.objects import (
     Name,
     StaticCast,
     UnionType,
+    resolve_imported,
 )
 from pyjs.decorators import backend_metadata, is_declaration
 from pyjs.python import native as native_builtins
@@ -97,6 +104,9 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if not isinstance(result, ast.Call):
             return result
         target = getattr(result.func, "obj", None)
+        if (node not in self.active_call_analysis
+                and getattr(target, "py_obj", None) is native_builtins._sorted):
+            return self.sorted_call(result, node)
         self.validate_model_call(node, target, result.args)
         receiver = None
         if getattr(target, "py_obj", None) is native_builtins._str and result.args:
@@ -109,6 +119,33 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if receiver is not None:
             self.retain_exception_formatter(result, receiver)
         return result
+
+    def sorted_call(self, node, source_node):
+        from .sorting import Sorted
+
+        key = next((value.value for value in node.keywords if value.arg == "key"), None)
+        if key is not None and not (isinstance(key, ast.Constant) and key.value is None):
+            self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JVM sorted() key callbacks are not implemented")
+        if analyzed_representation(node.args[0]) is not None:
+            self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JVM sorted() fixed-width item representations are not implemented")
+        # Generic classes already specialize their methods by concrete source
+        # and item types. Reuse that path rather than a second sort bytecode
+        # emitter. Wrapped analyzed expressions preserve one evaluation.
+        source = analyzed_value_type(node.args[0])
+        if (not isinstance(source, Class)
+                or source.generic_name not in {"list", "str", "dict", "KeysView", "set"}):
+            self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JVM sorted() requires a list, string, set, or dictionary key collection")
+        item = analyzed_value_type(node).generic_types["V"]
+        helper = resolve_imported(Sorted, self.module, "Sorted")(source, item)
+        call = ast.Call(func=AnalyzedExpression(Name(helper)),
+                        args=[AnalyzedExpression(value) for value in node.args],
+                        keywords=[ast.keyword(arg=value.arg, value=AnalyzedExpression(value.value))
+                                  for value in node.keywords if value.arg != "key"])
+        expression = ast.Attribute(value=call, attr="result", ctx=ast.Load())
+        return self.visit(ast.fix_missing_locations(ast.copy_location(expression, source_node)))
 
     def call_node(self, node, return_type, *, func, args, keywords, **attributes):
         self.validate_model_call(node, func.obj, args)
