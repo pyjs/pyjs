@@ -5223,6 +5223,8 @@ CONDITIONAL_EMPTY_COLLECTIONS = _contract(
         fresh_represented = choose_represented(False, represented)
         same_represented = choose_represented(True, represented)
         same_represented.append(int8(2))
+        sibling_lists = [[[]], [[int8(127)]]]
+        sibling_lists[0][0].append(int8(127))
     ''',
     (
         ("empty list has sibling item storage", "len(fresh) != 2 or fresh[0] != 7 or len(second) != 1 or second[0] != 7"),
@@ -5231,13 +5233,14 @@ CONDITIONAL_EMPTY_COLLECTIONS = _contract(
         ("existing nested list keeps identity", "len(nested[0]) != 3 or nested[0][2] != 8"),
         ("empty represented list preserves width", "int(fresh_represented[0] + 1) != -128"),
         ("represented input is not reallocated", "len(represented) != 3 or represented[2] != 2"),
+        ("literal list siblings infer nested storage", "int(sibling_lists[0][0][0] + 1) != -128 or int(sibling_lists[1][0][0] + 1) != -128"),
     ),
 )
 
 
 CONDITIONAL_EMPTY_MAPPING = _contract(
     '''
-    from pyjs import js
+    from pyjs import js, int8
 
     @js
     def choose_dict(flag: bool, values: dict[str, int]) -> dict[str, int]:
@@ -5250,10 +5253,13 @@ CONDITIONAL_EMPTY_MAPPING = _contract(
         mapping = {"old": 3}
         fresh = choose_dict(True, mapping)
         same = choose_dict(False, mapping)
+        sibling_mapping = {"a": [[]], "b": [[int8(127)]]}
+        sibling_mapping["a"][0].append(int8(127))
     ''',
     (
         ("empty dictionary has sibling key/value storage", 'len(fresh) != 1 or fresh["new"] != 7'),
         ("existing dictionary keeps identity", "same is not mapping or len(mapping) != 2"),
+        ("literal dictionary siblings infer nested storage", 'int(sibling_mapping["a"][0][0] + 1) != -128 or int(sibling_mapping["b"][0][0] + 1) != -128'),
     ),
 )
 
