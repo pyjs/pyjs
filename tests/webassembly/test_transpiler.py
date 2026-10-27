@@ -595,7 +595,7 @@ def test_webassembly_nested_conditional_order(tmp_path):
 def test_webassembly_mixed_truth_condition_storage_boundary():
     with pytest.raises(WebAssemblyUnsupported) as caught:
         transpile_webassembly(MIXED_TRUTH_CONDITION_CONTRACT.source)
-    assert str(caught.value) == "WebAssembly value type str is not implemented"
+    assert str(caught.value) == "WebAssembly union value storage is not implemented"
 
 
 @pytest.mark.parametrize(

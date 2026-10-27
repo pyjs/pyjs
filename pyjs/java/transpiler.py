@@ -1290,6 +1290,20 @@ class JVMEmitter:
             self.code.emit(0x57)
             self.code.emit(0x03)
             self.code.mark(done)
+        elif descriptor == "Ljava/lang/String;":
+            missing = self.new_label("string.none")
+            done = self.new_label("string.truth")
+            self.code.emit(0x59)
+            self.code.branch(0xC6, missing)
+            empty = self.class_file.method_reference("java/lang/String", "isEmpty", "()Z")
+            self.code.emit(0xB6, empty.to_bytes(2, "big"))
+            self.code.emit(0x04)
+            self.code.emit(0x82)  # invert isEmpty, leaving a canonical bool
+            self.code.branch(0xA7, done)
+            self.code.mark(missing)
+            self.code.emit(0x57)
+            self.code.emit(0x03)
+            self.code.mark(done)
         elif descriptor == "N":
             self.code.emit(0x57)
             self.code.emit(0x03)
@@ -1302,7 +1316,7 @@ class JVMEmitter:
             self.code.emit(0x97)
             self.comparison(0x9A)
         elif descriptor != "Z":
-            raise JVMUnsupported("JVM bool conversion requires a numeric or nullable numeric value", node)
+            raise JVMUnsupported("JVM bool conversion requires a numeric or string value", node)
 
     def coerce_truth(self, descriptor, node):
         if descriptor == "Z":
@@ -1921,7 +1935,7 @@ class JVMEmitter:
                 self.set_exception_args(self.exception_class(concrete, node), slots)
                 return "V"
             if target.name == "__dynamic_bool__":
-                if receiver_type in SCALAR_BOXES.values():
+                if receiver_type in SCALAR_BOXES.values() or receiver_type == "Ljava/lang/String;":
                     self.scalar_truth(receiver_type, node)
                     return "Z"
                 raise JVMUnsupported("JVM optional truth tests require narrowing first", node)

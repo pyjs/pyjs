@@ -6,10 +6,6 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
-- JVM conditions can short-circuit mixed string, numeric and Boolean operands
-  without materializing an incompatible result union. Value-returning mixed
-  unions retain their existing storage restrictions.
-
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.
@@ -101,6 +97,11 @@
 - JVM nullable integers and floats retain `None` through calls, fields, and
   collections, with exact numeric equality and Python-compatible truth tests.
   Ordinary scalar method signatures keep their primitive ABI.
+
+- JVM conditions can short-circuit mixed string, integer and Boolean operands
+  without materializing an incompatible result union. Value-returning mixed
+  unions retain their existing storage restrictions. Nullable strings preserve
+  their empty/missing false values in conditions and fallback expressions.
 
 - Android application packages can declare permissions and reference an
   app-owned network-security XML resource. Defaults still request no network

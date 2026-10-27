@@ -180,6 +180,20 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
         if value == 99:
             raise ValueError("must short circuit")
         return value != 0
+
+    @js
+    def optional_truth(value: str | None, fallback: str) -> int:
+        result = 1 if value or fallback else 0
+        if value or fallback:
+            result += 2
+        if not (value or fallback):
+            result += 4
+        count = 0
+        while (value or fallback) and count < 1:
+            result += 8
+            count += 1
+        assert not (value or fallback) or result == 11
+        return result
     ''',
     "mixed_truth_conditions",
     '''
@@ -201,6 +215,8 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
         ("selected branch values", "first != 2 or second != 3 or third != 5 or fourth != 7"),
         ("left to right, once, with skipped exceptions", "len(events) != 3 or events[0] != 7 or events[1] != 8 or events[2] != 9"),
         ("loop and nested conditions", "count != 2 or nested != 9"),
+        ("optional string fallback in every condition context", 'optional_truth(None, "fallback") != 11 or optional_truth("", "fallback") != 11 or optional_truth("yes", "") != 11'),
+        ("absent and empty strings remain false", 'optional_truth(None, "") != 4 or optional_truth("", "") != 4'),
     ),
 )
 
