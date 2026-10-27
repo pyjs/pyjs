@@ -497,14 +497,14 @@ def test_exception_context_compiles_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(EXCEPTION_CONTEXT_CONTRACT.source, tmp_path)
 
 
-def assert_compiles_to_android_dex(source, tmp_path):
+def assert_compiles_to_android_dex(source, tmp_path, *, min_api=21):
     android_jar, d8 = android_sdk()
     classes = tmp_path / "classes"
     transpile_jvm(source).write(classes)
     dex = tmp_path / "dex"
     dex.mkdir()
     result = subprocess.run(
-        [str(d8), "-JXmx256m", "--lib", str(android_jar), "--min-api", "21",
+        [str(d8), "-JXmx256m", "--lib", str(android_jar), "--min-api", str(min_api),
          "--output", str(dex), *(str(path) for path in classes.glob("*.class"))],
         capture_output=True, text=True, timeout=60,
     )

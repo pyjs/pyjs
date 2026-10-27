@@ -69,6 +69,10 @@
   cursor boundaries and query fingerprints, avoiding skipped or repeated rows
   when ordered values fall within the same millisecond.
 
+- Java and Android clients can use native ISO calendar dates, device-local
+  today, time zones and fixed clocks through `pyjs.java.time`. Android requires
+  API 26 or newer; calendar failures remain catchable native exceptions.
+
 - JVM method receivers and arguments retain class refinements from type guards
   even when their local slot has a broader declared type. Reference casts are
   inserted where a typed consumer requires them, not on base-compatible uses
