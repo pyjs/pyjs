@@ -120,10 +120,25 @@ def test_native_value_builtins_keep_located_jvm_boundaries(name, argument, resul
         transpile_jvm(f"def main() -> {result}:\n    return {name}({argument})\n")
 
 
-def test_application_round_keeps_a_located_jvm_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM expression .* at line 2"):
-        transpile_jvm("class R:\n    def __round__(self) -> int: return 3\n"
-                      "def main() -> int:\n    return round(R())\n")
+def test_application_round_evaluates_receiver_once_and_dispatches(tmp_path):
+    from tests.java.test_exceptions import assert_matches_python
+
+    assert_matches_python('''class Rounded:
+    def __init__(self, events: list[int]):
+        self.events = events
+    def __round__(self) -> int:
+        self.events.append(2)
+        return 3
+def value(events: list[int]) -> Rounded:
+    events.append(1)
+    return Rounded(events)
+def main() -> int:
+    events: list[int] = []
+    result = round(value(events))
+    assert len(events) == 2
+    assert events[0] == 1 and events[1] == 2
+    return result
+''', tmp_path)
 
 
 def test_negation_uses_length_fallback(tmp_path):
