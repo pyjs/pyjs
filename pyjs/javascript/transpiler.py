@@ -925,6 +925,8 @@ class Transpiler(_Unparser):
         self.exception_stack = []
         self.loop_else_stack = []
         self.direct_call_target = None
+        self.comparison_bindings = {}
+        self.awaited_comparisons = {}
 
     @contextmanager
     def caught_exception(self, name):
@@ -1070,11 +1072,19 @@ class Transpiler(_Unparser):
     def isolated_visit(self, node, precedence=None):
         transpiler = Transpiler(self.entry_point)
         transpiler.current_function = self.current_function
+        # Inline generators need an isolated output buffer, not a new lexical
+        # scope. Nested comparisons still use the caller's allocated locals.
+        transpiler.comparison_bindings = self.comparison_bindings
+        transpiler.awaited_comparisons = self.awaited_comparisons
+        transpiler.temporary_index = self.temporary_index
         if isinstance(node, (ast.IfExp, ast.JoinedStr, ast.Await)):
             precedence = _Precedence.ATOM
         if precedence is not None:
             transpiler.set_precedence(precedence, node)
-        return transpiler.visit(node)
+        try:
+            return transpiler.visit(node)
+        finally:
+            self.temporary_index = transpiler.temporary_index
 
     @staticmethod
     def operator_precedence(node):
@@ -1384,6 +1394,7 @@ class Transpiler(_Unparser):
                     if line:
                         self.fill(line)
             else:
+                self.declare_awaited_comparison_locals(node.body)
                 if node.args.kwarg is not None:
                     name = javascript_identifier(node.args.kwarg.arg)
                     rest_name = f"${name}"
@@ -1396,6 +1407,20 @@ class Transpiler(_Unparser):
             self.generate_bind_method(func)
         if self.exporter is not None and isinstance(func.container, Module):
             self.fill(self.exporter(javascript_identifier(node.name)))
+
+    def declare_awaited_comparison_locals(self, body):
+        def walk(node):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                return
+            if isinstance(node, ChainedCompare) and any(isinstance(value, ast.Await) for value in ast.walk(node)):
+                names = [self.temporary_name("compare") for _ in node.temporaries]
+                self.awaited_comparisons[node] = names
+                self.fill("var " + ", ".join(names) + ";")
+            for child in ast.iter_child_nodes(node):
+                walk(child)
+
+        for statement in body:
+            walk(statement)
 
     def record_function_scope(self, func, node, generated_start):
         if (
@@ -2142,28 +2167,32 @@ class Transpiler(_Unparser):
             )
 
     def visit_ChainedCompare(self, node):
-        if any(isinstance(value, ast.Await) for value in ast.walk(node)):
-            # Ordinary arrow bindings cannot contain an awaited later operand.
-            # Keep one async scope, evaluate each operand once, and retain the
-            # failed comparison value just as the synchronous && chain does.
-            self.write("(await (async () => { ")
+        names = self.awaited_comparisons.get(node)
+        previous = self.comparison_bindings
+        self.comparison_bindings = dict(previous)
+        for index, temporary in enumerate(node.temporaries):
+            self.comparison_bindings[temporary.id] = names[index] if names else temporary.id
+        try:
+            self.write_chained_comparison(node, names is not None)
+        finally:
+            self.comparison_bindings = previous
+
+    def write_chained_comparison(self, node, awaited):
+        if awaited:
+            # Keep awaits in the caller: an async IIFE would add a suspension
+            # even when every awaited tail operand was short-circuited.
+            self.write("(")
             for index, operand in enumerate(node.operands):
-                self.write("const ")
+                if index > 1:
+                    self.write(" && (")
                 self.traverse(node.temporaries[index])
                 self.write(" = ")
+                self.set_precedence(_Precedence.TEST, operand)
                 self.traverse(operand)
-                self.write("; ")
-                if index == 0:
-                    continue
-                if index == len(node.operands) - 1:
-                    self.write("return ")
+                self.write(", ")
+                if index:
                     self.traverse(node.comparisons[index - 1])
-                    self.write("; ")
-                else:
-                    self.write(f"const $comparison{index} = ")
-                    self.traverse(node.comparisons[index - 1])
-                    self.write(f"; if (!$comparison{index}) return $comparison{index}; ")
-            self.write("})())")
+            self.write(")" * (len(node.operands) - 1))
             return
 
         def emit_comparison(index):
@@ -2437,7 +2466,9 @@ class Transpiler(_Unparser):
 
     def visit_Name(self, node):
         value = getattr(node, "obj", None)
-        if node.id == "self" and isinstance(value, Instance):
+        if node.id in self.comparison_bindings:
+            self.write(self.comparison_bindings[node.id])
+        elif node.id == "self" and isinstance(value, Instance):
             self.write("this")
         elif getattr(node, "runtime_dependency", None) is not None:
             self.write(getattr(node, "runtime_alias", node.id))

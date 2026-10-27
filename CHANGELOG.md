@@ -6,10 +6,6 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
-- JavaScript chained comparisons can await any operand without generating
-  invalid synchronous arrow functions. Operands still run once, in order,
-  and later operands are skipped after a failed comparison.
-
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.
@@ -23,6 +19,11 @@
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
   isolation; hosts can retain a server origin without exposing Node to pages.
+
+- JavaScript chained comparisons can await any operand without generating
+  invalid synchronous arrow functions. Operands still run once, in order,
+  and later operands are skipped after a failed comparison. Only source
+  `await` expressions suspend execution; comparison plumbing adds no pauses.
 
 - IndexedDB `transaction_result()` waits for the transaction to commit,
   propagates aborts and request failures, and rolls back when the supplied

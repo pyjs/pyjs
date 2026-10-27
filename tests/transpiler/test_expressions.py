@@ -1222,7 +1222,7 @@ def test_chained_comparisons_bind_each_operand_once():
     )
 
 
-def test_awaited_chained_comparison_has_one_async_evaluation_scope():
+def test_awaited_chained_comparison_stays_in_its_callers_scope():
     at(
         '''
         @js
@@ -1244,7 +1244,8 @@ def test_awaited_chained_comparison_has_one_async_evaluation_scope():
         }
 
         export async function main() {
-            return (await (async () => { const $compare0 = 1; const $compare1 = await value(2); const $comparison1 = $compare0 < $compare1; if (!$comparison1) return $comparison1; const $compare2 = 3; return $compare1 < $compare2; })());
+            var $compare0, $compare1, $compare2;
+            return ($compare0 = 1, $compare1 = await value(2), $compare0 < $compare1 && ($compare2 = 3, $compare1 < $compare2));
         }
         ''',
     )
