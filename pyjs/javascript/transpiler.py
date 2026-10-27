@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pyjs.analysis.analyzer import *
 from pyjs.python import (
     _dict,
+    _range,
     _set,
     _str,
     _typed_dict,
@@ -2785,6 +2786,8 @@ class Transpiler(_Unparser):
                 self.fill(f"{manager}.__exit__(null, null, null);")
 
     def _for_helper(self, fill, node):
+        if fill == "for " and self.direct_range_loop(node):
+            return
         completed = self.loop_else_flag(node)
         self.fill(fill)
         self.set_precedence(_Precedence.TUPLE, node.target)
@@ -2803,6 +2806,49 @@ class Transpiler(_Unparser):
         finally:
             self.loop_else_stack.pop()
         self.write_loop_else(node, completed)
+
+    def direct_range_loop(self, node):
+        """Lower a direct builtin range call without allocating an iterator.
+
+        Keep a private induction variable: assigning to the Python loop target
+        must not change iteration, and exhaustion must not overwrite its value.
+        First-class ranges and arbitrary iterable protocols retain their path.
+        """
+        call = node.iter
+        function = getattr(getattr(call, "func", None), "obj", None)
+        if not (isinstance(call, Call) and isinstance(function, Function)
+                and function.py_func is _range and not call.keywords
+                and 1 <= len(call.args) <= 3 and isinstance(node.target, ast.arg)):
+            return False
+        # The ordinary JS range implementation is Number-based. Leave explicit
+        # represented domains to their existing lowering/diagnostic path.
+        if any(isinstance(argument, ast.Starred)
+               or getattr(argument, "numeric_format", None) is not None for argument in call.args):
+            return False
+        start, stop, step = (self.temporary_name("range_start"), self.temporary_name("range_stop"),
+                             self.temporary_name("range_step"))
+        index = self.temporary_name("range_index")
+        arguments = ([ast.Constant(0), call.args[0], ast.Constant(1)] if len(call.args) == 1 else
+                     [*call.args, ast.Constant(1)] if len(call.args) == 2 else call.args)
+        for name, argument in zip((start, stop, step), arguments, strict=True):
+            # bool is an integer index too; the induction value must be numeric.
+            self.fill(f"const {name} = +(")
+            self.traverse(argument)
+            self.write(");")
+        self.fill(f"if ({step} === 0) throw new RangeError('range() arg 3 must not be zero');")
+        completed = self.loop_else_flag(node)
+        self.fill(f"for (let {index} = {start}; {step} > 0 ? {index} < {stop} : {index} > {stop}; {index} += {step})")
+        self.loop_else_stack.append(completed)
+        try:
+            with self.block():
+                self.fill("var ")
+                self.traverse(node.target)
+                self.write(f" = {index};")
+                self.traverse(node.body)
+        finally:
+            self.loop_else_stack.pop()
+        self.write_loop_else(node, completed)
+        return True
 
     def visit_Break(self, node):
         if self.loop_else_stack and self.loop_else_stack[-1] is not None:

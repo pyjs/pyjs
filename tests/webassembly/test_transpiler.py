@@ -42,6 +42,7 @@ from tests.backend_semantics import (
     POSTPONED_DATACLASS_CONTRACT,
     PROPERTY_FIELD_OVERRIDE_CONTRACT,
     PROPERTY_GETTER_CONTRACT,
+    RANGE_LOOP_CONTRACT,
     RANGE_NUMERIC_LOOKUP_CONTRACT,
     RECURSIVE_EQUALITY_CONTRACT,
     RECURSIVE_OPTIONAL_CONTRACT,
@@ -225,6 +226,11 @@ def test_list_copy_contract_keeps_the_wasm_constructor_boundary():
     assert str(caught.value) == (
         "WebAssembly call target list__int is not implemented at line 4"
     )
+
+
+def test_range_loops_keep_the_wasm_iteration_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly iteration currently requires a list$"):
+        transpile_webassembly(RANGE_LOOP_CONTRACT.source)
 
 
 def test_extracted_union_result_reaches_the_wasm_value_boundary():

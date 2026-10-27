@@ -4477,6 +4477,8 @@ PORTABLE_STORAGE_CHECKS = (
         "inferred_values[0] + 1 != -128",
     ),
     ("list items retain int8", "dynamic_values[0] + 1 != -128"),
+    ("negative list indices use the represented element width", "indexed_bytes[-3] != -128 or indexed_bytes[-1] != 9"),
+    ("negative list writes preserve adjacent float items", "indexed_floats[0] != 1.25 or indexed_floats[-1] != 3.5"),
     ("parameter rebinding retains declared list representation", "rebound_items(dynamic_values, dynamic_values)[0] != -128"),
     ("explicit conversion permits ordinary storage", "ordinary_storage(0, [0]) != 600"),
     (
@@ -4590,6 +4592,11 @@ PORTABLE_STORAGE = _contract(
     nested[0][-1] = 2
     inferred_values = inferred_array(StaticArray[int8, 1]([127]))
     dynamic_values: list[int8] = [int8(127)]
+    indexed_bytes: list[int8] = [int8(1), int8(2), int8(3)]
+    indexed_bytes[-3] = int8(128)
+    indexed_bytes[-1] = int8(9)
+    indexed_floats: list[float32] = [float32(1.25), float32(2.5)]
+    indexed_floats[-1] = float32(3.5)
     nested_dynamic_values: list[list[int8]] = [[int8(127)]]
     compound = StaticArray[list[int8], 1]([[int8(127)]])
     changed_compound = StaticArray[list[int8], 1]([[int8(0)]])
@@ -5434,6 +5441,60 @@ CONDITIONAL_EMPTY_MAPPING = _contract(
         ("empty dictionary has sibling key/value storage", 'len(fresh) != 1 or fresh["new"] != 7'),
         ("existing dictionary keeps identity", "same is not mapping or len(mapping) != 2"),
         ("literal dictionary siblings infer nested storage", 'int(sibling_mapping["a"][0][0] + 1) != -128 or int(sibling_mapping["b"][0][0] + 1) != -128'),
+    ),
+)
+
+
+RANGE_LOOP_CONTRACT = _contract(
+    "from pyjs import js",
+    "range_loop_contract",
+    '''
+    total = 0
+    value = 99
+    stop = 5
+    for value in range(stop):
+        total = total * 10 + value
+        stop = 0
+        value = 87
+    exhausted_value = value
+    for value in range(0):
+        total = -1
+    empty_value = value
+    backwards = 0
+    step = -2
+    for item in range(7, 0, step):
+        backwards = backwards * 10 + item
+        step = 1
+    skipped = 0
+    for item in range(6):
+        if item == 1:
+            continue
+        if item == 4:
+            break
+        skipped = skipped * 10 + item
+    else:
+        skipped = -1
+    completed = 0
+    for item in range(3):
+        completed += item
+    else:
+        completed += 10
+    nested = 0
+    for outer in range(3):
+        for inner in range(3, 0, -1):
+            if inner == 2:
+                break
+            nested += outer + inner
+        else:
+            nested = -100
+    ''',
+    (
+        ("bounds evaluated once and loop target is not induction state", "total != 1234"),
+        ("exhaustion and empty loops retain target", "exhausted_value != 87 or empty_value != 87"),
+        ("negative dynamic step evaluated once", "backwards != 7531"),
+        ("continue and break bypass loop else", "skipped != 23"),
+        ("normal exhaustion enters loop else", "completed != 13"),
+        ("nested loop induction and break scope", "nested != 12"),
     ),
 )
 
