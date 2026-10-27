@@ -857,8 +857,8 @@ def test_jvm_literal_sequence_reflection_contract(tmp_path):
     test_jvm_runs_shared_numeric_contracts(tmp_path, LITERAL_SEQUENCE_REFLECTION_CONTRACT)
 
 
-def test_mapping_lookup_contract_has_explicit_setdefault_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM dictionary operation setdefault"):
+def test_mapping_lookup_contract_retains_fixed_tuple_indexing_boundary():
+    with pytest.raises(JVMUnsupported, match="unsupported JVM scalar operation __getitem__"):
         transpile_jvm(MAPPING_LOOKUP_REPRESENTATION_CONTRACT.source)
 
 

@@ -40,6 +40,17 @@ def test_tuple_checks_retain_builtin_class_boundary():
         ''')
 
 
+@pytest.mark.parametrize("target", ["Item", "(Item,)", "((Item,), Item)"])
+def test_primitive_subject_diagnostic_keeps_original_location(target):
+    source = ("class Item:\n    pass\ndef main() -> int:\n"
+              f"    return int(isinstance(3, {target}))\n")
+    # JVM diagnostics currently use the analyzed function's relative line.
+    with pytest.raises(JVMUnsupported, match="JVM isinstance requires a reference value at line 2") as caught:
+        transpile_jvm(source, filename="class_check.py")
+    assert str(caught.value) == (
+        "JVM isinstance requires a reference value at line 2 while compiling class_check.main")
+
+
 @pytest.mark.parametrize("value", ["None", "1", "1.25", "True", "'text'"])
 def test_empty_tuple_accepts_any_subject(value, tmp_path):
     assert_matches_python(f"def main() -> int:\n    return int(isinstance({value}, ()))\n", tmp_path)

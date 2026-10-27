@@ -107,6 +107,19 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if not isinstance(result, ast.Call):
             return result
         target = getattr(result.func, "obj", None)
+        from .math import isfinite
+
+        if getattr(target, "py_func", None) is isfinite and result.args:
+            # Python math accepts integers; native Java calls intentionally do
+            # not implicitly widen their ABI arguments. Coerce at this stdlib
+            # boundary without relaxing every native method's type contract.
+            conversion = ast.Call(func=AnalyzedExpression(Name(JVM_ENVIRONMENT.builtins.search("float"))),
+                                  args=[AnalyzedExpression(result.args[0])], keywords=[])
+            result.args[0] = self.visit(ast.copy_location(conversion, node.args[0]))
+        if (node not in self.active_call_analysis and result.args and not result.keywords
+                and getattr(target, "generic_name", None) == "set"
+                and target.container.scope.is_builtins):
+            return self.set_from_iterable(result, node)
         if (node not in self.active_call_analysis
                 and getattr(target, "py_obj", None) is native_builtins._sorted):
             return self.sorted_call(result, node)
@@ -122,6 +135,21 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if receiver is not None:
             self.retain_exception_formatter(result, receiver)
         return result
+
+    def set_from_iterable(self, node, source_node):
+        from .sets import SetFromIterable
+
+        source = analyzed_value_type(node.args[0])
+        item = analyzed_value_type(node).generic_types["V"]
+        members = item.types if isinstance(item, UnionType) else (item,)
+        if any(member.generic_name in {"int", "float", "bool"} for member in members):
+            raise JVMUnsupported(
+                "JVM sets currently require reference items with Java-compatible equality", source_node)
+        helper = resolve_imported(SetFromIterable, self.module, "SetFromIterable")(source, item)
+        call = ast.Call(func=AnalyzedExpression(Name(helper)),
+                        args=[AnalyzedExpression(value) for value in node.args], keywords=[])
+        return self.visit(ast.copy_location(
+            ast.Attribute(value=call, attr="result", ctx=ast.Load()), source_node))
 
     def sorted_call(self, node, source_node):
         from .sorting import Sorted
@@ -319,35 +347,32 @@ def finalize_jvm_analysis(entry_point: Function) -> None:
             native_base = native_base.super
         if native_base is None:
             return
-        interface = backend_metadata(
-            native_base.py_obj,
-            "jvm",
-            "interface",
-            False,
-        )
-        for declaration in native_base.children:
-            if not isinstance(declaration, Function):
-                continue
-            if interface:
-                CallGraphVisitor(declaration, entry_point).enter(declaration)
-            implementation = value_type.find_attrs(
-                declaration.name,
-                search_bases=True,
-            )
-            if (
-                isinstance(implementation, Function)
-                and implementation is not declaration
-                and not is_declaration(implementation.py_func, "jvm")
-            ):
-                # A Java-only virtual call still needs its binding signature
-                # analyzed before override ABI validation.
-                visitor.enter(declaration)
-                CallGraphVisitor(implementation, entry_point).enter(implementation)
-                if implementation.ir is not None:
-                    for block in implementation.ir.blocks:
-                        for node in ast.walk(block):
-                            if isinstance(node, Return) and node.value is not None:
-                                retain_native_exception_text(visitor, node.value)
+        seen_names = set()
+        while native_base is not None and is_declaration(native_base.py_obj, "jvm"):
+            interface = backend_metadata(native_base.py_obj, "jvm", "interface", False)
+            for declaration in native_base.children:
+                if not isinstance(declaration, Function) or declaration.name in seen_names:
+                    continue
+                seen_names.add(declaration.name)
+                if interface:
+                    CallGraphVisitor(declaration, entry_point).enter(declaration)
+                implementation = value_type.find_attrs(declaration.name, search_bases=True)
+                if (
+                    isinstance(implementation, Function)
+                    and implementation is not declaration
+                    and not is_declaration(implementation.py_func, "jvm")
+                ):
+                    # Java may invoke a callback declared by any native
+                    # ancestor, not just the immediate superclass. Retain
+                    # the nearest declaration's ABI and the Python override.
+                    visitor.enter(declaration)
+                    CallGraphVisitor(implementation, entry_point).enter(implementation)
+                    if implementation.ir is not None:
+                        for block in implementation.ir.blocks:
+                            for node in ast.walk(block):
+                                if isinstance(node, Return) and node.value is not None:
+                                    retain_native_exception_text(visitor, node.value)
+            native_base = native_base.super
 
     processed = set()
     while pending := [
@@ -382,6 +407,8 @@ JVM_ENVIRONMENT = create_analysis_environment(
     library_mappings=JVMImports(
         libraries=(MODEL_LIBRARY,),
         stdlib_imports={
+            ("math", None): ("pyjs.java.math", None),
+            ("math", "isfinite"): ("pyjs.java.math", "isfinite"),
             ("typing", "cast"): ("pyjs.stdlib.typing", "cast"),
             ("pyjs.server", "API"): ("pyjs.server.jvm_client", "API"),
         }

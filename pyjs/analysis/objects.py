@@ -2020,6 +2020,7 @@ class Class(Object):
         if info is not None and info.opaque:
             local_annotations = info.annotations
             self.field_value_nodes = {}
+        native_class_fields = {}
         annotations = {} if info is not None and info.opaque else dict(
             getattr(self.py_cls, "__pyjs_instance_annotations__", {})
         )
@@ -2042,6 +2043,8 @@ class Class(Object):
                 if typing.get_origin(annotation) is typing.Annotated
                 else ()
             )
+            if class_variable and any(isinstance(value, JVMField) for value in metadata):
+                native_class_fields[name] = self.field_declarations[name]
             if not class_variable and (
                 name not in self.field_value_nodes
                 or any(isinstance(value, JVMField) for value in metadata)
@@ -2111,6 +2114,12 @@ class Class(Object):
             source_overrides=source_overrides,
             skip_names=skip_names,
         )
+        for name, value_type in native_class_fields.items():
+            if self.find_attrs(name, search_bases=False) is None:
+                # Reference-valued native constants have no meaningful Python
+                # placeholder (generated declarations use None). Their type is
+                # the explicit field annotation, not the placeholder's type.
+                self.add(value_type(name, self.scope, self, py_to_ast(None), None))
         if info is not None:
             for name, source in info.methods.items():
                 Function.from_py_func(

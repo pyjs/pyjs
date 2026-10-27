@@ -6524,6 +6524,29 @@ LIST_REVERSE_CONTRACT = _contract(
 )
 
 
+DOCUMENT_COLLECTION_CONTRACT = _contract(
+    "from pyjs import js\nfrom math import isfinite",
+    "document_collection_contract",
+    '''
+    values = ["alpha", "beta", "alpha"]
+    copied = [*values, "tail"]
+    alias = values
+    values.remove("alpha")
+    unique = set(copied)
+    mapping: dict[str, list[str]] = {}
+    first = mapping.setdefault("node", [])
+    first.append("edge")
+    second = mapping.setdefault("node", ["ignored"])
+    second.append("another")
+    ''',
+    (("first match removal and alias", 'len(alias) != 2 or alias[0] != "beta" or alias[1] != "alpha"'),
+     ("unpacking is independent", 'len(copied) != 4 or copied[0] != "alpha" or copied[3] != "tail"'),
+     ("iterable construction deduplicates", 'len(unique) != 3 or "beta" not in unique'),
+     ("setdefault preserves the stored object", 'first is not second or len(mapping["node"]) != 2'),
+     ("finite numeric inputs", 'not isfinite(7) or not isfinite(1.25) or isfinite(1e309)')),
+)
+
+
 PORTABLE_FAILURE_SOURCES = {
     "division by zero": """
 from pyjs import int8
