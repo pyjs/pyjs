@@ -34,6 +34,9 @@
   merger, retaining library components, provider metadata and permissions.
   Explicit application overlays resolve conflicts without dropping library
   declarations. SDK incompatibilities and unresolved placeholders fail early.
+- Android clients can use typed SQLite database, cursor and prepared-statement
+  APIs for transactional local storage, with parameter binding and catchable
+  native database exceptions.
 - Android shared-preference editors expose `clear()`, retaining native
   deferred commit and chaining semantics for local-storage cleanup.
 - JVM native function bindings can call static interface methods with
