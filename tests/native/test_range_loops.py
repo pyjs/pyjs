@@ -85,7 +85,7 @@ def test_range_cursor_storage_is_local_unless_function_suspends():
     resume = generated.split("define i64 @fn.values.resume(", 1)[1].split("\n}", 1)[0]
     assert main.count("alloca %pyjs.range.iterator") == 2
     assert "alloca %pyjs.range.iterator" not in resume
-    assert "call ptr @pyjs.arena.try.alloc" in resume
+    assert "call ptr @pyjs.gc.alloc.described" in resume
     entry = main.split("block.entry:", 1)[1].split("\nblock.", 1)[0]
     assert entry.count("alloca %pyjs.range.iterator") == 2
 

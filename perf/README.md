@@ -136,10 +136,11 @@ Fibonacci deliberately uses naive recursion on every target, not memoization.
 The histogram uses maps rather than a dense counting array. Unicode traversal
 counts code points, including a supplementary-plane character, not UTF-16 units.
 
-Unsupported configurations remain visible: this checkout's JVM backend rejects
-integer-key/value dictionaries and direct string iteration, so its histogram
-and text-scan cells contain compilation diagnostics. These are not timing zeros
-and do not prevent the other configurations from being measured.
+Unsupported configurations remain visible: the JVM backend rejects primitive
+dictionary keys, so its histogram cells contain compilation diagnostics.
+Historical snapshots also show unsupported direct string iteration; the newer
+base supports that operation. Failures are not timing zeros and do not prevent
+the other configurations from being measured.
 
 Each `cases/NAME/` contains:
 
@@ -291,11 +292,15 @@ calibrated loop counts must not be presented as a per-kernel memory comparison.
 
 ### Expanded workloads and integer mapping lookup
 
-`runs/expanded-optimized-20261027/results.json` contains all seven workloads:
+The pre-rebase `runs/expanded-optimized-20261027/results.json` contains all seven workloads:
 94 successful target/input configurations, with every checksum validated across
-282 process forks. Four JVM cells explicitly retain the numeric-dictionary and
+282 process forks. Four JVM cells record the then-current numeric-dictionary and
 string-iteration compilation boundaries (two input sizes each). All 24 separate
 Java/JVM diagnostic passes completed without recorded compilation failures.
+These are historical measurements on the recorded revision, not measurements
+of newer merged backend features or of the rebased PR. The rebased implementation
+retains managed-heap cursors for suspended native frames and the newer JVM
+class writer's conservative cap for manually bounded helper methods.
 
 The new histogram exposed LLVM's dense linear dictionary scan. Optimized IR
 showed a generic equality call on every candidate key. The integer-only path
