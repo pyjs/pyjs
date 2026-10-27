@@ -6,6 +6,10 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
+- JVM conditions can short-circuit mixed string, numeric and Boolean operands
+  without materializing an incompatible result union. Value-returning mixed
+  unions retain their existing storage restrictions.
+
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.

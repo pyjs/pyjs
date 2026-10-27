@@ -34,6 +34,7 @@ from tests.backend_semantics import (
     LITERAL_FIELD_ASSIGNMENT_CONTRACT,
     LITERAL_SEQUENCE_REFLECTION_CONTRACT,
     MAPPING_LOOKUP_REPRESENTATION_CONTRACT,
+    MIXED_TRUTH_CONDITION_CONTRACT,
     NESTED_CONDITIONAL_CONTRACT,
     NUMERIC_NAME_CONTRACT,
     PORTABLE_FAILURE_SOURCES,
@@ -589,6 +590,12 @@ def test_webassembly_nested_conditional_order(tmp_path):
     contract = NESTED_CONDITIONAL_CONTRACT
     result = int(execute(tmp_path, contract.source))
     assert result == 0, contract.failure(result)
+
+
+def test_webassembly_mixed_truth_condition_storage_boundary():
+    with pytest.raises(WebAssemblyUnsupported) as caught:
+        transpile_webassembly(MIXED_TRUTH_CONDITION_CONTRACT.source)
+    assert str(caught.value) == "WebAssembly value type str is not implemented"
 
 
 @pytest.mark.parametrize(

@@ -938,6 +938,9 @@ with `pyjs template`.
   still apply. Membership syntax evaluates the needle before the container,
   including application and declared native `__contains__` methods. Explicit
   method calls retain receiver-first evaluation order.
+- JVM `and`/`or` conditions accept mixed string, numeric and Boolean operands,
+  preserving short-circuit order in branches, loops, assertions and negation.
+  This does not add storage for mixed primitive/reference union values.
 - JVM `tuple[T, ...]` supports reference-valued items, including nullable
   references and nested tuples. Literals, calls, returns and fields retain
   identity; `len`, signed integer/Boolean indexing and `for` loops work.

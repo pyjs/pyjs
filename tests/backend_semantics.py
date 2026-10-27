@@ -170,6 +170,41 @@ def _contract(imports, function_name, setup, checks, *, integer_type="int"):
     )
 
 
+MIXED_TRUTH_CONDITION_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def record(events: list[int], value: int) -> bool:
+        events.append(value)
+        if value == 99:
+            raise ValueError("must short circuit")
+        return value != 0
+    ''',
+    "mixed_truth_conditions",
+    '''
+    events: list[int] = []
+    empty = ""
+    text = "yes"
+    first = 1 if empty and record(events, 99) else 2
+    second = 3 if text or record(events, 99) else 4
+    third = 5 if text and record(events, 7) else 6
+    fourth = 7 if empty or record(events, 8) else 8
+    assert not (empty and record(events, 99))
+    assert text or record(events, 99)
+    count = 0
+    while text and count < 2:
+        count += 1
+    nested = 9 if (empty or text) and (count and record(events, 9)) else 0
+    ''',
+    (
+        ("selected branch values", "first != 2 or second != 3 or third != 5 or fourth != 7"),
+        ("left to right, once, with skipped exceptions", "len(events) != 3 or events[0] != 7 or events[1] != 8 or events[2] != 9"),
+        ("loop and nested conditions", "count != 2 or nested != 9"),
+    ),
+)
+
+
 SEQUENCE_CONSTRUCTOR_REPRESENTATION_CONTRACT = _contract(
     '''
     from pyjs import js, int8, int64

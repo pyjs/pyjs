@@ -1501,12 +1501,10 @@ class JVMEmitter:
             done = self.new_label("bool.done")
             match_opcode = 0x99 if isinstance(node.op, ast.And) else 0x9A
             matched_value = 0 if isinstance(node.op, ast.And) else 1
+            if result_type != "Z":
+                raise JVMUnsupported("JVM value-returning boolean operator changes type", node)
             for value in node.values:
-                if self.expression(value) != "Z":
-                    raise JVMUnsupported(
-                        "JVM boolean operators require bool operands",
-                        value,
-                    )
+                self.coerce_truth(self.expression(value), value)
                 self.code.branch(match_opcode, matched)
             self.code.emit(0x04 if matched_value == 0 else 0x03)
             self.code.branch(0xA7, done)
