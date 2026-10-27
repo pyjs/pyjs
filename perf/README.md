@@ -65,7 +65,7 @@ The selected count and validated pilot traces are saved per row. Set
 Warmup, sample and fork counts apply to every target. A batch alternates N and N+1 inputs; the reported
 warmed duration divides batch time by loop count. Both sizes have independently
 checked expected results. `--small` selects the smaller configured base N only.
-The full catalog has two base input sizes for each of seven workloads.
+The full catalog has two base input sizes for each of nine workloads.
 
 Builds and measurements run sequentially with timeouts. Fork order is shuffled
 with a recorded seed. Output directories must be new and are never overwritten.
@@ -129,12 +129,16 @@ publishing. Nothing automatically uploads or publishes results.
 ## Adding cases
 
 The catalog includes sieve, matrix multiplication, object traversal, recursive
-Fibonacci, heap sort, dictionary counting and Unicode text scanning. The latter
-four exercise calls, indexed mutation, mapping lookups and text beyond numeric
-loops. Each source panel contains the complete runnable kernel and references.
+Fibonacci, heap sort, dictionary counting, Unicode text scanning, binary trees
+and Mandelbrot. These exercise calls, indexed mutation, mapping lookups, text,
+recursive allocation and floating-point branches. Each source panel contains
+the complete runnable kernel and references.
 Fibonacci deliberately uses naive recursion on every target, not memoization.
 The histogram uses maps rather than a dense counting array. Unicode traversal
 counts code points, including a supplementary-plane character, not UTF-16 units.
+Binary trees retain one tree while constructing and counting four transient
+trees; the input is depth, not node count. Mandelbrot uses scalar binary64
+arithmetic and a weighted escape-count checksum, not bitmap encoding.
 
 Unsupported configurations remain visible: the JVM backend rejects primitive
 dictionary keys, so its histogram cells contain compilation diagnostics.
@@ -157,7 +161,7 @@ SIMD and parallel implementations in separately labeled future categories.
 
 ## Scope and next steps
 
-The lab provides seven workloads and seven adapters, two sizes,
+The lab provides nine workloads and seven adapters, two sizes,
 fresh-process and warmed-batch timing, separate RSS measurements, build time,
 artifact byte counts, bounded batch calibration, warmup-drift warnings, and a
 live PyJS UI. See [methodology](methodology.md)
@@ -168,6 +172,33 @@ publication snapshots/history, more
 workloads, and non-Linux measurement hosts remain follow-ups. The per-snapshot
 lock records the tools actually used; it is not an automatic installer or
 latest-version guarantee. No performance threshold is added to normal CI.
+
+### Comparison-site coverage
+
+This is **not a complete port** of the comparison-site catalogs. The
+[Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/),
+[Programming Language Benchmarks](https://programming-language-benchmarks.vercel.app/),
+and [Are We Fast Yet?](https://github.com/smarr/are-we-fast-yet) use different
+inputs, output protocols and implementation rules. Shared names identify
+workload families, not interchangeable scores. The catalog check on 2026-10-27
+suggests the following expansion order:
+
+| Workload family | Coverage here | Next useful gap |
+| --- | --- | --- |
+| Integer loops, sorting, permutations | Sieve, matrix, heap sort, Fibonacci | Fannkuch-redux / permutation generation |
+| Allocation and recursion | Object traversal, binary trees | Linked structures and a constraint solver |
+| Floating-point computation | Mandelbrot | N-body and spectral norm |
+| Text and mapping | Unicode scan, histogram | FASTA, reverse complement, k-nucleotide |
+| Application/library work | Not yet measured | JSON serialization, LRU, regex, HTTP |
+| Large integers and specialized math | Not yet measured | Pi/e digits and cryptographic arithmetic |
+
+Are We Fast Yet?'s Richards, DeltaBlue, Havlak and collision-detection workloads
+would add larger abstraction-heavy programs beyond these microbenchmarks.
+LangArena is another breadth reference, not a parity claim. Prefer workloads
+that expose a new runtime behavior; give library-backed, parallel, SIMD and
+I/O workloads separate categories rather than mixing them into scalar-kernel
+rankings. Each addition needs an independent oracle, matching references and
+real adapter execution before its measurements are interpreted.
 
 ### Compiler optimizations and follow-ups
 

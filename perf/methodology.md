@@ -11,17 +11,21 @@ operations. No handwritten backend implementation replaces a Python kernel.
 The JavaScript reference uses ordinary arrays and the same Node executable as
 PyJS JavaScript; it introduces no typed-array, SIMD or library shortcut.
 
-Inputs and intermediates in the configured cases remain within JavaScript's
-exact integer range and signed 64-bit limits. There is no integer overflow,
-floating-point tolerance, library acceleration, or multithreaded workload
-ambiguity in this initial set. No GC is disabled; JVM/V8 may use runtime threads.
+Integer inputs, intermediates and checksums in the configured cases remain
+within JavaScript's exact integer range and signed 64-bit limits. Mandelbrot
+uses binary64 real/imaginary components with identical operation order and no
+fast-math. Its integer escape-count checksum must match exactly; no floating
+tolerance conceals a changed branch. No library acceleration or user-level
+parallelism is used. No GC is disabled; JVM/V8 may use runtime threads.
 
 Before measuring, every target is checked at edge inputs 1 and 2, N, and N+1.
 An independent trial-division oracle checks the sieve. A column/row sum identity
 checks the matrix result. An arithmetic sum checks object traversal. Iterative
 Fibonacci checks the recursive implementation; Python's library sort checks
 heap sort; a direct stream sum checks dictionary counting without constructing
-a dictionary; a known per-pattern score checks Unicode scanning. Every
+a dictionary; a known per-pattern score checks Unicode scanning. A closed-form
+node count checks binary trees; a separate CPython complex-arithmetic loop
+checks Mandelbrot's scalar implementation. Every
 warmup and sample checksum is also checked. Wrong output, malformed output,
 timeouts and compilation errors never become timings.
 

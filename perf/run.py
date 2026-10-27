@@ -20,7 +20,8 @@ from perf.harness.jit import summarize_jit
 from perf.harness.process import execute
 
 REPO = ROOT.parent
-CASES = ("sieve", "matrix", "objects", "fibonacci", "heapsort", "histogram", "textscan")
+CASES = ("sieve", "matrix", "objects", "fibonacci", "heapsort", "histogram", "textscan",
+         "binarytrees", "mandelbrot")
 REQUIRES = {
     "cpython": ("python",), "pyjs-js": ("node",), "javascript": ("node",), "pyjs-llvm": ("clang",),
     "rust": ("rustc",), "pyjs-jvm": ("java", "javac"), "java": ("java", "javac"),
@@ -51,6 +52,24 @@ def oracle(case, size):
         return sum(i * 17 % 257 + 1 for i in range(size))
     if case == "textscan":
         return 10 * size
+    if case == "binarytrees":
+        return 5 * (2 ** (size + 1) - 1)
+    if case == "mandelbrot":
+        # Complex arithmetic and a bounded for-loop, independent of the
+        # scalar-component while-loop in the timed implementations.
+        checksum = 0
+        for index in range(size * size):
+            c = complex(index % size * 2.0 / size - 1.5,
+                        index // size * 2.0 / size - 1.0)
+            z = 0j
+            count = 0
+            for _ in range(50):
+                if z.real * z.real + z.imag * z.imag > 4.0:
+                    break
+                z = z * z + c
+                count += 1
+            checksum += (index + 1) * count
+        return checksum
     raise ValueError(case)
 
 

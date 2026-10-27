@@ -1,0 +1,5 @@
+name = "Mandelbrot"
+category = "Floating point · nested loops · conditional escape"
+description = "Evaluate a square grid with up to 50 complex iterations per point and return an order-sensitive checksum of escape counts."
+sizes = [64, 192]
+notes = "Scalar binary64 real/imaginary components, identical operation order, z initially zero, radius squared greater than four escapes. Coordinates are x*2/size-1.5 and y*2/size-1. No SIMD, threads, complex-number library or fast-math. Unlike bitmap-output comparison-site variants, all point iteration counts contribute to a weighted checksum; image encoding and I/O are not timed."

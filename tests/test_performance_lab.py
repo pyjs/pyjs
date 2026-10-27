@@ -2,6 +2,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tomllib
 from html.parser import HTMLParser
 
 import pytest
@@ -32,9 +33,29 @@ def test_kernel_matches_independent_oracle(case):
     spec = importlib.util.spec_from_file_location("workload", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    for size in ((0, 1, 2, 3, 10, 20) if case == "fibonacci" else (0, 1, 2, 3, 10, 24, 101)):
+    sizes = {"fibonacci": (0, 1, 2, 3, 10, 20), "binarytrees": (0, 1, 2, 3, 8, 12)}
+    for size in sizes.get(case, (0, 1, 2, 3, 10, 24, 101)):
         assert module.kernel(size) == oracle(case, size)
-    assert expected(case, 24, 3) == 2 * module.kernel(24) + module.kernel(25)
+    batch_size = 8 if case == "binarytrees" else 24
+    assert expected(case, batch_size, 3) == 2 * module.kernel(batch_size) + module.kernel(batch_size + 1)
+
+
+@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot"))
+def test_new_workloads_match_oracles_at_every_configured_input(case):
+    directory = ROOT / "cases" / case
+    spec = importlib.util.spec_from_file_location("workload", directory / "workload.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for size in tomllib.loads((directory / "case.toml").read_text())["sizes"]:
+        for n in (size, size + 1):
+            assert module.kernel(n) == oracle(case, n)
+
+
+def test_new_oracle_known_small_results():
+    assert [oracle("binarytrees", n) for n in (0, 1, 2)] == [5, 15, 35]
+    # The single point (-1.5, -1) escapes after two iterations.
+    assert oracle("mandelbrot", 0) == 0
+    assert oracle("mandelbrot", 1) == 2
 
 
 def test_samples_validate_warmups_as_well_as_measurements():
@@ -79,7 +100,19 @@ def test_javascript_reference_matches_oracle(tmp_path, case):
     if not node["path"]:
         pytest.skip("Node is required for the handwritten JavaScript control")
     result = build(case, "javascript", tmp_path / case, {"node": node})
-    for size in (1, 2, 24):
+    for size in (1, 2, 8 if case == "binarytrees" else 24):
+        measured = execute(result["command"] + [str(size), "3", "1", "2"])
+        assert measured.returncode == 0, measured.stderr
+        parse_samples(measured.stdout, expected(case, size, 3), 1, 2)
+
+
+@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot"))
+def test_new_python_workloads_execute_as_javascript(tmp_path, case):
+    node = tool("node")
+    if not node["path"]:
+        pytest.skip("Node is required to execute generated JavaScript")
+    result = build(case, "pyjs-js", tmp_path / case, {"node": node})
+    for size in (0, 1, 2, 8):
         measured = execute(result["command"] + [str(size), "3", "1", "2"])
         assert measured.returncode == 0, measured.stderr
         parse_samples(measured.stdout, expected(case, size, 3), 1, 2)

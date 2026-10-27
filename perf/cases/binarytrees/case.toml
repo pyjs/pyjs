@@ -1,0 +1,5 @@
+name = "Binary trees"
+category = "Allocation · recursive traversal · object lifetime"
+description = "Keep one complete tree alive while building and traversing four transient trees, then traverse the retained tree. Input is tree depth."
+sizes = [8, 12]
+notes = "Same complete-tree construction and recursive node count in every target, including allocated leaf nodes. Each tree has 2^(depth+1)-1 nodes. Rust uses individually boxed nodes and deterministic destruction; managed targets retain their normal memory policy. No pooling, flat-array substitution, parallelism or allocation-free formula in the timed kernel. This is not the Benchmarks Game stretch-tree protocol."

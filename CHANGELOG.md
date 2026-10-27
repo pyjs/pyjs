@@ -310,9 +310,9 @@
   batch calibration, readable per-fork traces and warmup-drift warnings flag
   weak measurements. Optional separate JVM compilation diagnostics expose
   rejected JIT compilation without contaminating the measured timings.
-  Seven workloads now include recursive Fibonacci, heap sort, dictionary
-  counting and Unicode scanning alongside sieve, matrix and object traversal;
-  independent oracles validate every measured batch.
+  Nine workloads include recursive Fibonacci, heap sort, dictionary counting,
+  Unicode scanning, binary trees and Mandelbrot alongside sieve, matrix and
+  object traversal; independent oracles validate every measured batch.
 - `pyjs serve` and `pyjs docs serve` can open a local URL after startup with
   `--open PATH`. Application factories and explicit docs-server extensions let
   live Python UI share the same local server as documentation.
