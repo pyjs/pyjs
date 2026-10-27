@@ -6,6 +6,10 @@
   equality, preserving ordinary `in` evaluation order and explicit
   `__contains__` calls. Other mixed item domains remain unsupported.
 
+- Java and Android clients can use native ISO calendar dates, device-local
+  today, time zones and fixed clocks through `pyjs.java.time`. Android requires
+  API 26 or newer; calendar failures remain catchable native exceptions.
+
 - Android `Handler.postDelayed()` schedules callbacks on a message loop without
   relying on an attached View. Delays are milliseconds; callbacks still need
   lifecycle guards when their owning screen or account changes.
