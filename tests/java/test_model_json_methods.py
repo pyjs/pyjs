@@ -147,3 +147,52 @@ def main() -> str:
         "JVM client models support typed construction and fields, not model operations "
         "[PYJS2001] (_pyjs_java_.py, line 5)"
     )
+
+
+@pytest.mark.parametrize("definition", [
+    '''class First(BaseModel):
+    name: str
+    child: 'First | None' = None
+class Second(First):
+    pass
+''',
+    '''class First(BaseModel):
+    name: str
+    def model_dump_json(self) -> str:
+        return "custom"
+class Second(First):
+    pass
+''',
+    '''class First(BaseModel):
+    name: str
+    def model_dump_json(self) -> str:
+        return "custom"
+class Second(BaseModel):
+    name: str
+    def model_dump_json(self) -> str:
+        return "other"
+''',
+    '''class Left(BaseModel):
+    value: str
+class Right(BaseModel):
+    label: str
+class First(BaseModel):
+    name: str
+    choice: Left | Right | None = None
+class Second(BaseModel):
+    name: str
+    choice: Left | Right | None = None
+''',
+])
+def test_multiple_field_only_models_remain_constructible(tmp_path, definition):
+    source = f'''from pydantic import BaseModel
+{definition}
+def main() -> str:
+    first = First(name="one")
+    second = Second(name="two")
+    return first.name + second.name
+'''
+    assert_text_matches_python(source, tmp_path)
+    for call in ("first.model_dump_json()", "Second.model_validate_json('{}').name"):
+        with pytest.raises(CompilationError, match="model operations"):
+            transpile_jvm(source.replace("first.name + second.name", call))

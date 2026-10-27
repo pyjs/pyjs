@@ -54,6 +54,10 @@ def unsupported_json_codec() -> None:
 
 
 def field_only_codecs(info, cls):
+    from .json_codegen import JSONCodegen
+
+    generator = JSONCodegen()
+    return_type = generator.type_name(cls)
     # Own stubs prevent lookup from falling through to a generated parent
     # codec. They remain lazy: field construction still needs no JSON support.
     return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
@@ -61,9 +65,9 @@ def field_only_codecs(info, cls):
             "model_dump_json": "    def model_dump_json(self) -> str:\n        _pyjs_no_codec()\n",
             "model_validate_json": (
                 "    @classmethod\n"
-                "    def model_validate_json(cls, json_data: str) -> _pyjs_model_type:\n"
+                f"    def model_validate_json(cls, json_data: str) -> {return_type}:\n"
                 "        _pyjs_no_codec()\n")},
-        imports={"_pyjs_no_codec": unsupported_json_codec, "_pyjs_model_type": cls})
+        imports={"_pyjs_no_codec": unsupported_json_codec, return_type: cls})
 
 
 def field_type(annotation):

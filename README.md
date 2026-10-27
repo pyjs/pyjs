@@ -857,6 +857,9 @@ with `pyjs template`.
   Pydantic coercion or `Field` constraints. Nested fields serialize their
   declared model shape, excluding subclass-only fields. Custom JSON method
   overrides and optional Pydantic method arguments are not supported.
+  Constructing an unsupported-codec subclass also disables its parent's
+  virtual JSON dump calls, even on an explicitly constructed parent. Static
+  parent JSON factories remain usable. Field-only construction is unaffected.
   Model equality and dictionary dumping are not yet implemented.
 - Client `model_validate_json()` reports malformed input and structural
   mismatches as `ValueError`, including on JavaScript. JSON output rejects
@@ -864,6 +867,10 @@ with `pyjs template`.
   output currently rejects date/datetime values: those types share a client
   representation and cannot yet be serialized unambiguously. Ordinary
   `model_dump()` retains its existing date values.
+  JavaScript model unions prefer the successful schema retaining the most
+  supplied model fields, including nested fields; defaults do not increase
+  this count. Ties retain declaration order. This is not full Pydantic smart
+  coercion. JSON object key order is not a cross-backend canonical format.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;

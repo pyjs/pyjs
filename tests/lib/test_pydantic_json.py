@@ -37,6 +37,12 @@ class Choice(BaseModel):
 
 
 @js
+class InheritedChoice(BaseModel):
+    items: list[Entry] | list[Detailed]
+    mapping: dict[str, Entry] | dict[str, Detailed]
+
+
+@js
 class DateEnvelope(BaseModel):
     items: list[date]
 
@@ -135,8 +141,19 @@ def test_client_json_selects_matching_container_union_schema():
     assert Choice.model_validate_json(encoded).model_dump_json() == encoded
 
 
+@pytest.mark.pyjs_web
+@js
+def test_client_json_union_round_trip_keeps_supplied_subclass_fields():
+    child = Detailed(title="nested", private_detail="preserved")
+    value = InheritedChoice(items=[child], mapping={"key": child})
+    encoded = value.model_dump_json()
+    assert '"private_detail":"preserved"' in encoded
+    assert InheritedChoice.model_validate_json(encoded).model_dump_json() == encoded
+
+
 def test_json_contract_on_python():
     test_client_json_round_trip_preserves_unicode_and_fields()
     test_client_json_uses_declared_nested_model_fields()
     test_client_json_rejects_invalid_documents()
     test_client_json_selects_matching_container_union_schema()
+    test_client_json_union_round_trip_keeps_supplied_subclass_fields()
