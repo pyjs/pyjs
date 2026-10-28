@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- JVM supports `math.isfinite()`, first-match `list.remove()` for strings,
+  integers and booleans, same-storage list unpacking, reference-valued
+  `set(iterable)`, and `dict.setdefault(key, default)`. Unsupported item
+  domains and implicit `setdefault` defaults remain explicit boundaries.
+- JVM module-qualified function calls use their static target rather than
+  attempting to load the module as a runtime receiver.
+- Typed Android drawing APIs expose Canvas, Paint, pointer events and native
+  pinch-scale recognition, with View drawing/touch callbacks. Reference-valued
+  native class fields retain their declared type when their Python placeholder
+  is `None` or omitted.
+- JVM retains Java-invoked callbacks inherited through native superclasses,
+  such as an Android TextView subclass overriding View's drawing callback.
+- Tuple class-check diagnostics retain the original subject's source location.
+
 - JVM class checks accept literal tuples, including nested and empty tuples.
   The checked expression runs once; existing native and emitted-class
   restrictions remain unchanged.

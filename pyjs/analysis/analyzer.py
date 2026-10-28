@@ -1293,7 +1293,7 @@ class _CallAnalysis:
             ).standard()
             assert isinstance(analyzed, Call)
             ast.copy_location(analyzed, self.node)
-            analyzed.args[0] = Name(value_obj, id="$value")
+            analyzed.args[0] = ast.copy_location(Name(value_obj, id="$value"), self.node.args[0])
             checks.append(analyzed)
 
         if checks:

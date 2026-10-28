@@ -788,6 +788,14 @@ with `pyjs template`.
 - Android uses direct JVM bytecode and native framework/AndroidX APIs.
   Calculator and Notes demonstrate the supported subset; Notes editor parity
   and broader platform coverage remain in progress.
+- Custom Android views can override `onDraw(Canvas)` and
+  `onTouchEvent(MotionEvent)` using `pyjs.android.graphics` and
+  `pyjs.android.motion`. `pyjs.android.gestures.ScaleGestureDetector` supplies
+  native pinch recognition. Callbacks inherited through native superclasses
+  are retained without explicit Python calls. Canvas coordinates are physical
+  pixels; use display density when sharing logical-pixel geometry with web UI.
+  Synthetic motion events use `uptime_millis()`, not wall-clock time, and must
+  be recycled after dispatch. Pointer IDs remain stable when indexes change.
 - `AndroidJVMApplication.permissions` explicitly requests manifest permissions
   such as `("android.permission.INTERNET",)`. No permissions are added by
   default without dependencies. AAR manifests contribute their permissions,

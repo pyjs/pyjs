@@ -22,6 +22,7 @@ from tests.backend_semantics import (
     CUSTOM_EXCEPTION_CONTRACT,
     DATACLASS_NAN_IDENTITY_SOURCE,
     DIRECT_UNION_RESULT_CONTRACT,
+    DOCUMENT_COLLECTION_CONTRACT,
     EXCEPTION_OBJECT_CONTRACT,
     FIELD_ASSIGNMENT_CONTRACT,
     FIXED_TUPLE_ASSIGNMENT_CONTRACT,
@@ -604,6 +605,11 @@ def test_webassembly_nominal_erasure_contract_has_explicit_inheritance_boundary(
 def test_webassembly_literal_field_contract_has_explicit_set_storage_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="value type set__intUstr is not implemented"):
         transpile_webassembly(LITERAL_FIELD_ASSIGNMENT_CONTRACT.source)
+
+
+def test_document_collections_keep_explicit_string_storage_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
+        transpile_webassembly(DOCUMENT_COLLECTION_CONTRACT.source)
 
 
 def test_webassembly_property_override_keeps_unsupported_analysis_boundary():

@@ -1904,7 +1904,8 @@ class JVMEmitter:
                     raise JVMUnsupported("JVM min and max currently require integer arguments", node)
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
             return "J"
-        if isinstance(node.func, ast.Attribute) and isinstance(target, Function):
+        if (isinstance(node.func, ast.Attribute) and isinstance(target, Function)
+                and target.cls is not None):
             if self.model_json_factory(target):
                 if not isinstance(getattr(node.func.value, "obj", None), Class):
                     raise JVMUnsupported("JVM model JSON decoding requires a statically named model class", node)
@@ -2269,28 +2270,37 @@ class JVMEmitter:
                 )
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
                 return "Ljava/lang/String;"
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "remove"
+                    and (node.keywords or len(node.args) != 1)):
+                raise JVMUnsupported("JVM list.remove requires one positional argument", node)
             argument_types = (
                 [self.load(leading_argument)] if leading_argument is not None
                 else [self.expression(argument) for argument in node.args]
             )
-            if (target.name == "__contains__"
+            if (target.name in {"__contains__", "remove"}
+                    and isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list"
                     and len(argument_types) == 1):
                 item_type = self.list_item_type(semantic_receiver)
                 string_match = item_type == "Ljava/lang/String;" and argument_types[0] in {item_type, "N"}
                 scalar_match = item_type in {"J", "Z"} and argument_types[0] == item_type
                 if not (string_match or scalar_match):
+                    operation = "membership" if target.name == "__contains__" else "remove()"
                     raise JVMUnsupported(
-                        "JVM list membership requires matching integer, boolean or string items", node,
+                        f"JVM list {operation} requires matching integer, boolean or string items", node,
                     )
                 list_class = self.list_class(semantic_receiver)
-                if not any(method.name == "contains" for method in list_class.methods):
-                    list_class.add_method(self.list_contains_method(list_class, item_type))
+                remove = target.name == "remove"
+                method_name = "remove" if remove else "contains"
+                return_type = "V" if remove else "Z"
+                if not any(method.name == method_name for method in list_class.methods):
+                    list_class.add_method(self.list_search_method(list_class, item_type, remove))
                 reference = self.class_file.method_reference(
-                    self.list_class_name(semantic_receiver), "contains", f"({item_type})Z",
+                    self.list_class_name(semantic_receiver), method_name, f"({item_type}){return_type}",
                 )
                 self.code.emit(0xB6, reference.to_bytes(2, "big"))
-                return "Z"
+                return return_type
             if (
                 isinstance(semantic_receiver, Class)
                 and semantic_receiver.generic_name == "str"
@@ -2738,6 +2748,7 @@ class JVMEmitter:
             if (getattr(target, "generic_name", None) == "set"
                     and target.container.scope.is_builtins):
                 if node.args or node.keywords:
+                    sets.item_type(self, analyzed_value_type(node), node)
                     raise JVMUnsupported("JVM set() iterable construction is not implemented", node)
                 return sets.construct(self, analyzed_value_type(node))
             if (
@@ -2883,6 +2894,21 @@ class JVMEmitter:
         )
         for element in node.source.elts:
             self.code.emit(0x59)
+            if isinstance(element, ast.Starred):
+                source_type = analyzed_value_type(element.value)
+                if (source_type.generic_name != "list"
+                        or self.list_item_type(source_type) != item_type):
+                    raise JVMUnsupported(
+                        "JVM list unpacking requires a list with matching item storage", element)
+                actual = self.expression(element.value, expected=descriptor)
+                if actual != descriptor:
+                    raise JVMUnsupported("JVM list unpacking has incompatible items", element)
+                generated = self.list_class(node.value_type)
+                if not any(method.name == "extend" for method in generated.methods):
+                    generated.add_method(self.list_extend_method(generated, item_type))
+                extend = self.class_file.method_reference(owner, "extend", f"({descriptor})V")
+                self.code.emit(0xB6, extend.to_bytes(2, "big"))
+                continue
             actual = self.expression(element, expected=item_type)
             if not self.compatible(actual, item_type):
                 raise JVMUnsupported("JVM list literal changes item type", element)
@@ -2936,6 +2962,8 @@ class JVMEmitter:
         if receiver_type != "Ljava/util/HashMap;":
             raise JVMUnsupported("JVM dictionary has an incompatible receiver", node)
         key_type, value_descriptor = self.dictionary_types(value_type, node)
+        if target.name == "setdefault" and node.keywords:
+            raise JVMUnsupported("JVM dict.setdefault requires positional arguments", node)
         if target.name == "copy" and not node.args and not node.keywords:
             original = self.allocate_temporary(receiver_type, "dict.copy.source")
             self.store(original, receiver_type)
@@ -3040,14 +3068,16 @@ class JVMEmitter:
             self.code.emit(0xB6, get.to_bytes(2, "big"))
             self.dictionary_value_cast(value_descriptor)
             return value_descriptor
-        if target.name in {"get", "pop"} and len(node.args) in {1, 2}:
+        if target.name in {"get", "pop", "setdefault"} and len(node.args) in {1, 2}:
+            if target.name == "setdefault" and len(node.args) != 2:
+                raise JVMUnsupported("JVM dict.setdefault requires an explicit default", node)
             actual_key = self.expression(node.args[0], expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
             self.convert_native_argument(actual_key, key_type, node.args[0])
             get = self.class_file.method_reference(
                 "java/util/HashMap",
-                "get" if target.name == "get" else "remove",
+                "remove" if target.name == "pop" else "get",
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             if len(node.args) == 1:
@@ -3086,7 +3116,16 @@ class JVMEmitter:
             self.dictionary_value_cast(value_descriptor)
             self.code.branch(0xA7, done)
             self.code.mark(missing)
-            self.code.emit(0x58)
+            if target.name == "setdefault":
+                self.load(temporary)
+                box(self.code, self.class_file, value_descriptor)
+                put = self.class_file.method_reference(
+                    "java/util/HashMap", "put",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;")
+                self.code.emit(0xB6, put.to_bytes(2, "big"))
+                self.code.emit(0x57)
+            else:
+                self.code.emit(0x58)
             self.load(temporary)
             self.code.mark(done)
             return value_descriptor
@@ -4973,7 +5012,7 @@ class JVMEmitter:
         class_file.add_method(self.default_constructor(class_file))
         return class_file
 
-    def list_contains_method(self, class_file: ClassFile, item_type: str) -> Method:
+    def list_search_method(self, class_file: ClassFile, item_type: str, remove: bool) -> Method:
         code = Bytecode()
         data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
         length = class_file.field_reference(class_file.name, "length", "I")
@@ -5006,12 +5045,74 @@ class JVMEmitter:
         code.emit(0x84, bytes((index, 1)))
         code.branch(0xA7, "loop")
         code.mark("missing")
-        code.emit(0x03)
-        code.emit(0xAC)
+        if remove:
+            self.throw_python("ValueError", "list.remove(x): x not in list", code, class_file)
+        else:
+            code.emit(0x03)
+            code.emit(0xAC)
         code.mark("found")
+        if not remove:
+            code.emit(0x04)
+            code.emit(0xAC)
+            return Method(0x0001, "contains", f"({item_type})Z", code.render(), 4, index + 1)
+        # Shift only the live suffix; release the now-unused backing-array slot.
+        for offset in (1, 0):
+            code.local(0x19, 0)
+            code.emit(0xB4, data.to_bytes(2, "big"))
+            code.local(0x15, index)
+            if offset:
+                code.emit(0x04)
+                code.emit(0x60)
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
         code.emit(0x04)
-        code.emit(0xAC)
-        return Method(0x0001, "contains", f"({item_type})Z", code.render(), 4, index + 1)
+        code.emit(0x64)
+        code.local(0x15, index)
+        code.emit(0x64)
+        copy = class_file.method_reference(
+            "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V")
+        code.emit(0xB8, copy.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0x59)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x04)
+        code.emit(0x64)
+        code.emit(0xB5, length.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x09 if item_type == "J" else 0x03 if item_type == "Z" else 0x01)
+        code.emit(self.array_store_opcode(item_type))
+        code.emit(0xB1)
+        return Method(0x0001, "remove", f"({item_type})V", code.render(), 7, index + 1)
+
+    def list_extend_method(self, class_file: ClassFile, item_type: str) -> Method:
+        code = Bytecode()
+        length = class_file.field_reference(class_file.name, "length", "I")
+        data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
+        append = class_file.method_reference(class_file.name, "append", f"({item_type})V")
+        # Snapshot the original length so the helper is safe even for self-extension.
+        code.local(0x19, 1)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.local(0x36, 3)
+        code.emit(0x03)
+        code.local(0x36, 2)
+        code.mark("loop")
+        code.local(0x15, 2)
+        code.local(0x15, 3)
+        code.branch(0xA2, "done")
+        code.local(0x19, 0)
+        code.local(0x19, 1)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x15, 2)
+        code.emit(self.array_load_opcode(item_type))
+        code.emit(0xB6, append.to_bytes(2, "big"))
+        code.emit(0x84, bytes((2, 1)))
+        code.branch(0xA7, "loop")
+        code.mark("done")
+        code.emit(0xB1)
+        return Method(0x0001, "extend", f"(L{class_file.name};)V", code.render(), 4, 4)
 
     def list_constructor(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()

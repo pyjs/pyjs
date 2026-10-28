@@ -9,6 +9,8 @@ from pyjs.java.io import File, OutputStream
 from pyjs.java.primitives import Reference
 
 from .api import AndroidAPI, AndroidAvailability, AndroidNullability
+from .graphics import Canvas
+from .motion import MotionEvent
 
 CharSequence = Annotated[str, Reference("java/lang/CharSequence")]
 
@@ -110,7 +112,7 @@ class SharedPreferences:
 
 @jvm.native("android/util/DisplayMetrics")
 class DisplayMetrics:
-    pass
+    density: Annotated[f32, jvm.field()]
 
 
 @jvm.native("android/content/res/Resources")
@@ -483,6 +485,11 @@ class OnClickListener:
         pass
 
 
+@jvm.native("android/view/ViewParent", interface=True)
+class ViewParent:
+    def requestDisallowInterceptTouchEvent(self, disallow: bool) -> None: ...
+
+
 @jvm.native("android/view/View")
 class View:
     VISIBLE: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 0
@@ -495,6 +502,18 @@ class View:
 
     def setId(self, value: i32) -> None:
         pass
+
+    def invalidate(self) -> None: ...
+
+    def onDraw(self, canvas: Canvas) -> None: ...
+
+    def onTouchEvent(self, event: MotionEvent) -> bool: ...
+
+    def dispatchTouchEvent(self, event: MotionEvent) -> bool: ...
+
+    def performClick(self) -> bool: ...
+
+    def getParent(self) -> ViewParent | None: ...
 
     def setVisibility(self, value: i32) -> None:
         pass

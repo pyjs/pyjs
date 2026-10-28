@@ -4,6 +4,15 @@ from .diagnostics import JVMUnsupported
 DESCRIPTOR = "Ljava/util/Set;"
 
 
+class SetFromIterable[Source, Item]:
+    """Use ordinary specialized iteration instead of a second iterator emitter."""
+
+    def __init__(self, source: Source):
+        self.result: set[Item] = set()
+        for item in source:
+            self.result.add(item)
+
+
 def item_type(emitter, value_type, node=None):
     item = value_type.generic_types["V"]
     emitter.validate_java_object_semantics(item, node, dictionary_key=True)
