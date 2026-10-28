@@ -2748,6 +2748,7 @@ class JVMEmitter:
             if (getattr(target, "generic_name", None) == "set"
                     and target.container.scope.is_builtins):
                 if node.args or node.keywords:
+                    sets.item_type(self, analyzed_value_type(node), node)
                     raise JVMUnsupported("JVM set() iterable construction is not implemented", node)
                 return sets.construct(self, analyzed_value_type(node))
             if (

@@ -143,8 +143,10 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         item = analyzed_value_type(node).generic_types["V"]
         members = item.types if isinstance(item, UnionType) else (item,)
         if any(member.generic_name in {"int", "float", "bool"} for member in members):
-            raise JVMUnsupported(
-                "JVM sets currently require reference items with Java-compatible equality", source_node)
+            # Unsupported runtime storage must not erase the shared analyzer's
+            # representation contract. Leave this constructor for emission to
+            # diagnose, rather than specializing a helper that loses its format.
+            return node
         helper = resolve_imported(SetFromIterable, self.module, "SetFromIterable")(source, item)
         call = ast.Call(func=AnalyzedExpression(Name(helper)),
                         args=[AnalyzedExpression(value) for value in node.args], keywords=[])

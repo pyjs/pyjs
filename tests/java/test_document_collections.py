@@ -153,6 +153,27 @@ def test_setdefault_keyword_default_retains_positional_only_diagnostic():
     assert caught.value.diagnostic.code == "PYJS1104"
 
 
+@pytest.mark.parametrize("item, value", [("int", "1"), ("float", "1.0"), ("bool", "True")])
+def test_numeric_set_iterable_is_analyzable_but_not_emittable(item, value):
+    from pyjs.analysis.source import analyze_source
+    from pyjs.java.analysis import JVM_ENVIRONMENT
+
+    source = f'''def main() -> int:
+    values: list[{item}] = [{value}]
+    result = set(values)
+    return len(result)
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        result = analysis.entry_point.scope.search("result")
+        assert result.cls.generic_name == "set"
+    with pytest.raises(JVMUnsupported, match="JVM sets currently require reference items") as caught:
+        transpile_jvm(source, filename="collection.py")
+    assert str(caught.value) == (
+        "JVM sets currently require reference items with Java-compatible equality "
+        "while compiling collection.main"
+    )
+
+
 def test_java_only_callback_inherited_through_a_native_base_is_retained(tmp_path):
     from tests.java.test_exceptions import run_jvm
 
