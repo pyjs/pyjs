@@ -1,0 +1,5 @@
+name = "N-queens"
+category = "Backtracking · recursion · indexed reads"
+description = "Count every nonattacking placement of N queens using row-by-row backtracking and a scan of earlier rows."
+sizes = [8, 10]
+notes = "Inspired by the Queens family in Are We Fast Yet?, but counts all solutions for variable board sizes instead of stopping at the first eight-queen solution. The same column array and explicit conflict scan are used everywhere: no symmetry reduction, bitboards, precomputed answers or parallel search. Zero queens has one empty placement."

@@ -21,7 +21,7 @@ from perf.harness.process import execute
 
 REPO = ROOT.parent
 CASES = ("sieve", "matrix", "objects", "fibonacci", "heapsort", "histogram", "textscan",
-         "binarytrees", "mandelbrot")
+         "binarytrees", "mandelbrot", "queens", "permute", "towers", "bounce", "spectralnorm", "nbody")
 REQUIRES = {
     "cpython": ("python",), "pyjs-js": ("node",), "javascript": ("node",), "pyjs-llvm": ("clang",),
     "rust": ("rustc",), "pyjs-jvm": ("java", "javac"), "java": ("java", "javac"),
@@ -54,6 +54,75 @@ def oracle(case, size):
         return 10 * size
     if case == "binarytrees":
         return 5 * (2 ** (size + 1) - 1)
+    if case == "queens":
+        # Occupancy bitmasks rather than the timed board/earlier-row scan.
+        mask = (1 << size) - 1
+
+        def count(columns, left, right):
+            if columns == mask:
+                return 1
+            available = mask & ~(columns | left | right)
+            total = 0
+            while available:
+                bit = available & -available
+                available -= bit
+                total += count(columns | bit, (left | bit) << 1, (right | bit) >> 1)
+            return total
+
+        return count(0, 0, 0)
+    if case == "permute":
+        # Every value occurs (n-1)! times at each position.
+        return math.factorial(size - 1) * (size * (size + 1) // 2) ** 2 if size else 0
+    if case == "towers":
+        return 2 ** size - 1 + size * (size + 1) * (size + 2) // 6
+    if case == "bounce":
+        def reflect(position):
+            return 500 - abs(position % 1000 - 500)
+
+        return sum((i + 1) * (reflect(i * 37 % 500 + size * (i % 17 + 1)) +
+                             501 * reflect(i * 53 % 500 + size * (i % 23 + 1))) for i in range(100))
+    if case == "spectralnorm":
+        if size == 0:
+            return 0
+        # Materialize the matrix and its transpose, unlike the timed implicit
+        # matrix. fsum also checks against more accurate dot-product summation.
+        matrix = [[1.0 / ((i + j) * (i + j + 1) // 2 + i + 1)
+                   for j in range(size)] for i in range(size)]
+        transpose = list(zip(*matrix, strict=True))
+
+        def product(vector):
+            intermediate = [math.fsum(a * b for a, b in zip(row, vector, strict=True)) for row in matrix]
+            return [math.fsum(a * b for a, b in zip(row, intermediate, strict=True)) for row in transpose]
+
+        u = [1.0] * size
+        for _ in range(10):
+            v = product(u)
+            u = product(v)
+        return int(math.sqrt(math.fsum(a * b for a, b in zip(u, v, strict=True)) /
+                             math.fsum(b * b for b in v)) * 1e9)
+    if case == "nbody":
+        # Ordered all-neighbor force sums and immutable coordinate tuples,
+        # independent of the timed pairwise symmetric object-field updates.
+        positions = [(float(i + 1), float(i % 3 - 1), (i % 2) * 0.5) for i in range(8)]
+        velocities = [(0.0, (i + 1) * 0.01, 0.0) for i in range(8)]
+        masses = [1.0 + i * 0.1 for i in range(8)]
+        for _ in range(size):
+            updated = []
+            for i, position in enumerate(positions):
+                force = [0.0, 0.0, 0.0]
+                for j, neighbor in enumerate(positions):
+                    if i == j:
+                        continue
+                    delta = [a - b for a, b in zip(position, neighbor, strict=True)]
+                    radius2 = math.fsum(d * d for d in delta) + 1.0
+                    for axis in range(3):
+                        force[axis] -= delta[axis] * masses[j] / radius2 ** 1.5
+                updated.append(tuple(v + 0.001 * f for v, f in zip(velocities[i], force, strict=True)))
+            velocities = updated
+            positions = [tuple(p + 0.001 * v for p, v in zip(position, velocity, strict=True))
+                         for position, velocity in zip(positions, velocities, strict=True)]
+        return int((1000.0 + math.fsum((i + 1) * (x + 2.0 * y + 3.0 * z)
+                                      for i, (x, y, z) in enumerate(positions))) * 1e6)
     if case == "mandelbrot":
         # Complex arithmetic and a bounded for-loop, independent of the
         # scalar-component while-loop in the timed implementations.

@@ -1,0 +1,5 @@
+name = "Permutations"
+category = "Recursion · in-place swaps · exhaustive enumeration"
+description = "Enumerate all permutations of 1..N by recursive swapping, accumulating a position-weighted checksum at each leaf."
+sizes = [7, 8]
+notes = "Inspired by Are We Fast Yet?'s Permute family; this is conventional swap/backtrack enumeration of N! distinct permutations, not its recursive call-count protocol or fannkuch-redux's prefix flips. No permutation library, factorial shortcut, memoization or parallelism in timed code. The independent oracle uses a combinatorial formula."

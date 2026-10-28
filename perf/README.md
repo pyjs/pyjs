@@ -65,7 +65,9 @@ The selected count and validated pilot traces are saved per row. Set
 Warmup, sample and fork counts apply to every target. A batch alternates N and N+1 inputs; the reported
 warmed duration divides batch time by loop count. Both sizes have independently
 checked expected results. `--small` selects the smaller configured base N only.
-The full catalog has two base input sizes for each of nine workloads.
+The full catalog has two base input sizes for each of fifteen workloads. A
+snapshot can contain only a selected subset: use the snapshot selector to see
+which workloads were actually measured. Omit `--cases` to run the full catalog.
 
 Builds and measurements run sequentially with timeouts. Fork order is shuffled
 with a recorded seed. Output directories must be new and are never overwritten.
@@ -85,12 +87,15 @@ Use `--port 0` for an available port, or open a specific snapshot with
 Stop the server with Ctrl-C. If a desktop browser is unavailable, the command
 prints the URL for manual opening.
 
-The UI has snapshot, metric, baseline and workload selectors; source panels; generated
+The UI has snapshot, metric, target-group and workload selectors; source panels; generated
 JavaScript/LLVM/bytecode links; and raw samples, warnings and failure diagnostics.
 Workloads and input sizes run down the left; runtimes run across the top.
-Each cell shows the selected measurement and its comparison with the highlighted
-baseline column. Time comparisons say faster/slower; RSS comparisons say
-less/more memory. Missing or failed measurements stay explicit, never zero.
+CPython is always first, followed by the JavaScript / Py → JS, Rust / Py → LLVM,
+and Java / Py → JVM pairs. Subtle group headers separate those pairs. Show all
+targets or just one pair alongside CPython. Every target compares with CPython. Time
+comparisons say faster/slower; RSS comparisons say less/more memory. Ratios
+rounding to 1.00 show approximately equal, not statistical equivalence. Missing,
+zero-reference or failed comparisons stay explicit, never fabricated speedups.
 Workload labels and column headings remain pinned while scrolling the table.
 Run metadata, methodology and raw evidence are expandable below the matrix.
 Each measurement's evidence shows per-fork warmup endpoints, sample medians
@@ -129,9 +134,11 @@ publishing. Nothing automatically uploads or publishes results.
 ## Adding cases
 
 The catalog includes sieve, matrix multiplication, object traversal, recursive
-Fibonacci, heap sort, dictionary counting, Unicode text scanning, binary trees
-and Mandelbrot. These exercise calls, indexed mutation, mapping lookups, text,
-recursive allocation and floating-point branches. Each source panel contains
+Fibonacci, heap sort, dictionary counting, Unicode text scanning, binary trees,
+Mandelbrot, N-queens, permutation enumeration, Towers of Hanoi, bouncing
+particles, spectral norm and N-body. These exercise calls, indexed mutation,
+mapping lookups, text, recursive allocation, backtracking and floating-point
+computation. Each source panel contains
 the complete runnable kernel and references.
 Fibonacci deliberately uses naive recursion on every target, not memoization.
 The histogram uses maps rather than a dense counting array. Unicode traversal
@@ -139,9 +146,25 @@ counts code points, including a supplementary-plane character, not UTF-16 units.
 Binary trees retain one tree while constructing and counting four transient
 trees; the input is depth, not node count. Mandelbrot uses scalar binary64
 arithmetic and a weighted escape-count checksum, not bitmap encoding.
+N-queens counts all solutions with an ordinary earlier-row conflict scan.
+Permutations use swap/backtrack enumeration with a checksum of each arrangement.
+Towers uses three growable array stacks, including actual pop/append operations.
+Bouncing particles mutate object fields at each step; their oracle uses a
+closed-form reflected trajectory. Spectral norm recomputes implicit matrix
+entries during power iteration. N-body uses a deterministic softened eight-body
+system, not astronomical initial conditions. The two floating-point additions
+return scaled, truncated integer checksums; their independent oracles use a
+materialized matrix and all-neighbor force sums respectively. This validates
+the configured inputs to the stated output resolution, not bitwise equality
+of every floating-point intermediate.
 
 Unsupported configurations remain visible: the JVM backend rejects primitive
 dictionary keys, so its histogram cells contain compilation diagnostics.
+The new Towers case also exposes unsupported JVM `list.pop()`, while N-body
+and spectral norm expose unsupported JVM stdlib `math.sqrt()` imports. Those
+configurations remain failed cells; there are no target-specific workload
+rewrites or substitute timings. The math-import failure currently reports an
+internal source-inspection exception, not a polished unsupported diagnostic.
 Historical snapshots also show unsupported direct string iteration; the newer
 base supports that operation. Failures are not timing zeros and do not prevent
 the other configurations from being measured.
@@ -161,7 +184,7 @@ SIMD and parallel implementations in separately labeled future categories.
 
 ## Scope and next steps
 
-The lab provides nine workloads and seven adapters, two sizes,
+The lab provides fifteen workloads and seven adapters, two sizes,
 fresh-process and warmed-batch timing, separate RSS measurements, build time,
 artifact byte counts, bounded batch calibration, warmup-drift warnings, and a
 live PyJS UI. See [methodology](methodology.md)
@@ -180,14 +203,14 @@ This is **not a complete port** of the comparison-site catalogs. The
 [Programming Language Benchmarks](https://programming-language-benchmarks.vercel.app/),
 and [Are We Fast Yet?](https://github.com/smarr/are-we-fast-yet) use different
 inputs, output protocols and implementation rules. Shared names identify
-workload families, not interchangeable scores. The catalog check on 2026-10-27
-suggests the following expansion order:
+workload families, not interchangeable scores. The catalog check on 2026-10-28
+identified these covered families and remaining gaps:
 
 | Workload family | Coverage here | Next useful gap |
 | --- | --- | --- |
-| Integer loops, sorting, permutations | Sieve, matrix, heap sort, Fibonacci | Fannkuch-redux / permutation generation |
-| Allocation and recursion | Object traversal, binary trees | Linked structures and a constraint solver |
-| Floating-point computation | Mandelbrot | N-body and spectral norm |
+| Integer loops, sorting, permutations | Sieve, matrix, heap sort, Fibonacci, permutations, N-queens | Fannkuch-redux prefix-flip workload |
+| Allocation, mutation and recursion | Object traversal, binary trees, Towers, bouncing particles | Linked structures and a constraint solver |
+| Floating-point computation | Mandelbrot, spectral norm, N-body | Broader numerical/application workloads |
 | Text and mapping | Unicode scan, histogram | FASTA, reverse complement, k-nucleotide |
 | Application/library work | Not yet measured | JSON serialization, LRU, regex, HTTP |
 | Large integers and specialized math | Not yet measured | Pi/e digits and cryptographic arithmetic |

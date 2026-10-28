@@ -111,6 +111,38 @@ and correctness, not machine-dependent speed thresholds.
 
 ## Inspiration
 
+### Cross-language implementation policy
+
+Compare the same algorithm and broadly the same code structure, expressed
+naturally in each language. Match input generation, data structures, traversal
+order, work performed and output checks. Ordinary differences such as Java's
+primitive arrays, Rust's ownership/borrowing and managed garbage collection
+are disclosed, not disguised. Do not introduce a custom arena, pooling, SIMD
+intrinsics, parallelism, memoization or a different algorithm for just one
+language to improve its score. Source-level algorithm improvements should be
+applied consistently to all implementations. Normal compiler optimizations
+remain part of what the lab measures.
+
+The October 2026 expansion used Are We Fast Yet? at revision
+`74306fec151070fd07157cefeacf19e7e0bcdc89` as a workload-family and comparability
+reference (README, implementation guidelines, and Python microbenchmarks).
+The new implementations are original, not copied ports. In particular, Queens
+counts all placements, Towers uses growable stacks, Permute enumerates distinct
+permutations, and Bounce reflects overshoot with deterministic initial states.
+The [Benchmarks Game spectral-norm specification](https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/spectralnorm.html)
+supplies the implicit matrix/power-method family, and its
+[N-body specification](https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/nbody.html)
+supplies the pairwise simulation family. N-body here uses a softened synthetic
+eight-body system. Each `case.toml` states the deviations, sizes and checksums;
+none of these measurements can be compared directly with those sites' scores.
+
+All fifteen workloads have independent correctness checks outside the timed
+kernel. Exponential workloads have deliberately small test inputs. Validate
+both configured sizes and N+1, because timed batches alternate the two inputs.
+For floating-point checksums, agreement means agreement at the documented
+quantization resolution; it is not proof of bitwise-identical intermediate
+values. Failure remains a visible failed cell, never a timing or speedup.
+
 - [Are We Fast Yet?](https://github.com/smarr/are-we-fast-yet): comparable
   algorithms and compiler effectiveness.
 - [Programming Language Benchmarks](https://programming-language-benchmarks.vercel.app/):

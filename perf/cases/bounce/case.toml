@@ -1,0 +1,5 @@
+name = "Bouncing particles"
+category = "Object mutation · method calls · branches"
+description = "Advance 100 deterministic particles through N steps in a reflecting square and checksum their final positions."
+sizes = [100, 1000]
+notes = "Inspired by Are We Fast Yet?'s Bounce family, with formula-generated initial states and elastic reflected overshoot rather than random initialization and clamping. Identical fields, update order and branches in all languages; Rust uses ordinary value structs. No vectorization library or closed-form motion in timed code. The independent oracle unfolds each trajectory into a triangle wave."

@@ -9,16 +9,16 @@ from pyjs.web.html import HTMLSelectElement
 class Controls:
     def __init__(self):
         metric = document.querySelector("#metric")
-        baseline = document.querySelector("#baseline")
+        group = document.querySelector("#group")
         case = document.querySelector("#workload")
         assert isinstance(metric, HTMLSelectElement)
-        assert isinstance(baseline, HTMLSelectElement)
+        assert isinstance(group, HTMLSelectElement)
         assert isinstance(case, HTMLSelectElement)
         self.metric = metric
-        self.baseline = baseline
+        self.group = group
         self.case = case
         self.metric.addEventListener("change", self.update)
-        self.baseline.addEventListener("change", self.update)
+        self.group.addEventListener("change", self.update)
         self.case.addEventListener("change", self.update)
         snapshot = document.querySelector("#snapshot")
         assert isinstance(snapshot, HTMLSelectElement)
@@ -31,17 +31,25 @@ class Controls:
 
     def update(self, event: Event):
         metric = "warm"
-        baseline = "cpython"
+        group = "all"
         selected = "all"
         if isinstance(self.metric, HTMLSelectElement):
             metric = self.metric.value
-        if isinstance(self.baseline, HTMLSelectElement):
-            baseline = self.baseline.value
+        if isinstance(self.group, HTMLSelectElement):
+            group = self.group.value
         if isinstance(self.case, HTMLSelectElement):
             selected = self.case.value
-        for heading in document.querySelectorAll("thead th[data-target]"):
-            heading.setAttribute("data-baseline", "true" if heading.getAttribute("data-target") == baseline else "false")
-        rows = document.querySelectorAll("tbody tr[data-case]")
+        table = document.querySelector(".comparison-table")
+        assert isinstance(table, Element)
+        table.setAttribute("data-view", group)
+        for item in table.querySelectorAll("[data-group]"):
+            if group == "all" or item.getAttribute("data-group") == "python" or item.getAttribute("data-group") == group:
+                item.removeAttribute("hidden")
+            else:
+                item.setAttribute("hidden", "")
+        for heading in table.querySelectorAll("thead th[data-target]"):
+            heading.setAttribute("data-baseline", "true" if heading.getAttribute("data-target") == "cpython" else "false")
+        rows = table.querySelectorAll("tbody tr[data-case]")
         for row in rows:
             case = row.getAttribute("data-case")
             if selected == "all" or selected == case:
@@ -49,20 +57,17 @@ class Controls:
             else:
                 row.setAttribute("hidden", "")
             cells = row.querySelectorAll("td[data-target]")
-            reference = ""
             for cell in cells:
-                if cell.getAttribute("data-target") == baseline:
-                    reference = cell.getAttribute("data-" + metric) or ""
-            for cell in cells:
-                is_baseline = cell.getAttribute("data-target") == baseline
+                is_baseline = cell.getAttribute("data-target") == "cpython"
                 cell.setAttribute("data-baseline", "true" if is_baseline else "false")
-                cell.removeAttribute("data-comparison")
                 value = cell.getAttribute("data-" + metric)
                 display = cell.querySelector(".measurement")
-                ratio = cell.querySelector(".ratio")
                 assert isinstance(display, Element)
-                assert isinstance(ratio, Element)
-                ratio.textContent = "—"
+                for ratio in cell.querySelectorAll(".ratio"):
+                    ratio.removeAttribute("data-comparison")
+                    text = ratio.querySelector(".ratio-value")
+                    assert isinstance(text, Element)
+                    text.textContent = "—"
                 if value is None or value == "":
                     display.textContent = "—"
                     continue
@@ -73,19 +78,27 @@ class Controls:
                     display.textContent = str(round(number, 3)) + " s"
                 else:
                     display.textContent = str(round(number * 1000, 3)) + " ms"
-                if reference != "" and number > 0 and float(reference) > 0:
-                    if is_baseline:
-                        ratio.textContent = "baseline"
-                    elif number == float(reference):
-                        ratio.textContent = "same as baseline"
+                for ratio in cell.querySelectorAll(".ratio"):
+                    reference = ""
+                    for other in cells:
+                        if other.getAttribute("data-target") == ratio.getAttribute("data-reference"):
+                            reference = other.getAttribute("data-" + metric) or ""
+                    text = ratio.querySelector(".ratio-value")
+                    assert isinstance(text, Element)
+                    if reference == "" or number <= 0 or float(reference) <= 0:
+                        continue
+                    if number == float(reference):
+                        text.textContent = "same"
                     elif number < float(reference):
                         suffix = " less memory" if metric == "memory" else " faster"
-                        ratio.textContent = str(round(float(reference) / number, 2)) + "×" + suffix
-                        cell.setAttribute("data-comparison", "lower")
+                        factor = round(float(reference) / number, 2)
+                        text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
+                        ratio.setAttribute("data-comparison", "lower")
                     else:
                         suffix = " more memory" if metric == "memory" else " slower"
-                        ratio.textContent = str(round(number / float(reference), 2)) + "×" + suffix
-                        cell.setAttribute("data-comparison", "higher")
+                        factor = round(number / float(reference), 2)
+                        text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
+                        ratio.setAttribute("data-comparison", "higher")
 
 
 def main():

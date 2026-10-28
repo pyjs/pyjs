@@ -306,13 +306,17 @@
   JSON snapshots feed a live PyJS UI exposing source, generated code, failures
   and measurement caveats rather than an aggregate language ranking. Its
   comparison matrix puts workloads in rows and runtimes in columns, with
-  explicit baseline comparisons and pinned workload labels. Bounded
+  a fixed CPython baseline, paired handwritten/transpiled target columns,
+  target-group filtering and pinned workload labels. Bounded
   batch calibration, readable per-fork traces and warmup-drift warnings flag
   weak measurements. Optional separate JVM compilation diagnostics expose
   rejected JIT compilation without contaminating the measured timings.
-  Nine workloads include recursive Fibonacci, heap sort, dictionary counting,
+  Fifteen workloads include recursive Fibonacci, heap sort, dictionary counting,
   Unicode scanning, binary trees and Mandelbrot alongside sieve, matrix and
-  object traversal; independent oracles validate every measured batch.
+  object traversal, plus N-queens, permutations, Towers of Hanoi, bouncing
+  particles, spectral norm and N-body; independent oracles validate every
+  measured batch. Comparable algorithms use ordinary language idioms rather
+  than per-language benchmark tricks; unsupported targets remain explicit.
 - `pyjs serve` and `pyjs docs serve` can open a local URL after startup with
   `--open PATH`. Application factories and explicit docs-server extensions let
   live Python UI share the same local server as documentation.

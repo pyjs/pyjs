@@ -26,6 +26,17 @@ from pyjs.server.dev import Application, Server
 from pyjs.web.ssr import render_html
 from tests.test_dev_server import request
 
+EXPANDED_CASES = ("queens", "permute", "towers", "bounce", "spectralnorm", "nbody")
+SMALL_INPUTS = {
+    "fibonacci": (0, 1, 2, 3, 10, 20), "binarytrees": (0, 1, 2, 3, 8, 12),
+    "queens": (0, 1, 2, 3, 4, 8), "permute": (0, 1, 2, 3, 5, 7),
+    "towers": (0, 1, 2, 3, 8, 10),
+}
+
+
+def bounded_input(case):
+    return SMALL_INPUTS.get(case, (24,))[-1]
+
 
 @pytest.mark.parametrize("case", CASES)
 def test_kernel_matches_independent_oracle(case):
@@ -33,14 +44,13 @@ def test_kernel_matches_independent_oracle(case):
     spec = importlib.util.spec_from_file_location("workload", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    sizes = {"fibonacci": (0, 1, 2, 3, 10, 20), "binarytrees": (0, 1, 2, 3, 8, 12)}
-    for size in sizes.get(case, (0, 1, 2, 3, 10, 24, 101)):
+    for size in SMALL_INPUTS.get(case, (0, 1, 2, 3, 10, 24, 101)):
         assert module.kernel(size) == oracle(case, size)
-    batch_size = 8 if case == "binarytrees" else 24
+    batch_size = bounded_input(case)
     assert expected(case, batch_size, 3) == 2 * module.kernel(batch_size) + module.kernel(batch_size + 1)
 
 
-@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot"))
+@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot") + EXPANDED_CASES)
 def test_new_workloads_match_oracles_at_every_configured_input(case):
     directory = ROOT / "cases" / case
     spec = importlib.util.spec_from_file_location("workload", directory / "workload.py")
@@ -56,6 +66,11 @@ def test_new_oracle_known_small_results():
     # The single point (-1.5, -1) escapes after two iterations.
     assert oracle("mandelbrot", 0) == 0
     assert oracle("mandelbrot", 1) == 2
+    assert [oracle("queens", n) for n in (0, 1, 2, 4, 8)] == [1, 1, 0, 2, 92]
+    assert [oracle("permute", n) for n in (0, 1, 2, 3)] == [0, 1, 9, 72]
+    assert [oracle("towers", n) for n in (0, 1, 2, 3)] == [0, 2, 7, 17]
+    assert oracle("spectralnorm", 1) == 1000000000
+    assert oracle("nbody", 0) == 1228000000
 
 
 def test_samples_validate_warmups_as_well_as_measurements():
@@ -100,13 +115,13 @@ def test_javascript_reference_matches_oracle(tmp_path, case):
     if not node["path"]:
         pytest.skip("Node is required for the handwritten JavaScript control")
     result = build(case, "javascript", tmp_path / case, {"node": node})
-    for size in (1, 2, 8 if case == "binarytrees" else 24):
+    for size in (1, 2, bounded_input(case)):
         measured = execute(result["command"] + [str(size), "3", "1", "2"])
         assert measured.returncode == 0, measured.stderr
         parse_samples(measured.stdout, expected(case, size, 3), 1, 2)
 
 
-@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot"))
+@pytest.mark.parametrize("case", ("binarytrees", "mandelbrot") + EXPANDED_CASES)
 def test_new_python_workloads_execute_as_javascript(tmp_path, case):
     node = tool("node")
     if not node["path"]:
@@ -116,6 +131,37 @@ def test_new_python_workloads_execute_as_javascript(tmp_path, case):
         measured = execute(result["command"] + [str(size), "3", "1", "2"])
         assert measured.returncode == 0, measured.stderr
         parse_samples(measured.stdout, expected(case, size, 3), 1, 2)
+
+
+@pytest.mark.parametrize("case", EXPANDED_CASES)
+@pytest.mark.parametrize("target", ("rust", "java", "pyjs-llvm", "pyjs-jvm"))
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Native benchmark adapters target Linux")
+def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
+    if target == "pyjs-jvm" and case in ("towers", "spectralnorm", "nbody"):
+        pytest.skip("JVM lacks list.pop / stdlib math imports; runner retains failed cells")
+    requirements = {"rust": ("rustc",), "java": ("java", "javac"),
+                    "pyjs-jvm": ("java", "javac"), "pyjs-llvm": ("clang",)}
+    tools = {name: tool(name) for name in requirements[target]}
+    if any(not entry["path"] for entry in tools.values()):
+        pytest.skip(f"{target} toolchain is required for this adapter")
+    tools["javap"] = {"path": None}
+    result = build(case, target, tmp_path / case, tools)
+    # Small edge cases and both configured sizes (plus their alternating N+1)
+    # exercise real emitted/compiled programs, not just source construction.
+    metadata = tomllib.loads((ROOT / "cases" / case / "case.toml").read_text())
+    for size in (0, 1, 2, *metadata["sizes"]):
+        measured = execute(result["command"] + [str(size), "2", "0", "1"])
+        assert measured.returncode == 0, measured.stderr
+        parse_samples(measured.stdout, expected(case, size, 2), 0, 1)
+
+
+def test_towers_jvm_pop_boundary_is_explicit():
+    from pyjs.java import transpile_jvm
+    from pyjs.java.diagnostics import JVMUnsupported
+
+    source = (ROOT / "cases/towers/workload.py").read_text()
+    with pytest.raises(JVMUnsupported, match="unsupported JVM scalar operation pop"):
+        transpile_jvm(source + "\ndef main() -> int:\n    return kernel(3)\n")
 
 
 def snapshot():
@@ -163,6 +209,39 @@ def test_matrix_groups_inputs_and_keeps_missing_and_failed_cells():
         assert [cell["data-target"] for cell in cells] == list(LABELS)
         assert cells[0]["data-warm"] == "0.1"
         assert all(cell["data-warm"] == "" for cell in cells[1:])
+
+
+def test_target_pairs_have_fixed_order_and_explicit_comparison_references():
+    class Columns(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.targets = []
+            self.groups = []
+            self.references = {}
+            self.current = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "th" and attrs.get("scope") == "colgroup":
+                self.groups.append((attrs["data-group"], attrs["colspan"]))
+            if tag == "td" and "data-target" in attrs:
+                self.current = attrs["data-target"]
+                self.targets.append(self.current)
+                self.references[self.current] = []
+            if tag == "span" and "data-reference" in attrs:
+                self.references[self.current].append(attrs["data-reference"])
+
+    parsed = Columns()
+    html = render_html(view(snapshot(), ["example"], "example", "/perf/"))
+    parsed.feed(html)
+    assert parsed.targets == ["cpython", "javascript", "pyjs-js", "rust", "pyjs-llvm", "java", "pyjs-jvm"]
+    assert parsed.groups == [("js", "2"), ("native", "2"), ("jvm", "2")]
+    assert parsed.references == {
+        "cpython": [], "javascript": ["cpython"], "pyjs-js": ["cpython"],
+        "rust": ["cpython"], "pyjs-llvm": ["cpython"],
+        "java": ["cpython"], "pyjs-jvm": ["cpython"],
+    }
+    assert 'id="group"' in html and 'id="baseline"' not in html
 
 
 def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):

@@ -1,0 +1,5 @@
+name = "Spectral norm"
+category = "Floating point · matrix-vector products · indexed storage"
+description = "Estimate a dense implicit matrix's spectral norm with ten power-method rounds and scalar matrix-vector products."
+sizes = [32, 96]
+notes = "Uses the Benchmarks Game matrix A(i,j)=1/((i+j)*(i+j+1)/2+i+1), zero-based. Matrix entries are recomputed, not cached, on every timed product. Same four products per round, binary64 accumulation order and square root across targets. Return floor(norm*1e9) as a checked integer instead of formatted output. No BLAS, SIMD intrinsics, parallelism or fast-math. These bounded sizes/protocol are not comparable with published Benchmarks Game scores."

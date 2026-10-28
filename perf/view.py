@@ -4,8 +4,17 @@ import statistics
 
 from pyjs.web.domx import tag
 
-LABELS = {"cpython": "CPython", "pyjs-js": "PyJS → JavaScript", "javascript": "JavaScript (Node)", "pyjs-llvm": "PyJS → LLVM",
-          "pyjs-jvm": "PyJS → JVM", "rust": "Rust", "java": "Java"}
+LABELS = {"cpython": "CPython", "javascript": "JavaScript", "pyjs-js": "Py → JS",
+          "rust": "Rust", "pyjs-llvm": "Py → LLVM", "java": "Java", "pyjs-jvm": "Py → JVM"}
+GROUPS = {"js": ("JavaScript", "javascript", "pyjs-js"),
+          "native": ("Native", "rust", "pyjs-llvm"), "jvm": ("JVM", "java", "pyjs-jvm")}
+TARGET_GROUP = {target: group for group, (_, reference, compiled) in GROUPS.items()
+                for target in (reference, compiled)}
+
+
+def column_attributes(target):
+    return {"data-target": target, "data-group": TARGET_GROUP.get(target, "python"),
+            "class": "pyjs" if target.startswith("pyjs-") else "group-start"}
 
 
 def select(name, title, options, selected=""):
@@ -51,17 +60,24 @@ def view(data, runs, selected, prefix):
         tag("div", {"class": "toolbar"}, select("snapshot", "Snapshot", [(name, name) for name in runs], selected),
             select("metric", "Metric", [("warm", "Warmed time / iteration"), ("startup", "Fresh process + one iteration"),
                                           ("memory", "Peak process RSS"), ("compile", "Build time")]),
-            select("baseline", "Compare with", list(LABELS.items())),
+            select("group", "Show targets", [("all", "All targets"),
+                *[(key, "CPython + " + label) for key, (label, _, _) in GROUPS.items()]]),
             select("workload", "Workload", [("all", "All workloads"), *[(case, m["name"]) for case, m in cases.items()]])),
         tag("aside", {"class": "notice"}, "Exploratory measurements, not a language ranking. Warnings and failures link to their evidence." +
             (" Snapshot interrupted: coverage is incomplete." if not data["complete"] else "")),
-        tag("p", {"class": "meta", "id": "comparison-help"}, "Read across each row. Lower measurements are better; relative values compare with the highlighted baseline column. — means no valid measurement."),
+        tag("p", {"class": "meta", "id": "comparison-help"}, "Every target compares with CPython. Handwritten and transpiled implementations sit side by side. Lower is better. — means no valid comparison."),
         tag("div", {"class": "table-scroll", "tabindex": "0", "role": "region", "aria-label": "Runtime comparison; scroll to see all columns"},
-            tag("table", {"aria-describedby": "comparison-help"},
+            tag("table", {"class": "comparison-table", "data-view": "all", "aria-describedby": "comparison-help"},
                 tag("caption", {"class": "sr-only"}, "Workloads by runtime"),
-                tag("thead", tag("tr", tag("th", {"scope": "col"}, "Workload / input"), *[
-                    tag("th", {"scope": "col", "data-target": target, "class": "pyjs" if target.startswith("pyjs") else ""}, label)
-                    for target, label in LABELS.items()])), tag("tbody", *table))),
+                tag("thead",
+                    tag("tr", {"class": "group-headings"},
+                        tag("th", {"scope": "col", "rowspan": "2", "class": "workload-heading"}, "Workload / input"),
+                        tag("th", {"scope": "col", "rowspan": "2", **column_attributes("cpython")}, "CPython"),
+                        *[tag("th", {"scope": "colgroup", "colspan": "2", "data-group": key}, label)
+                          for key, (label, _, _) in GROUPS.items()]),
+                    tag("tr", {"class": "target-headings"}, *[
+                        tag("th", {"scope": "col", **column_attributes(target)}, label)
+                        for target, label in LABELS.items() if target != "cpython"])), tag("tbody", *table))),
         tag("p", {"class": "meta scroll-hint"}, "Scroll horizontally to compare all runtimes. Workload names stay pinned."),
         tag("details", tag("summary", "Run information, versions and JSON"), tag("div",
             tag("p", {"class": "meta"}, f"{data['label']} · {data['created']}\n{data['cpu']} · {data['platform']}\nRevision {revision}"),
@@ -114,7 +130,7 @@ def evidence(row, selected, prefix):
 
 
 def result_cell(row, case, size, target):
-    attributes = {"data-target": target, "class": "result"}
+    attributes = column_attributes(target)
     values = {}
     status = "not run"
     key = case + "-" + target + "-" + str(size)
@@ -129,5 +145,10 @@ def result_cell(row, case, size, target):
     attributes.update({"data-" + metric: str(values[metric]) if values.get(metric) is not None else ""
                        for metric in ("warm", "startup", "memory", "compile")})
     evidence = tag("a", {"href": "#" + key, "class": "evidence" + (" warning" if status not in {"details", "not run"} else "")}, status) if row is not None else tag("span", {"class": "evidence"}, status)
-    return tag("td", attributes, tag("span", {"class": "measurement"}, "—"),
-               tag("span", {"class": "ratio"}, "—"), evidence)
+    comparisons = []
+    if target == "cpython":
+        comparisons.append(tag("span", {"class": "baseline-note"}, "Python baseline"))
+    else:
+        comparisons.append(tag("span", {"class": "ratio", "data-reference": "cpython"},
+            tag("span", {"class": "ratio-value"}, "—"), tag("small", "vs CPython")))
+    return tag("td", attributes, tag("span", {"class": "measurement"}, "—"), *comparisons, evidence)
