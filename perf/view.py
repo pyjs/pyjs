@@ -27,6 +27,7 @@ def view(data, runs, selected, prefix):
     table, sources, diagnostics, cases = [], [], [], {}
     groups = {}
     revision = data["revision"][:12] + (" (uncommitted changes)" if data["dirty"] else "")
+    latest = selected == runs[0]
     for row in data["rows"]:
         case, target, size = row["case"], row["target"], row["size"]
         cases[case] = row["metadata"]
@@ -56,7 +57,11 @@ def view(data, runs, selected, prefix):
         tag("header", tag("p", {"class": "eyebrow"}, "PyJS / Performance lab"),
             tag("h1", "Performance comparison"),
             tag("p", {"class": "lead"}, "Compare the same workload across runtimes. Shared Python kernels, with handwritten JavaScript, Rust and Java references.")),
-        tag("div", {"class": "toolbar"}, select("snapshot", "Snapshot", [(name, name) for name in runs], selected),
+        tag("p", {"class": "run-status", "data-latest": str(latest).lower()},
+            tag("strong", "Latest run" if latest else "Older saved run"),
+            f" · {data['label']} · {data['created']}",
+            *([] if latest else [tag("a", {"href": prefix}, "View latest run →")])),
+        tag("div", {"class": "toolbar"},
             select("metric", "Metric", [("warm", "Warmed time / iteration"), ("startup", "Fresh process + one iteration"),
                                           ("memory", "Peak process RSS"), ("compile", "Build time")]),
             select("group", "Show targets", [("all", "All targets"),
@@ -66,7 +71,9 @@ def view(data, runs, selected, prefix):
             (" Snapshot interrupted: coverage is incomplete." if not data["complete"] else "")),
         tag("p", {"class": "meta", "id": "comparison-help"}, "Every target compares with CPython. Handwritten and transpiled implementations sit side by side. Lower is better. — means no valid comparison."),
         tag("p", {"class": "heat-legend"}, tag("span", {"class": "heat-key", "aria-hidden": "true"}),
-            "Best → worst in each row (log scale, visible targets). Missing/zero values stay neutral. Click a runtime cell to compare source."),
+            "Best → worst among visible non-CPython targets (log scale). CPython stays neutral; all ratios still compare with it."),
+        tag("p", {"class": "source-help"}, "Click any runtime cell to compare code ↓",
+            tag("span", " The outlined cell matches the outlined code pane. Click another cell to switch.")),
         tag("div", {"class": "table-scroll", "tabindex": "0", "role": "region", "aria-label": "Runtime comparison; scroll to see all columns"},
             tag("table", {"class": "comparison-table", "data-view": "all", "aria-describedby": "comparison-help"},
                 tag("caption", {"class": "sr-only"}, "Workloads by runtime"),
@@ -81,6 +88,9 @@ def view(data, runs, selected, prefix):
                         for target, label in LABELS.items() if target != "cpython"])), tag("tbody", *table))),
         tag("p", {"class": "meta scroll-hint"}, "Scroll horizontally to compare all runtimes. Workload names stay pinned."),
         tag("details", tag("summary", "Run information, versions and JSON"), tag("div",
+            tag("div", {**({"hidden": ""} if len(runs) == 1 else {})},
+                select("snapshot", "Saved runs", [("", "Latest run (default)")] + [(name, name) for name in runs[1:]],
+                       "" if latest else selected)),
             tag("p", {"class": "meta"}, f"{data['label']} · {data['created']}\n{data['cpu']} · {data['platform']}\nRevision {revision}"),
             tag("p", " ".join(data["warnings"])),
             tag("pre", json.dumps({"tools": data["tools"], "policy": data["policy"], "source_sha256": data["source_sha256"]}, indent=2)),
@@ -105,7 +115,8 @@ def source_panel(data, case, size, metadata):
                     tag("section", tag("h3", "Python · shared source"),
                         tag("pre", {"class": "python-code", "tabindex": "0", "aria-label": "Python source; scroll to read"},
                             data["sources"].get(f"cases/{case}/workload.py", "Source not recorded in this snapshot."))),
-                    tag("section", tag("div", {"class": "target-source-heading"}, tag("h3", {"class": "target-title"}, "Selected runtime"),
+                    tag("section", {"class": "selected-source"}, tag("p", {"class": "source-selection-label"}, "Selected cell ↓"),
+                        tag("div", {"class": "target-source-heading"}, tag("h3", {"class": "target-title"}, "Selected runtime"),
                         tag("a", {"class": "source-download", "hidden": "", "target": "_blank", "rel": "noopener"}, "Open full artifact")),
                         tag("p", {"class": "source-status", "role": "status"}, ""),
                         tag("pre", {"class": "target-code", "tabindex": "0", "aria-label": "Selected runtime source; scroll to read"}, ""))))))
@@ -174,4 +185,5 @@ def result_cell(row, case, size, target):
     return tag("td", attributes, tag("button", {"type": "button", "class": "measurement", "data-source-button": "",
         "data-source-label": LABELS[target] + (" · generated code" if target.startswith("pyjs-") else " · source"),
         "aria-label": f"Show {LABELS[target]} source for {case}, N = {size}",
-        "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, "—"), *comparisons, evidence)
+        "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, "—"),
+        tag("span", {"class": "source-cue", "aria-hidden": "true"}, "View code ↓"), *comparisons, evidence)

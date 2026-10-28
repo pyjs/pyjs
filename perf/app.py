@@ -47,7 +47,8 @@ def mount(application, *, root=None, prefix="/perf/"):
             status = 200
         else:
             body = tag("main", tag("h1", "PyJS performance lab"),
-                       tag("p", "Snapshot not found." if selected else "No snapshots yet. Run python -m perf.run to record one."))
+                       tag("p", "Snapshot not found." if selected else "No snapshots yet. Run python -m perf.run to record one."),
+                       *([tag("a", {"href": prefix}, "View latest run →")] if selected and available else []))
             status = 404 if selected else 200
         return Response.html(page(body, prefix + "page.js", prefix + "style.css", title="PyJS performance lab"),
                              status=status, headers={"Cache-Control": "no-store"})

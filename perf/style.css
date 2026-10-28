@@ -29,6 +29,9 @@ button{font:inherit;color:inherit;cursor:pointer}.measurement,.row-source{border
 .comparison-table td[data-target]{cursor:pointer}.comparison-table [aria-expanded=true]{text-decoration:underline;text-underline-offset:5px}
 .heat-legend{display:flex;gap:10px;align-items:center;color:#a1b2c7;font-size:12px;line-height:1.6}
 .heat-key{display:inline-block;flex:none;width:72px;height:10px;border-radius:5px;background:linear-gradient(90deg,hsl(155 32% 28%),hsl(85 32% 28%),hsl(20 32% 28%))}
+.run-status{color:#a1b2c7;font-size:13px;margin:16px 0 0;overflow-wrap:anywhere}.run-status strong{color:#80d4cf}.run-status a{margin-left:14px}.run-status[data-latest=false]{border-left:3px solid #edbf76;padding-left:12px}.run-status[data-latest=false] strong{color:#edbf76}
+.source-help{font-size:13px;color:#80d4cf;margin:12px 0}.source-help span{color:#a1b2c7}
+.source-cue{display:block;color:#b7c5d8;font-size:10px;margin-top:5px}.comparison-table [data-source-selected]{outline:2px solid #a9adff;outline-offset:-3px;position:relative}.comparison-table [data-source-selected] .source-cue{color:#d4d5ff;font-weight:700}
 .ratio{display:block;font-size:12px;color:#a1b2c7;margin-top:8px;white-space:nowrap}
 .ratio small{display:block;color:#94a7bf;font-size:10px;margin-top:1px}
 .baseline-note{display:block;font-size:11px;color:#94a7bf;margin-top:8px}
@@ -49,6 +52,7 @@ code{font-family:ui-monospace,monospace}p{line-height:1.65}footer{border-top:1px
 .source-notes{font-size:12px}.source-notes summary{padding:8px 10px}.source-notes p{margin:8px 0}
 .source-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
 .source-split>section{min-width:0}.source-split h3{font-size:13px;margin:8px 0;overflow-wrap:anywhere}
+.source-split>section{display:flex;flex-direction:column}.source-split pre{flex:1;min-height:0}.selected-source{outline:2px solid #a9adff;outline-offset:4px;border-radius:3px}.source-selection-label{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#d4d5ff;margin:0}.source-split>section:first-child{padding-top:16px}
 .source-split pre{height:320px;max-height:45vh;margin:4px 0 0;padding:12px;overflow:auto;overscroll-behavior:contain;text-align:left}
 .source-split pre:focus-visible{outline:2px solid #80d4cf}.source-status{font-size:12px;color:#edbf76;margin:0;overflow-wrap:anywhere}
 .source-download{font-size:11px}.target-source-heading{align-items:flex-start;flex-wrap:wrap}

@@ -48,7 +48,8 @@ async def check_heatmap(page):
     original = await page.evaluate("""Array.from(document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]'))
       .map(cell => [cell.dataset.target, cell.getAttribute('data-warm')])""")
     try:
-        for values in ([100, 10, 1], [100, 100, 100], [0, None, 1], [10, 20, 40]):
+        for values in ([100, 10, 1], [1000000, 10, 1], [0.001, 10, 1],
+                       [100, 100, 100], [0, None, 1], [10, 20, 40]):
             heats = await page.evaluate("""(() => {
               const group = document.querySelector('#group'); group.value = 'js';
               const cells = document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]');
@@ -56,8 +57,9 @@ async def check_heatmap(page):
               group.dispatchEvent(new Event('change'));
               return Array.from(cells).map(cell => cell.getAttribute('data-heat'));
             })()""".replace("VALUES", json.dumps(values)))
-            positive = [value for value in values if value and value > 0]
-            for value, heat in zip(values, heats[:3], strict=True):
+            positive = [value for value in values[1:] if value and value > 0]
+            assert heats[0] is None, "CPython must not participate in the color scale"
+            for value, heat in zip(values[1:], heats[1:3], strict=True):
                 if not value or min(positive) == max(positive):
                     assert heat is None, (values, heats)
                 else:
@@ -79,6 +81,9 @@ async def check_sources(page, output):
     panel = '.source-row:not([hidden])'
     await page.click(cell + ' button')
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
+    assert await page.evaluate("document.querySelector('[data-source-selected]').dataset.target") == "javascript"
+    assert await page.evaluate("""getComputedStyle(document.querySelector('[data-source-selected]')).outlineColor ===
+      getComputedStyle(document.querySelector('.source-row:not([hidden]) .selected-source')).outlineColor""")
     assert await page.evaluate("""(() => {
       const panel = document.querySelector('.source-row:not([hidden])');
       const row = panel.previousElementSibling;
@@ -97,6 +102,7 @@ async def check_sources(page, output):
     assert await page.evaluate(f"!document.querySelector('{panel} .source-download').hidden")
     await page.evaluate("document.querySelector('.source-row:not([hidden])').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
+    assert await page.evaluate("document.querySelectorAll('[data-source-selected]').length") == 0
     assert await page.evaluate("document.activeElement.closest('td').dataset.target") == "pyjs-js"
     # Stale requests, failed requests and source HTML must not mutate the page.
     await page.evaluate("""window.savedSourceFetch = window.fetch;

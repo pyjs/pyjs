@@ -87,8 +87,12 @@ Use `--port 0` for an available port, or open a specific snapshot with
 Stop the server with Ctrl-C. If a desktop browser is unavailable, the command
 prints the URL for manual opening.
 
-The UI has snapshot, metric, target-group and workload selectors; source panels; generated
+The UI has metric, target-group and workload selectors; source panels; generated
 JavaScript/LLVM/bytecode links; and raw samples, warnings and failure diagnostics.
+Opening `/perf/` selects the newest run by its recorded creation time. A visible
+run label identifies the data being shown. Historical runs, when retained, are
+available under Run information; `?run=NAME` pins one explicitly and older runs
+show a prominent link back to the latest. With only one run there is no selector.
 Workloads and input sizes run down the left; runtimes run across the top.
 CPython is always first, followed by the JavaScript / Py → JS, Rust / Py → LLVM,
 and Java / Py → JVM pairs. Subtle group headers separate those pairs. Show all
@@ -98,14 +102,16 @@ rounding to 1.00 show approximately equal, not statistical equivalence. Missing,
 zero-reference or failed comparisons stay explicit, never fabricated speedups.
 Workload labels and column headings remain pinned while scrolling the table.
 Cell backgrounds range from green (lowest) to warm (highest), scaled
-logarithmically within each row's visible positive measurements. The colors
+logarithmically within each row's visible positive non-CPython measurements.
+CPython stays neutral and does not compress the other columns' color range. The colors
 follow the selected metric and target group; equal, zero and missing values
 stay neutral. They show relative magnitude, not statistical significance.
 Click a workload or runtime cell to expand source directly below that row:
 shared Python on the left, selected handwritten or generated code on the right.
 The panes stay side by side on phones (one-third Python, two-thirds target),
 with independently scrollable code. Click the selected cell again, Close source,
-or Escape to collapse. Generated artifacts load on demand.
+or Escape to collapse. A matching outline connects the selected cell and right-hand
+code pane; cells have a visible View code cue. Generated artifacts load on demand.
 Run metadata, methodology and raw evidence are expandable below the matrix.
 Each measurement's evidence shows per-fork warmup endpoints, sample medians
 and ranges before the raw JSON, plus JVM compilation diagnostics when requested.

@@ -308,8 +308,10 @@
   comparison matrix puts workloads in rows and runtimes in columns, with
   a fixed CPython baseline, paired handwritten/transpiled target columns,
   target-group filtering and pinned workload labels. A row-scaled heatmap
-  highlights relative costs, and clicking a cell expands side-by-side Python
-  and selected-runtime source directly beneath its row, including on phones. Bounded
+  highlights relative costs among non-CPython targets, and clicking a cell
+  expands side-by-side Python and selected-runtime source directly beneath its
+  row, including on phones. Matching outlines connect selection and code;
+  the newest run is clearly identified and history stays under run details. Bounded
   batch calibration, readable per-fork traces and warmup-drift warnings flag
   weak measurements. Optional separate JVM compilation diagnostics expose
   rejected JIT compilation without contaminating the measured timings.

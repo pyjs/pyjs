@@ -36,7 +36,7 @@ class Controls:
         self.update(Event("change"))
 
     def choose_snapshot(self, event: Event):
-        window.location.href = "?run=" + self.snapshot.value
+        window.location.href = "?run=" + self.snapshot.value if self.snapshot.value else window.location.pathname
 
     def size_sources(self):
         scroller = document.querySelector(".table-scroll")
@@ -51,6 +51,11 @@ class Controls:
                 button.focus()
         for panel in document.querySelectorAll(".source-row"):
             panel.setAttribute("hidden", "")
+        for cell in document.querySelectorAll("[data-source-selected]"):
+            cell.removeAttribute("data-source-selected")
+            cue = cell.querySelector(".source-cue")
+            if cue is not None:
+                cue.textContent = "View code ↓"
 
     def source_key(self, event: Event):
         if isinstance(event, KeyboardEvent) and event.key == "Escape":
@@ -81,6 +86,10 @@ class Controls:
         panel.removeAttribute("hidden")
         panel.setAttribute("data-runtime", runtime)
         button.setAttribute("aria-expanded", "true")
+        cell.setAttribute("data-source-selected", "true")
+        cue = cell.querySelector(".source-cue")
+        if cue is not None:
+            cue.textContent = "Showing code ↓"
         # A filtered table has fewer columns; the expansion must span just those.
         content = panel.querySelector("td")
         assert isinstance(content, Element)
@@ -152,7 +161,7 @@ class Controls:
             largest = 0.0
             for cell in cells:
                 value = cell.getAttribute("data-" + metric) or ""
-                if value != "" and not cell.hasAttribute("hidden"):
+                if value != "" and not cell.hasAttribute("hidden") and cell.getAttribute("data-target") != "cpython":
                     number = float(value)
                     if number > 0:
                         if smallest == 0 or number < smallest:
@@ -176,7 +185,7 @@ class Controls:
                     display.textContent = "—"
                     continue
                 number = float(value)
-                if number > 0 and largest > smallest and smallest > 0 and not cell.hasAttribute("hidden"):
+                if not is_baseline and number > 0 and largest > smallest and smallest > 0 and not cell.hasAttribute("hidden"):
                     heat = (math.log(number) - math.log(smallest)) / (math.log(largest) - math.log(smallest))
                     cell.setAttribute("data-heat", str(heat))
                     cell.setAttribute("style", "background-color:hsl(" + str(round(155 - 135 * heat, 2)) + " 32% 18%)")

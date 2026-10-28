@@ -294,6 +294,9 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
         assert "wrong result &lt;unsafe&gt;" in source
         assert 'data-warm=""' in source
         assert 'data-warm="0.1"' in source
+        assert 'data-latest="true"' in source
+        assert '>Latest run</strong>' in source
+        assert '<div hidden=""><label>Saved runs' in source
         assert b"Controls" in request(server, "GET", "/perf/page.js")[2]
         assert request(server, "GET", "/perf/?run=missing")[0] == 404
         # New JSON becomes visible without restarting or generating a site.
@@ -304,7 +307,11 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
         (newer / "results.json").write_text(json.dumps(data))
         assert b"New measurement" in request(server, "GET", "/perf/")[2]
         assert b"coverage is incomplete" in request(server, "GET", "/perf/")[2]
-        assert b"New measurement" not in request(server, "GET", "/perf/?run=first")[2]
+        historical = request(server, "GET", "/perf/?run=first")[2]
+        assert b"New measurement" not in historical
+        assert b'data-latest="false"' in historical
+        assert b'Older saved run' in historical and b'View latest run' in historical
+        assert b'View latest run' in request(server, "GET", "/perf/?run=deleted")[2]
         assert json.loads(request(server, "GET", "/perf/results/second.json")[2]) == data
         assert request(server, "GET", "/perf/artifact/first/results.json")[0] == 404
     assert not list(tmp_path.rglob("*.html"))
