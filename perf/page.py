@@ -78,7 +78,7 @@ class Controls:
         panel = document.getElementById(button.getAttribute("aria-controls") or "")
         assert isinstance(panel, Element)
         runtime = cell.getAttribute("data-target") or "cpython"
-        if not panel.hasAttribute("hidden") and panel.getAttribute("data-runtime") == runtime:
+        if not panel.hasAttribute("hidden") and cell.hasAttribute("data-source-selected"):
             self.close_sources()
             return
         self.close_sources()

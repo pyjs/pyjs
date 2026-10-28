@@ -184,6 +184,6 @@ def result_cell(row, case, size, target):
             tag("span", {"class": "ratio-value"}, "—"), tag("small", "vs CPython")))
     return tag("td", attributes, tag("button", {"type": "button", "class": "measurement", "data-source-button": "",
         "data-source-label": LABELS[target] + (" · generated code" if target.startswith("pyjs-") else " · source"),
-        "aria-label": f"Show {LABELS[target]} source for {case}, N = {size}",
+        "aria-describedby": "source-action-" + key,
         "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, "—"),
-        tag("span", {"class": "source-cue", "aria-hidden": "true"}, "View code ↓"), *comparisons, evidence)
+        tag("span", {"class": "source-cue", "id": "source-action-" + key}, "View code ↓"), *comparisons, evidence)

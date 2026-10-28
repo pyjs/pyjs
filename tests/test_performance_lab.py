@@ -272,6 +272,9 @@ def test_source_expansions_follow_each_input_and_only_link_recorded_artifacts():
     assert len(parsed.buttons) == 16  # Workload name plus all seven runtime cells.
     assert [b["aria-controls"] for b in parsed.buttons] == ["source-panel-sieve-24"] * 8 + ["source-panel-sieve-48"] * 8
     assert all(b["aria-expanded"] == "false" for b in parsed.buttons)
+    measurements = [b for b in parsed.buttons if b.get("class") == "measurement"]
+    assert all("aria-label" not in b for b in measurements)
+    assert len({b["aria-describedby"] for b in measurements}) == 14
     assert parsed.artifacts == {
         "source-sieve-pyjs-js": "/perf/artifact/example/build/sieve/pyjs-js/generated.js",
         "source-sieve-pyjs-llvm": "", "source-sieve-pyjs-jvm": "",

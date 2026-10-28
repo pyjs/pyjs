@@ -79,6 +79,17 @@ async def check_heatmap(page):
 async def check_sources(page, output):
     cell = 'tbody tr[data-case]:first-child td[data-target="javascript"]'
     panel = '.source-row:not([hidden])'
+    header = 'tbody tr[data-case]:first-child .row-source'
+    python = 'tbody tr[data-case]:first-child td[data-target="cpython"] button'
+    # Header and CPython share a runtime, but only the same cell toggles closed.
+    await page.click(header)
+    await page.click(python)
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
+    assert await page.evaluate("document.querySelector('[data-source-selected]').dataset.target") == 'cpython'
+    await page.click(header)
+    assert await page.evaluate("document.querySelector('[data-source-selected]').tagName") == 'TH'
+    await page.click(header)
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
     await page.click(cell + ' button')
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
     assert await page.evaluate("document.querySelector('[data-source-selected]').dataset.target") == "javascript"
@@ -230,6 +241,15 @@ async def check(url: str, output: Path):
                             assert comparison == ("lower" if lower else "higher")
                     else:
                         assert ratio == "—" and comparison == ""
+            # Inspect the computed accessibility tree, not merely ARIA markup.
+            dom = await page.session.send("DOM.getDocument", {})
+            node = await page.session.send("DOM.querySelector", {
+                "nodeId": dom["root"]["nodeId"], "selector": "tbody .measurement"})
+            tree = await page.session.send("Accessibility.getPartialAXTree", {
+                "nodeId": node["nodeId"], "fetchRelatives": False})
+            button = next(item for item in tree["nodes"] if item.get("role", {}).get("value") == "button")
+            assert button["name"]["value"] == await page.evaluate("document.querySelector('tbody .measurement').textContent")
+            assert "View code" in button["description"]["value"]
         await check_comparison_edges(page)
         await check_heatmap(page)
         await check_sources(page, output)
