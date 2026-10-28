@@ -85,6 +85,49 @@ class StrictMapping(BaseModel):
     items: dict[int, int]
 
 
+@js
+class StrictUnionKeys(BaseModel):
+    model_config = ConfigDict(strict=True)
+    optional: dict[int | None, str]
+    numeric: dict[int | float, str]
+    floating: dict[float | None, str]
+    boolean: dict[bool | None, str]
+    string: dict[int | str, str]
+    reversed_string: dict[str | int, str]
+
+
+@js
+class StrictUnionValues(BaseModel):
+    model_config = ConfigDict(strict=True)
+    items: dict[str, int | None]
+
+
+@pytest.mark.pyjs_web
+@js
+def test_client_json_union_keys_coerce_without_relaxing_values():
+    value = StrictUnionKeys.model_validate_json(
+        '{"optional":{"1":"one"},"numeric":{"2":"two","2.5":"fraction"},'
+        '"floating":{"3.5":"float"},"boolean":{"true":"yes"},'
+        '"string":{"4":"string"},"reversed_string":{"5":"string"}}')
+    assert value.optional[1] == "one"
+    assert value.numeric[2] == "two"
+    assert value.numeric[2.5] == "fraction"
+    assert value.floating[3.5] == "float"
+    assert value.boolean[True] == "yes"
+    assert value.string["4"] == "string"
+    assert value.reversed_string["5"] == "string"
+    restored = StrictUnionKeys.model_validate_json(value.model_dump_json())
+    assert restored.optional[1] == "one" and restored.string["4"] == "string"
+    for source in ['{"items":{"count":"1"}}', '{"items":{"count":true}}']:
+        rejected = False
+        try:
+            StrictUnionValues.model_validate_json(source)
+        except ValueError:
+            rejected = True
+        assert rejected
+    assert StrictUnionValues.model_validate_json('{"items":{"count":1}}').items["count"] == 1
+
+
 @pytest.mark.pyjs_web
 @js
 def test_client_json_honors_extra_and_strict_model_config():
@@ -220,6 +263,7 @@ def test_client_json_union_round_trip_keeps_supplied_subclass_fields():
 
 
 def test_json_contract_on_python():
+    test_client_json_union_keys_coerce_without_relaxing_values()
     test_client_json_honors_extra_and_strict_model_config()
     test_client_json_rejects_nested_and_empty_model_extras()
     test_client_json_round_trip_preserves_unicode_and_fields()

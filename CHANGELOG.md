@@ -20,6 +20,9 @@
   nested, inherited and empty models. Explicit `extra="ignore"` overrides
   remain supported. Strict models no longer coerce integer value strings;
   JSON object keys still decode to their declared numeric key types.
+  Union key schemas retain that conversion without relaxing value validation.
+  Unsupported `extra="allow"` models now fail compilation instead of losing
+  their dynamic fields.
   This does not add the full Pydantic validator or configuration surface.
 
 - JVM class checks accept literal tuples, including nested and empty tuples.

@@ -875,6 +875,10 @@ with `pyjs template`.
   output currently rejects date/datetime values: those types share a client
   representation and cannot yet be serialized unambiguously. Ordinary
   `model_dump()` retains its existing date values.
+  JavaScript honors `extra="forbid"` and rejects string values for strict
+  integer fields. JSON object keys still decode within union key schemas;
+  an exact string key branch wins over numeric conversion. Dynamic
+  `extra="allow"` models are rejected at compilation rather than losing data.
   JavaScript model unions prefer the successful schema retaining the most
   supplied model fields, including nested fields; defaults do not increase
   this count. Ties retain declaration order. This is not full Pydantic smart
