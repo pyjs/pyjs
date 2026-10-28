@@ -1271,7 +1271,14 @@ class Transpiler(_Unparser):
                 )
             )
             self.write(";")
-        if node.obj.client_fields:
+        if node.obj.client_config:
+            self.fill(f"{class_name}.__pyjs_config__ = ")
+            self.traverse(ast.Dict(
+                keys=[ast.Constant(value=name) for name in node.obj.client_config],
+                values=[ast.Constant(value=value) for value in node.obj.client_config.values()],
+            ))
+            self.write(";")
+        if node.obj.client_fields or node.obj.client_config:
             self.fill(f"{class_name}.__pyjs_fields__ = new Map(")
             with self.delimit("[", "]"):
                 for index, (name, value_type) in enumerate(

@@ -3,7 +3,7 @@ from importlib import import_module
 
 import pytest
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from pyjs.analysis import libraries
 from pyjs.analysis.libraries import (
@@ -232,6 +232,44 @@ def test_pydantic_client_rejects_unsupported_default_factories():
         libraries.library_class_info(Labels)
 
 
+@pytest.mark.parametrize("inherited", [False, True])
+def test_pydantic_client_rejects_dynamic_extras_instead_of_dropping_them(inherited):
+    class Open(PydanticBaseModel):
+        model_config = ConfigDict(extra="allow")
+
+    class Child(Open):
+        count: int = 0
+
+    model = Child if inherited else Open
+    with pytest.raises(TypeError) as caught:
+        libraries.library_class_info(model)
+    assert str(caught.value) == (
+        f"{model.__name__} uses unsupported dynamic extra fields. "
+        "PyJS client models support extra='ignore' or extra='forbid'."
+    )
+
+
+def test_dynamic_extra_policy_has_a_located_compilation_diagnostic():
+    ad(
+        """
+        from pydantic import BaseModel, ConfigDict
+        from pyjs import js
+        @js
+        class Open(BaseModel):
+            model_config = ConfigDict(extra="allow")
+        def main():
+            return Open.model_validate_json('{}')
+        """,
+        """
+          File "model_config.py", line 5
+            class Open(BaseModel):
+                  ^^^^
+        pyjs.CompilationError: Open uses unsupported dynamic extra fields. PyJS client models support extra='ignore' or extra='forbid'. [PYJS2001]
+        """,
+        filename="model_config.py",
+    )
+
+
 def test_new_api_generations_do_not_displace_older_implementations(monkeypatch):
     pydantic_v2 = LIBRARIES[0].implementations[0]
     pydantic_v3 = LibraryImplementation(
@@ -350,6 +388,42 @@ def test_pydantic_models_keep_typed_fields_and_use_the_v2_client_base():
     )
 
 
+def test_pydantic_model_config_is_inherited_and_explicitly_overridden():
+    assert_transpile(
+        """
+        from pydantic import BaseModel, ConfigDict
+
+        @js
+        class Closed(BaseModel):
+            model_config = ConfigDict(extra="forbid", strict=True)
+
+        @js
+        class Open(Closed):
+            model_config = ConfigDict(extra="ignore", strict=False)
+
+        def main():
+            return Open.model_validate_json('{}')
+        """,
+        """
+        import { BaseModel } from './pyjs.lib.pydantic.v2.js';
+
+        export class Closed extends BaseModel {
+        }
+        Closed.__pyjs_config__ = new Map([['extra', 'forbid'], ['strict', true]]);
+        Closed.__pyjs_fields__ = new Map([]);
+
+        export class Open extends Closed {
+        }
+        Open.__pyjs_config__ = new Map([['extra', 'ignore'], ['strict', false]]);
+        Open.__pyjs_fields__ = new Map([]);
+
+        export function main() {
+            return Open.model_validate_json('{}');
+        }
+        """,
+    )
+
+
 def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
     assert_compiled_sources(
         """
@@ -383,6 +457,12 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         model.constructor.__pyjs_defaults__ || []
                     ));
                     const fields = model.constructor.__pyjs_fields__ || new Map();
+                    const config = model.constructor.__pyjs_config__ || new Map();
+                    if (config.get('extra') === 'forbid') {
+                        for (const name of Object.keys(data)) {
+                            if (!fields.has(name)) throw new TypeError(`Unexpected field: ${name}`);
+                        }
+                    }
                     const fail = (path, expected) => {
                         throw new TypeError(`${path} must be ${expected}`);
                     };
@@ -411,7 +491,7 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         }
                         return 0;
                     };
-                    const validate = (value, descriptor, path) => {
+                    const validate = (value, descriptor, path, jsonKey = false) => {
                         if (Array.isArray(descriptor) && descriptor[0] === 'model') {
                             const modelName = descriptor[1];
                             descriptor = globalThis.$pyjsModels?.get(modelName);
@@ -438,17 +518,21 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         }
                         if (descriptor === 'bool') {
                             if (typeof value === 'boolean') return value;
+                            if (jsonKey && (value === 'true' || value === 'false')) return value === 'true';
                             fail(path, 'bool');
                         }
                         if (descriptor === 'int') {
                             if (typeof value === 'number' && Number.isInteger(value)) return value;
-                            if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value.trim())) {
+                            if ((jsonKey || !config.get('strict')) && typeof value === 'string'
+                                    && /^[+-]?[0-9]+$/.test(value.trim())) {
                                 return Number(value);
                             }
                             fail(path, 'int');
                         }
                         if (descriptor === 'float') {
                             if (typeof value === 'number') return value;
+                            if (jsonKey && typeof value === 'string' && value.trim() !== ''
+                                    && Number.isFinite(Number(value))) return Number(value);
                             fail(path, 'float');
                         }
                         if (descriptor === 'str') {
@@ -472,13 +556,16 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                             fail(path, `one of ${members.join(', ')}`);
                         }
                         if (kind === 'union') {
+                            // JSON object keys are strings. An exact string branch wins over
+                            // the numeric conversions needed by other key schemas.
+                            if (jsonKey && typeof value === 'string' && members.includes('str')) return value;
                             // A successful parent schema can discard fields supplied for a
                             // child. Prefer the successful branch retaining most model fields,
                             // including nested fields, without counting generated defaults.
                             let best, bestCount = -1;
                             for (const member of members) {
                                 try {
-                                    const result = validate(value, member, path);
+                                    const result = validate(value, member, path, jsonKey);
                                     const count = suppliedFields(value, result);
                                     if (count > bestCount) {
                                         best = result;
@@ -519,18 +606,10 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                                     ? Object.entries(value)
                                     : null;
                             if (entries === null) fail(path, 'dict');
-                            return new Map(entries.map(([key, item]) => {
-                                let typedKey = key;
-                                if (!(value instanceof Map)) {
-                                    if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
-                                        typedKey = Number(key);
-                                    } else if (members[0] === 'bool' && (key === 'true' || key === 'false')) {
-                                        typedKey = key === 'true';
-                                    }
-                                }
-                                return [validate(typedKey, members[0], `${path}.key`),
-                                        validate(item, members[1], `${path}[${key}]`)];
-                            }));
+                            return new Map(entries.map(([key, item]) => [
+                                validate(key, members[0], `${path}.key`, !(value instanceof Map)),
+                                validate(item, members[1], `${path}[${key}]`)
+                            ]));
                         }
                         fail(path, String(descriptor));
                     };

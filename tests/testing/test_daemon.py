@@ -892,13 +892,19 @@ def test_managed_browser_captures_failure_artifacts(tmp_path):
     assert (tmp_path / "configured-artifacts").is_dir()
 
 
-def test_managed_browser_captures_requested_element_render(tmp_path):
+@pytest.mark.parametrize(
+    "width,height,expected_width,expected_height",
+    [(160, 96, 160, 96), (1062.75, 732.5, 1062, 732), (0.5, 0.25, 1, 1)],
+)
+def test_managed_browser_captures_requested_element_render(
+    tmp_path, width, height, expected_width, expected_height,
+):
     daemon = make_daemon(tmp_path)
     page = SimpleNamespace(
         evaluate=AsyncMock(),
         wait_for_frames=AsyncMock(),
         evaluate_json=AsyncMock(
-            return_value={"x": 12, "y": 24, "width": 160, "height": 96, "scale": 1}
+            return_value={"x": 12.25, "y": 24.5, "width": width, "height": height, "scale": 1}
         ),
         screenshot_data_url=AsyncMock(return_value="data:image/png;base64,cG5n"),
     )
@@ -916,7 +922,8 @@ def test_managed_browser_captures_requested_element_render(tmp_path):
     artifact = results[0]["artifacts"][0]
     assert artifact["dataUrl"] == "data:image/png;base64,cG5n"
     page.screenshot_data_url.assert_awaited_once_with(
-        {"x": 12, "y": 24, "width": 160, "height": 96, "scale": 1}
+        {"x": 12.25, "y": 24.5, "width": expected_width,
+         "height": expected_height, "scale": 1}
     )
 
 

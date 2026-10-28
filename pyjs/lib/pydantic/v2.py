@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Self
 
 from pyjs import js
+from pyjs.analysis.libraries import LibraryClassInfo
 
 
 @js
@@ -32,6 +33,12 @@ assign_model_values.source(
         model.constructor.__pyjs_defaults__ || []
     ));
     const fields = model.constructor.__pyjs_fields__ || new Map();
+    const config = model.constructor.__pyjs_config__ || new Map();
+    if (config.get('extra') === 'forbid') {
+        for (const name of Object.keys(data)) {
+            if (!fields.has(name)) throw new TypeError(`Unexpected field: ${name}`);
+        }
+    }
     const fail = (path, expected) => {
         throw new TypeError(`${path} must be ${expected}`);
     };
@@ -60,7 +67,7 @@ assign_model_values.source(
         }
         return 0;
     };
-    const validate = (value, descriptor, path) => {
+    const validate = (value, descriptor, path, jsonKey = false) => {
         if (Array.isArray(descriptor) && descriptor[0] === 'model') {
             const modelName = descriptor[1];
             descriptor = globalThis.$pyjsModels?.get(modelName);
@@ -87,17 +94,21 @@ assign_model_values.source(
         }
         if (descriptor === 'bool') {
             if (typeof value === 'boolean') return value;
+            if (jsonKey && (value === 'true' || value === 'false')) return value === 'true';
             fail(path, 'bool');
         }
         if (descriptor === 'int') {
             if (typeof value === 'number' && Number.isInteger(value)) return value;
-            if (typeof value === 'string' && /^[+-]?[0-9]+$/.test(value.trim())) {
+            if ((jsonKey || !config.get('strict')) && typeof value === 'string'
+                    && /^[+-]?[0-9]+$/.test(value.trim())) {
                 return Number(value);
             }
             fail(path, 'int');
         }
         if (descriptor === 'float') {
             if (typeof value === 'number') return value;
+            if (jsonKey && typeof value === 'string' && value.trim() !== ''
+                    && Number.isFinite(Number(value))) return Number(value);
             fail(path, 'float');
         }
         if (descriptor === 'str') {
@@ -121,13 +132,16 @@ assign_model_values.source(
             fail(path, `one of ${members.join(', ')}`);
         }
         if (kind === 'union') {
+            // JSON object keys are strings. An exact string branch wins over
+            // the numeric conversions needed by other key schemas.
+            if (jsonKey && typeof value === 'string' && members.includes('str')) return value;
             // A successful parent schema can discard fields supplied for a
             // child. Prefer the successful branch retaining most model fields,
             // including nested fields, without counting generated defaults.
             let best, bestCount = -1;
             for (const member of members) {
                 try {
-                    const result = validate(value, member, path);
+                    const result = validate(value, member, path, jsonKey);
                     const count = suppliedFields(value, result);
                     if (count > bestCount) {
                         best = result;
@@ -168,18 +182,10 @@ assign_model_values.source(
                     ? Object.entries(value)
                     : null;
             if (entries === null) fail(path, 'dict');
-            return new Map(entries.map(([key, item]) => {
-                let typedKey = key;
-                if (!(value instanceof Map)) {
-                    if (members[0] === 'float' && key.trim() !== '' && Number.isFinite(Number(key))) {
-                        typedKey = Number(key);
-                    } else if (members[0] === 'bool' && (key === 'true' || key === 'false')) {
-                        typedKey = key === 'true';
-                    }
-                }
-                return [validate(typedKey, members[0], `${path}.key`),
-                        validate(item, members[1], `${path}[${key}]`)];
-            }));
+            return new Map(entries.map(([key, item]) => [
+                validate(key, members[0], `${path}.key`, !(value instanceof Map)),
+                validate(item, members[1], `${path}[${key}]`)
+            ]));
         }
         fail(path, String(descriptor));
     };
@@ -338,7 +344,12 @@ class BaseModel:
 
 def _class_info(
     model: type,
-) -> tuple[dict[str, object], dict[str, object], tuple[str, ...]]:
+) -> LibraryClassInfo:
+    if model.model_config.get("extra") == "allow":
+        raise TypeError(
+            f"{model.__name__} uses unsupported dynamic extra fields. "
+            "PyJS client models support extra='ignore' or extra='forbid'."
+        )
     annotations = {}
     defaults = {}
     required = []
@@ -356,4 +367,9 @@ def _class_info(
             defaults[name] = field.default_factory()
         else:
             defaults[name] = field.default
-    return annotations, defaults, tuple(required)
+    config = {
+        name: model.model_config[name]
+        for name in ("extra", "strict")
+        if name in model.model_config
+    }
+    return LibraryClassInfo(annotations, defaults, tuple(required), config=config)

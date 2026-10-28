@@ -1765,6 +1765,7 @@ class Class(Object):
         self._self = Instance("self", self, self.scope, self)
         self.client_defaults: dict[str, ast.expr] = {}
         self.client_required: tuple[str, ...] = ()
+        self.client_config: dict[str, object] = {}
         self.client_fields: dict[str, Class | UnionType] = {}
         self.client_model_dependencies: set[Class] = set()
         self.client_model_registry_required = False
@@ -2180,6 +2181,7 @@ class Class(Object):
                 name: py_to_ast(value) for name, value in info.defaults.items()
             }
             self.client_required = info.required
+            self.client_config = info.config
 
     def resolve_field_annotation(self, annotation) -> Class | UnionType:
         ensure_annotation_dependencies(annotation, self.container)
