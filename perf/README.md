@@ -97,6 +97,15 @@ comparisons say faster/slower; RSS comparisons say less/more memory. Ratios
 rounding to 1.00 show approximately equal, not statistical equivalence. Missing,
 zero-reference or failed comparisons stay explicit, never fabricated speedups.
 Workload labels and column headings remain pinned while scrolling the table.
+Cell backgrounds range from green (lowest) to warm (highest), scaled
+logarithmically within each row's visible positive measurements. The colors
+follow the selected metric and target group; equal, zero and missing values
+stay neutral. They show relative magnitude, not statistical significance.
+Click a workload or runtime cell to expand source directly below that row:
+shared Python on the left, selected handwritten or generated code on the right.
+The panes stay side by side on phones (one-third Python, two-thirds target),
+with independently scrollable code. Click the selected cell again, Close source,
+or Escape to collapse. Generated artifacts load on demand.
 Run metadata, methodology and raw evidence are expandable below the matrix.
 Each measurement's evidence shows per-fork warmup endpoints, sample medians
 and ranges before the raw JSON, plus JVM compilation diagnostics when requested.

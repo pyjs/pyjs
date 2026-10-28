@@ -37,22 +37,21 @@ def view(data, runs, selected, prefix):
     for (case, size), results in groups.items():
         cells = [result_cell(results.get(target), case, size, target) for target in LABELS]
         table.append(tag("tr", {"data-case": case, "data-size": str(size)},
-                         tag("th", {"scope": "row"}, tag("a", {"href": "#" + case}, cases[case]["name"]),
+                         tag("th", {"scope": "row"}, tag("button", {"type": "button", "class": "row-source",
+                             "data-source-button": "", "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, cases[case]["name"]),
                              tag("span", {"class": "input-size"}, f"N = {size:,}")), *cells))
-    for case, metadata in cases.items():
-        panels = [tag("details", tag("summary", label), tag("div", tag("pre", data["sources"].get(f"cases/{case}/{filename}", ""))))
-                  for filename, label in (("workload.py", "Python · shared by four configurations"),
-                                          ("reference.cjs", "JavaScript · handwritten"),
-                                          ("reference.rs", "Rust"), ("Kernel.java", "Java"))
-                  if f"cases/{case}/{filename}" in data["sources"]]
+        table.append(source_panel(data, case, size, cases[case]))
+    for case in cases:
+        for target, filename in (("cpython", "workload.py"), ("javascript", "reference.cjs"),
+                                 ("rust", "reference.rs"), ("java", "Kernel.java")):
+            sources.append(tag("pre", {"id": f"source-{case}-{target}"},
+                data["sources"].get(f"cases/{case}/{filename}", "Source not recorded in this snapshot.")))
         for target, filename in (("pyjs-js", "generated.js"), ("pyjs-llvm", "generated.ll"), ("pyjs-jvm", "bytecode.txt")):
             artifact = f"build/{case}/{target}/{filename}"
-            if any(artifact in row.get("artifacts", {}) for row in data["rows"] if row["case"] == case):
-                panels.append(tag("p", tag("a", {"href": f"{prefix}artifact/{selected}/{artifact}"},
-                                           LABELS[target] + " generated code")))
-        sources.append(tag("section", {"id": case}, tag("h2", metadata["name"]),
-                           tag("p", {"class": "eyebrow"}, metadata["category"]),
-                           tag("p", metadata["description"]), tag("p", {"class": "meta"}, metadata["notes"]), *panels))
+            available = any(artifact in row.get("artifacts", {}) for row in data["rows"] if row["case"] == case)
+            sources.append(tag("pre", {"id": f"source-{case}-{target}",
+                "data-url": f"{prefix}artifact/{selected}/{artifact}" if available else ""},
+                "Generated code was not recorded for this configuration. See its measurement evidence."))
     return tag("main",
         tag("header", tag("p", {"class": "eyebrow"}, "PyJS / Performance lab"),
             tag("h1", "Performance comparison"),
@@ -66,6 +65,8 @@ def view(data, runs, selected, prefix):
         tag("aside", {"class": "notice"}, "Exploratory measurements, not a language ranking. Warnings and failures link to their evidence." +
             (" Snapshot interrupted: coverage is incomplete." if not data["complete"] else "")),
         tag("p", {"class": "meta", "id": "comparison-help"}, "Every target compares with CPython. Handwritten and transpiled implementations sit side by side. Lower is better. — means no valid comparison."),
+        tag("p", {"class": "heat-legend"}, tag("span", {"class": "heat-key", "aria-hidden": "true"}),
+            "Best → worst in each row (log scale, visible targets). Missing/zero values stay neutral. Click a runtime cell to compare source."),
         tag("div", {"class": "table-scroll", "tabindex": "0", "role": "region", "aria-label": "Runtime comparison; scroll to see all columns"},
             tag("table", {"class": "comparison-table", "data-view": "all", "aria-describedby": "comparison-help"},
                 tag("caption", {"class": "sr-only"}, "Workloads by runtime"),
@@ -87,8 +88,27 @@ def view(data, runs, selected, prefix):
         tag("details", tag("summary", "Measurement contract"), tag("div",
             tag("p", "Correctness is checked before timing and on every batch. Warmed values are medians of process medians; inspect warmup traces and warnings. Allocation and checksum work remain included."),
             tag("p", "LLVM includes arena lifecycle and a checksum file write per batch; other adapters return a string. RSS includes the VM baseline. Startup includes process launch and teardown, not compilation."))),
-        *sources, tag("h2", "Measurement evidence"), *diagnostics,
+        tag("div", {"hidden": "", "class": "source-library"}, *sources),
+        tag("h2", "Measurement evidence"), *diagnostics,
         tag("footer", "Python UI rendered by PyJS. JSON snapshots are the data, not generated HTML reports."))
+
+
+def source_panel(data, case, size, metadata):
+    return tag("tr", {"id": f"source-panel-{case}-{size}", "class": "source-row", "data-source-case": case, "hidden": ""},
+        tag("td", {"colspan": str(len(LABELS) + 1), "class": "source-cell"},
+            tag("section", {"class": "source-panel", "aria-label": f"Source comparison for {metadata['name']}, N = {size}"},
+                tag("div", {"class": "source-toolbar"}, tag("strong", f"{metadata['name']} · N = {size:,}"),
+                    tag("button", {"type": "button", "data-close-source": ""}, "Close source")),
+                tag("details", {"class": "source-notes"}, tag("summary", "Workload and comparison notes"),
+                    tag("div", tag("p", metadata["description"]), tag("p", metadata["notes"]))),
+                tag("div", {"class": "source-split"},
+                    tag("section", tag("h3", "Python · shared source"),
+                        tag("pre", {"class": "python-code", "tabindex": "0", "aria-label": "Python source; scroll to read"},
+                            data["sources"].get(f"cases/{case}/workload.py", "Source not recorded in this snapshot."))),
+                    tag("section", tag("div", {"class": "target-source-heading"}, tag("h3", {"class": "target-title"}, "Selected runtime"),
+                        tag("a", {"class": "source-download", "hidden": "", "target": "_blank", "rel": "noopener"}, "Open full artifact")),
+                        tag("p", {"class": "source-status", "role": "status"}, ""),
+                        tag("pre", {"class": "target-code", "tabindex": "0", "aria-label": "Selected runtime source; scroll to read"}, ""))))))
 
 
 def evidence(row, selected, prefix):
@@ -151,4 +171,7 @@ def result_cell(row, case, size, target):
     else:
         comparisons.append(tag("span", {"class": "ratio", "data-reference": "cpython"},
             tag("span", {"class": "ratio-value"}, "—"), tag("small", "vs CPython")))
-    return tag("td", attributes, tag("span", {"class": "measurement"}, "—"), *comparisons, evidence)
+    return tag("td", attributes, tag("button", {"type": "button", "class": "measurement", "data-source-button": "",
+        "data-source-label": LABELS[target] + (" · generated code" if target.startswith("pyjs-") else " · source"),
+        "aria-label": f"Show {LABELS[target]} source for {case}, N = {size}",
+        "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, "—"), *comparisons, evidence)

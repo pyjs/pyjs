@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import json
+import math
 from pathlib import Path
 
 from perf.view import GROUPS, LABELS
@@ -40,6 +41,131 @@ async def check_comparison_edges(page):
             row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value);
           document.querySelector('#metric').dispatchEvent(new Event('change'));
         })()""".replace("VALUES", json.dumps(original)))
+
+
+async def check_heatmap(page):
+    """Validate magnitudes, neutral edge cases and scaling to visible targets."""
+    original = await page.evaluate("""Array.from(document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]'))
+      .map(cell => [cell.dataset.target, cell.getAttribute('data-warm')])""")
+    try:
+        for values in ([100, 10, 1], [100, 100, 100], [0, None, 1], [10, 20, 40]):
+            heats = await page.evaluate("""(() => {
+              const group = document.querySelector('#group'); group.value = 'js';
+              const cells = document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]');
+              VALUES.forEach((value, i) => cells[i].setAttribute('data-warm', value ?? ''));
+              group.dispatchEvent(new Event('change'));
+              return Array.from(cells).map(cell => cell.getAttribute('data-heat'));
+            })()""".replace("VALUES", json.dumps(values)))
+            positive = [value for value in values if value and value > 0]
+            for value, heat in zip(values, heats[:3], strict=True):
+                if not value or min(positive) == max(positive):
+                    assert heat is None, (values, heats)
+                else:
+                    expected = math.log(value / min(positive)) / math.log(max(positive) / min(positive))
+                    assert abs(float(heat) - expected) < 1e-9, (values, heats)
+            assert heats[3:] == [None] * 4, "hidden targets must not retain colors"
+    finally:
+        await page.evaluate("""(() => {
+          const row = document.querySelector('tbody tr[data-case]');
+          for (const [target, value] of VALUES)
+            row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value ?? '');
+          const group = document.querySelector('#group'); group.value = 'all';
+          group.dispatchEvent(new Event('change'));
+        })()""".replace("VALUES", json.dumps(original)))
+
+
+async def check_sources(page, output):
+    cell = 'tbody tr[data-case]:first-child td[data-target="javascript"]'
+    panel = '.source-row:not([hidden])'
+    await page.click(cell + ' button')
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
+    assert await page.evaluate("""(() => {
+      const panel = document.querySelector('.source-row:not([hidden])');
+      const row = panel.previousElementSibling;
+      return row.dataset.case === panel.dataset.sourceCase &&
+        panel.querySelector('.python-code').textContent === document.getElementById('source-' + row.dataset.case + '-cpython').textContent &&
+        panel.querySelector('.target-code').textContent === document.getElementById('source-' + row.dataset.case + '-javascript').textContent;
+    })()""")
+    await page.evaluate("document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'})")
+    await page.screenshot(output / "source-desktop.png")
+    # Switching cells updates the right pane, not the left one or the row.
+    await page.click('tbody tr[data-case]:first-child td[data-target="cpython"] button')
+    assert await page.evaluate(f"document.querySelector('{panel} .target-code').textContent === document.querySelector('{panel} .python-code').textContent")
+    await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
+    await page.wait_for(f"document.querySelector('{panel} .source-status').textContent === ''", "generated source")
+    assert await page.evaluate(f"document.querySelector('{panel} .target-code').textContent.length > 0")
+    assert await page.evaluate(f"!document.querySelector('{panel} .source-download').hidden")
+    await page.evaluate("document.querySelector('.source-row:not([hidden])').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
+    assert await page.evaluate("document.activeElement.closest('td').dataset.target") == "pyjs-js"
+    # Stale requests, failed requests and source HTML must not mutate the page.
+    await page.evaluate("""window.savedSourceFetch = window.fetch;
+      window.fetch = () => new Promise(resolve => { window.finishSourceFetch = resolve; });""")
+    try:
+        await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
+        await page.click(cell + ' button')
+        await page.evaluate("window.finishSourceFetch({ok:true,text:async()=>'<script>stale</script>'})")
+        assert await page.evaluate(f"!document.querySelector('{panel} .target-code').textContent.includes('<script>stale')")
+        await page.evaluate("window.fetch = async () => ({ok:false})")
+        await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
+        await page.wait_for(f"document.querySelector('{panel} .source-status').textContent.includes('Could not load')", "failed source")
+        await page.click(f'{panel} [data-close-source]')
+        await page.evaluate("window.fetch = async () => ({ok:true,text:async()=>'<script>source only</script>'})")
+        await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
+        await page.wait_for(f"document.querySelector('{panel} .target-code').textContent === '<script>source only</script>'", "literal source")
+        assert await page.evaluate(f"document.querySelector('{panel} .target-code').children.length") == 0
+    finally:
+        await page.evaluate("window.fetch = window.savedSourceFetch; delete window.savedSourceFetch; delete window.finishSourceFetch")
+    await page.click(cell + ' button')
+    await page.set_viewport(390, 844)
+    await page.evaluate("""(() => {
+      document.querySelector('.table-scroll').scrollLeft = 450;
+      window.dispatchEvent(new Event('resize'));
+      document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'});
+    })()""")
+    dimensions = await page.evaluate("""(() => {
+      const panel = document.querySelector('.source-row:not([hidden]) .source-panel');
+      const panes = Array.from(panel.querySelectorAll('.source-split > section')).map(x=>x.getBoundingClientRect());
+      const rect = panel.getBoundingClientRect();
+      return [rect.left,rect.right,panes[0].width,panes[1].width,panes[0].top,panes[1].top,
+        ...Array.from(panel.querySelectorAll('pre')).map(x=>getComputedStyle(x).overflow)];
+    })()""")
+    assert dimensions[0] >= 0 and dimensions[1] <= 390, dimensions
+    assert abs(dimensions[3] / dimensions[2] - 2) < 0.01, dimensions
+    assert dimensions[4] == dimensions[5] and dimensions[6:] == ['auto', 'auto'], dimensions
+    assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert await page.evaluate("""Array.from(document.querySelectorAll('.source-row:not([hidden]) pre')).every(pre => {
+      pre.scrollLeft = 30;
+      return pre.scrollWidth <= pre.clientWidth || pre.scrollLeft > 0;
+    })"""), "each code pane scrolls independently"
+    await page.screenshot(output / "source-mobile.png")
+    # Filtering away the selected target closes the expansion.
+    await page.evaluate("""(() => {
+      const group = document.querySelector('#group'); group.value = 'jvm';
+      group.dispatchEvent(new Event('change'));
+    })()""")
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
+    await page.evaluate("""(() => {
+      const group = document.querySelector('#group'); group.value = 'all'; group.dispatchEvent(new Event('change'));
+      document.querySelector('.table-scroll').scrollLeft = 0;
+    })()""")
+    await page.set_viewport(1440, 1100)
+    # A different row replaces the expansion; filtering it away also closes it.
+    await page.click(cell + ' button')
+    await page.evaluate("document.querySelectorAll('tbody tr[data-case]')[1].querySelector('.row-source').click()")
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
+    assert await page.evaluate("document.querySelector('.source-row:not([hidden])').previousElementSibling === document.querySelectorAll('tbody tr[data-case]')[1]")
+    await page.evaluate("""(() => {
+      const select = document.querySelector('#workload');
+      const caseName = document.querySelector('.source-row:not([hidden])').dataset.sourceCase;
+      select.value = Array.from(select.options).find(option => option.value !== 'all' && option.value !== caseName).value;
+      select.dispatchEvent(new Event('change'));
+    })()""")
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
+    await page.evaluate("const select = document.querySelector('#workload'); select.value = 'all'; select.dispatchEvent(new Event('change'))")
+    await page.click(cell + ' button')
+    await page.click(cell + ' button')
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
 
 
 async def check(url: str, output: Path):
@@ -99,6 +225,8 @@ async def check(url: str, output: Path):
                     else:
                         assert ratio == "—" and comparison == ""
         await check_comparison_edges(page)
+        await check_heatmap(page)
+        await check_sources(page, output)
         for group, (_, reference, compiled) in GROUPS.items():
             await page.evaluate("""(() => {
               const select = document.querySelector('#group');
@@ -179,6 +307,8 @@ async def check(url: str, output: Path):
             assert not page.exceptions, page.exceptions
         (output / "result.json").write_text(json.dumps({"rows": count, "runtime_columns": len(LABELS), "filters": cases,
                                                        "target_groups": list(GROUPS), "fixed_baseline": "cpython",
+                                                       "heatmap_edges": True, "inline_sources": True,
+                                                       "source_request_races": True, "mobile_source_split": "1:2",
                                                        "sticky_workloads": True,
                                                        "snapshot_navigation": bool(other),
                                                        "jit_evidence": evidence,

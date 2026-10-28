@@ -244,6 +244,40 @@ def test_target_pairs_have_fixed_order_and_explicit_comparison_references():
     assert 'id="group"' in html and 'id="baseline"' not in html
 
 
+def test_source_expansions_follow_each_input_and_only_link_recorded_artifacts():
+    class Sources(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.rows = []
+            self.buttons = []
+            self.artifacts = {}
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "tr" and ("data-case" in attrs or attrs.get("class") == "source-row"):
+                self.rows.append(attrs)
+            if tag == "button" and "data-source-button" in attrs:
+                self.buttons.append(attrs)
+            if tag == "pre" and "data-url" in attrs:
+                self.artifacts[attrs["id"]] = attrs["data-url"]
+
+    data = snapshot()
+    data["rows"][1]["artifacts"] = {"build/sieve/pyjs-js/generated.js": 42}
+    data["rows"].append({**data["rows"][0], "size": 48})
+    parsed = Sources()
+    parsed.feed(render_html(view(data, ["example"], "example", "/perf/")))
+    assert [row.get("data-size", row.get("id")) for row in parsed.rows] == [
+        "24", "source-panel-sieve-24", "48", "source-panel-sieve-48"]
+    assert all("hidden" in row for row in parsed.rows[1::2])
+    assert len(parsed.buttons) == 16  # Workload name plus all seven runtime cells.
+    assert [b["aria-controls"] for b in parsed.buttons] == ["source-panel-sieve-24"] * 8 + ["source-panel-sieve-48"] * 8
+    assert all(b["aria-expanded"] == "false" for b in parsed.buttons)
+    assert parsed.artifacts == {
+        "source-sieve-pyjs-js": "/perf/artifact/example/build/sieve/pyjs-js/generated.js",
+        "source-sieve-pyjs-llvm": "", "source-sieve-pyjs-jvm": "",
+    }
+
+
 def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
     run = tmp_path / "first"
     run.mkdir()
