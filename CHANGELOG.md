@@ -16,6 +16,9 @@
   such as an Android TextView subclass overriding View's drawing callback.
 - Tuple class-check diagnostics retain the original subject's source location.
 
+- DOM render assertions use explicit integer pixel extents for fractional
+  element sizes, avoiding browser-dependent screenshot dimension rounding.
+
 - JavaScript Pydantic model decoding honors `extra="forbid"`, including
   nested, inherited and empty models. Explicit `extra="ignore"` overrides
   remain supported. Strict models no longer coerce integer value strings;

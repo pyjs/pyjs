@@ -563,6 +563,10 @@ class PrototypeDaemon:
                     elif clip["width"] <= 0 or clip["height"] <= 0:
                         artifact["error"] = "The rendered element has no visible geometry"
                     else:
+                        # Do not delegate fractional raster extents to CDP. Keep
+                        # the DOM origin, with stable, nonempty pixel dimensions.
+                        clip["width"] = max(1, int(clip["width"]))
+                        clip["height"] = max(1, int(clip["height"]))
                         artifact["dataUrl"] = await page.screenshot_data_url(clip)
             except Exception as exc:
                 for artifact in requested:
