@@ -42,7 +42,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
     signatures = {}
     documentation = {}
     snapshots = {}
-    file_lines = {path: text.splitlines() for path, text in sources.items()}
+    file_lines = {path: text.split('\n') for path, text in sources.items()}
     declaration_names = {}
     name_starts = {}
     name_ends = {}

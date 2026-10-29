@@ -17,6 +17,65 @@ from pyjs.language.store import SnapshotStore
 SOURCE = 'from pyjs import js\n@js\ndef answer():\n    return 42\n'
 
 
+@pytest.mark.parametrize('shadow, imported', [('types', 'asyncio'), ('types', 'email.message'),
+                                             ('enum', 'http'), ('functools', 'statistics')])
+@pytest.mark.parametrize('opened', [False, True])
+def test_workspace_names_preserve_interpreter_startup_imports(tmp_path, shadow, imported, opened):
+    dependency = tmp_path / (shadow + '.py')
+    dependency.write_text(SOURCE)
+    main = tmp_path / 'main.py'
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        if opened:
+            session.update(dependency.as_uri(), 1, SOURCE)
+        for prefix in ('import ' + imported, 'from ' + shadow + ' import answer'):
+            main.write_text(prefix + '\n' + SOURCE)
+            plain = subprocess.run([sys.executable, '-I', '-c',
+                'import sys; sys.path.insert(0, sys.argv[1]); import main', str(tmp_path)],
+                capture_output=True, text=True, timeout=15)
+            result = session.snapshot(main.as_uri(), force=True)
+            assert result['status'] == ('ready' if plain.returncode == 0 else 'error'), (result, plain.stderr)
+    finally:
+        session.shutdown()
+
+
+def test_workspace_compiler_package_does_not_replace_running_compiler(tmp_path):
+    package = tmp_path / 'pyjs'
+    package.mkdir()
+    (package / '__init__.py').write_text('raise AssertionError("Wrong compiler instance")\n')
+    main = tmp_path / 'main.py'
+    main.write_text(SOURCE)
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        session.update((package / '__init__.py').as_uri(), 1, 'VALUE = 1\n')
+        result = session.snapshot(main.as_uri(), force=True)
+        assert result['status'] == 'ready', result
+        assert result['symbols'][0]['type'] == 'answer() -> int'
+        result = session.snapshot((package / '__init__.py').as_uri(), force=True)
+        assert result['status'] == 'error'
+        assert 'conflicts with an interpreter startup or compiler module' in result['message']
+    finally:
+        session.shutdown()
+
+
+@pytest.mark.parametrize('separator', ['\x0c', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029'])
+def test_source_line_positions_follow_python_newlines(tmp_path, separator):
+    source = ('from pyjs import js\n# before' + separator + 'after\n'
+              '@js\ndef add(value: int, other: int):\n    return value + other\n')
+    main = tmp_path / 'main.py'
+    main.write_text(source)
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        result = session.snapshot(main.as_uri())
+        assert result['status'] == 'ready', result
+        assert result['symbols'][0]['type'] == 'add(value: int, other: int) -> int'
+        for item in result['occurrences']:
+            text = source.split('\n')[item['line'] - 1][item['column']:item['endColumn']]
+            assert text == item['name'], item
+    finally:
+        session.shutdown()
+
+
 @pytest.mark.parametrize('collision', ['later_directory', 'shadowed_module'])
 def test_opening_a_shadowed_file_preserves_import_precedence(tmp_path, collision):
     if collision == 'later_directory':

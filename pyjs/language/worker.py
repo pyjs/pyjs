@@ -5,8 +5,10 @@ import hashlib
 import importlib
 import importlib.abc
 import importlib.machinery
+import io
 import json
 import linecache
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -84,11 +86,12 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 raise ValueError(f"Reserved editor entry name: {ENTRY}")
             source += f"\n\ndef {ENTRY}() -> None:\n    pass\n"
         module.__pyjs_source__ = source
-        linecache.cache[filename] = (len(source), None, source.splitlines(True), filename)
+        linecache.cache[filename] = (len(source), None, io.StringIO(source).readlines(), filename)
         exec(compile(source, filename, "exec"), vars(module))
 
 
-def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -> dict:
+def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path,
+            startup_modules: frozenset[str]) -> dict:
     source = overlays[str(target)]
     ast.parse(source, str(target))
     base = root / "src" if target.is_relative_to(root / "src") else root
@@ -100,9 +103,11 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -
     name = ".".join(parts)
     sys.path[:0] = [str(base), str(root)]
     sources = Sources(root, overlays, target, journal)
+    protected = startup_modules | {'pyjs'}
     # Saved workspace imports can also collide with modules needed to start the worker.
     for prefix, existing in list(sys.modules.items()):
-        if "." in prefix or getattr(getattr(existing, '__spec__', None), 'origin', None) in ('built-in', 'frozen'):
+        if ("." in prefix or prefix in protected
+                or getattr(getattr(existing, '__spec__', None), 'origin', None) in ('built-in', 'frozen')):
             continue
         spec = sources.find_spec(prefix, [str(base), str(root)])
         if spec is not None and spec.loader is sources and getattr(existing, '__file__', None) != spec.origin:
@@ -119,6 +124,8 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -
             names.pop()
         for depth in range(1, len(names) + 1):
             prefix = ".".join(names[:depth])
+            if names[0] in protected:
+                continue
             existing = sys.modules.get(prefix)
             origin = getattr(existing, "__file__", None)
             expected = base.joinpath(*names[:depth])
@@ -143,6 +150,8 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -
             if depth > 1 and ".".join(parts[:depth - 1]) in sys.modules:
                 setattr(sys.modules[".".join(parts[:depth - 1])], parts[depth - 1], parent)
     module = importlib.import_module(name)
+    if getattr(module, '__file__', None) != str(target) or not hasattr(module, ENTRY):
+        raise ValueError('Selected module conflicts with an interpreter startup or compiler module')
     # The synthetic root selects the module without calling any application function.
     configure_js(getattr(module, ENTRY), enabled=True)
     entry, _ = analyze_module(module, entry_point=getattr(module, ENTRY))
@@ -153,11 +162,17 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -
         release_compilation(entry)
 
 
-def main():
+def main(startup_modules: frozenset[str] | None = None):
+    if startup_modules is None:
+        # Direct -m invocation must use the same pre-compiler import baseline.
+        probe = subprocess.run([sys.executable, '-I', '-c',
+                                'import sys; print("\\n".join(sys.modules))'],
+                               capture_output=True, text=True, check=True)
+        startup_modules = frozenset(probe.stdout.splitlines())
     payload = json.loads(sys.stdin.read())
     try:
         result = analyze(Path(payload["root"]), Path(payload["path"]), payload["sources"],
-                         Path(sys.argv[1]).with_suffix(".dependencies.jsonl"))
+                         Path(sys.argv[1]).with_suffix(".dependencies.jsonl"), startup_modules)
         result["status"] = "ready"
     except BaseException as error:
         # SystemExit from imported code is an analysis failure, not a server shutdown.

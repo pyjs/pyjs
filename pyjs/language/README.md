@@ -12,6 +12,13 @@ names are looked up on `PATH`.
 Analysis executes module initialization, just as compilation does. Application
 entry functions are analyzed without being called.
 
+Imports preserve modules loaded at the selected interpreter's startup, and
+the selected PyJS compiler keeps its own module identity. Workspace modules
+can replace modules loaded only to bootstrap analysis. A selected source file
+that collides with a protected module reports an error instead of analyzing
+an unrelated module. Choose an interpreter containing the intended compiler
+when working across compiler checkouts.
+
 The initial interface supports initialization, shutdown, full-document
 open/change/close notifications, cancellation responses, and custom
 whole-module requests:

@@ -195,7 +195,9 @@ class AnalysisSession:
                         if self.stopped:
                             raise RuntimeError("Analysis session has shut down")
                         process = subprocess.Popen(
-                            [self.interpreter, "-I", "-m", "pyjs.language.worker", str(output)],
+                            [self.interpreter, "-I", "-c",
+                             "import sys; startup = frozenset(sys.modules); "
+                             "from pyjs.language.worker import main; main(startup)", str(output)],
                             stdin=subprocess.PIPE, text=True, stdout=subprocess.DEVNULL,
                             stderr=stderr, cwd=self.root, start_new_session=os.name != "nt",
                         )

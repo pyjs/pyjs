@@ -5,6 +5,9 @@
 - Add `pyjs lsp` for versioned compiler type snapshots, source definitions,
   unsaved module batches, background indexing and persistent caches. An
   optional project interpreter keeps service and execution environments apart.
+  Workspace imports preserve interpreter startup modules, and source positions
+  follow Python physical lines, including comments containing Unicode
+  separators.
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving
