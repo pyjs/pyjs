@@ -15934,7 +15934,6 @@ class CallGraphVisitor(ast.NodeVisitor):
         if node.obj.container is not module:
             node.hydration_type_alias = module.register_inline_dependency(node.obj, self.entry_point)
         self.enter_class(node.obj)
-        self.enter(node.obj.find("__init__"))
         self.enter(node.obj.find(method))
 
     def visit_Call(self, node: ast.Call):
@@ -16244,8 +16243,6 @@ class HydrationGraphVisitor(ast.NodeVisitor):
         self.client = CallGraphVisitor(func, entry_point)
         self.elements = set()
         self.has_bindings = False
-        self.local_names = {node.id for node in ast.walk(func.node)
-                            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
 
     def visit_Assign(self, node: ast.Assign):
         reference = hydration_ref_call(node.value)
@@ -16285,7 +16282,7 @@ class HydrationGraphVisitor(ast.NodeVisitor):
             if (
                 isinstance(receiver, Name)
                 and receiver.id != "self"
-                and (receiver.id in self.func.scope.names or receiver.id in self.local_names)
+                and receiver.id in self.func.scope.names
             ):
                 module = (
                     self.func.cls.container

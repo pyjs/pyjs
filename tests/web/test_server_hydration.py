@@ -13,7 +13,7 @@ from pyjs.tooling.browser import Browser, free_port, wait_for_http
 pytestmark = pytest.mark.pyjs_python
 
 
-@pytest.mark.parametrize("proxy_factory", [False, True, "local"])
+@pytest.mark.parametrize("proxy_factory", [False, True, "local", "dynamic"])
 def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path, proxy_factory):
     application = tmp_path / "effect_application.py"
     application.write_text(
@@ -80,6 +80,11 @@ def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path, 
             "@js\ndef make_button(label: str) -> LocalButton:\n    return LocalButton(label)\n",
         ))
 
+    if proxy_factory == "dynamic":
+        application.write_text(application.read_text().replace(
+            'self.value += 1', 'self.value += 1\n        tag(self, make_button("Created"))'
+        ))
+
     async def run():
         port = free_port()
         url = f"http://127.0.0.1:{port}/"
@@ -116,6 +121,9 @@ def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path, 
                     "effect-probe", "data-effect-runs", "2"
                 )
                 assert await page.text("effect-probe output") == "8"
+                if proxy_factory == "dynamic":
+                    await page.wait_for_count('effect-probe button', 2)
+                    assert await page.text('effect-probe button:last-child') == 'Created'
                 assert page.exceptions == []
         finally:
             stop_process(server)

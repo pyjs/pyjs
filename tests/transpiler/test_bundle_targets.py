@@ -308,6 +308,50 @@ def card_page():
     assert "const {div" not in page
 
 
+@pytest.mark.parametrize('client_creation', [False, True])
+def test_proxy_hydration_only_retains_creation_when_the_client_constructs_it(client_creation):
+    source = '''from pyjs import js
+from pyjs.web.domx import CustomElement, ProxyElement, button, ref, tag
+from pyjs.web.events import Event
+@js
+def render_label() -> str:
+    return "Server label"
+@js
+class Control(ProxyElement):
+    def __init__(self):
+        self.element = button(render_label())
+    def listen(self, callback: callable):
+        self.element.addEventListener("click", callback)
+@js
+class Panel(CustomElement):
+    def __init__(self):
+        super().__init__()
+        self.control = ref(Control())
+        self.control.listen(self.clicked)
+        tag(self, self.control)
+    def clicked(self, event: Event):
+        self.setAttribute("data-clicked", "true")
+@js
+def application():
+    pass
+@js
+def page():
+    Panel()
+'''
+    if client_creation:
+        source = source.replace('self.setAttribute("data-clicked", "true")', 'tag(self, Control())')
+    module = create_module(source, 'controls.py', 'controls')
+    generated, _ = bundle_targets_with_source_maps((
+        BundleTarget('controls', module.application),
+        BundleTarget('controls.page', module.page, 'controls'),
+    ))
+    page = generated['controls.page'].javascript
+    # Whole page bundles include shared DOM machinery; compare the relevant paths.
+    assert 'new Control()._hydrate(' in page
+    assert ('function render_label()' in page) is client_creation
+    assert ('_create()' in page) is client_creation
+
+
 def test_server_rendered_event_target_rejects_constructor_local_value():
     module = create_module(
         """
