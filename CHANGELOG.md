@@ -39,6 +39,9 @@
 - JavaScript `JSON.stringify` accepts primitive values and arrays of
   primitives as well as object records. Ordinary Python dictionaries remain
   excluded because their JavaScript representation is a `Map`.
+  BigInt-backed `int64` values receive a compilation diagnostic; convert them
+  explicitly to strings or safe-range integers. Named `value=` arguments
+  serialize the value directly, without an extra object wrapper.
 
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
