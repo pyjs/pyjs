@@ -2405,6 +2405,7 @@ class InferenceVisitor(ast.NodeVisitor):
         ] = []
         self.flow_widenings: dict[tuple, set[str]] = {}
         self.pending_flow_widenings: dict[tuple, set[str]] = {}
+        self.written_names: dict[ast.AST, frozenset[str]] = {}
 
     def visit(self, node):
         result = super().visit(node)
@@ -3708,6 +3709,7 @@ class InferenceVisitor(ast.NodeVisitor):
     def child_visitor(self, scope):
         visitor = type(self)(self.func, scope)
         visitor.assignment_scope = self.assignment_scope
+        visitor.written_names = self.written_names
         visitor.deferred_parent = self.deferred_parent
         visitor.loop_break_collectors = self.loop_break_collectors
         visitor.pending_finally_breaks = self.pending_finally_breaks
@@ -3925,21 +3927,54 @@ class InferenceVisitor(ast.NodeVisitor):
                 yield statement
             yield from InferenceVisitor.written_targets(ast.iter_child_nodes(statement))
 
+    def statement_writes(self, node):
+        """Source write targets shared by flow visitors within one inference attempt."""
+        cached = self.written_names.get(node)
+        if cached is not None:
+            return cached
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef, ast.Lambda, ast.ListComp,
+                             ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            result = frozenset()
+        elif isinstance(node, ast.Name):
+            result = frozenset((node.id,)) if isinstance(node.ctx, (ast.Store, ast.Del)) else frozenset()
+        else:
+            names = set()
+            if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(ast.unparse(node))
+            for child in ast.iter_child_nodes(node):
+                names.update(self.statement_writes(child))
+            result = frozenset(names)
+        self.written_names[node] = result
+        return result
+
     def written_bindings(self, statements):
         """Visible flow bindings affected by explicit writes, including receiver replacement."""
-        written = {ast.unparse(node) for node in self.written_targets(statements)}
+        written = set().union(*(self.statement_writes(statement) for statement in statements))
         if not written:
             return {}
         names = {}
         scope = self.scope
         while isinstance(scope, LocalScope):
             for name in scope.names:
-                if any(name == target or name.startswith(target + ".") for target in written):
-                    names.setdefault(name, None)
+                target = name
+                while target:
+                    if target in written:
+                        names.setdefault(name, None)
+                        break
+                    target = target.rpartition(".")[0]
             scope = scope.parent
         return {name: self.scope.lookup(name) for name in names}
 
     def written_narrowings(self, statements):
+        # Without an overriding flow scope or a narrowed alias, visible bindings
+        # are their own declarations and cannot carry a narrower proof.
+        scope = self.scope
+        while isinstance(scope, LocalScope) and not scope.names:
+            scope = scope.parent
+        if (isinstance(scope, LocalScope) and not isinstance(scope.parent, LocalScope)
+                and all(getattr(value, "narrowed_from", None) is None for value in scope.names.values())):
+            return {}
         bindings = {}
         for name, current in self.written_bindings(statements).items():
             declared = self.declared_local(name)
@@ -4322,12 +4357,11 @@ class InferenceVisitor(ast.NodeVisitor):
                         parent.obj.cls.field_representations.get(target.attr),
                     )
                     parent.obj.add(attr)
-                    target = Attribute(
+                    target = ast.copy_location(Attribute(
                         attr,
                         value=parent,
                         attr=target.attr,
-                        lineno=target.lineno,
-                    )
+                    ), source_target)
                 else:
                     raise
             if value is not None:
@@ -4428,12 +4462,11 @@ class InferenceVisitor(ast.NodeVisitor):
                     attr = value_type(target.attr, current_self.scope, current_self)
                     apply_representation(attr, target.obj.representation)
                     current_self.add(attr)
-                    target = Attribute(
+                    target = ast.copy_location(Attribute(
                         attr,
                         value=target.value,
                         attr=target.attr,
-                        lineno=target.lineno,
-                    )
+                    ), source_target)
                 elif not is_return_type_compatible(target.obj.cls, value_type):
                     expected = describe_type(target.obj.cls)
                     actual = describe_type(value_type)
@@ -9551,6 +9584,20 @@ class InferenceVisitor(ast.NodeVisitor):
         ):
             annotation = ast.parse(annotation.value, mode="eval").body
 
+        # Backend overrides may validate even ordinary Python annotations.
+        named_type = None
+        if (isinstance(annotation, ast.Name)
+                and type(self).annotation_numeric_format is InferenceVisitor.annotation_numeric_format
+                and type(self).annotation_array_format is InferenceVisitor.annotation_array_format):
+            try:
+                named_type = self.scope.search(annotation.id)
+            except NameError:
+                return None
+            if isinstance(named_type, Class):
+                return runtime_annotation_representation(named_type.py_cls)
+            if not isinstance(named_type, TypeAliasValue):
+                return None
+
         numeric = self.annotation_numeric_format(annotation)
         array = self.annotation_array_format(annotation)
         if numeric is not None:
@@ -9599,18 +9646,19 @@ class InferenceVisitor(ast.NodeVisitor):
             )
 
         if isinstance(annotation, ast.Name):
-            try:
-                value = self.scope.search(annotation.id)
-            except NameError:
-                return None
-            if isinstance(value, TypeAliasValue):
+            if named_type is None:
                 try:
-                    return runtime_annotation_representation(value.annotation)
+                    named_type = self.scope.search(annotation.id)
+                except NameError:
+                    return None
+            if isinstance(named_type, TypeAliasValue):
+                try:
+                    return runtime_annotation_representation(named_type.annotation)
                 except TypeError as error:
                     self.fail(annotation, DiagnosticCode.UNSUPPORTED_SYNTAX, str(error),
                               help="Use an ordinary recursive type without represented numeric or array members.")
-            if isinstance(value, Class):
-                return runtime_annotation_representation(value.py_cls)
+            if isinstance(named_type, Class):
+                return runtime_annotation_representation(named_type.py_cls)
             return None
 
         if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
@@ -9683,10 +9731,14 @@ class InferenceVisitor(ast.NodeVisitor):
         return compound_representation(arguments=arguments)
 
     def union_annotation_representation(self, elements, *, extra_members=()):
+        elements = tuple(elements)
+        element_representations = tuple(self.annotation_representation(element) for element in elements)
+        # Erased member types only determine positions in a nonempty representation.
+        if not any(element_representations) and not any(value for _type, value in extra_members):
+            return None
         members = []
-        for element in elements:
+        for element, representation in zip(elements, element_representations, strict=True):
             value_type = self.visit_type_annotation(element).obj
-            representation = self.annotation_representation(element)
             value_types = tuple(get_type_members(value_type))
             representations = (
                 representation.arguments
@@ -16557,6 +16609,8 @@ def annotate_types(parent: Object):
         dependencies = TopologicalSorter()
         added = False
         for func in functions:
+            if func.is_analyzed:
+                continue
             try:
                 flow_widenings = {}
                 while True:
