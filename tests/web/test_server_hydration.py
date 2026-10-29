@@ -13,7 +13,8 @@ from pyjs.tooling.browser import Browser, free_port, wait_for_http
 pytestmark = pytest.mark.pyjs_python
 
 
-def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path):
+@pytest.mark.parametrize("proxy_factory", [False, True, "local"])
+def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path, proxy_factory):
     application = tmp_path / "effect_application.py"
     application.write_text(
         textwrap.dedent(
@@ -58,6 +59,26 @@ def test_server_effect_output_hydrates_without_repeating_initial_work(tmp_path):
         ),
         encoding="utf-8",
     )
+
+    if proxy_factory:
+        (tmp_path / "controls.py").write_text(
+            "from pyjs import js\nfrom pyjs.web.ui.button import Button\n"
+            "@js\ndef make_button(label: str) -> Button:\n    return Button(label)\n"
+        )
+        application.write_text(application.read_text().replace(
+            "from pyjs.web.events import Event", "from controls import make_button\nfrom pyjs.web.events import Event"
+        ).replace('ref(button("+"))', 'ref(make_button("+"))').replace(
+            'self.increment_button.addEventListener("click", self.increment)',
+            'self.increment_button.on_click(self.increment)',
+        ))
+
+    if proxy_factory == "local":
+        application.write_text(application.read_text().replace(
+            "from controls import make_button",
+            "from pyjs.web.ui.button import Button\n"
+            "@js\nclass LocalButton(Button):\n    pass\n"
+            "@js\ndef make_button(label: str) -> LocalButton:\n    return LocalButton(label)\n",
+        ))
 
     async def run():
         port = free_port()

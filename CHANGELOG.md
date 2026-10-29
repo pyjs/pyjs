@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Hydrated proxy references retain their client helpers and imported type
+  names. Constructor-loop event targets report the existing unsupported-local
+  diagnostic instead of emitting references to missing variables.
+
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving

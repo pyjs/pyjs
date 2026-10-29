@@ -354,3 +354,31 @@ def card_page():
         "help: Store the target as a ref() attribute on self before "
         "registering the event listener.\n"
     )
+
+
+def test_hydrated_event_target_rejects_constructor_loop_binding():
+    module = create_module(
+        '''from pyjs import js
+from pyjs.web.domx import CustomElement, div, ref, tag
+from pyjs.web.events import Event
+@js
+class Form(CustomElement):
+    def __init__(self):
+        super().__init__()
+        self.first = ref(div())
+        self.second = ref(div())
+        for target in [self.first, self.second]:
+            target.addEventListener("click", self.clicked)
+        tag(self, self.first, self.second)
+    def clicked(self, event: Event):
+        pass
+@js
+def application():
+    pass
+@js
+def page():
+    Form()
+''', 'form.py', 'form')
+    with pytest.raises(CompilationError, match='constructor-local values'):
+        bundle_targets_with_source_maps((BundleTarget('form', module.application),
+                                         BundleTarget('form.page', module.page, 'form')))
