@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The performance page uses a sticky metric button bar, keeping comparisons
+  switchable while scrolling through workloads without covering column labels.
+
 - Performance source views fold generated runtime and module scaffolding while
   keeping algorithm instructions visible. Code-size figures count complete
   runnable artifacts, including support code, with gzip sizes for JavaScript.

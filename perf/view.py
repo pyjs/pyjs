@@ -61,9 +61,16 @@ def view(data, runs, selected, prefix):
             tag("strong", "Latest run" if latest else "Older saved run"),
             f" · {data['label']} · {data['created']}",
             *([] if latest else [tag("a", {"href": prefix}, "View latest run →")])),
-        tag("div", {"class": "toolbar"},
-            select("metric", "Metric", [("warm", "Warmed time / iteration"), ("startup", "Fresh process + one iteration"),
-                                          ("memory", "Peak process RSS"), ("compile", "Build time")])),
+        tag("div", {"class": "metric-toolbar"},
+            tag("div", {"id": "metric", "role": "group", "aria-label": "Comparison metric"}, *[
+                tag("button", {"type": "button", "data-metric": key,
+                    "aria-pressed": "true" if key == "warm" else "false",
+                    "aria-label": description, "title": description}, label)
+                for key, label, description in (
+                    ("warm", "Warmed run", "Warmed time per iteration"),
+                    ("startup", "Fresh process", "Fresh process startup plus one iteration"),
+                    ("memory", "Memory", "Peak process RSS"),
+                    ("compile", "Build time", "Build time"))])),
         tag("p", {"class": "meta", "id": "comparison-help"}, "Every target compares with CPython. Handwritten and transpiled implementations sit side by side. Lower is better. — means no valid comparison."),
         tag("p", {"class": "meta"}, "Code size counts the complete runnable benchmark, including scaffolding and its measurement driver, but not installed runtimes. Gzip is shown for JavaScript; it does not change the code."),
         tag("p", {"class": "heat-legend"}, tag("span", {"class": "heat-key", "aria-hidden": "true"}),

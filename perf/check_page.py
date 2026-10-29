@@ -48,7 +48,7 @@ async def check_comparison_edges(page):
               const row = document.querySelector('tbody tr[data-case]');
               for (const [target, value] of VALUES)
                 row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value);
-              document.querySelector('#metric').dispatchEvent(new Event('change'));
+              document.querySelector('#metric [data-metric=warm]').click();
               return Array.from(row.querySelectorAll('td[data-target=javascript] .ratio-value, td[data-target=pyjs-js] .ratio-value'))
                 .map(item => item.textContent);
             })()""".replace("VALUES", json.dumps(values)))
@@ -58,7 +58,7 @@ async def check_comparison_edges(page):
           const row = document.querySelector('tbody tr[data-case]');
           for (const [target, value] of VALUES)
             row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value);
-          document.querySelector('#metric').dispatchEvent(new Event('change'));
+          document.querySelector('#metric [data-metric=warm]').click();
         })()""".replace("VALUES", json.dumps(original)))
 
 
@@ -73,7 +73,7 @@ async def check_heatmap(page):
             heats = await page.evaluate("""(() => {
               const cells = document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]');
               VALUES.forEach((value, i) => cells[i].setAttribute('data-warm', value ?? ''));
-              document.querySelector('#metric').dispatchEvent(new Event('change'));
+              document.querySelector('#metric [data-metric=warm]').click();
               return Array.from(cells).map(cell => cell.getAttribute('data-heat'));
             })()""".replace("VALUES", json.dumps(values)))
             positive = [value for value in values[1:] if value and value > 0]
@@ -89,7 +89,7 @@ async def check_heatmap(page):
           const row = document.querySelector('tbody tr[data-case]');
           for (const [target, value] of VALUES)
             row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value ?? '');
-          document.querySelector('#metric').dispatchEvent(new Event('change'));
+          document.querySelector('#metric [data-metric=warm]').click();
         })()""".replace("VALUES", json.dumps(original)))
 
 
@@ -176,7 +176,7 @@ async def check_sources(page, output):
     await page.screenshot(output / "source-mobile.png")
     # Metric changes keep the selected source open and spanning every column.
     await page.evaluate("""(() => {
-      document.querySelector('#metric').dispatchEvent(new Event('change'));
+      document.querySelector('#metric [data-metric=warm]').click();
     })()""")
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
     assert await page.evaluate("document.querySelector('.source-row:not([hidden]) > td').colSpan") == len(LABELS) + 1
@@ -251,6 +251,45 @@ async def check_code_sizes(page):
         assert label == expected, (case, size, target, label, expected)
 
 
+async def check_metric_bar(page, output):
+    for width in (1440, 390, 320):
+        await page.set_viewport(width, 900)
+        await page.evaluate("window.scrollTo(0, 0)")
+        assert await page.evaluate("document.querySelector('.metric-toolbar').getBoundingClientRect().top > 100")
+        await page.evaluate("document.querySelectorAll('tr[data-case]')[12].scrollIntoView({block:'start'})")
+        if width < 650:
+            await page.evaluate("window.scrollTo(450, scrollY)")
+        await page.wait_for_frames()
+        assert await page.evaluate("""(() => {
+          const bar = document.querySelector('.metric-toolbar').getBoundingClientRect();
+          return Math.abs(bar.top) < 1 && Array.from(document.querySelectorAll('#metric button')).every(button => {
+            const r = button.getBoundingClientRect();
+            return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= bar.bottom &&
+              document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === button;
+          });
+        })()"""), "metric buttons remain visible and clickable when scrolling both axes"
+        x, y = await page.evaluate("""(() => {
+          const r = document.querySelector('#metric [data-metric=memory]').getBoundingClientRect();
+          return [r.x + r.width / 2, r.y + r.height / 2];
+        })()""")
+        for event in ("mousePressed", "mouseReleased"):
+            await page.session.send("Input.dispatchMouseEvent", {
+                "type": event, "x": x, "y": y, "button": "left", "clickCount": 1})
+        assert await page.evaluate("document.querySelector('#metric [aria-pressed=true]').dataset.metric") == "memory"
+        assert await page.evaluate("document.querySelector('.measurement').textContent.endsWith('MiB')")
+        await page.screenshot(output / f"metric-bar-{width}.png")
+        for key, code, number in (("Tab", "Tab", 9), (" ", "Space", 32)):
+            for event in ("keyDown", "keyUp"):
+                await page.session.send("Input.dispatchKeyEvent", {
+                    "type": event, "key": key, "code": code, "windowsVirtualKeyCode": number})
+        assert await page.evaluate("document.activeElement.dataset.metric") == "compile"
+        assert await page.evaluate("document.querySelector('#metric [aria-pressed=true]').dataset.metric") == "compile"
+        assert await page.evaluate("document.querySelectorAll('#metric [aria-pressed=true]').length") == 1
+        await page.click('#metric [data-metric="warm"]')
+    await page.set_viewport(1440, 1100)
+    await page.evaluate("window.scrollTo(0, 0)")
+
+
 async def check(url: str, output: Path):
     output.mkdir(parents=True, exist_ok=False)
     async with Browser() as browser:
@@ -277,7 +316,8 @@ async def check(url: str, output: Path):
         await page.wait_for_frames()
         assert await page.evaluate("""(() => {
           const heading = document.querySelector('.group-headings th[scope=colgroup]').getBoundingClientRect();
-          return scrollY > 0 && Math.abs(heading.top) < 1;
+          const bar = document.querySelector('.metric-toolbar').getBoundingClientRect();
+          return scrollY > 0 && Math.abs(bar.top) < 1 && Math.abs(heading.top - bar.bottom) < 1;
         })()"""), "column headings stay pinned during page scrolling"
         await page.evaluate("window.scrollTo(0,0)")
         assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).every(row =>
@@ -289,8 +329,7 @@ async def check(url: str, output: Path):
         for metric, scale, digits in (("startup", 1000, 3), ("memory", 1 / 1024, 2),
                                      ("compile", 1, 3), ("warm", 1000, 3)):
             actual = await page.evaluate(f"""(() => {{
-              const select = document.querySelector('#metric');
-              select.value = '{metric}'; select.dispatchEvent(new Event('change'));
+              document.querySelector('#metric [data-metric={metric}]').click();
               return Array.from(document.querySelectorAll('td[data-target]')).map(cell => {{
                 return [cell.getAttribute('data-{metric}'), cell.querySelector('.measurement').textContent,
                   cell.dataset.target, cell.dataset.baseline,
@@ -342,22 +381,21 @@ async def check(url: str, output: Path):
         await check_sources(page, output)
         await check_folding(page, output)
         await check_code_sizes(page)
+        await check_metric_bar(page, output)
         await check_categories(page)
         assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]:not([hidden])')).map(item => item.dataset.target)") == list(LABELS) * sections
         assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).map(row =>
           Array.from(row.querySelectorAll('td[data-target]:not([hidden])')).map(cell => cell.dataset.target))""") == [list(LABELS)] * count
         assert await page.evaluate("Array.from(document.querySelectorAll('th[scope=colgroup]:not([hidden])')).map(item => [item.dataset.group, item.colSpan])") == [[group, 2] for group in GROUPS] * sections
         await page.evaluate("""(() => {
-          const select = document.querySelector('#metric');
-          select.value = 'startup'; select.dispatchEvent(new Event('change'));
+          document.querySelector('#metric [data-metric=startup]').click();
         })()""")
         await page.wait_for("document.querySelector('.measurement').textContent.includes('ms')", "startup metric")
         cases = await page.evaluate("""Array.from(new Set(Array.from(document.querySelectorAll('tr[data-case]'))
           .map(row => row.dataset.case)))""")
         assert await page.evaluate("document.querySelectorAll('tbody tr[data-case]:not([hidden])').length") == count
         await page.evaluate("""(() => {
-          const metric = document.querySelector('#metric');
-          metric.value = 'warm'; metric.dispatchEvent(new Event('change'));
+          document.querySelector('#metric [data-metric=warm]').click();
         })()""")
         await page.evaluate("window.scrollTo(0, 0)")
         await page.screenshot(output / "desktop.png")
@@ -389,6 +427,7 @@ async def check(url: str, output: Path):
                                                        "target_groups": list(GROUPS), "fixed_baseline": "cpython",
                                                        "heatmap_edges": True, "inline_sources": True,
                                                        "source_folding": True, "code_sizes": True,
+                                                       "sticky_metric_buttons": True,
                                                        "source_request_races": True, "mobile_source_split": "1:2",
                                                        "sticky_workloads": True,
                                                        "snapshot_navigation": bool(other),

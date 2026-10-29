@@ -284,6 +284,17 @@ def test_categories_are_static_sections_with_unique_workload_rows():
         assert html.count(f'data-case="{case}"') == 1
 
 
+def test_metrics_use_native_buttons_with_one_pressed_default():
+    html = render_html(view(snapshot(), ["example"], "example", "/perf/"))
+    assert 'id="metric" role="group" aria-label="Comparison metric"' in html
+    assert '<select id="metric"' not in html
+    assert html.count('data-metric="') == 4
+    assert html.count('aria-pressed="true"') == 1
+    for metric in ("warm", "startup", "memory", "compile"):
+        pressed = "true" if metric == "warm" else "false"
+        assert f'data-metric="{metric}" aria-pressed="{pressed}"' in html
+
+
 def test_source_expansions_follow_each_input_and_only_link_recorded_artifacts():
     class Sources(HTMLParser):
         def __init__(self):

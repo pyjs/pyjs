@@ -12,9 +12,9 @@ from pyjs.web.network import fetch
 class Controls:
     def __init__(self):
         metric = document.querySelector("#metric")
-        assert isinstance(metric, HTMLSelectElement)
-        self.metric = metric
-        self.metric.addEventListener("change", self.update)
+        assert isinstance(metric, Element)
+        self.metric = "warm"
+        metric.addEventListener("click", self.choose_metric)
         snapshot = document.querySelector("#snapshot")
         assert isinstance(snapshot, HTMLSelectElement)
         self.snapshot = snapshot
@@ -27,6 +27,18 @@ class Controls:
 
     def choose_snapshot(self, event: Event):
         window.location.href = "?run=" + self.snapshot.value if self.snapshot.value else window.location.pathname
+
+    def choose_metric(self, event: Event):
+        target = event.target
+        if not isinstance(target, Element):
+            return
+        button = target.closest("button[data-metric]")
+        if button is None:
+            return
+        self.metric = button.getAttribute("data-metric") or "warm"
+        for item in document.querySelectorAll("#metric button"):
+            item.setAttribute("aria-pressed", "true" if item == button else "false")
+        self.update(event)
 
     def close_sources(self, restore_focus: bool = False):
         self.source_request += 1
@@ -154,9 +166,7 @@ class Controls:
                 status.textContent = "Could not load generated code. The artifact may have been removed; close and reopen to retry."
 
     def update(self, event: Event):
-        metric = "warm"
-        if isinstance(self.metric, HTMLSelectElement):
-            metric = self.metric.value
+        metric = self.metric
         for cell in document.querySelectorAll("[data-summary-target]"):
             label = cell.querySelector(".category-value")
             assert isinstance(label, Element)

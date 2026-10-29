@@ -88,7 +88,11 @@ Use `--port 0` for an available port, or open a specific snapshot with
 Stop the server with Ctrl-C. If a desktop browser is unavailable, the command
 prints the URL for manual opening.
 
-The UI has a metric selector, with all workloads and runtimes always visible.
+The metric button bar stays at the top after scrolling past its initial
+position. Choose warmed run time, fresh process plus one iteration, peak
+process memory, or build time. Column headings stay below the bar, and the
+buttons remain accessible during horizontal scrolling on narrow screens.
+All workloads and runtimes remain visible when switching metrics.
 Source panels compare JavaScript, LLVM or bytecode with the Python algorithm.
 A compact footer identifies the machine and toolchains.
 Opening `/perf/` selects the newest run by its recorded creation time. A visible
