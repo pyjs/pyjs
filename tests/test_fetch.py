@@ -35,7 +35,15 @@ class Client(CustomElement):
         response = await fetch(url='/echo', options={'method': 'POST', 'body': 'keyword',
             'headers': {'X-Probe': 'keyword'}})
         self.textContent += await response.text()
+        self.setAttribute('data-order', '')
+        response = await fetch(options={'method': 'POST', 'body': self.record('reversed'),
+            'headers': {'X-Probe': 'reversed'}}, url=self.record('/echo'))
+        self.textContent += await response.text()
         self.setAttribute('data-ready', 'true')
+
+    def record(self, value: str) -> str:
+        self.setAttribute('data-order', (self.getAttribute('data-order') or '') + value)
+        return value
 
 def main():
     return Client()
@@ -57,7 +65,8 @@ def echo(request):
                 page = await browser.new_page(f'http://127.0.0.1:{port}/')
                 await page.wait_for_attribute('[data-testid=client]', 'data-ready', 'true')
                 assert await page.text('[data-testid=client]') == '\n'.join(
-                    'POST/' + name + '/' + name for name in ('dictionary', 'native', 'keyword')) + '\n'
+                    'POST/' + name + '/' + name for name in ('dictionary', 'native', 'keyword', 'reversed')) + '\n'
+                assert await page.attribute('[data-testid=client]', 'data-order') == 'reversed/echo'
                 assert page.exceptions == []
         finally:
             server.close()
