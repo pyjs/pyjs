@@ -22,7 +22,8 @@ from pyjs.web.xterm import __pyjs_npm_imports__
 pytestmark = pytest.mark.pyjs_python
 
 
-def test_compiled_browser_runner_loads_npm_in_each_frame_and_maps_failures(tmp_path):
+@pytest.mark.parametrize('startup', ['sync', 'await', 'reject'])
+def test_compiled_browser_runner_loads_npm_in_each_frame_and_maps_failures(tmp_path, startup):
     (tmp_path / 'pyproject.toml').touch()
     source = textwrap.dedent('''\
         import pytest
@@ -69,7 +70,13 @@ def test_compiled_browser_runner_loads_npm_in_each_frame_and_maps_failures(tmp_p
     failure_line = next(index for index, line in enumerate(source.splitlines(), 1)
                         if "raise ValueError" in line)
     project = ManagedNpmProject.for_project(tmp_path)
-    project.sync(collect_npm_packages(['pyjs.web.xterm']), __pyjs_npm_imports__)
+    synced = project.sync(collect_npm_packages(['pyjs.web.xterm']), __pyjs_npm_imports__)
+    if startup != 'sync':
+        assert synced.vendor is not None
+        prefix = 'await new Promise(resolve => setTimeout(resolve, 80));\n'
+        if startup == 'reject':
+            prefix += "throw new Error('asynchronous vendor failure');\n"
+        synced.vendor.write_text(prefix + synced.vendor.read_text())
     port = free_port()
     try:
         result = subprocess.run(
@@ -80,9 +87,14 @@ def test_compiled_browser_runner_loads_npm_in_each_frame_and_maps_failures(tmp_p
         )
         output = result.stdout + result.stderr
         assert result.returncode == 1, output
-        assert '1 failed, 2 passed' in output, output
-        assert f'{test_path}:{failure_line}:' in output, output
-        assert 'expected module failure' in output, output
+        if startup == 'reject':
+            assert '3 failed' in output, output
+            assert 'asynchronous vendor failure' in output, output
+            assert 'manifest is not iterable' not in output, output
+        else:
+            assert '1 failed, 2 passed' in output, output
+            assert f'{test_path}:{failure_line}:' in output, output
+            assert 'expected module failure' in output, output
     finally:
         health = get_daemon_health(port)
         if health is not None and health.get('project_root') == str(tmp_path):

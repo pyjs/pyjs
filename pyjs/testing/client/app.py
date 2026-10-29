@@ -563,24 +563,7 @@ async def load_test_module(frame: HTMLIFrameElement, module_url: str) -> None: .
 
 
 load_test_module.source("""
-return new Promise((resolve, reject) => {
-    const target = frame.contentWindow;
-    const script = frame.contentDocument.createElement('script');
-    script.type = 'module';
-    script.src = module_url;
-    const cleanup = () => {
-        target.removeEventListener('error', failed);
-        script.remove();
-    };
-    const failed = event => {
-        cleanup();
-        reject(event.error ?? new Error(event.message || 'Test module failed to load'));
-    };
-    script.addEventListener('error', failed, {once: true});
-    script.addEventListener('load', () => {cleanup(); resolve();}, {once: true});
-    target.addEventListener('error', failed);
-    frame.contentDocument.head.append(script);
-});
+return frame.contentWindow.Function('url', 'return import(url)')(module_url);
 """)
 
 
