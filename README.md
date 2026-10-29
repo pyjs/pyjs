@@ -766,6 +766,23 @@ metadata. `pyjs npm sync` analyzes the configured application and installs only
 the packages reachable from its client bundle into `.pyjs/npm`; no user-owned
 `package.json` or global npm installation is required.
 
+`pyjs.web.xterm` provides typed terminal options, terminal instances, input
+subscriptions and the fitting addon. It pins xterm.js 6.0.0 and FitAddon
+0.11.0. Call `create_terminal(TerminalOptions(...))`, mount it with `open`,
+and use the async `write(terminal, text)` helper when output ordering matters.
+Dispose subscriptions and the terminal when their host is removed. These are
+browser bindings; running shell commands requires a separately authorized PTY
+service. Applications that redistribute the bundle must retain the MIT notices
+from the installed xterm packages.
+
+`NpmImport(..., styles=("css/package.css",))` includes package-relative,
+self-contained styles in the managed vendor module. Styles mount once per
+package/version/path when imported in a document; imports in Node do not
+require a DOM. CSS with imports or URLs is rejected rather than resolving
+assets relative to the application's page. The styles are part of vendor
+cache identity and are delivered by the same development and packaging paths
+as other managed npm dependencies.
+
 Synchronize an application after adding its first managed JavaScript wrapper,
 then build it normally.
 

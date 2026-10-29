@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add typed xterm.js and FitAddon browser bindings for terminal output, input,
+  fitting and disposal.
+- Bundle self-contained package CSS through managed npm imports, preserving
+  stylesheet identity across development and packaged applications.
+
 - JVM supports `list.pop()` with default, positive, negative and boolean
   indices, preserving item identity and numeric representation. Invalid
   indices raise `IndexError` without changing the list.

@@ -200,3 +200,42 @@ def test_managed_npm_project_copies_a_matching_vendor(tmp_path):
 
     assert project.copy_vendor(imports, destination) == destination
     assert destination.read_text() == "export const ready = true;\n"
+
+
+def test_styles_are_merged_and_part_of_vendor_identity(tmp_path, monkeypatch):
+    package = NpmPackage('example-style', '1.2.3')
+    for name, styles in [('style.first', ('theme.css',)), ('style.second', ('base.css',))]:
+        install_module(monkeypatch, name, ())
+        sys.modules[name].__pyjs_npm_imports__ = (NpmImport(package, '$style', styles),)
+    imports = collect_npm_imports(['style.first', 'style.second'])
+    assert imports == (NpmImport(package, '$style', ('theme.css', 'base.css')),)
+    npm = Mock()
+    project = ManagedNpmProject(tmp_path, npm)
+    assets = tmp_path / 'node_modules' / package.name
+    assets.mkdir(parents=True)
+    (assets / 'base.css').write_text('.terminal{position:relative}')
+    (assets / 'theme.css').write_text('.terminal{color:#123456}')
+    result = project.sync((package,), imports)
+    source = (tmp_path / 'pyjs-vendor-entry.js').read_text()
+    assert "typeof document !== 'undefined'" in source
+    assert 'style.textContent =' in source
+    assert '.terminal{color:#123456}' in source
+    result.vendor.write_text('bundled')
+    assert project.vendor_for(imports) == result.vendor
+    assert project.vendor_for((NpmImport(package, '$style'),)) is None
+
+
+@pytest.mark.parametrize('style', ['../a.css', '/a.css', r'..\a.css', 'a.js'])
+def test_styles_reject_non_package_paths(style):
+    with pytest.raises(ValueError):
+        NpmImport(NpmPackage('example', '1.0.0'), '$example', (style,))
+
+
+def test_failed_styles_bundle_does_not_reuse_a_stale_vendor(tmp_path):
+    project = ManagedNpmProject(tmp_path, Mock())
+    package = NpmPackage('example-style', '1.2.3')
+    imports = (NpmImport(package, '$style', ('base.css',)),)
+    (tmp_path / 'pyjs-vendor.js').write_text('stale')
+    with pytest.raises(FileNotFoundError):
+        project.sync((package,), imports)
+    assert project.vendor_for(imports) is None
