@@ -1,7 +1,14 @@
-"""Native Java collection interfaces at erased object boundaries."""
+"""JVM collection interfaces and specialized construction helpers."""
 
 from pyjs import jvm
 from pyjs.java import i32
+
+
+class ListFromKeys[Source, Item]:
+    def __init__(self, source: Source):
+        self.result: list[Item] = []
+        for key in source:
+            self.result.append(key)
 
 
 @jvm.native("java/util/List", interface=True)

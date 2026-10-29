@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- JVM supports `list.pop()` with default, positive, negative and boolean
+  indices, preserving item identity and numeric representation. Invalid
+  indices raise `IndexError` without changing the list.
+- JVM supports `list(mapping)` and `list(mapping.keys())` to snapshot keys
+  in insertion order before changing a dictionary, and `del mapping[key]`
+  with a catchable `KeyError` for absent keys.
+
 - Reduce cold compiler analysis time and memory use by reusing flow write
   summaries, avoiding redundant annotation analysis, and allocating
   reachability sets only when needed. Finalized

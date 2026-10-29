@@ -2218,6 +2218,25 @@ class JVMEmitter:
             if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "set":
                 return sets.call(self, node, target, semantic_receiver, leading_argument)
             if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "pop"):
+                if node.keywords or len(node.args) > 1:
+                    raise JVMUnsupported("JVM list.pop requires at most one positional index", node)
+                if node.args:
+                    actual = self.expression(node.args[0])
+                    if actual == "Z":
+                        self.code.emit(0x85)
+                    elif actual != "J":
+                        raise JVMUnsupported("JVM list.pop index must be an integer", node)
+                else:
+                    self.long_constant(-1)
+                owner = self.list_class(semantic_receiver)
+                item_type = self.list_item_type(semantic_receiver)
+                if not any(method.name == "pop" for method in owner.methods):
+                    owner.add_method(self.list_get_method(owner, item_type, pop=True))
+                reference = self.class_file.method_reference(owner.name, "pop", f"(J){item_type}")
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return item_type
+            if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name == "copy"
                     and not node.args and not node.keywords):
                 owner = self.list_class(semantic_receiver)
@@ -3024,7 +3043,7 @@ class JVMEmitter:
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             self.code.emit(0x57)
             return "V"
-        if target.name in {"__getitem__", "pop"} and len(node.args) == 1:
+        if target.name in {"__getitem__", "pop", "__delitem__"} and len(node.args) == 1:
             actual_key = self.expression(node.args[0], expected=key_type)
             if not self.compatible(actual_key, key_type):
                 raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
@@ -3067,6 +3086,9 @@ class JVMEmitter:
                 "(Ljava/lang/Object;)Ljava/lang/Object;",
             )
             self.code.emit(0xB6, get.to_bytes(2, "big"))
+            if target.name == "__delitem__":
+                self.code.emit(0x57)
+                return "V"
             self.dictionary_value_cast(value_descriptor)
             return value_descriptor
         if target.name in {"get", "pop", "setdefault"} and len(node.args) in {1, 2}:
@@ -5056,7 +5078,15 @@ class JVMEmitter:
             code.emit(0x04)
             code.emit(0xAC)
             return Method(0x0001, "contains", f"({item_type})Z", code.render(), 4, index + 1)
-        # Shift only the live suffix; release the now-unused backing-array slot.
+        self.list_delete_slot(code, class_file, item_type, index)
+        code.emit(0xB1)
+        return Method(0x0001, "remove", f"({item_type})V", code.render(), 7, index + 1)
+
+    def list_delete_slot(self, code: Bytecode, class_file: ClassFile,
+                         item_type: str, index: int) -> None:
+        # The caller validates the index before mutating the live prefix.
+        data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
+        length = class_file.field_reference(class_file.name, "length", "I")
         for offset in (1, 0):
             code.local(0x19, 0)
             code.emit(0xB4, data.to_bytes(2, "big"))
@@ -5083,10 +5113,8 @@ class JVMEmitter:
         code.emit(0xB4, data.to_bytes(2, "big"))
         code.local(0x19, 0)
         code.emit(0xB4, length.to_bytes(2, "big"))
-        code.emit(0x09 if item_type == "J" else 0x03 if item_type == "Z" else 0x01)
+        code.emit({"J": 0x09, "D": 0x0E, "Z": 0x03}.get(item_type, 0x01))
         code.emit(self.array_store_opcode(item_type))
-        code.emit(0xB1)
-        return Method(0x0001, "remove", f"({item_type})V", code.render(), 7, index + 1)
 
     def list_extend_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
@@ -5337,7 +5365,7 @@ class JVMEmitter:
         code.emit(0xB1)
         return Method(0x0001, "insert", f"(J{item_type})V", code.render(), 7, size_slot + 1)
 
-    def list_get_method(self, class_file: ClassFile, item_type: str) -> Method:
+    def list_get_method(self, class_file: ClassFile, item_type: str, *, pop: bool = False) -> Method:
         code = Bytecode()
         data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
         length = class_file.field_reference(class_file.name, "length", "I")
@@ -5346,6 +5374,12 @@ class JVMEmitter:
         valid = "valid"
         invalid = "invalid"
         actual = 3
+        if pop:
+            code.local(0x19, 0)
+            code.emit(0xB4, length.to_bytes(2, "big"))
+            code.branch(0x9A, "nonempty")
+            self.throw_python("IndexError", "pop from empty list", code, class_file)
+            code.mark("nonempty")
         code.local(0x16, 1)
         code.emit(0x09)
         code.emit(0x94)
@@ -5372,15 +5406,24 @@ class JVMEmitter:
         code.emit(0x94)
         code.branch(0x9B, valid)
         code.mark(invalid)
-        self.throw_python("IndexError", "list index out of range", code, class_file)
+        self.throw_python("IndexError", "pop index out of range" if pop else "list index out of range",
+                          code, class_file)
         code.mark(valid)
         code.local(0x19, 0)
         code.emit(0xB4, data.to_bytes(2, "big"))
         code.local(0x16, actual)
         code.emit(0x88)
         code.emit({"D": 0x31, "J": 0x2F, "Z": 0x33}.get(item_type, 0x32))
+        if pop:
+            code.local({"D": 0x39, "J": 0x37, "Z": 0x36}.get(item_type, 0x3A), 5)
+            code.local(0x16, actual)
+            code.emit(0x88)
+            code.local(0x36, 7)
+            self.list_delete_slot(code, class_file, item_type, 7)
+            code.local({"D": 0x18, "J": 0x16, "Z": 0x15}.get(item_type, 0x19), 5)
         code.emit({"D": 0xAF, "J": 0xAD, "Z": 0xAC}.get(item_type, 0xB0))
-        return Method(0x0001, "get", f"(J){item_type}", code.render(), 4, 5)
+        return Method(0x0001, "pop" if pop else "get", f"(J){item_type}",
+                      code.render(), 7 if pop else 4, 8 if pop else 5)
 
     def list_set_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
