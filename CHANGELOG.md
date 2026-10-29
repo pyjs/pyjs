@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Performance comparisons collect explanations above the controls, put the
+  color key on the desktop metric bar, and offer a code-size view for complete
+  runnable artifacts, with secondary gzip figures for JavaScript.
+
 - The performance page uses a sticky metric button bar, keeping comparisons
   switchable while scrolling through workloads without covering column labels.
 

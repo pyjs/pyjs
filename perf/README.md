@@ -90,9 +90,13 @@ prints the URL for manual opening.
 
 The metric button bar stays at the top after scrolling past its initial
 position. Choose warmed run time, fresh process plus one iteration, peak
-process memory, or build time. Column headings stay below the bar, and the
-buttons remain accessible during horizontal scrolling on narrow screens.
+process memory, build time, or code size. Column headings stay below the bar,
+and the buttons remain accessible during horizontal scrolling on narrow
+screens.
 All workloads and runtimes remain visible when switching metrics.
+Explanations are collected above the controls. The gradient key sits on the
+bar on desktop, or once above the categories table on narrow screens. Result
+sections contain no intervening explanatory paragraphs.
 Source panels compare JavaScript, LLVM or bytecode with the Python algorithm.
 A compact footer identifies the machine and toolchains.
 Opening `/perf/` selects the newest run by its recorded creation time. A visible
@@ -141,6 +145,7 @@ Code size is the complete runnable benchmark artifact: Python program plus
 driver, full JavaScript program, all emitted JVM class files, or the native
 executable. It includes scaffolding and the measurement adapter, but excludes
 the installed interpreter/VM, disassembly, source maps and diagnostic logs.
+Code-size ratios and colors compare raw bytes, not compressed sizes.
 JavaScript also reports deterministic gzip-compressed bytes, without applying
 a minifier to either implementation. Folding changes only the display, never
 the counted bytes. Older snapshots can derive sizes from matching retained
@@ -148,8 +153,8 @@ build artifacts without rerunning or changing their recorded timings.
 CPython is the shared baseline, stated once rather than repeated in every cell.
 Raw samples, warnings and JVM diagnostic logs remain in the harness output for
 local investigation; the comparison UI does not expose diagnostic pages.
-The footer identifies the measurement machine and toolchain versions and links
-to instructions for running the harness on your own hardware.
+The footer identifies the measurement machine and toolchain versions. The
+introduction links to instructions for running the harness on your hardware.
 Its DOM is authored in Python and its controls are compiled with PyJS.
 It reads `perf/runs/*/results.json` on request; new snapshots appear without
 rebuilding or restarting. Incomplete and failed runs remain visible. No HTML

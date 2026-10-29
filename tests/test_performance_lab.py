@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 import pytest
 
 from perf.app import mount
-from perf.categories import CATEGORIES, category_for, summarize_category
+from perf.categories import CATEGORIES, category_for, ratio_label, summarize_category
 from perf.harness.build import ROOT, build
 from perf.harness.jit import summarize_jit
 from perf.harness.process import execute
@@ -288,11 +288,22 @@ def test_metrics_use_native_buttons_with_one_pressed_default():
     html = render_html(view(snapshot(), ["example"], "example", "/perf/"))
     assert 'id="metric" role="group" aria-label="Comparison metric"' in html
     assert '<select id="metric"' not in html
-    assert html.count('data-metric="') == 4
+    assert html.count('data-metric="') == 5
     assert html.count('aria-pressed="true"') == 1
-    for metric in ("warm", "startup", "memory", "compile"):
+    for metric in ("warm", "startup", "memory", "compile", "size"):
         pressed = "true" if metric == "warm" else "false"
         assert f'data-metric="{metric}" aria-pressed="{pressed}"' in html
+
+
+def test_code_size_compares_complete_raw_artifacts_not_gzip():
+    rows = [{"case": "a", "size": size, "target": target, "status": "ok",
+             "code_size": {"bytes": count, "gzip_bytes": 1}}
+            for size in (10, 100) for target, count in (("cpython", 1000), ("javascript", 250))]
+    assert summarize_category(rows, ["javascript"], "size")["javascript"] == pytest.approx(0.25)
+    assert ratio_label(0.25, "size") == "4.0× smaller"
+    assert ratio_label(4, "size") == "4× larger"
+    del rows[0]["code_size"]
+    assert summarize_category(rows, ["javascript"], "size")["javascript"] is None
 
 
 def test_source_expansions_follow_each_input_and_only_link_recorded_artifacts():

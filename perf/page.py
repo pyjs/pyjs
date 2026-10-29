@@ -196,6 +196,11 @@ class Controls:
                 value = cell.getAttribute("data-" + metric) or ""
                 display = cell.querySelector(".measurement")
                 assert isinstance(display, Element)
+                for note in cell.querySelectorAll(".code-gzip"):
+                    if metric == "size" and value != "" and note.textContent:
+                        note.removeAttribute("hidden")
+                    else:
+                        note.setAttribute("hidden", "")
                 for ratio in cell.querySelectorAll(".ratio"):
                     ratio.removeAttribute("data-comparison")
                     text = ratio.querySelector(".ratio-value")
@@ -213,6 +218,8 @@ class Controls:
                     display.textContent = str(round(number / 1024, 2)) + " MiB"
                 elif metric == "compile":
                     display.textContent = str(round(number, 3)) + " s"
+                elif metric == "size":
+                    display.textContent = str(round(number / 1024, 2)) + " KiB"
                 else:
                     display.textContent = str(round(number * 1000, 3)) + " ms"
                 for ratio in cell.querySelectorAll(".ratio"):
@@ -228,11 +235,15 @@ class Controls:
                         text.textContent = "same"
                     elif number < float(reference):
                         suffix = " less memory" if metric == "memory" else " faster"
+                        if metric == "size":
+                            suffix = " smaller"
                         factor = round(float(reference) / number, 2)
                         text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
                         ratio.setAttribute("data-comparison", "lower")
                     else:
                         suffix = " more memory" if metric == "memory" else " slower"
+                        if metric == "size":
+                            suffix = " larger"
                         factor = round(number / float(reference), 2)
                         text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
                         ratio.setAttribute("data-comparison", "higher")

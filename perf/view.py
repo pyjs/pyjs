@@ -57,33 +57,39 @@ def view(data, runs, selected, prefix):
         tag("header", tag("p", {"class": "eyebrow"}, "PyJS / Performance lab"),
             tag("h1", "Performance comparison"),
             tag("p", {"class": "lead"}, "Compare the same workload across runtimes. Shared Python kernels, with handwritten JavaScript, Rust and Java references.")),
+        tag("section", {"class": "comparison-intro", "aria-label": "Reading the comparisons"},
+            tag("p", {"class": "meta", "id": "comparison-help"},
+                "CPython is the baseline; handwritten and transpiled implementations sit side by side. Lower is better. Colors use a logarithmic scale across non-CPython targets in each row; CPython stays neutral. — means no valid comparison."),
+            tag("p", {"class": "meta"},
+                "Click a category to jump to its workloads, or a workload cell to compare source code. Category scores are geometric mean ratios: input sizes are averaged within each workload, then workloads receive equal weight. Categories describe primary behavior, not measured bottlenecks."),
+            tag("p", {"class": "meta"},
+                "Code size includes the complete runnable benchmark, scaffolding and measurement driver, but not installed runtimes. JavaScript also shows gzip size. These results are machine-specific, not a general language ranking. ",
+                tag("a", {"href": "https://github.com/pyjs/pyjs/tree/main/perf"}, "Run the performance harness"),
+                " to compare on your own hardware.")),
         tag("p", {"class": "run-status", "data-latest": str(latest).lower()},
             tag("strong", "Latest run" if latest else "Older saved run"),
             f" · {data['label']} · {data['created']}",
             *([] if latest else [tag("a", {"href": prefix}, "View latest run →")])),
         tag("div", {"class": "metric-toolbar"},
-            tag("div", {"id": "metric", "role": "group", "aria-label": "Comparison metric"}, *[
-                tag("button", {"type": "button", "data-metric": key,
-                    "aria-pressed": "true" if key == "warm" else "false",
-                    "aria-label": description, "title": description}, label)
-                for key, label, description in (
-                    ("warm", "Warmed run", "Warmed time per iteration"),
-                    ("startup", "Fresh process", "Fresh process startup plus one iteration"),
-                    ("memory", "Memory", "Peak process RSS"),
-                    ("compile", "Build time", "Build time"))])),
-        tag("p", {"class": "meta", "id": "comparison-help"}, "Every target compares with CPython. Handwritten and transpiled implementations sit side by side. Lower is better. — means no valid comparison."),
-        tag("p", {"class": "meta"}, "Code size counts the complete runnable benchmark, including scaffolding and its measurement driver, but not installed runtimes. Gzip is shown for JavaScript; it does not change the code."),
-        tag("p", {"class": "heat-legend"}, tag("span", {"class": "heat-key", "aria-hidden": "true"}),
-            "Best → worst among non-CPython targets (log scale). CPython stays neutral; all ratios still compare with it."),
+            tag("div", {"class": "metric-controls"},
+                tag("div", {"id": "metric", "role": "group", "aria-label": "Comparison metric"}, *[
+                    tag("button", {"type": "button", "data-metric": key,
+                        "aria-pressed": "true" if key == "warm" else "false",
+                        "aria-label": description, "title": description}, label)
+                    for key, label, description in (
+                        ("warm", "Warmed run", "Warmed time per iteration"),
+                        ("startup", "Fresh process", "Fresh process startup plus one iteration"),
+                        ("memory", "Memory", "Peak process RSS"),
+                        ("compile", "Build time", "Build time"),
+                        ("size", "Code size", "Complete runnable artifact size, including scaffolding"))]),
+                heat_legend())),
         category_overview(data),
-        tag("p", {"class": "source-help"}, "In the workload tables, click any runtime cell to compare code ↓",
-            tag("span", " The outlined cell matches the outlined code pane. Click another cell to switch.")),
         *[tag("section", {"id": "category-" + key, "class": "workload-category", "aria-labelledby": "heading-" + key},
-              tag("h2", {"id": "heading-" + key}, label), tag("p", {"class": "meta"}, description),
-              tag("a", {"class": "back-overview", "href": "#category-overview"}, "↑ Category overview"),
+              tag("div", {"class": "table-heading"},
+                  tag("h2", {"id": "heading-" + key}, label),
+                  tag("a", {"class": "back-overview", "href": "#category-overview"}, "↑ Overview")),
               comparison_table(tables[key], label))
-          for key, (label, description, _) in CATEGORIES.items() if key in tables],
-        tag("p", {"class": "meta scroll-hint"}, "Scroll the page horizontally to compare all runtimes. Workload names stay pinned."),
+          for key, (label, _, _) in CATEGORIES.items() if key in tables],
         tag("div", {"hidden": "", "class": "source-library"}, *sources),
         tag("footer",
             tag("p", {"class": "meta"}, f"Measured on {data['cpu']} · {data['platform']}"),
@@ -91,12 +97,14 @@ def view(data, runs, selected, prefix):
                 data["tools"][name]["version"].splitlines()[0]
                 for name in ("python", "node", "rustc", "java", "clang")
                 if data["tools"].get(name, {}).get("version"))),
-            tag("p", "These results are machine-specific. ",
-                tag("a", {"href": "https://github.com/pyjs/pyjs/tree/main/perf"}, "Run the performance harness"),
-                " to compare on your own hardware."),
             tag("div", {**({"hidden": ""} if len(runs) == 1 else {})},
                 select("snapshot", "Saved runs", [("", "Latest run (default)")] + [(name, name) for name in runs[1:]],
                        "" if latest else selected))))
+
+
+def heat_legend():
+    return tag("div", {"class": "heat-legend", "aria-label": "Row color scale: lower to higher, excluding CPython"},
+               "Lower", tag("span", {"class": "heat-key", "aria-hidden": "true"}), "Higher")
 
 
 def comparison_table(rows, label):
@@ -134,11 +142,8 @@ def category_overview(data):
                 tag("strong", {"class": "category-value"}, attributes["data-label-warm"]))))
         rows.append(tag("tr", {"data-category": key}, tag("th", {"scope": "row"}, tag("a", {"href": "#category-" + key}, label + " ↓")), *cells))
     return tag("section", {"id": "category-overview", "aria-labelledby": "category-title"},
-        tag("h2", {"id": "category-title"}, "Performance by workload type"),
-        tag("p", {"class": "meta"}, "Click a category row to jump to its workloads. Every section stays on the page. Values compare with CPython for the selected metric."),
-        tag("details", tag("summary", "How category averages work"), tag("div",
-            tag("p", "Geometric mean of target/CPython ratios: input sizes are averaged within each workload, then workloads receive equal weight."),
-            tag("p", "Colors compare category averages across non-CPython targets, not averages of colors. Categories describe primary behavior, not measured CPU or memory bottlenecks. These exploratory workloads are not a general language ranking."))),
+        tag("div", {"class": "table-heading"},
+            tag("h2", {"id": "category-title"}, "Performance by workload type"), heat_legend()),
         tag("div", {"class": "table-wrap"}, tag("table", {"class": "category-table"},
             tag("caption", {"class": "sr-only"}, "Category averages relative to CPython"),
             tag("thead", tag("tr", tag("th", {"scope": "col"}, "Category"),
@@ -167,28 +172,25 @@ def source_panel(data, case, size, metadata):
 def result_cell(row, case, size, target):
     attributes = column_attributes(target)
     values = {}
+    size_info = (row or {}).get("code_size") or {}
     key = case + "-" + target + "-" + str(size)
     if row is not None:
         ok = row["status"] == "ok"
         values = {"warm": row.get("warm_seconds", {}).get("median"),
                   "startup": row.get("startup", {}).get("median"),
-                  "memory": row.get("peak_rss_kib"), "compile": row.get("build_seconds")}
+                  "memory": row.get("peak_rss_kib"), "compile": row.get("build_seconds"),
+                  "size": size_info.get("bytes")}
         # A failed measurement must never appear to beat a validated result.
         values = {key: value for key, value in values.items() if ok}
     attributes.update({"data-" + metric: str(values[metric]) if values.get(metric) is not None else ""
-                       for metric in ("warm", "startup", "memory", "compile")})
+                       for metric in METRICS})
     comparisons = [] if target == "cpython" else [
         tag("span", {"class": "ratio", "data-reference": "cpython"},
             tag("span", {"class": "ratio-value"}, "—"))]
-    size_info = (row or {}).get("code_size")
-    code_label = "Code —"
-    if size_info:
-        code_label = f"Code {size_info['bytes'] / 1024:.1f} KiB"
-        if "gzip_bytes" in size_info:
-            code_label += f" · gzip {size_info['gzip_bytes'] / 1024:.1f} KiB"
+    gzip_label = f"gzip {size_info['gzip_bytes'] / 1024:.1f} KiB" if "gzip_bytes" in size_info else ""
     return tag("td", attributes, tag("button", {"type": "button", "class": "measurement", "data-source-button": "",
         "data-source-label": LABELS[target] + (" · generated code" if target.startswith("pyjs-") else " · source"),
         "aria-describedby": "source-action-" + key,
         "aria-expanded": "false", "aria-controls": f"source-panel-{case}-{size}"}, "—"),
         tag("span", {"class": "source-cue", "id": "source-action-" + key}, "View code ↓"), *comparisons,
-        tag("span", {"class": "code-size"}, code_label))
+        tag("span", {"class": "code-gzip", "hidden": ""}, gzip_label))

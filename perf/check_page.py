@@ -229,7 +229,8 @@ async def check_folding(page, output):
         await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
 
 
-async def check_code_sizes(page):
+async def check_code_sizes(page, output):
+    await page.click('#metric [data-metric="size"]')
     data, labels = await page.evaluate("""(async () => {
       const artifact = document.querySelector('.source-library [data-url]:not([data-url=""])').dataset.url;
       const [prefix, path] = artifact.split('/artifact/');
@@ -237,18 +238,31 @@ async def check_code_sizes(page):
       const labels = Array.from(document.querySelectorAll('tr[data-case]')).flatMap(row =>
         Array.from(row.querySelectorAll('td[data-target]')).map(cell =>
           [row.dataset.case, Number(row.dataset.size), cell.dataset.target,
-           cell.querySelector('.code-size').textContent]));
+           cell.querySelector('.measurement').textContent,
+           cell.querySelector('.code-gzip').textContent,
+           cell.querySelector('.code-gzip').hidden]));
       return [data, labels];
     })()""")
     rows = {(row["case"], row["size"], row["target"]): row for row in data["rows"]}
-    for case, size, target, label in labels:
-        info = rows.get((case, size, target), {}).get("code_size")
-        expected = "Code —"
+    for case, size, target, label, gzip_label, hidden in labels:
+        row = rows.get((case, size, target), {})
+        info = row.get("code_size") if row.get("status") == "ok" else None
         if info:
-            expected = f"Code {info['bytes'] / 1024:.1f} KiB"
+            assert label.endswith(" KiB") and abs(float(label.split()[0]) - info['bytes'] / 1024) <= 0.01
             if "gzip_bytes" in info:
-                expected += f" · gzip {info['gzip_bytes'] / 1024:.1f} KiB"
-        assert label == expected, (case, size, target, label, expected)
+                assert gzip_label == f"gzip {info['gzip_bytes'] / 1024:.1f} KiB" and not hidden
+            else:
+                assert hidden
+        else:
+            assert label == "—" and hidden
+    for width in (1440, 390):
+        await page.set_viewport(width, 1100)
+        await page.evaluate("document.querySelector('#category-overview').scrollIntoView({block:'start'}); window.scrollTo(0, scrollY)")
+        await page.wait_for_frames()
+        await page.screenshot(output / f"code-size-{width}.png")
+    await page.set_viewport(1440, 1100)
+    await page.click('#metric [data-metric="warm"]')
+    assert await page.evaluate("Array.from(document.querySelectorAll('.code-gzip')).every(note => note.hidden)")
 
 
 async def check_metric_bar(page, output):
@@ -268,6 +282,10 @@ async def check_metric_bar(page, output):
               document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === button;
           });
         })()"""), "metric buttons remain visible and clickable when scrolling both axes"
+        assert await page.evaluate("""(() => {
+          const visible = Array.from(document.querySelectorAll('.heat-legend')).filter(item => item.getBoundingClientRect().height > 0);
+          return visible.length === 1 && (innerWidth > 900 ? visible[0].closest('.metric-controls') !== null : visible[0].closest('#category-overview') !== null);
+        })()"""), "desktop keeps the gradient on the bar; narrow screens show it only above the overview"
         x, y = await page.evaluate("""(() => {
           const r = document.querySelector('#metric [data-metric=memory]').getBoundingClientRect();
           return [r.x + r.width / 2, r.y + r.height / 2];
@@ -302,6 +320,14 @@ async def check(url: str, output: Path):
         count = await page.evaluate("document.querySelectorAll('tbody tr[data-case]').length")
         sections = await page.evaluate("document.querySelectorAll('.comparison-table').length")
         assert count > 0
+        assert await page.evaluate("""(() => {
+          const intro = document.querySelector('.comparison-intro');
+          const toolbar = document.querySelector('.metric-toolbar');
+          return intro.getBoundingClientRect().bottom <= toolbar.getBoundingClientRect().top &&
+            intro.contains(document.querySelector('#comparison-help')) &&
+            toolbar.nextElementSibling.id === 'category-overview' &&
+            document.querySelectorAll('#category-overview > p, #category-overview > details, .workload-category > p').length === 0;
+        })()"""), "explanations precede controls and the result tables stay together"
         assert await page.evaluate("document.querySelector('#group') === null")
         assert await page.evaluate("document.querySelector('#workload') === null")
         assert await page.evaluate("""(() => {
@@ -327,7 +353,7 @@ async def check(url: str, output: Path):
         assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]')).map(item => item.dataset.target)") == list(LABELS) * sections
         # Assert actual values and ratios, not just that a change handler runs.
         for metric, scale, digits in (("startup", 1000, 3), ("memory", 1 / 1024, 2),
-                                     ("compile", 1, 3), ("warm", 1000, 3)):
+                                     ("compile", 1, 3), ("size", 1 / 1024, 2), ("warm", 1000, 3)):
             actual = await page.evaluate(f"""(() => {{
               document.querySelector('#metric [data-metric={metric}]').click();
               return Array.from(document.querySelectorAll('td[data-target]')).map(cell => {{
@@ -359,6 +385,8 @@ async def check(url: str, output: Path):
                             lower = float(value) < float(reference)
                             expected = float(reference) / float(value) if lower else float(value) / float(reference)
                             suffix = ("less memory" if lower else "more memory") if metric == "memory" else ("faster" if lower else "slower")
+                            if metric == "size":
+                                suffix = "smaller" if lower else "larger"
                             if round(expected, 2) == 1:
                                 assert ratio == "≈ same"
                             else:
@@ -380,7 +408,7 @@ async def check(url: str, output: Path):
         await check_heatmap(page)
         await check_sources(page, output)
         await check_folding(page, output)
-        await check_code_sizes(page)
+        await check_code_sizes(page, output)
         await check_metric_bar(page, output)
         await check_categories(page)
         assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]:not([hidden])')).map(item => item.dataset.target)") == list(LABELS) * sections
@@ -408,6 +436,12 @@ async def check(url: str, output: Path):
         assert await page.evaluate("""scrollX > 0 &&
           Math.abs(document.querySelector('.comparison-table tbody th[scope=row]').getBoundingClientRect().left) < 1"""), "workload names stay visible during horizontal page scrolling"
         await page.screenshot(output / "mobile.png")
+        assert await page.evaluate("""(() => {
+          const heading = document.querySelector('#category-overview .table-heading');
+          const legend = heading.querySelector('.heat-legend').getBoundingClientRect();
+          const table = heading.nextElementSibling.getBoundingClientRect();
+          return table.top - legend.bottom >= 0 && table.top - legend.bottom < 24;
+        })()"""), "the mobile gradient key sits directly above the categories table"
         assert await page.evaluate("document.querySelectorAll('.evidence, .all-evidence, .ratio small').length") == 0
         assert not page.exceptions, page.exceptions
         other = await page.evaluate("""Array.from(document.querySelector('#snapshot').options)

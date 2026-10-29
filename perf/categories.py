@@ -14,7 +14,7 @@ CATEGORIES = {
     "text": ("Text processing", "Character scanning and string operations.", ("textscan",)),
     "other": ("Other workloads", "Workloads not yet assigned a primary category.", ()),
 }
-METRICS = ("warm", "startup", "memory", "compile")
+METRICS = ("warm", "startup", "memory", "compile", "size")
 
 
 def category_for(case):
@@ -26,7 +26,8 @@ def measurement(row, metric):
         return None
     value = {"warm": row.get("warm_seconds", {}).get("median"),
              "startup": row.get("startup", {}).get("median"),
-             "memory": row.get("peak_rss_kib"), "compile": row.get("build_seconds")}[metric]
+             "memory": row.get("peak_rss_kib"), "compile": row.get("build_seconds"),
+             "size": (row.get("code_size") or {}).get("bytes")}[metric]
     return value if isinstance(value, (float, int)) and math.isfinite(value) and value > 0 else None
 
 
@@ -58,6 +59,8 @@ def ratio_label(ratio, metric):
     if factor == 1:
         return "≈ same"
     suffix = ("less memory" if ratio < 1 else "more memory") if metric == "memory" else ("faster" if ratio < 1 else "slower")
+    if metric == "size":
+        suffix = "smaller" if ratio < 1 else "larger"
     return f"{factor}× {suffix}"
 
 
