@@ -421,6 +421,9 @@ class JSONObject(TypedDict):
     pass
 
 
+type JSONScalar = str | bool | int | float | None
+
+
 @js.inline("JSON.stringify({value})")
 def _stringify_unchecked(value: object) -> str:
     return json.dumps(value, default=vars, separators=(",", ":"))
@@ -428,13 +431,13 @@ def _stringify_unchecked(value: object) -> str:
 
 @js.native
 class JSON:
-    """Parse and serialize statically typed JSON object values."""
+    """Parse typed object records and serialize JSON-compatible values."""
     @staticmethod
     def parse[T: JSONObject | list[JSONObject]](value: str) -> T:
         return json.loads(value)
 
     @staticmethod
-    def stringify(value: JSONObject | list[JSONObject]) -> str:
+    def stringify(value: JSONObject | list[JSONObject] | JSONScalar | list[JSONScalar]) -> str:
         return _stringify_unchecked(value)
 
 

@@ -36,6 +36,10 @@
   their stylesheets in each isolated test frame. Error stacks retain Python
   source locations.
 
+- JavaScript `JSON.stringify` accepts primitive values and arrays of
+  primitives as well as object records. Ordinary Python dictionaries remain
+  excluded because their JavaScript representation is a `Map`.
+
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving
