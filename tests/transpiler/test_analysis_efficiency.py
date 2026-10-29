@@ -18,34 +18,6 @@ from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.webassembly.analysis import WEBASSEMBLY_ENVIRONMENT
 
 
-def test_metadata_specializations_do_not_restart_the_calling_function():
-    attempts = []
-
-    class CountingInference(InferenceVisitor):
-        def visit_FunctionDef(self, node):
-            if node.name == "main":
-                attempts.append(node)
-            return super().visit_FunctionDef(node)
-
-    names = [f"Item{i}" for i in range(12)]
-    source = "from pyjs import js\n"
-    source += "".join(f"@js\nclass {name}:\n    pass\n" for name in names)
-    source += "def main():\n" + "".join(f"    item{i} = {name}()\n" for i, name in enumerate(names))
-    source += "    return item0\n"
-    expected_types = "\n\n".join(f"class {name}:" for name in names)
-    expected_types += "\n\ndef main() -> Item0:\n"
-    expected_types += "".join(f"    item{i}: {name} = {name}()\n" for i, name in enumerate(names))
-    expected_types += "    return item0"
-    expected_js = "\n\n".join(f"export class {name} {{\n}}" for name in names)
-    expected_js += "\n\nexport function main() {\n"
-    expected_js += "".join(f"    var item{i} = new {name}();\n" for i, name in enumerate(names))
-    expected_js += "    return item0;\n}"
-    with analyze_source(source, environment=replace(JS_ENVIRONMENT, inference_visitor=CountingInference)) as analysis:
-        assert analysis.types == expected_types
-        assert analysis.javascript == expected_js
-    assert len(attempts) == 1
-
-
 def test_first_field_assignment_retains_its_complete_source_span():
     source = ("from pyjs import js\n@js\nclass Item:\n"
               "    def __init__(self):\n        self.value = 42\n"

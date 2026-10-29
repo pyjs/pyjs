@@ -2941,9 +2941,6 @@ class GenericClass(Object):
         )
         self.concrete_classes[cache_key] = concrete_class
         concrete_class.build()
-        # Metadata-only specializations have no function bodies to infer.
-        if not any(isinstance(member, (Class, Function)) for member in concrete_class.children):
-            return concrete_class
         raise DependencyError(concrete_class)
 
     def from_call(self, arg_types):

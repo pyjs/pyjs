@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Reduce cold compiler analysis time and memory use by reusing flow write
-  summaries, avoiding redundant annotation analysis and metadata-only generic
-  retries, and allocating reachability sets only when needed. Finalized
+  summaries, avoiding redundant annotation analysis, and allocating
+  reachability sets only when needed. Finalized
   functions are reused during dependency scheduling.
 - Preserve complete source spans for the first assignment to an instance field.
 
