@@ -53,6 +53,7 @@ from pyjs.tooling.perf import (
 )
 
 SUBCOMMANDS = {
+    "lsp",
     "build",
     "create",
     "serve",
@@ -147,6 +148,10 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--version", action="version", version=f"%(prog)s {version}")
     _add_direct_options(command)
     subcommands = command.add_subparsers(dest="command")
+
+    lsp = subcommands.add_parser("lsp", help="serve versioned module analysis over LSP stdio")
+    lsp.add_argument("--root", type=Path, default=Path.cwd(), help="project root and execution directory")
+    lsp.add_argument("--python", type=Path, help="Python interpreter with PyJS and project dependencies")
 
     build = subcommands.add_parser("build", help="build a browser application or native executable")
     build.add_argument("--target", choices=("js", "native", "electron", "node"), default="js")
@@ -1214,6 +1219,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         command_parser.print_help()
         return 0
+    if args.command == "lsp":
+        from pyjs.language.server import serve
+
+        return serve(args.root, interpreter=args.python)
     if args.command == "build":
         return _build(args, command_parser)
     if args.command == "serve":

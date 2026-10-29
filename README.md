@@ -1178,6 +1178,14 @@ with `pyjs template`.
 Run `pyjs skill` for the installed-version guidance and `pyjs template` for
 complete executable examples.
 
+## Editor analysis
+
+Run `pyjs lsp --root PATH` for experimental, versioned module snapshots. Pass
+`--python /path/to/python` to execute analysis with project dependencies in a
+separate interpreter containing PyJS. See the
+[editor analysis protocol](pyjs/language/README.md) for source synchronization,
+execution behavior, and current limitations.
+
 ## Contributing
 
 The development environment, repository structure, compiler contracts, and

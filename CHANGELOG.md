@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `pyjs lsp` for versioned compiler type snapshots, source definitions,
+  unsaved module batches, background indexing and persistent caches. An
+  optional project interpreter keeps service and execution environments apart.
+
 - Rust benchmarks match Cargo's Linux release defaults, removing inherited
   standard-library debug information from the measured executable size.
 
