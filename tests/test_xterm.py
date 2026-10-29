@@ -2,10 +2,14 @@
 
 import asyncio
 import importlib
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
 from pyjs.server.dev import create_server
+from pyjs.testing.pytest_plugin import get_daemon_health, terminate_daemon_process
 from pyjs.tooling.browser import Browser, free_port
 from pyjs.tooling.npm import (
     ManagedNpmProject,
@@ -16,6 +20,73 @@ from pyjs.tooling.npm import (
 from pyjs.web.xterm import __pyjs_npm_imports__
 
 pytestmark = pytest.mark.pyjs_python
+
+
+def test_compiled_browser_runner_loads_npm_in_each_frame_and_maps_failures(tmp_path):
+    (tmp_path / 'pyproject.toml').touch()
+    source = textwrap.dedent('''\
+        import pytest
+        from pyjs import js
+        from pyjs.testing.web import mount
+        from pyjs.web.dom import document, window
+        from pyjs.web.domx import div
+        from pyjs.web.xterm import TerminalOptions, create_terminal, write
+
+        pytestmark = pytest.mark.pyjs_web
+
+        @js
+        async def mount_terminal():
+            assert document.getElementById('mounted-terminal') is None
+            surface = div({'id': 'mounted-terminal', 'style': 'width:400px;height:200px'})
+            mount(surface)
+            terminal = create_terminal(TerminalOptions(cols=20, rows=4))
+            terminal.open(surface)
+            await write(terminal, 'Managed module')
+            line = terminal.buffer.active.getLine(0)
+            assert line is not None
+            assert line.translateToString(True) == 'Managed module'
+            screen = surface.querySelector('.xterm')
+            assert screen is not None
+            assert window.getComputedStyle(screen).position == 'relative'
+            assert document.querySelectorAll('style[id^="pyjs-npm:"]').length == 1
+            terminal.dispose()
+            assert surface.querySelector('.xterm') is None
+
+        @js
+        async def test_first_frame():
+            await mount_terminal()
+
+        @js
+        async def test_second_frame():
+            await mount_terminal()
+
+        @js
+        def test_mapped_failure():
+            raise ValueError('expected module failure')
+    ''')
+    test_path = tmp_path / 'test_browser_npm.py'
+    test_path.write_text(source)
+    failure_line = next(index for index, line in enumerate(source.splitlines(), 1)
+                        if "raise ValueError" in line)
+    project = ManagedNpmProject.for_project(tmp_path)
+    project.sync(collect_npm_packages(['pyjs.web.xterm']), __pyjs_npm_imports__)
+    port = free_port()
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'pytest', '-q', str(test_path),
+             '--pyjs-target=web', '--pyjs-browser=managed',
+             f'--pyjs-daemon-port={port}'],
+            cwd=tmp_path, capture_output=True, text=True, timeout=120,
+        )
+        output = result.stdout + result.stderr
+        assert result.returncode == 1, output
+        assert '1 failed, 2 passed' in output, output
+        assert f'{test_path}:{failure_line}:' in output, output
+        assert 'expected module failure' in output, output
+    finally:
+        health = get_daemon_health(port)
+        if health is not None and health.get('project_root') == str(tmp_path):
+            terminate_daemon_process(port, health.get('pid'))
 
 
 def test_shared_package_aliases_mount_base_before_theme_once(tmp_path):

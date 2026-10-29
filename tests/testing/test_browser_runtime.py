@@ -1,9 +1,29 @@
 import pytest
 
 from pyjs import js
+from pyjs.javascript import encodeURIComponent
+from pyjs.testing.client.app import load_test_module
 from pyjs.testing.client.runtime import BrowserTest, run_selected_tests
+from pyjs.testing.web import mount
+from pyjs.web.domx import iframe
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+async def test_module_loader_reports_syntax_runtime_and_import_failures():
+    for source in ["let = ;", "throw new Error('module startup failure')",
+                   "import '/missing-test-module.js'"]:
+        frame = iframe()
+        mount(frame)
+        failed = False
+        try:
+            await load_test_module(frame, 'data:text/javascript,' + encodeURIComponent(source))
+        except Exception:
+            failed = True
+        finally:
+            frame.remove()
+        assert failed
 
 
 @js

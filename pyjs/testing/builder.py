@@ -90,11 +90,10 @@ class BrowserBundleBuilder:
             finally:
                 sys.modules.pop(ENTRYPOINT_MODULE, None)
                 linecache.cache.pop(str(self.entrypoint_path), None)
-        source_map = generated.source_map.shifted(2)
         return BrowserBundle(
             generated.javascript,
             css or "",
-            source_map,
+            generated.source_map,
             generated.npm_imports,
         )
 
