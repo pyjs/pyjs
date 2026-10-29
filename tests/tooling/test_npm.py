@@ -316,3 +316,40 @@ def test_split_target_merge_retains_declarations_not_incidental_tie_order():
     target_b = merge_npm_imports((ordered,))
     assert merge_npm_imports((*target_a, *target_b)) == merge_npm_imports((first, second, ordered))
     assert merge_npm_imports((*target_a, *target_b))[0].styles == ('second.css', 'first.css')
+
+
+def test_aliases_share_package_styles_and_split_target_vendor_identity(tmp_path):
+    package = NpmPackage('example-style', '1.2.3')
+    first = NpmImport(package, '$first', ('theme.css',))
+    second = NpmImport(package, '$second', ('base.css', 'theme.css'))
+    third = NpmImport(package, '$third', ('reset.css', 'base.css'))
+    merged = merge_npm_imports((first, second, third))
+    split = tuple(sorted(set(merge_npm_imports((first, second))) | set(merge_npm_imports((third,)))))
+    assert merge_npm_imports(split) == merged
+    assert merge_npm_imports(reversed((first, second, third))) == merged
+    assert all(value.styles == ('reset.css', 'base.css', 'theme.css') for value in merged)
+    project = ManagedNpmProject(tmp_path, Mock())
+    assets = tmp_path / 'node_modules' / package.name
+    assets.mkdir(parents=True)
+    for name in ('reset', 'base', 'theme'):
+        (assets / (name + '.css')).write_text('.' + name + '{color:red}')
+    project.npm.bundle.side_effect = lambda entry, output: output.write_text(entry.read_text())
+    result = project.sync((package,), (first, second, third))
+    assert project.vendor_for(split) == result.vendor
+    source = result.vendor.read_text()
+    assert source.count('.theme{color:red}') == 1
+    assert source.count('.base{color:red}') == 1
+    assert source.index('.reset{') < source.index('.base{') < source.index('.theme{')
+    assert 'export {$first, $second, $third};' in source
+
+
+def test_contradictory_styles_across_aliases_are_rejected():
+    package = NpmPackage('example-style', '1.2.3')
+    first = NpmImport(package, '$first', ('base.css', 'theme.css'))
+    second = NpmImport(package, '$second', ('theme.css', 'base.css'))
+    with pytest.raises(ValueError, match='Conflicting npm stylesheet order'):
+        merge_npm_imports((first, second))
+    third = NpmImport(package, '$third', ('theme.css', 'extra.css'))
+    fourth = NpmImport(package, '$fourth', ('extra.css', 'base.css'))
+    with pytest.raises(ValueError, match='Conflicting npm stylesheet order'):
+        merge_npm_imports((*merge_npm_imports((first, third)), fourth))

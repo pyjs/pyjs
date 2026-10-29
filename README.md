@@ -782,10 +782,11 @@ require a DOM. Package styles precede application styles, so application
 overrides retain their normal cascade priority. The initial validation is
 conservative: CSS imports, URL/image functions and CSS escapes are rejected.
 Asset bundling is not supported. Separate declarations are merged
-deterministically while preserving declared stylesheet order; contradictory
-orders are errors. The styles are part of vendor
-cache identity and are delivered by the same development and packaging paths
-as other managed npm dependencies.
+deterministically while preserving declared stylesheet order. All namespace
+aliases for a package share that order; contradictory orders are errors,
+including conflicts across aliases. Each package stylesheet is emitted once.
+The styles are part of vendor cache identity and are delivered by the same
+development and packaging paths as other managed npm dependencies.
 
 Synchronize an application after adding its first managed JavaScript wrapper,
 then build it normally.

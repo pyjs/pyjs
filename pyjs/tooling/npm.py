@@ -123,34 +123,37 @@ def collect_npm_imports(module_names: Iterable[str]) -> tuple[NpmImport, ...]:
 
 
 def merge_npm_imports(imports: Iterable[NpmImport]) -> tuple[NpmImport, ...]:
-    """Merge aliases deterministically while respecting declared stylesheet order."""
+    """Merge aliases deterministically and order shared package stylesheets."""
     packages = {}
     dependencies = {}
     for value in imports:
         if value.alias in packages and packages[value.alias] != value.package:
             raise ValueError(f"Conflicting npm packages for alias {value.alias}")
         packages[value.alias] = value.package
-        styles = dependencies.setdefault(value.alias, {})
+        styles = dependencies.setdefault(value.package, {})
         for style in value.styles:
             styles.setdefault(style, set())
         for before, after in value._style_dependencies:
             styles[after].add(before)
-    result = []
-    for alias in sorted(packages):
-        graph = TopologicalSorter(dependencies[alias])
+    ordered = {}
+    for package, dependencies_by_style in sorted(dependencies.items()):
+        graph = TopologicalSorter(dependencies_by_style)
         try:
             graph.prepare()
         except CycleError as error:
-            raise ValueError(f"Conflicting npm stylesheet order for {alias}") from error
+            raise ValueError(f"Conflicting npm stylesheet order for {package.name}") from error
         styles = []
         while graph.is_active():
             ready = sorted(graph.get_ready())
             styles.extend(ready)
             graph.done(*ready)
-        merged = NpmImport(packages[alias], alias, tuple(styles))
+        ordered[package] = tuple(styles)
+    result = []
+    for alias, package in sorted(packages.items()):
+        merged = NpmImport(package, alias, ordered[package])
         # A later bundle merge must retain declared edges, not incidental tie order.
         object.__setattr__(merged, '_style_dependencies', tuple(sorted(
-            (before, after) for after, values in dependencies[alias].items() for before in values
+            (before, after) for after, values in dependencies[package].items() for before in values
         )))
         result.append(merged)
     return tuple(result)
@@ -249,7 +252,11 @@ class ManagedNpmProject:
 
     def _styles_source(self, imports: tuple[NpmImport, ...]) -> str:
         sources = []
-        for value in imports:
+        seen = set()
+        for value in merge_npm_imports(imports):
+            if value.package in seen:
+                continue
+            seen.add(value.package)
             for style in value.styles:
                 path = self.directory / "node_modules" / value.package.name / style
                 package_root = self.directory / "node_modules" / value.package.name

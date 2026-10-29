@@ -7,10 +7,43 @@ import pytest
 
 from pyjs.server.dev import create_server
 from pyjs.tooling.browser import Browser, free_port
-from pyjs.tooling.npm import ManagedNpmProject, collect_npm_packages
+from pyjs.tooling.npm import (
+    ManagedNpmProject,
+    NpmImport,
+    NpmPackage,
+    collect_npm_packages,
+)
 from pyjs.web.xterm import __pyjs_npm_imports__
 
 pytestmark = pytest.mark.pyjs_python
+
+
+def test_shared_package_aliases_mount_base_before_theme_once(tmp_path):
+    package = NpmPackage('example-style', '1.0.0')
+    project = ManagedNpmProject(tmp_path)
+    assets = tmp_path / 'node_modules' / package.name
+    assets.mkdir(parents=True)
+    (assets / 'base.css').write_text('.target{color:rgb(10,20,30)}')
+    (assets / 'theme.css').write_text('.target{color:rgb(40,50,60)}')
+    source = project._styles_source((
+        NpmImport(package, '$first', ('theme.css',)),
+        NpmImport(package, '$second', ('base.css', 'theme.css')),
+    ))
+    document = tmp_path / 'index.html'
+    document.write_text('<!doctype html><html><head></head><body><div class="target">Text</div>'
+                        '<script>' + source + '</script></body></html>')
+
+    async def run():
+        async with Browser(headless=True) as browser:
+            page = await browser.new_page(document.as_uri())
+            assert await page.evaluate("getComputedStyle(document.querySelector('.target')).color") == 'rgb(40, 50, 60)'
+            assert await page.evaluate("Array.from(document.querySelectorAll('style'), s => s.id)") == [
+                'pyjs-npm:example-style@1.0.0/base.css', 'pyjs-npm:example-style@1.0.0/theme.css']
+            await page.evaluate(source)
+            assert await page.evaluate("document.querySelectorAll('style').length") == 2
+            assert page.exceptions == []
+
+    asyncio.run(run())
 
 
 def test_xterm_mount_styles_options_input_fit_and_disposal(tmp_path, monkeypatch):
