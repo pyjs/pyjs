@@ -7,7 +7,8 @@ project interpreter containing PyJS and the application's dependencies.
 Embedders can pass `interpreter=` to `AnalysisSession` for the same behavior.
 The service does not install packages or silently choose a different runtime
 when the selected interpreter cannot load the compiler. Relative interpreter
-paths are relative to the service launch directory.
+paths are relative to the service launch directory. Bare interpreter command
+names are looked up on `PATH`.
 Analysis executes module initialization, just as compilation does. Application
 entry functions are analyzed without being called.
 
@@ -32,6 +33,7 @@ Alternatively, synchronize documents with standard LSP notifications and send
 only `uri`. An optional `documents` array of `{uri, version, text}` records
 atomically replaces all open buffers before the request. This allows an editor
 to submit a coherent batch of unsaved modules and discard closed buffers.
+New modules and package initializers can be supplied before their first save.
 It represents an authoritative generation; per-document notification versions
 otherwise increase monotonically. `force: true` bypasses the snapshot cache.
 
@@ -68,9 +70,13 @@ by workspace, interpreter and compiler fingerprint. Source and dependency conten
 hashes are checked against open buffers or disk before reuse. Unsaved results
 can only be reused with matching source; they never replace different disk
 content. Cache write failures do not prevent live analysis.
+Revisions are allocated through the cache database so they remain distinct
+after a restart and between services sharing that cache. If allocation fails,
+the session stops reading that cache and continues with local revisions.
 
 `pyjs/indexProject` starts background indexing of `[tool.pyjs].application` and
-its reachable modules; `initialized` also starts it. `pyjs/indexState` reports
+its reachable modules; module names, packages and workspace `.py` paths are
+accepted. `initialized` also starts it. `pyjs/indexState` reports
 its state. Cached snapshots remain available while another module is being
 analyzed. `pyjs/moduleState` with `{uri}` returns `status: ready|stale` and
 `revision` without retransmitting occurrences, for dependency-change polling.
@@ -78,6 +84,10 @@ analyzed. `pyjs/moduleState` with `{uri}` returns `status: ready|stale` and
 Changed analysis runs in a fresh CPython worker; ordinary output cannot corrupt
 the protocol stream. Timeouts and Python exits become failed snapshots. The
 worker isolates execution state and failures; it is not a sandbox.
+Dependency hashes are recorded before initialization, including when the worker
+raises, exits or times out. Such failures are superseded if their observed
+source generation has changed. Invalid JSON or request parameters return
+protocol errors; an invalid frame terminates the service and its worker.
 
 Current limits: a changed dependency rebuilds the compiler graph. First-time
 indexing still costs a full analysis, and indexing covers the configured

@@ -4,6 +4,7 @@ import ast
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -29,7 +30,7 @@ class AnalysisSession:
         self.timeout = timeout
         self.interpreter = os.fspath(interpreter) if interpreter is not None else sys.executable
         if interpreter is not None:
-            self.interpreter = os.path.abspath(self.interpreter)
+            self.interpreter = os.path.abspath(shutil.which(self.interpreter) or self.interpreter)
         self.cache_dir = cache_dir
         self.documents: dict[str, tuple[int, str]] = {}
         self.cache: dict[str, dict] = {}
@@ -116,6 +117,7 @@ class AnalysisSession:
             if (cached and cached.get("sourceHash") == hashlib.sha256(text.encode()).hexdigest()
                     and self._unchanged(cached["dependencies"], sources)):
                 self.cache[path] = cached
+                self.revision = max(self.revision, cached['revision'])
                 return cached | {"uri": uri, "version": version, "schemaVersion": 1, "cached": True}
         return None
 
@@ -139,12 +141,14 @@ class AnalysisSession:
             application = config.get("tool", {}).get("pyjs", {}).get("application", "")
             if not isinstance(application, str) or not application:
                 return
-            relative = Path(*application.split(":" , 1)[0].split(".")).with_suffix(".py")
-            path = self.root / relative
-            if not path.is_file():
-                path = self.root / "src" / relative
-            if not path.is_file():
-                return
+            module = application.split(":" , 1)[0]
+            relative = Path(module) if module.endswith('.py') else Path(*module.split('.'))
+            candidates = [base / suffix for base in (self.root, self.root / 'src')
+                          for suffix in ([relative] if module.endswith('.py') else
+                                         [relative / '__init__.py', relative.with_suffix('.py')])]
+            path = next((item.resolve() for item in candidates if item.is_file()), None)
+            if path is None or not path.is_relative_to(self.root):
+                raise ValueError('Configured application is not a workspace Python module')
             self.index_state = "indexing"
             result = self.snapshot(path.as_uri())
             self.index_state = "ready" if result["status"] == "ready" else result["status"]
@@ -166,6 +170,7 @@ class AnalysisSession:
             version, text = self.documents[path] if path in self.documents else (0, Path(path).read_text(encoding="utf-8"))
             sources = {name: item[1] for name, item in self.documents.items()}
             cached = None if force else self.cached_snapshot(uri)
+            open_sources = sources.copy()
             sources[path] = text
         result = {"uri": uri, "version": version, "schemaVersion": 1,
                   "sourceHash": hashlib.sha256(text.encode()).hexdigest(), "cached": False,
@@ -181,6 +186,7 @@ class AnalysisSession:
         self._ensure_runtime()
         with tempfile.TemporaryDirectory(prefix="pyjs-analysis-") as directory:
             output = Path(directory) / "snapshot.json"
+            analyzed = {"status": "error", "message": "Analysis worker exited unexpectedly", "dependencies": {}}
             try:
                 with (Path(directory) / "stderr.txt").open("wb") as stderr:
                     with self.lock:
@@ -199,18 +205,26 @@ class AnalysisSession:
                         self._terminate(process)
                         with self.lock:
                             self.process = None
-                if process.returncode != 0 or not output.exists():
-                    return result | {"status": "error", "message": "Analysis worker exited unexpectedly"}
-                analyzed = json.loads(output.read_text(encoding="utf-8"))
+                if process.returncode == 0 and output.exists():
+                    analyzed = json.loads(output.read_text(encoding="utf-8"))
             except subprocess.TimeoutExpired:
-                return result | {"status": "error", "message": "Module analysis timed out"}
+                analyzed['message'] = 'Module analysis timed out'
+            journal = output.with_suffix('.dependencies.jsonl')
+            if journal.exists():
+                for record in journal.read_text(encoding='utf-8').splitlines():
+                    try:
+                        name, digest = json.loads(record)
+                    except ValueError:
+                        continue  # A killed worker may leave its final journal record incomplete.
+                    analyzed['dependencies'][name] = digest
         with self.lock:
             current = {name: item[1] for name, item in self.documents.items()}
             if (not self._valid_sources(current)
+                    or (analyzed['status'] != 'ready' and current != open_sources)
                     or not self._unchanged({path: result["sourceHash"]}, current)
                     or not self._unchanged(analyzed["dependencies"], current)):
                 return result | {"status": "superseded", "message": "Dependency changed during analysis"}
-            self.revision += 1
+            self.revision = self.store.next_revision(self.revision)
             modules = analyzed.pop("modules", {})
             result |= analyzed | {"revision": self.revision}
             if result["status"] == "ready":

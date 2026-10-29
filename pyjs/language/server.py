@@ -12,6 +12,12 @@ from .session import AnalysisSession
 MAX_MESSAGE = 16 * 1024 * 1024
 
 
+class MessageError(ValueError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 def read_message(stream):
     headers = {}
     while line := stream.readline(8192):
@@ -29,9 +35,12 @@ def read_message(stream):
     body = stream.read(size)
     if len(body) != size:
         raise ValueError("Truncated LSP message")
-    message = json.loads(body)
+    try:
+        message = json.loads(body)
+    except (ValueError, UnicodeError) as error:
+        raise MessageError(-32700, "Invalid JSON") from error
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-        raise ValueError("Expected JSON-RPC 2.0 object")
+        raise MessageError(-32600, "Expected JSON-RPC 2.0 object")
     return message
 
 
@@ -72,11 +81,24 @@ def serve(root: Path, *, session=None, methods=None, interpreter=None) -> int:
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
             try:
-                while (message := read_message(sys.stdin.buffer)) is not None:
+                while True:
+                    try:
+                        message = read_message(sys.stdin.buffer)
+                    except MessageError as error:
+                        send({"id": None, "error": {"code": error.code, "message": str(error)}})
+                        continue
+                    if message is None:
+                        break
                     request_id = message.get("id")
                     method = message.get("method", "")
+                    if (not isinstance(method, str) or not method
+                            or isinstance(request_id, bool) or not isinstance(request_id, (str, int, type(None)))):
+                        send({"id": None, "error": {"code": -32600, "message": "Invalid request"}})
+                        continue
                     parameters = message.get("params", {})
                     try:
+                        if not isinstance(parameters, dict):
+                            raise ValueError("Expected named parameters")
                         if method == "exit":
                             session.shutdown()
                             return 0 if stopped else 1

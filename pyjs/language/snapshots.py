@@ -3,6 +3,8 @@
 import ast
 import hashlib
 import inspect
+import io
+import tokenize
 from pathlib import Path
 
 from pyjs.analysis.objects import Class, Function, Instance, Module
@@ -35,10 +37,20 @@ def functions(container, seen=None):
 
 def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str) -> dict:
     definitions = {}
+    parameter_definitions = {}
     signatures = {}
     documentation = {}
     snapshots = {}
     file_lines = {path: text.splitlines() for path, text in sources.items()}
+    declaration_names = {}
+    for path, text in sources.items():
+        keyword_line = 0
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if keyword_line and token.type == tokenize.NAME:
+                declaration_names[path, keyword_line, token.string] = token.start
+                keyword_line = 0
+            elif token.type == tokenize.NAME and token.string in ('def', 'class'):
+                keyword_line = token.start[0]
     resolved_paths = {}
     type_labels = {}
 
@@ -91,7 +103,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             if isinstance(node, ast.ClassDef):
                 value = module.scope.names.get(node.name)
                 if value is not None:
-                    definitions[id(value)] = definition(path, node.lineno, node.col_offset + 6)
+                    definitions[id(value)] = definition(path, *declaration_names[path, node.lineno, node.name])
             targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
             for target in targets:
                 if isinstance(target, ast.Name):
@@ -111,8 +123,8 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
                 continue
             node = function.original_node
             line = node.lineno + fragment.line_delta
-            prefix = "async def " if function.is_async else "def "
-            definitions[id(function)] = definition(path, line, node.col_offset + len(prefix))
+            definitions[id(function)] = definition(path, *declaration_names[path, line, function.name])
+            bindings = parameter_definitions[id(function)] = {}
             qualified = function.cls.name + "." + function.name if function.cls is not None else function.name
             positional = [*node.args.posonlyargs, *node.args.args]
             defaults = {argument.arg: ast.unparse(default) for argument, default in
@@ -141,7 +153,8 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             snapshot["symbols"].append({"name": qualified, "type": signature, "kind": "function", "line": line})
             start = definitions[id(function)]["definitionColumn"]
             snapshot["occurrences"].append({"name": function.name, "type": label(function.return_type),
-                "kind": "function", "line": line, "column": start, "endLine": line,
+                "kind": "function", "line": definitions[id(function)]["definitionLine"],
+                "column": start, "endLine": definitions[id(function)]["definitionLine"],
                 "endColumn": start + len(function.name), "signature": signature,
                 "documentation": documentation[id(function)], "hint": False, **definitions[id(function)]})
             for parameter in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
@@ -150,12 +163,12 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
                 value = function.scope.names.get(parameter.arg)
                 if value is not None and hasattr(parameter, "lineno"):
                     _, span = location(fragment, parameter)
-                    definitions[id(value)] = definition(path, span["line"], span["column"])
+                    bindings[parameter.arg] = definition(path, span["line"], span["column"])
                     value_type = label(value.type)
                     snapshot["occurrences"].append({"name": parameter.arg, "type": value_type, "kind": "parameter",
                         **span, "endLine": span["line"], "endColumn": span["column"] + len(parameter.arg),
                         "signature": parameter.arg + ": " + value_type, "documentation": "Parameter of " + signature,
-                        "hint": False, **definitions[id(value)]})
+                        "hint": False, **bindings[parameter.arg]})
             body = function.node
             references = []
             for item in ast.walk(body):
@@ -172,6 +185,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
         snapshot = snapshots[path]
         fragment = function.source_fragment
         original = function.original_node
+        bindings = parameter_definitions[id(function)]
         annotation_lines = {node.lineno + fragment.line_delta for node in ast.walk(original)
                             if isinstance(node, ast.AnnAssign)}
         for node in references:
@@ -192,10 +206,11 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             kind = "function" if isinstance(value, Function) else "class" if isinstance(value, Class) else "variable"
             value_type = label(value if isinstance(value, Class) else value.type)
             hint = isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and span["line"] not in annotation_lines
+            target = bindings.get(name) if isinstance(node, ast.Name) and name in bindings else definitions.get(id(value))
             snapshot["occurrences"].append({"name": name, "type": value_type, "kind": kind, **span,
                 "signature": signatures.get(id(value), name + ": " + value_type),
                 "documentation": documentation.get(id(value), ""), "hint": hint,
-                **definitions.get(id(value), {"definitionPath": "", "definitionLine": 0, "definitionColumn": 0})})
+                **(target or {"definitionPath": "", "definitionLine": 0, "definitionColumn": 0})})
     for snapshot in snapshots.values():
         snapshot["symbols"].sort(key=lambda item: (item["line"], item["name"]))
         unique = {(item["line"], item["column"], item["endLine"], item["endColumn"]): item for item in snapshot["occurrences"]}

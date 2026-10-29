@@ -19,24 +19,42 @@ ENTRY = "__pyjs_editor_entry__"
 
 
 class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
-    def __init__(self, root: Path, overlays: dict[str, str], target: Path):
+    def __init__(self, root: Path, overlays: dict[str, str], target: Path, journal: Path):
         self.root = root
         self.overlays = overlays
         self.target = target
+        self.journal = journal
         self.dependencies = {}
         self.texts = {}
 
     def find_spec(self, fullname, path=None, target=None):
+        leaf = fullname.rsplit(".", 1)[-1]
+        for directory in path if path is not None else sys.path:
+            base = Path(directory).resolve()
+            for filename in (base / leaf / "__init__.py", base / (leaf + ".py")):
+                if str(filename) in self.overlays and self.allowed(filename):
+                    return importlib.util.spec_from_file_location(
+                        fullname, filename, loader=self,
+                        submodule_search_locations=[str(filename.parent)] if filename.name == '__init__.py' else None,
+                    )
+            package = base / leaf
+            if self.allowed(package) and any(Path(name).is_relative_to(package) for name in self.overlays):
+                if not (package / "__init__.py").is_file():
+                    spec = importlib.machinery.ModuleSpec(fullname, loader=None, is_package=True)
+                    spec.submodule_search_locations = [str(package)]
+                    return spec
         spec = importlib.machinery.PathFinder.find_spec(fullname, path)
         if spec is not None and spec.origin and spec.origin.endswith(".py"):
-            filename = Path(spec.origin).resolve()
-            if filename.is_relative_to(self.root) and not any(
-                part.startswith(".") or part == "external"
-                for part in filename.relative_to(self.root).parts
-            ):
+            if self.allowed(Path(spec.origin).resolve()):
                 spec.loader = self
                 return spec
         return None
+
+    def allowed(self, filename):
+        return filename.is_relative_to(self.root) and not any(
+            part.startswith(".") or part == "external"
+            for part in filename.relative_to(self.root).parts
+        )
 
     def create_module(self, spec):
         return None
@@ -48,6 +66,9 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             source = Path(filename).read_text(encoding="utf-8")
         self.dependencies[filename] = hashlib.sha256(source.encode()).hexdigest()
         self.texts[filename] = source
+        # Flush before execution so the parent can validate even a killed worker.
+        with self.journal.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps([filename, self.dependencies[filename]]) + "\n")
         if Path(filename) == self.target:
             if ENTRY in vars(module) or any(
                 isinstance(node, ast.Name) and node.id == ENTRY for node in ast.walk(ast.parse(source))
@@ -59,7 +80,7 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         exec(compile(source, filename, "exec"), vars(module))
 
 
-def analyze(root: Path, target: Path, overlays: dict[str, str]) -> dict:
+def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -> dict:
     source = overlays[str(target)]
     ast.parse(source, str(target))
     base = root / "src" if target.is_relative_to(root / "src") else root
@@ -70,14 +91,32 @@ def analyze(root: Path, target: Path, overlays: dict[str, str]) -> dict:
         raise ValueError("Module path must be a Python import path beneath the workspace or src directory")
     name = ".".join(parts)
     sys.path[:0] = [str(base), str(root)]
-    sources = Sources(root, overlays, target)
+    sources = Sources(root, overlays, target, journal)
+    # Bootstrap imports must not claim an explicitly selected workspace identity.
+    for filename in overlays:
+        file = Path(filename)
+        if not file.is_relative_to(base):
+            continue
+        names = list(file.relative_to(base).with_suffix("").parts)
+        if names[-1] == "__init__":
+            names.pop()
+        for depth in range(1, len(names) + 1):
+            prefix = ".".join(names[:depth])
+            existing = sys.modules.get(prefix)
+            origin = getattr(existing, "__file__", None)
+            expected = base.joinpath(*names[:depth])
+            if origin and Path(origin).resolve() not in (expected.with_suffix(".py"), expected / "__init__.py"):
+                for loaded in list(sys.modules):
+                    if loaded == prefix or loaded.startswith(prefix + "."):
+                        del sys.modules[loaded]
     sys.meta_path.insert(0, sources)
     # Explicitly selected workspace namespace packages take precedence over
     # unrelated installed packages with the same name (for example "tests").
     for depth in range(1, len(parts)):
         parent_name = ".".join(parts[:depth])
         directory = base.joinpath(*parts[:depth])
-        if not (directory / "__init__.py").exists() and parent_name not in sys.modules:
+        if (not (directory / "__init__.py").exists()
+                and str(directory / "__init__.py") not in overlays and parent_name not in sys.modules):
             parent = ModuleType(parent_name)
             parent.__path__ = [str(directory)]
             parent.__package__ = parent_name
@@ -100,7 +139,8 @@ def analyze(root: Path, target: Path, overlays: dict[str, str]) -> dict:
 def main():
     payload = json.loads(sys.stdin.read())
     try:
-        result = analyze(Path(payload["root"]), Path(payload["path"]), payload["sources"])
+        result = analyze(Path(payload["root"]), Path(payload["path"]), payload["sources"],
+                         Path(sys.argv[1]).with_suffix(".dependencies.jsonl"))
         result["status"] = "ready"
     except BaseException as error:
         # SystemExit from imported code is an analysis failure, not a server shutdown.

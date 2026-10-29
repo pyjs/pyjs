@@ -28,11 +28,27 @@ class SnapshotStore:
             directory.mkdir(parents=True, exist_ok=True)
             with self.connect() as database:
                 database.execute("CREATE TABLE IF NOT EXISTS snapshots (path TEXT PRIMARY KEY, data TEXT NOT NULL)")
-        except (OSError, sqlite3.Error):
+                database.execute("CREATE TABLE IF NOT EXISTS revisions (id INTEGER PRIMARY KEY CHECK (id = 1), value INTEGER NOT NULL)")
+                if database.execute("SELECT value FROM revisions WHERE id = 1").fetchone() is None:
+                    maximum = max((json.loads(row[0]).get('revision', 0) for row in
+                                   database.execute('SELECT data FROM snapshots')), default=0)
+                    database.execute('INSERT OR IGNORE INTO revisions VALUES (1, ?)', (maximum,))
+        except (OSError, ValueError, TypeError, sqlite3.Error):
             self.available = False
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=1)
+
+    def next_revision(self, minimum: int) -> int:
+        if self.available:
+            try:
+                with self.connect() as database:
+                    database.execute('UPDATE revisions SET value = max(value, ?) + 1 WHERE id = 1', (minimum,))
+                    return database.execute('SELECT value FROM revisions WHERE id = 1').fetchone()[0]
+            except (OSError, sqlite3.Error):
+                # Do not mix local revisions with persisted snapshots after allocation fails.
+                self.available = False
+        return minimum + 1
 
     def get(self, path: str) -> dict | None:
         if not self.available:
