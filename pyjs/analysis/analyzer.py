@@ -15925,7 +15925,7 @@ class CallGraphVisitor(ast.NodeVisitor):
             self.entry_point.tailwind_classes.update(argument.value.split())
 
     def retain_hydration_reference(self, node):
-        if not getattr(node, "is_ref", False):
+        if not getattr(node, "is_ref", False) or not isinstance(node.obj, Class):
             return
         method = getattr(node.obj.py_cls, "__pyjs_reference_method__", None)
         if method is None:
