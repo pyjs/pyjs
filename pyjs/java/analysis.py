@@ -120,6 +120,25 @@ class JVMInferenceVisitor(IRInferenceVisitor):
                 and getattr(target, "generic_name", None) == "set"
                 and target.container.scope.is_builtins):
             return self.set_from_iterable(result, node)
+        if (node not in self.active_call_analysis and len(result.args) == 1 and not result.keywords
+                and getattr(target, "generic_name", None) == "list"
+                and target.container.scope.is_builtins
+                and getattr(analyzed_value_type(result.args[0]), "generic_name", None) in {"dict", "KeysView"}):
+            from .collections import ListFromKeys
+
+            value = result.args[0]
+            if analyzed_value_type(value).generic_name == "dict":
+                value = self.visit(ast.copy_location(ast.Call(
+                    func=ast.copy_location(ast.Attribute(
+                        value=AnalyzedExpression(value), attr="keys", ctx=ast.Load()), node),
+                    args=[], keywords=[]), node))
+            source = analyzed_value_type(value)
+            item = analyzed_value_type(result).generic_types["V"]
+            helper = resolve_imported(ListFromKeys, self.module, "ListFromKeys")(source, item)
+            call = ast.Call(func=AnalyzedExpression(Name(helper)),
+                            args=[AnalyzedExpression(value)], keywords=[])
+            return self.visit(ast.copy_location(
+                ast.Attribute(value=call, attr="result", ctx=ast.Load()), node))
         if (node not in self.active_call_analysis
                 and getattr(target, "py_obj", None) is native_builtins._sorted):
             return self.sorted_call(result, node)
