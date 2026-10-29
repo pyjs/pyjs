@@ -20,7 +20,7 @@ from pyjs.web.indexeddb import (
     open_database,
     request_result,
 )
-from pyjs.web.network import Response, fetch
+from pyjs.web.network import RequestInit, Response, fetch
 from pyjs.web.serviceworker import caches, navigator
 from pyjs.web.storage import navigator as storage_navigator
 from pyjs.web.svg import SVGLineElement, SVGSVGElement
@@ -262,3 +262,39 @@ async def test_fetch_callback_preserves_optional_options():
     request: Callable[[str], Awaitable[Response]] = fetch
     response = await request("data:text/plain,optional")
     assert await response.text() == "optional"
+
+
+@js
+async def callback_rejects_options(request: Callable[[str, object], Awaitable[Response]], options: object) -> bool:
+    try:
+        await request('data:text/plain,options', options)
+    except Exception:
+        return True
+    return False
+
+
+@js
+async def test_fetch_callback_preserves_dictionary_options():
+    assert await callback_rejects_options(fetch, {'method': 'GET', 'body': 'payload'})
+
+
+@js
+async def test_fetch_callback_preserves_native_options():
+    assert await callback_rejects_options(fetch, RequestInit(cache='invalid-cache-value'))
+
+
+@js
+async def test_fetch_callback_accepts_explicit_none():
+    request: Callable[[str, object], Awaitable[Response]] = fetch
+    response = await request('data:text/plain,none', None)
+    assert await response.text() == 'none'
+
+
+@js
+async def test_direct_fetch_rejects_invalid_options():
+    rejected = False
+    try:
+        await fetch('data:text/plain,options', options={'method': 'GET', 'body': 'payload'})
+    except Exception:
+        rejected = True
+    assert rejected

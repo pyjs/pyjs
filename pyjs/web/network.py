@@ -423,16 +423,17 @@ async def fetch(url: str, options: object | None = None) -> Response: ...
 
 
 @fetch.inline
-def fetch(_arg_strs, **kwargs):
-    if len(_arg_strs) == 1:
-        return f"globalThis.fetch({_arg_strs[0]})"
-    options = _arg_strs[1]
-    return f"globalThis.fetch({_arg_strs[0]}, (options => options instanceof Map ? Object.fromEntries(options) : options)({options}))"
+def fetch(_arg_strs, _keyword_strs, **kwargs):
+    url = _arg_strs[0] if _arg_strs else _keyword_strs['url']
+    options = _arg_strs[1] if len(_arg_strs) > 1 else _keyword_strs.get('options')
+    if options is None:
+        return f"globalThis.fetch({url})"
+    return f"globalThis.fetch({url}, (options => options instanceof Map ? Object.fromEntries(options) : options)({options}))"
 
 
 @fetch.value
-async def fetch(url: str, options: object | None = None) -> Response:
-    return await fetch(url, options)
+async def fetch(url: str, *options: object) -> Response:
+    return await fetch(url, options[0] if options else None)
 
 
 @js.native
