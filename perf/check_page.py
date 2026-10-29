@@ -212,7 +212,43 @@ async def check_folding(page, output):
         })()""")
         await page.evaluate("document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'})")
         await page.screenshot(output / f"folded-{target}.png")
+        await page.set_viewport(390, 844)
+        await page.evaluate("document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'})")
+        await page.wait_for_frames()
+        assert await page.evaluate("""(() => {
+          const panel = document.querySelector('.source-row:not([hidden])');
+          const code = panel.querySelector('.target-code');
+          const python = panel.querySelector('.python-code');
+          const bounds = code.getBoundingClientRect();
+          return code.clientWidth >= python.clientWidth * 1.8 &&
+            bounds.left >= 0 && bounds.right <= innerWidth &&
+            code.scrollHeight > code.clientHeight;
+        })()"""), "folded output keeps the mobile split and code scrolling"
+        await page.screenshot(output / f"folded-{target}-mobile.png")
+        await page.set_viewport(1440, 1100)
         await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
+
+
+async def check_code_sizes(page):
+    data, labels = await page.evaluate("""(async () => {
+      const artifact = document.querySelector('.source-library [data-url]:not([data-url=""])').dataset.url;
+      const [prefix, path] = artifact.split('/artifact/');
+      const data = await (await fetch(prefix + '/results/' + path.split('/')[0] + '.json')).json();
+      const labels = Array.from(document.querySelectorAll('tr[data-case]')).flatMap(row =>
+        Array.from(row.querySelectorAll('td[data-target]')).map(cell =>
+          [row.dataset.case, Number(row.dataset.size), cell.dataset.target,
+           cell.querySelector('.code-size').textContent]));
+      return [data, labels];
+    })()""")
+    rows = {(row["case"], row["size"], row["target"]): row for row in data["rows"]}
+    for case, size, target, label in labels:
+        info = rows.get((case, size, target), {}).get("code_size")
+        expected = "Code —"
+        if info:
+            expected = f"Code {info['bytes'] / 1024:.1f} KiB"
+            if "gzip_bytes" in info:
+                expected += f" · gzip {info['gzip_bytes'] / 1024:.1f} KiB"
+        assert label == expected, (case, size, target, label, expected)
 
 
 async def check(url: str, output: Path):
@@ -305,6 +341,7 @@ async def check(url: str, output: Path):
         await check_heatmap(page)
         await check_sources(page, output)
         await check_folding(page, output)
+        await check_code_sizes(page)
         await check_categories(page)
         assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]:not([hidden])')).map(item => item.dataset.target)") == list(LABELS) * sections
         assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).map(row =>
@@ -351,6 +388,7 @@ async def check(url: str, output: Path):
         (output / "result.json").write_text(json.dumps({"rows": count, "runtime_columns": len(LABELS), "workloads": cases,
                                                        "target_groups": list(GROUPS), "fixed_baseline": "cpython",
                                                        "heatmap_edges": True, "inline_sources": True,
+                                                       "source_folding": True, "code_sizes": True,
                                                        "source_request_races": True, "mobile_source_split": "1:2",
                                                        "sticky_workloads": True,
                                                        "snapshot_navigation": bool(other),

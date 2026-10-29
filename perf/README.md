@@ -1,7 +1,7 @@
 # PyJS performance lab
 
-One Python workload, four execution configurations: CPython, PyJS JavaScript
-on Node, PyJS LLVM, and PyJS JVM. Handwritten JavaScript, Rust and Java implementations
+The same Python workloads run through CPython, PyJS JavaScript on Node,
+PyJS LLVM, and PyJS JVM. Handwritten JavaScript, Rust and Java implementations
 provide reference points. This is a compiler investigation, not a universal
 language ranking.
 
@@ -10,7 +10,7 @@ language ranking.
 From the repository root, with the development environment synced:
 
 ```sh
-uv run python -m perf.run --output perf/runs/first --small
+python -m perf.run --output perf/runs/first --small
 ```
 
 The initial measurement host is **Linux**. Install CPython, Node, Clang, Rust
@@ -21,7 +21,7 @@ makes the command exit nonzero, but the JSON results are still saved.
 Select exact executables explicitly:
 
 ```sh
-uv run python -m perf.run --output perf/runs/baseline \
+python -m perf.run --output perf/runs/baseline \
   --python /path/to/python --node /path/to/node --clang /path/to/clang \
   --rustc /path/to/rustc --java /path/to/jdk/bin/java \
   --javac /path/to/jdk/bin/javac --javap /path/to/jdk/bin/javap
@@ -40,21 +40,21 @@ preparing a new publication snapshot; the per-run lock records actual tools.
 A quick correctness/adapter check:
 
 ```sh
-uv run python -m perf.run --output perf/runs/smoke --small \
+python -m perf.run --output perf/runs/smoke --small \
   --forks 1 --warmups 2 --samples 2 --loops 2 --min-batch-ms 0
 ```
 
 A larger exploratory run (still inspect warmup traces before publishing):
 
 ```sh
-uv run python -m perf.run --output perf/runs/exploratory \
+python -m perf.run --output perf/runs/exploratory \
   --forks 5 --warmups 30 --samples 10 --loops 20
 ```
 
 Add `--jvm-diagnostics` to run an additional checksum-validated HotSpot
 compilation pass for each JVM/Java input. Its timing is excluded from the
-comparison. The UI lists compiler failures and compiled methods, with links
-to the original XML/log. An unsupported VM reports diagnostic unavailability
+comparison. Harness output retains compiler failures, compiled methods and
+the original XML/log. An unsupported VM reports diagnostic unavailability
 without discarding otherwise valid measurements. Verbose bytecode listings
 include generated helper classes and their declared stack/local capacities.
 
@@ -62,8 +62,9 @@ By default, separate pilot processes calibrate each target/input toward a
 50 ms batch, starting at `--loops` and bounded by `--max-loops` (1000).
 The selected count and validated pilot traces are saved per row. Set
 `--min-batch-ms 0` to use the same explicit loop count for every target.
-Warmup, sample and fork counts apply to every target. A batch alternates N and N+1 inputs; the reported
-warmed duration divides batch time by loop count. Both sizes have independently
+Warmup, sample and fork counts apply to every target. A batch alternates N and
+N+1 inputs; the reported warmed duration divides batch time by loop count.
+Both sizes have independently
 checked expected results. `--small` selects the smaller configured base N only.
 The full catalog has two base input sizes for each of fifteen workloads. A
 snapshot can contain only a selected subset: use the snapshot selector to see
@@ -79,7 +80,7 @@ An interrupted run retains the last complete JSON checkpoint with
 Start the local server and open the latest saved snapshot in one command:
 
 ```sh
-uv run pyjs serve perf.app:create_app --open /perf/
+pyjs serve perf.app:create_app --open /perf/
 ```
 
 Use `--port 0` for an available port, or open a specific snapshot with
@@ -87,15 +88,17 @@ Use `--port 0` for an available port, or open a specific snapshot with
 Stop the server with Ctrl-C. If a desktop browser is unavailable, the command
 prints the URL for manual opening.
 
-The UI has a metric selector, with all workloads and runtimes always visible; source panels; generated
-JavaScript/LLVM/bytecode source comparisons, with a compact machine/toolchain footer.
+The UI has a metric selector, with all workloads and runtimes always visible.
+Source panels compare JavaScript, LLVM or bytecode with the Python algorithm.
+A compact footer identifies the machine and toolchains.
 Opening `/perf/` selects the newest run by its recorded creation time. A visible
 run label identifies the data being shown. Historical runs, when retained, are
 available in the footer; `?run=NAME` pins one explicitly and older runs
-show a prominent link back to the latest. With only one run there is no selector.
+show a prominent link back to the latest. A single run needs no selector.
 Workloads and input sizes run down the left; runtimes run across the top.
-CPython is always first, followed by the JavaScript / Py → JS, Rust / Py → LLVM,
-and Java / Py → JVM pairs. Subtle group headers separate those pairs.
+CPython is always first, followed by the JavaScript / Py → JS,
+Rust / Py → LLVM, and Java / Py → JVM pairs.
+Subtle headers group those pairs.
 Every target compares with CPython. Time
 comparisons say faster/slower; RSS comparisons say less/more memory. Ratios
 rounding to 1.00 show approximately equal, not statistical equivalence. Missing,
@@ -108,24 +111,25 @@ The category overview links directly to each section without filtering rows.
 Its heatmap uses geometric mean target/CPython ratios for the selected metric,
 first averaging sizes within each workload, then giving each workload equal
 weight. New workloads must pass correctness checks across all targets before
-publication; compiler gaps are fixed rather than published as partial comparisons.
+publication; fix compiler gaps before publishing the comparisons.
 Categories describe dominant
 behavior, not measured CPU/memory bottlenecks or general language rankings.
 Cell backgrounds range from green (lowest) to warm (highest), scaled
 logarithmically within each row's positive non-CPython measurements.
-CPython stays neutral and does not compress the other columns' color range. The colors
-follow the selected metric; equal, zero and missing values
+CPython stays neutral and does not compress the other columns' color range.
+The colors follow the selected metric; equal, zero and missing values
 stay neutral. They show relative magnitude, not statistical significance.
 Click a workload or runtime cell to expand source directly below that row:
 shared Python on the left, selected handwritten or generated code on the right.
 The panes stay side by side on phones (one-third Python, two-thirds target),
 with independently scrollable code. Click the selected cell again, Close source,
-or Escape to collapse. A matching outline connects the selected cell and right-hand
-code pane; cells have a visible View code cue. Generated artifacts load on demand.
+or Escape to collapse. Matching outlines connect the selected cell and target
+code pane; cells have a View code cue. Generated artifacts load on demand.
 Generated JS, LLVM and JVM source views open algorithm declarations and fold
-runtime, module-loader, harness and metadata sections. Each fold can be expanded;
-the full original artifact remains available. Instructions inside algorithm
-functions, including runtime checks and allocations, are not hidden. New JS builds
+runtime, module-loader, harness and metadata sections. Expand any fold to read
+its contents. The full original artifact remains available.
+Instructions inside algorithm
+functions, including runtime checks and allocations, stay visible. JS builds
 record compiler source-scope ranges; older retained output uses declaration
 boundaries and falls back to unfolded text when no algorithm is recognized.
 
@@ -150,24 +154,25 @@ reports or copied static sites are written by the benchmark runner.
 The same UI can be mounted in a configured documentation project:
 
 ```sh
-uv run pyjs docs serve --app perf.app:mount --open /perf/
+pyjs docs serve --app perf.app:mount --open /perf/
 ```
 
 This requires the usual docs configuration and an importable `perf` package.
 An ordinary website can call `perf.app.mount(application)` directly, optionally
-passing `root=Path(...)` and `prefix="/benchmarks/"`. The docs build itself stays
+passing `root=Path(...)` and `prefix="/benchmarks/"`. The docs build stays
 static; the live extension is registered by `docs serve`, not `docs build`.
 
-Managed-browser verification against a running server, with desktop/mobile captures:
+Browser verification against a running server, with desktop/mobile captures:
 
 ```sh
-uv run python -m perf.check_page http://localhost:8000/perf/ --output perf/runs/first/browser
+python -m perf.check_page http://localhost:8000/perf/ \
+  --output perf/runs/first/browser
 ```
 
 The snapshot contains source text, hashes, compiler revision/dirty state,
 tool versions, build/run commands, warmup/sample traces, and summary statistics.
-Generated code and logs stay beside it. Keep meaningful JSON snapshots, not every
-smoke run. Generated builds and browser captures can be discarded after diagnosis;
+Generated code and logs stay beside it. Keep meaningful JSON snapshots, not
+every smoke run. Discard generated builds and browser captures after diagnosis;
 retain binaries only when investigating an artifact-specific issue. JSON records
 source and artifact sizes, but does not recreate the exact original binaries.
 Snapshots contain local executable paths and diagnostics: review them before
@@ -213,7 +218,8 @@ Each `cases/NAME/` contains:
 
 - `case.toml`: description, two bounded sizes and representation notes.
 - `workload.py`: ordinary typed Python, `kernel(size: int) -> int`.
-- `reference.cjs`, `reference.rs` and `Kernel.java`: matching algorithm and input generation.
+- `reference.cjs`, `reference.rs` and `Kernel.java`: matching algorithm and
+  input generation.
 - An independent expected-result calculation in `run.oracle`, tested against
   the Python workload. Do not validate an implementation against itself.
 
@@ -240,20 +246,27 @@ latest-version guarantee. No performance threshold is added to normal CI.
 
 This is **not a complete port** of the comparison-site catalogs. The
 [Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/),
-[Programming Language Benchmarks](https://programming-language-benchmarks.vercel.app/),
+[Programming Language Benchmarks][language-benchmarks],
 and [Are We Fast Yet?](https://github.com/smarr/are-we-fast-yet) use different
 inputs, output protocols and implementation rules. Shared names identify
 workload families, not interchangeable scores. The catalog check on 2026-10-28
 identified these covered families and remaining gaps:
 
-| Workload family | Coverage here | Next useful gap |
-| --- | --- | --- |
-| Integer loops, sorting, permutations | Sieve, matrix, heap sort, Fibonacci, permutations, N-queens | Fannkuch-redux prefix-flip workload |
-| Allocation, mutation and recursion | Object traversal, binary trees, Towers, bouncing particles | Linked structures and a constraint solver |
-| Floating-point computation | Mandelbrot, spectral norm, N-body | Broader numerical/application workloads |
-| Text and mapping | Unicode scan, histogram | FASTA, reverse complement, k-nucleotide |
-| Application/library work | Not yet measured | JSON serialization, LRU, regex, HTTP |
-| Large integers and specialized math | Not yet measured | Pi/e digits and cryptographic arithmetic |
+- Integer loops, sorting and permutations: sieve, matrix, heap sort,
+  Fibonacci, permutations and N-queens. Fannkuch-redux remains a useful gap.
+- Allocation, mutation and recursion: object traversal, binary trees, Towers
+  and bouncing particles. Linked structures and a constraint solver would
+  broaden coverage.
+- Floating-point computation: Mandelbrot, spectral norm and N-body. Broader
+  numerical/application workloads remain useful.
+- Text and mapping: Unicode scan and histogram. FASTA, reverse complement
+  and k-nucleotide remain gaps.
+- Application/library work is not yet measured: JSON serialization, LRU,
+  regex and HTTP are candidates.
+- Large integers and specialized math are not yet measured: pi/e digits and
+  cryptographic arithmetic are candidates.
+
+[language-benchmarks]: https://programming-language-benchmarks.vercel.app/
 
 Are We Fast Yet?'s Richards, DeltaBlue, Havlak and collision-detection workloads
 would add larger abstraction-heavy programs beyond these microbenchmarks.
@@ -275,8 +288,9 @@ described below. The measurements are not publication rankings.
    local variables` even though their actual local counts were modest.
    Changing only those class-file stack bounds to 256 in isolated copies made
    the kernels compile. Across three process forks, matrix N=64 fell from
-   20.84 ms to 0.567 ms; sieve N=20000 from 3.09 ms to 0.278 ms; object traversal
-   from 10.88 ms to 0.394 ms. Object timings varied substantially between forks.
+   20.84 ms to 0.567 ms; sieve N=20000 from 3.09 ms to 0.278 ms; object
+   traversal from 10.88 ms to 0.394 ms. Object timings varied substantially
+   between forks.
    All checksums and full JVM verification passed. A hardcoded 256 is **not a
    safe fix**. The compiler now calculates stack bounds across branches,
    backedges and exception entries, using field/method descriptors and two-slot
@@ -284,8 +298,9 @@ described below. The measurements are not publication rankings.
 2. **JavaScript range iteration dominated the matrix case.** On Node 26.12.1,
    replacing only the bounded positive `range` loops with equivalent `while`
    loops reduced N=64 from 13.12 ms to 0.946 ms. Removing checked indexing alone
-   left it at 13.09 ms; both controls took 0.622 ms versus 0.611 ms for handwritten
-   JavaScript. This points first to generator/iterator lowering, not blanket
+   left it at 13.09 ms; both controls took 0.622 ms versus 0.611 ms for
+   handwritten JavaScript. This points first to generator/iterator lowering,
+   not blanket
    removal of bounds checks. Direct builtin range loops now use counted loops
    with private induction variables, single left-to-right argument evaluation,
    zero-step checks, negative steps and existing break/else handling. Assigning
@@ -386,13 +401,14 @@ calibrated loop counts must not be presented as a per-kernel memory comparison.
 
 ### Expanded workloads and integer mapping lookup
 
-The pre-rebase `runs/expanded-optimized-20261027/results.json` contains all seven workloads:
+The pre-rebase `runs/expanded-optimized-20261027/results.json` contains all
+seven workloads:
 94 successful target/input configurations, with every checksum validated across
 282 process forks. Four JVM cells record the then-current numeric-dictionary and
 string-iteration compilation boundaries (two input sizes each). All 24 separate
 Java/JVM diagnostic passes completed without recorded compilation failures.
 These are historical measurements on the recorded revision, not measurements
-of newer merged backend features or of the rebased PR. The rebased implementation
+of newer merged backend features or of the rebased PR. The rebased code
 retains managed-heap cursors for suspended native frames and the newer JVM
 class writer's conservative cap for manually bounded helper methods.
 

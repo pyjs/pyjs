@@ -85,7 +85,10 @@ def mount(application, *, root=None, prefix="/perf/"):
             metadata = None
             manifest = candidate.parent / "source-ranges.json"
             if manifest.is_file() and manifest.resolve().is_relative_to(root.resolve()):
-                metadata = json.loads(manifest.read_text())
+                try:
+                    metadata = json.loads(manifest.read_text())
+                except (ValueError, OSError):
+                    pass
             if source:
                 headers["X-PyJS-Algorithm-Ranges"] = fold_header(source, target, content.decode(), metadata)
         return Response(content, headers=headers)

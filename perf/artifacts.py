@@ -126,8 +126,20 @@ def algorithm_ranges(source, target, text):
 
 def fold_header(source, target, text, metadata=None):
     digest = hashlib.sha256(text.encode()).hexdigest()
-    if metadata and metadata.get("sha256") == digest:
-        ranges = metadata["ranges"]
+    if isinstance(metadata, dict) and metadata.get("sha256") == digest:
+        ranges = metadata.get("ranges")
     else:
         ranges = algorithm_ranges(source, target, text)
+    if not isinstance(ranges, (list, tuple)):
+        return ""
+    previous = 0
+    line_count = len(text.split("\n"))
+    for pair in ranges:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            return ""
+        start, end = pair
+        if (type(start) is not int or type(end) is not int or
+                start < previous or end <= start or end > line_count):
+            return ""
+        previous = end
     return ";".join(f"{start}:{end}" for start, end in ranges)
