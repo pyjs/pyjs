@@ -5,6 +5,10 @@
 - Add `pyjs lsp` for versioned compiler type snapshots, source definitions,
   unsaved module batches, background indexing and persistent caches. An
   optional project interpreter keeps service and execution environments apart.
+- Add typed xterm.js and FitAddon browser bindings for terminal output, input,
+  fitting and disposal.
+- Bundle self-contained package CSS through managed npm imports, preserving
+  stylesheet identity across development and packaged applications.
 
 - Rust benchmarks match Cargo's Linux release defaults, removing inherited
   standard-library debug information from the measured executable size.

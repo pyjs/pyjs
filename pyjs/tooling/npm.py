@@ -3,7 +3,8 @@ import json
 import re
 import shutil
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 
 from pyjs.tooling.node import Npm
@@ -39,8 +40,17 @@ class NpmImport:
 
     package: NpmPackage
     alias: str
+    styles: tuple[str, ...] = ()
+    _style_dependencies: tuple[tuple[str, str], ...] = field(init=False, repr=False)
 
     def __post_init__(self):
+        for style in self.styles:
+            if (not isinstance(style, str) or '\\' in style or style.startswith('/')
+                    or '..' in style.split('/') or not style.endswith('.css')):
+                raise ValueError('npm styles must be package-relative CSS paths')
+        object.__setattr__(self, '_style_dependencies', tuple(
+            (before, after) for before, after in zip(self.styles, self.styles[1:], strict=False) if before != after
+        ))
         if not self.alias.startswith("$") or JAVASCRIPT_IDENTIFIER.fullmatch(
             self.alias
         ) is None:
@@ -95,6 +105,7 @@ def collect_npm_packages(module_names: Iterable[str]) -> tuple[NpmPackage, ...]:
 
 def collect_npm_imports(module_names: Iterable[str]) -> tuple[NpmImport, ...]:
     imports: dict[str, NpmImport] = {}
+    declarations = []
     owners: dict[str, str] = {}
     for module_name in dict.fromkeys(module_names):
         for value in module_npm_imports(module_name):
@@ -105,9 +116,47 @@ def collect_npm_imports(module_names: Iterable[str]) -> tuple[NpmImport, ...]:
                     f"{existing.package.name!r} from {owners[value.alias]} and "
                     f"{value.package.name!r} from {module_name}."
                 )
+            declarations.append(value)
             imports[value.alias] = value
             owners[value.alias] = module_name
-    return tuple(sorted(imports.values()))
+    return merge_npm_imports(declarations)
+
+
+def merge_npm_imports(imports: Iterable[NpmImport]) -> tuple[NpmImport, ...]:
+    """Merge aliases deterministically and order shared package stylesheets."""
+    packages = {}
+    dependencies = {}
+    for value in imports:
+        if value.alias in packages and packages[value.alias] != value.package:
+            raise ValueError(f"Conflicting npm packages for alias {value.alias}")
+        packages[value.alias] = value.package
+        styles = dependencies.setdefault(value.package, {})
+        for style in value.styles:
+            styles.setdefault(style, set())
+        for before, after in value._style_dependencies:
+            styles[after].add(before)
+    ordered = {}
+    for package, dependencies_by_style in sorted(dependencies.items()):
+        graph = TopologicalSorter(dependencies_by_style)
+        try:
+            graph.prepare()
+        except CycleError as error:
+            raise ValueError(f"Conflicting npm stylesheet order for {package.name}") from error
+        styles = []
+        while graph.is_active():
+            ready = sorted(graph.get_ready())
+            styles.extend(ready)
+            graph.done(*ready)
+        ordered[package] = tuple(styles)
+    result = []
+    for alias, package in sorted(packages.items()):
+        merged = NpmImport(package, alias, ordered[package])
+        # A later bundle merge must retain declared edges, not incidental tie order.
+        object.__setattr__(merged, '_style_dependencies', tuple(sorted(
+            (before, after) for after, values in dependencies[package].items() for before in values
+        )))
+        result.append(merged)
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -144,6 +193,7 @@ class ManagedNpmProject:
         packages: tuple[NpmPackage, ...],
         imports: tuple[NpmImport, ...] = (),
     ) -> NpmSyncResult:
+        imports = merge_npm_imports(imports)
         self.directory.mkdir(parents=True, exist_ok=True)
         metadata = {
             "name": "pyjs-managed-dependencies",
@@ -159,26 +209,39 @@ class ManagedNpmProject:
                     value.alias: value.package.name for value in imports
                 }
             }
+            if any(value.styles for value in imports):
+                metadata["pyjs"]["styles"] = {
+                    value.alias: list(value.styles) for value in imports if value.styles
+                }
         package_json = json.dumps(metadata, indent=2) + "\n"
         package_path = self.directory / "package.json"
-        unchanged = (
-            package_path.is_file()
-            and package_path.read_text(encoding="utf-8") == package_json
-        )
+        previous_metadata = package_path.read_text(encoding="utf-8") if package_path.is_file() else None
+        unchanged = previous_metadata == package_json
         package_path.write_text(
             package_json,
             encoding="utf-8",
         )
         vendor = self.directory / "pyjs-vendor.js" if imports else None
+        if vendor is not None and not unchanged:
+            vendor.unlink(missing_ok=True)
         if not unchanged or not (self.directory / "package-lock.json").is_file():
-            self.npm.sync(self.directory)
+            try:
+                self.npm.sync(self.directory)
+            except BaseException:
+                if previous_metadata is None:
+                    package_path.unlink(missing_ok=True)
+                else:
+                    package_path.write_text(previous_metadata, encoding="utf-8")
+                raise
         if vendor is not None and (not unchanged or not vendor.is_file()):
+            vendor.unlink(missing_ok=True)
             entry = self.directory / "pyjs-vendor-entry.js"
             entry.write_text(
                 "".join(
                     f"import * as {value.alias} from {value.package.name!r};\n"
                     for value in imports
                 )
+                + self._styles_source(imports)
                 + "export {"
                 + ", ".join(value.alias for value in imports)
                 + "};\n",
@@ -187,10 +250,41 @@ class ManagedNpmProject:
             self.npm.bundle(entry, vendor)
         return NpmSyncResult(self.directory, packages, imports, vendor)
 
+    def _styles_source(self, imports: tuple[NpmImport, ...]) -> str:
+        sources = []
+        seen = set()
+        for value in merge_npm_imports(imports):
+            if value.package in seen:
+                continue
+            seen.add(value.package)
+            for style in value.styles:
+                path = self.directory / "node_modules" / value.package.name / style
+                package_root = self.directory / "node_modules" / value.package.name
+                if not path.resolve().is_relative_to(package_root.resolve()):
+                    raise ValueError("npm stylesheet escapes its package")
+                css = path.read_text(encoding="utf-8")
+                checked_css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+                asset = r"@import\b|\b(?:url|image-set|image|src)\s*\("
+                if ("\\" in css or re.search(asset, css, re.IGNORECASE)
+                        or re.search(asset, checked_css, re.IGNORECASE)):
+                    raise ValueError("npm styles must be self-contained CSS without imports, URLs or escapes")
+                identifier = value.package.name + "@" + value.package.version + "/" + style
+                sources.append(
+                    "if (typeof document !== 'undefined') {\n"
+                    f"const id = {json.dumps('pyjs-npm:' + identifier)};\n"
+                    "if (!document.getElementById(id)) {\n"
+                    "const style = document.createElement('style'); style.id = id;\n"
+                    f"style.textContent = {json.dumps(css)};\n"
+                    "const first = document.head.querySelector('link[rel~=\"stylesheet\"], style:not([id^=\"pyjs-npm:\"])');\n"
+                    "document.head.insertBefore(style, first);\n}\n}\n"
+                )
+        return "".join(sources)
+
     def vendor_for(self, imports: tuple[NpmImport, ...]) -> Path | None:
         """Return the current vendor module when it matches exact imports."""
         if not imports:
             return None
+        imports = merge_npm_imports(imports)
         package_path = self.directory / "package.json"
         vendor = self.directory / "pyjs-vendor.js"
         if not package_path.is_file() or not vendor.is_file():
@@ -202,6 +296,9 @@ class ManagedNpmProject:
         expected = {
             value.alias: value.package.name for value in imports
         }
+        styles = {value.alias: list(value.styles) for value in imports if value.styles}
+        if metadata.get("pyjs", {}).get("styles", {}) != styles:
+            return None
         dependencies = metadata.get("dependencies", {})
         if metadata.get("pyjs", {}).get("imports") != expected or any(
             dependencies.get(value.package.name) != value.package.version
