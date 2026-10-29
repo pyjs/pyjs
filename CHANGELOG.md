@@ -7,6 +7,31 @@
 - Bundle self-contained package CSS through managed npm imports, preserving
   stylesheet identity across development and packaged applications.
 
+- Rust benchmarks match Cargo's Linux release defaults, removing inherited
+  standard-library debug information from the measured executable size.
+
+- The performance page uses a sticky metric button bar, keeping comparisons
+  switchable while scrolling through workloads without covering column labels.
+  Explanations sit above the controls; the color key stays on the desktop bar.
+
+- Performance source views fold generated runtime and module scaffolding while
+  keeping algorithm instructions visible. Code-size figures count complete
+  runnable artifacts, including support code, in a dedicated code-size view
+  with secondary gzip figures for JavaScript.
+
+- JVM compiles integer-keyed dictionaries and `math.sqrt()`, enabling the
+  Histogram, Spectral norm and N-body benchmarks without rewriting their
+  algorithms. Negative square roots raise catchable Python exceptions.
+  Float conversion also accepts Boolean values.
+
+- The performance comparison uses full-page scrolling instead of a nested
+  table viewport, with inline source comparisons and a compact machine/toolchain
+  footer. Repeated baseline labels and diagnostic details are omitted from the
+  presentation; raw measurements remain in harness output. All workloads and
+  runtime columns stay visible, with handwritten and transpiled targets paired.
+- A category heatmap summarizes benchmark ratios and links to static workload
+  sections, with equal workload weighting and no repeated coverage counters.
+
 - JVM supports `list.pop()` with default, positive, negative and boolean
   indices, preserving item identity and numeric representation. Invalid
   indices raise `IndexError` without changing the list.
