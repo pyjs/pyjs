@@ -1,3 +1,5 @@
+from collections.abc import Awaitable, Callable
+
 import pytest
 
 from pyjs import js
@@ -246,3 +248,17 @@ async def test_timers_and_animation_scheduling_can_be_cancelled():
     assert "cancelled-timeout" not in calls
     assert "cancelled-interval" not in calls
     assert "cancelled-frame" not in calls
+
+
+@js
+async def test_fetch_can_be_injected_as_an_async_callback():
+    request: Callable[[str, object], Awaitable[Response]] = fetch
+    response = await request("data:text/plain,callback", {"cache": "no-store"})
+    assert await response.text() == "callback"
+
+
+@js
+async def test_fetch_callback_preserves_optional_options():
+    request: Callable[[str], Awaitable[Response]] = fetch
+    response = await request("data:text/plain,optional")
+    assert await response.text() == "optional"

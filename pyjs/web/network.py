@@ -425,9 +425,14 @@ async def fetch(url: str, options: object | None = None) -> Response: ...
 @fetch.inline
 def fetch(_arg_strs, **kwargs):
     if len(_arg_strs) == 1:
-        return f"fetch({_arg_strs[0]})"
+        return f"globalThis.fetch({_arg_strs[0]})"
     options = _arg_strs[1]
-    return f"fetch({_arg_strs[0]}, (options => options instanceof Map ? Object.fromEntries(options) : options)({options}))"
+    return f"globalThis.fetch({_arg_strs[0]}, (options => options instanceof Map ? Object.fromEntries(options) : options)({options}))"
+
+
+@fetch.value
+async def fetch(url: str, options: object | None = None) -> Response:
+    return await fetch(url, options)
 
 
 @js.native

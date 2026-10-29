@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Browser `fetch` can be passed as an asynchronous callback, retaining its
+  optional request options and dictionary conversion.
+
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving
