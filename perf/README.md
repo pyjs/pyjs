@@ -87,24 +87,34 @@ Use `--port 0` for an available port, or open a specific snapshot with
 Stop the server with Ctrl-C. If a desktop browser is unavailable, the command
 prints the URL for manual opening.
 
-The UI has metric, target-group and workload selectors; source panels; generated
-JavaScript/LLVM/bytecode links; and raw samples, warnings and failure diagnostics.
+The UI has a metric selector, with all workloads and runtimes always visible; source panels; generated
+JavaScript/LLVM/bytecode source comparisons, with a compact machine/toolchain footer.
 Opening `/perf/` selects the newest run by its recorded creation time. A visible
 run label identifies the data being shown. Historical runs, when retained, are
-available under Run information; `?run=NAME` pins one explicitly and older runs
+available in the footer; `?run=NAME` pins one explicitly and older runs
 show a prominent link back to the latest. With only one run there is no selector.
 Workloads and input sizes run down the left; runtimes run across the top.
 CPython is always first, followed by the JavaScript / Py → JS, Rust / Py → LLVM,
-and Java / Py → JVM pairs. Subtle group headers separate those pairs. Show all
-targets or just one pair alongside CPython. Every target compares with CPython. Time
+and Java / Py → JVM pairs. Subtle group headers separate those pairs.
+Every target compares with CPython. Time
 comparisons say faster/slower; RSS comparisons say less/more memory. Ratios
 rounding to 1.00 show approximately equal, not statistical equivalence. Missing,
 zero-reference or failed comparisons stay explicit, never fabricated speedups.
-Workload labels and column headings remain pinned while scrolling the table.
+The table expands to its full height; scrolling belongs to the page, including
+horizontal scrolling on narrow screens. Workload labels and column headings
+remain pinned while scrolling.
+Workloads are sorted by name and input size within static category tables.
+The category overview links directly to each section without filtering rows.
+Its heatmap uses geometric mean target/CPython ratios for the selected metric,
+first averaging sizes within each workload, then giving each workload equal
+weight. New workloads must pass correctness checks across all targets before
+publication; compiler gaps are fixed rather than published as partial comparisons.
+Categories describe dominant
+behavior, not measured CPU/memory bottlenecks or general language rankings.
 Cell backgrounds range from green (lowest) to warm (highest), scaled
-logarithmically within each row's visible positive non-CPython measurements.
+logarithmically within each row's positive non-CPython measurements.
 CPython stays neutral and does not compress the other columns' color range. The colors
-follow the selected metric and target group; equal, zero and missing values
+follow the selected metric; equal, zero and missing values
 stay neutral. They show relative magnitude, not statistical significance.
 Click a workload or runtime cell to expand source directly below that row:
 shared Python on the left, selected handwritten or generated code on the right.
@@ -112,9 +122,26 @@ The panes stay side by side on phones (one-third Python, two-thirds target),
 with independently scrollable code. Click the selected cell again, Close source,
 or Escape to collapse. A matching outline connects the selected cell and right-hand
 code pane; cells have a visible View code cue. Generated artifacts load on demand.
-Run metadata, methodology and raw evidence are expandable below the matrix.
-Each measurement's evidence shows per-fork warmup endpoints, sample medians
-and ranges before the raw JSON, plus JVM compilation diagnostics when requested.
+Generated JS, LLVM and JVM source views open algorithm declarations and fold
+runtime, module-loader, harness and metadata sections. Each fold can be expanded;
+the full original artifact remains available. Instructions inside algorithm
+functions, including runtime checks and allocations, are not hidden. New JS builds
+record compiler source-scope ranges; older retained output uses declaration
+boundaries and falls back to unfolded text when no algorithm is recognized.
+
+Code size is the complete runnable benchmark artifact: Python program plus
+driver, full JavaScript program, all emitted JVM class files, or the native
+executable. It includes scaffolding and the measurement adapter, but excludes
+the installed interpreter/VM, disassembly, source maps and diagnostic logs.
+JavaScript also reports deterministic gzip-compressed bytes, without applying
+a minifier to either implementation. Folding changes only the display, never
+the counted bytes. Older snapshots can derive sizes from matching retained
+build artifacts without rerunning or changing their recorded timings.
+CPython is the shared baseline, stated once rather than repeated in every cell.
+Raw samples, warnings and JVM diagnostic logs remain in the harness output for
+local investigation; the comparison UI does not expose diagnostic pages.
+The footer identifies the measurement machine and toolchain versions and links
+to instructions for running the harness on your own hardware.
 Its DOM is authored in Python and its controls are compiled with PyJS.
 It reads `perf/runs/*/results.json` on request; new snapshots appear without
 rebuilding or restarting. Incomplete and failed runs remain visible. No HTML
@@ -173,16 +200,14 @@ materialized matrix and all-neighbor force sums respectively. This validates
 the configured inputs to the stated output resolution, not bitwise equality
 of every floating-point intermediate.
 
-Unsupported configurations remain visible: the JVM backend rejects primitive
-dictionary keys, so its histogram cells contain compilation diagnostics.
-The new Towers case also exposes unsupported JVM `list.pop()`, while N-body
-and spectral norm expose unsupported JVM stdlib `math.sqrt()` imports. Those
-configurations remain failed cells; there are no target-specific workload
-rewrites or substitute timings. The math-import failure currently reports an
-internal source-inspection exception, not a polished unsupported diagnostic.
-Historical snapshots also show unsupported direct string iteration; the newer
-base supports that operation. Failures are not timing zeros and do not prevent
-the other configurations from being measured.
+Historical snapshots contain JVM compilation failures for Histogram's integer
+dictionary keys, Towers' `list.pop()`, and the `math.sqrt()` calls in N-body
+and spectral norm. These operations now compile without target-specific
+workload rewrites. Fresh snapshots measure them normally; old snapshots retain
+their original diagnostics rather than acquiring substitute timings. Earlier
+snapshots also show unsupported direct string iteration, which is now supported.
+Any failed configuration remains visible: failures are not timing zeros and do
+not prevent the other configurations from being measured.
 
 Each `cases/NAME/` contains:
 

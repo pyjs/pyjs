@@ -1,10 +1,12 @@
 """Build one adapter in a fresh directory. Invoked in a bounded subprocess."""
 import argparse
 import ast
+import hashlib
 import json
 import shutil
 from pathlib import Path
 
+from perf.artifacts import code_size, javascript_ranges
 from perf.harness.process import execute
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +63,10 @@ const __pyjsEntry__ = {main(size, loops) {
         with compile_source(entry, filename="workload.py", module_name="perf_workload") as result:
             javascript = result.javascript
             (output / "generated.js").write_text(javascript)
+            (output / "source-ranges.json").write_text(json.dumps({
+                "sha256": hashlib.sha256(javascript.encode()).hexdigest(),
+                "ranges": javascript_ranges(result.source_map, (case_dir / "workload.py").read_text()),
+            }))
         (output / "program.cjs").write_text(javascript + "\n" + (ADAPTERS / "node_driver.cjs").read_text())
         command = [tools["node"]["path"], str(output / "program.cjs")]
     elif target in {"java", "pyjs-jvm"}:
@@ -123,7 +129,7 @@ const __pyjsEntry__ = {main(size, loops) {
         command = [str(output / "program")]
     else:
         raise ValueError(target)
-    return {"command": command, "build_commands": commands}
+    return {"command": command, "build_commands": commands, "code_size": code_size(target, output)}
 
 
 def main():

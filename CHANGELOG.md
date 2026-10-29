@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Performance source views fold generated runtime and module scaffolding while
+  keeping algorithm instructions visible. Code-size figures count complete
+  runnable artifacts, including support code, with gzip sizes for JavaScript.
+
+- JVM compiles integer-keyed dictionaries, indexed/default `list.pop()` and
+  `math.sqrt()`, enabling the Histogram, Towers, Spectral norm and N-body
+  benchmarks without rewriting their algorithms. Pops preserve aliases and
+  release removed references; invalid indices and negative square roots raise
+  catchable Python exceptions. Float conversion also accepts Boolean values.
+
+- The performance comparison uses full-page scrolling instead of a nested
+  table viewport, with inline source comparisons and a compact machine/toolchain
+  footer. Repeated baseline labels and diagnostic details are omitted from the
+  presentation; raw measurements remain in harness output. All workloads and
+  runtime columns stay visible, with handwritten and transpiled targets paired.
+- A category heatmap summarizes benchmark ratios and links to static workload
+  sections, with equal workload weighting and no repeated coverage counters.
+
 - JVM supports `math.isfinite()`, first-match `list.remove()` for strings,
   integers and booleans, same-storage list unpacking, reference-valued
   `set(iterable)`, and `dict.setdefault(key, default)`. Unsupported item

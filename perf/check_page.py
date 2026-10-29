@@ -9,6 +9,25 @@ from perf.view import GROUPS, LABELS
 from pyjs.tooling.browser import Browser
 
 
+async def check_categories(page):
+    """Category links navigate static sections; they never filter workloads."""
+    original = await page.evaluate("Array.from(document.querySelectorAll('tr[data-case]')).map(row => row.id)")
+    categories = await page.evaluate("Array.from(document.querySelectorAll('tr[data-category]')).map(row => row.dataset.category)")
+    assert len(categories) == await page.evaluate("document.querySelectorAll('.workload-category').length")
+    for category in categories:
+        await page.click(f'tr[data-category="{category}"] th a')
+        await page.wait_for_frames()
+        assert await page.evaluate("location.hash") == "#category-" + category
+        assert await page.evaluate("Array.from(document.querySelectorAll('tr[data-case]')).map(row => row.id)") == original
+        assert await page.evaluate("document.querySelectorAll('tr[data-case][hidden]').length") == 0
+    # Source handlers must be installed on every section, not just the first.
+    await page.click(f'#category-{categories[-1]} td[data-target="javascript"] button')
+    assert await page.evaluate("document.querySelector('.source-row:not([hidden])').closest('.workload-category').id") == "category-" + categories[-1]
+    await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
+    await page.click(f'#category-{categories[-1]} .back-overview')
+    assert await page.evaluate("location.hash") == "#category-overview"
+
+
 async def check_comparison_edges(page):
     """Exercise missing/zero measurements and the fixed baseline, then restore data."""
     original = await page.evaluate("""Array.from(document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]'))
@@ -44,35 +63,33 @@ async def check_comparison_edges(page):
 
 
 async def check_heatmap(page):
-    """Validate magnitudes, neutral edge cases and scaling to visible targets."""
+    """Validate magnitudes and neutral edge cases across all target columns."""
     original = await page.evaluate("""Array.from(document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]'))
       .map(cell => [cell.dataset.target, cell.getAttribute('data-warm')])""")
     try:
-        for values in ([100, 10, 1], [1000000, 10, 1], [0.001, 10, 1],
-                       [100, 100, 100], [0, None, 1], [10, 20, 40]):
+        for values in ([100, 10, 1, 5, 20, 2, 4], [1000000, 10, 1, 5, 20, 2, 4],
+                       [0.001, 10, 1, 5, 20, 2, 4], [100, 100, 100, 100, 100, 100, 100],
+                       [0, None, 1, 0, None, 1, 0], [10, 20, 40, 80, 160, 320, 640]):
             heats = await page.evaluate("""(() => {
-              const group = document.querySelector('#group'); group.value = 'js';
               const cells = document.querySelector('tbody tr[data-case]').querySelectorAll('td[data-target]');
               VALUES.forEach((value, i) => cells[i].setAttribute('data-warm', value ?? ''));
-              group.dispatchEvent(new Event('change'));
+              document.querySelector('#metric').dispatchEvent(new Event('change'));
               return Array.from(cells).map(cell => cell.getAttribute('data-heat'));
             })()""".replace("VALUES", json.dumps(values)))
             positive = [value for value in values[1:] if value and value > 0]
             assert heats[0] is None, "CPython must not participate in the color scale"
-            for value, heat in zip(values[1:], heats[1:3], strict=True):
+            for value, heat in zip(values[1:], heats[1:], strict=True):
                 if not value or min(positive) == max(positive):
                     assert heat is None, (values, heats)
                 else:
                     expected = math.log(value / min(positive)) / math.log(max(positive) / min(positive))
                     assert abs(float(heat) - expected) < 1e-9, (values, heats)
-            assert heats[3:] == [None] * 4, "hidden targets must not retain colors"
     finally:
         await page.evaluate("""(() => {
           const row = document.querySelector('tbody tr[data-case]');
           for (const [target, value] of VALUES)
             row.querySelector('td[data-target="' + target + '"]').setAttribute('data-warm', value ?? '');
-          const group = document.querySelector('#group'); group.value = 'all';
-          group.dispatchEvent(new Event('change'));
+          document.querySelector('#metric').dispatchEvent(new Event('change'));
         })()""".replace("VALUES", json.dumps(original)))
 
 
@@ -121,68 +138,81 @@ async def check_sources(page, output):
     try:
         await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
         await page.click(cell + ' button')
-        await page.evaluate("window.finishSourceFetch({ok:true,text:async()=>'<script>stale</script>'})")
+        await page.evaluate("window.finishSourceFetch({ok:true,headers:new Headers(),text:async()=>'<script>stale</script>'})")
         assert await page.evaluate(f"!document.querySelector('{panel} .target-code').textContent.includes('<script>stale')")
         await page.evaluate("window.fetch = async () => ({ok:false})")
         await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
         await page.wait_for(f"document.querySelector('{panel} .source-status').textContent.includes('Could not load')", "failed source")
         await page.click(f'{panel} [data-close-source]')
-        await page.evaluate("window.fetch = async () => ({ok:true,text:async()=>'<script>source only</script>'})")
+        await page.evaluate("window.fetch = async () => ({ok:true,headers:new Headers(),text:async()=>'<script>source only</script>'})")
         await page.click('tbody tr[data-case]:first-child td[data-target="pyjs-js"] button')
         await page.wait_for(f"document.querySelector('{panel} .target-code').textContent === '<script>source only</script>'", "literal source")
-        assert await page.evaluate(f"document.querySelector('{panel} .target-code').children.length") == 0
+        assert await page.evaluate(f"document.querySelector('{panel} .target-code').querySelectorAll('script').length") == 0
     finally:
         await page.evaluate("window.fetch = window.savedSourceFetch; delete window.savedSourceFetch; delete window.finishSourceFetch")
     await page.click(cell + ' button')
     await page.set_viewport(390, 844)
     await page.evaluate("""(() => {
-      document.querySelector('.table-scroll').scrollLeft = 450;
       window.dispatchEvent(new Event('resize'));
       document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'});
+      window.scrollTo(450, scrollY);
     })()""")
+    await page.wait_for_frames()
     dimensions = await page.evaluate("""(() => {
       const panel = document.querySelector('.source-row:not([hidden]) .source-panel');
       const panes = Array.from(panel.querySelectorAll('.source-split > section')).map(x=>x.getBoundingClientRect());
       const rect = panel.getBoundingClientRect();
       return [rect.left,rect.right,panes[0].width,panes[1].width,panes[0].top,panes[1].top,
-        ...Array.from(panel.querySelectorAll('pre')).map(x=>getComputedStyle(x).overflow)];
+        ...Array.from(panel.querySelectorAll('.python-code,.target-code')).map(x=>getComputedStyle(x).overflow)];
     })()""")
     assert dimensions[0] >= 0 and dimensions[1] <= 390, dimensions
     assert abs(dimensions[3] / dimensions[2] - 2) < 0.01, dimensions
     assert dimensions[4] == dimensions[5] and dimensions[6:] == ['auto', 'auto'], dimensions
-    assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    assert await page.evaluate("""Array.from(document.querySelectorAll('.source-row:not([hidden]) pre')).every(pre => {
+    assert await page.evaluate("scrollX > 0"), "horizontal scrolling belongs to the page"
+    assert await page.evaluate("""Array.from(document.querySelectorAll('.source-row:not([hidden]) .python-code,.source-row:not([hidden]) .target-code')).every(pre => {
       pre.scrollLeft = 30;
       return pre.scrollWidth <= pre.clientWidth || pre.scrollLeft > 0;
     })"""), "each code pane scrolls independently"
     await page.screenshot(output / "source-mobile.png")
-    # Filtering away the selected target closes the expansion.
+    # Metric changes keep the selected source open and spanning every column.
     await page.evaluate("""(() => {
-      const group = document.querySelector('#group'); group.value = 'jvm';
-      group.dispatchEvent(new Event('change'));
+      document.querySelector('#metric').dispatchEvent(new Event('change'));
     })()""")
-    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
-    await page.evaluate("""(() => {
-      const group = document.querySelector('#group'); group.value = 'all'; group.dispatchEvent(new Event('change'));
-      document.querySelector('.table-scroll').scrollLeft = 0;
-    })()""")
+    assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
+    assert await page.evaluate("document.querySelector('.source-row:not([hidden]) > td').colSpan") == len(LABELS) + 1
+    await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click(); window.scrollTo(0, scrollY)")
     await page.set_viewport(1440, 1100)
-    # A different row replaces the expansion; filtering it away also closes it.
+    # A different row replaces the expansion without hiding any workload.
     await page.click(cell + ' button')
     await page.evaluate("document.querySelectorAll('tbody tr[data-case]')[1].querySelector('.row-source').click()")
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 1
     assert await page.evaluate("document.querySelector('.source-row:not([hidden])').previousElementSibling === document.querySelectorAll('tbody tr[data-case]')[1]")
-    await page.evaluate("""(() => {
-      const select = document.querySelector('#workload');
-      const caseName = document.querySelector('.source-row:not([hidden])').dataset.sourceCase;
-      select.value = Array.from(select.options).find(option => option.value !== 'all' && option.value !== caseName).value;
-      select.dispatchEvent(new Event('change'));
-    })()""")
+    await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
-    await page.evaluate("const select = document.querySelector('#workload'); select.value = 'all'; select.dispatchEvent(new Event('change'))")
     await page.click(cell + ' button')
     await page.click(cell + ' button')
     assert await page.evaluate("document.querySelectorAll('.source-row:not([hidden])').length") == 0
+
+
+async def check_folding(page, output):
+    for target in ("pyjs-js", "pyjs-llvm", "pyjs-jvm"):
+        await page.click(f'tbody tr[data-case]:first-child td[data-target="{target}"] button')
+        await page.wait_for("document.querySelector('.source-row:not([hidden]) .target-code details[data-algorithm=true][open]') !== null", "algorithm source folds")
+        assert await page.evaluate("""(async () => {
+          const panel = document.querySelector('.source-row:not([hidden])');
+          const original = await (await fetch(panel.querySelector('.source-download').href)).text();
+          const restored = Array.from(panel.querySelectorAll('.target-code pre')).map(pre => pre.textContent).join('');
+          return restored === original && panel.querySelectorAll('details[data-algorithm=false]:not([open])').length > 0;
+        })()"""), "folding preserves the full original artifact"
+        await page.evaluate("""(() => {
+          const fold = document.querySelector('.source-row:not([hidden]) details[data-algorithm=false]');
+          fold.querySelector('summary').click();
+          if (!fold.open) throw new Error('support code did not expand');
+          fold.querySelector('summary').click();
+        })()""")
+        await page.evaluate("document.querySelector('.source-row:not([hidden])').scrollIntoView({block:'center'})")
+        await page.screenshot(output / f"folded-{target}.png")
+        await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
 
 
 async def check(url: str, output: Path):
@@ -195,12 +225,30 @@ async def check(url: str, output: Path):
         assert not page.exceptions, page.exceptions
         await page.set_viewport(1440, 1100)
         count = await page.evaluate("document.querySelectorAll('tbody tr[data-case]').length")
+        sections = await page.evaluate("document.querySelectorAll('.comparison-table').length")
         assert count > 0
+        assert await page.evaluate("document.querySelector('#group') === null")
+        assert await page.evaluate("document.querySelector('#workload') === null")
+        assert await page.evaluate("""(() => {
+          const wrapper = document.querySelector('.comparison-table').parentElement;
+          return getComputedStyle(wrapper).overflow === 'visible' &&
+            wrapper.clientHeight >= wrapper.querySelector('table').offsetHeight &&
+            wrapper.getBoundingClientRect().right <= innerWidth &&
+            wrapper.querySelector('td[data-target]').getBoundingClientRect().width < 250 &&
+            !document.querySelector('details[id]');
+        })()"""), "all comparison rows belong to page flow"
+        await page.evaluate("document.querySelectorAll('.comparison-table tr[data-case]')[1].scrollIntoView({block:'start'})")
+        await page.wait_for_frames()
+        assert await page.evaluate("""(() => {
+          const heading = document.querySelector('.group-headings th[scope=colgroup]').getBoundingClientRect();
+          return scrollY > 0 && Math.abs(heading.top) < 1;
+        })()"""), "column headings stay pinned during page scrolling"
+        await page.evaluate("window.scrollTo(0,0)")
         assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).every(row =>
             row.querySelectorAll('th[scope=row]').length === 1 &&
             row.querySelectorAll('td[data-target]').length === COUNT)""".replace("COUNT", str(len(LABELS))))
-        assert await page.evaluate(f"document.querySelectorAll('thead th[scope=col]').length === {len(LABELS) + 1}")
-        assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]')).map(item => item.dataset.target)") == list(LABELS)
+        assert await page.evaluate(f"document.querySelectorAll('.comparison-table thead th[scope=col]').length === {(len(LABELS) + 1) * sections}")
+        assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]')).map(item => item.dataset.target)") == list(LABELS) * sections
         # Assert actual values and ratios, not just that a change handler runs.
         for metric, scale, digits in (("startup", 1000, 3), ("memory", 1 / 1024, 2),
                                      ("compile", 1, 3), ("warm", 1000, 3)):
@@ -217,6 +265,9 @@ async def check(url: str, output: Path):
                   }})];
               }});
             }})()""")
+            assert await page.evaluate("""Array.from(document.querySelectorAll('[data-summary-target]')).every(cell =>
+              cell.querySelector('.category-value').textContent === cell.getAttribute('data-label-METRIC') &&
+              cell.getAttribute('style') === cell.getAttribute('data-style-METRIC'))""".replace("METRIC", metric))
             for value, display, target, highlighted, ratios in actual:
                 assert highlighted == ("true" if target == "cpython" else "false")
                 expected_references = [] if target == "cpython" else ["cpython"]
@@ -253,70 +304,36 @@ async def check(url: str, output: Path):
         await check_comparison_edges(page)
         await check_heatmap(page)
         await check_sources(page, output)
-        for group, (_, reference, compiled) in GROUPS.items():
-            await page.evaluate("""(() => {
-              const select = document.querySelector('#group');
-              select.value = GROUP; select.dispatchEvent(new Event('change'));
-            })()""".replace("GROUP", json.dumps(group)))
-            expected_columns = ["cpython", reference, compiled]
-            assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]:not([hidden])')).map(item => item.dataset.target)") == expected_columns
-            assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).map(row =>
-              Array.from(row.querySelectorAll('td[data-target]:not([hidden])')).map(cell => cell.dataset.target))""") == [expected_columns] * count
-            assert await page.evaluate("Array.from(document.querySelectorAll('th[scope=colgroup]:not([hidden])')).map(item => [item.dataset.group, item.colSpan])") == [[group, 2]]
-            await page.screenshot(output / (group + "-group.png"))
-        await page.evaluate("""(() => {
-          const select = document.querySelector('#group');
-          select.value = 'all'; select.dispatchEvent(new Event('change'));
-        })()""")
+        await check_folding(page, output)
+        await check_categories(page)
+        assert await page.evaluate("Array.from(document.querySelectorAll('.comparison-table thead th[data-target]:not([hidden])')).map(item => item.dataset.target)") == list(LABELS) * sections
+        assert await page.evaluate("""Array.from(document.querySelectorAll('tbody tr[data-case]')).map(row =>
+          Array.from(row.querySelectorAll('td[data-target]:not([hidden])')).map(cell => cell.dataset.target))""") == [list(LABELS)] * count
+        assert await page.evaluate("Array.from(document.querySelectorAll('th[scope=colgroup]:not([hidden])')).map(item => [item.dataset.group, item.colSpan])") == [[group, 2] for group in GROUPS] * sections
         await page.evaluate("""(() => {
           const select = document.querySelector('#metric');
           select.value = 'startup'; select.dispatchEvent(new Event('change'));
         })()""")
         await page.wait_for("document.querySelector('.measurement').textContent.includes('ms')", "startup metric")
-        cases = await page.evaluate("""Array.from(document.querySelector('#workload').options)
-          .map(option => option.value).filter(value => value !== 'all')""")
-        for selected_case in cases:
-            await page.evaluate("""(() => {
-              const select = document.querySelector('#workload');
-              select.value = CASE; select.dispatchEvent(new Event('change'));
-            })()""".replace("CASE", json.dumps(selected_case)))
-            assert await page.evaluate("""Array.from(document.querySelectorAll('tr[data-case]')).every(row =>
-              row.hidden === (row.dataset.case !== CASE))""".replace("CASE", json.dumps(selected_case)))
+        cases = await page.evaluate("""Array.from(new Set(Array.from(document.querySelectorAll('tr[data-case]'))
+          .map(row => row.dataset.case)))""")
+        assert await page.evaluate("document.querySelectorAll('tbody tr[data-case]:not([hidden])').length") == count
         await page.evaluate("""(() => {
-          const select = document.querySelector('#workload');
-          select.value = 'all'; select.dispatchEvent(new Event('change'));
           const metric = document.querySelector('#metric');
           metric.value = 'warm'; metric.dispatchEvent(new Event('change'));
         })()""")
+        await page.evaluate("window.scrollTo(0, 0)")
         await page.screenshot(output / "desktop.png")
         if "histogram" in cases:
             await page.evaluate("document.querySelector('tr[data-case=histogram]').scrollIntoView({block: 'center'})")
             await page.screenshot(output / "new-workloads.png")
         await page.set_viewport(390, 844)
-        assert await page.evaluate("""(() => {
-          const scroller = document.querySelector('.table-scroll');
-          const label = document.querySelector('tbody th[scope=row]');
-          const before = label.getBoundingClientRect().left;
-          scroller.scrollLeft = 450;
-          return scroller.scrollLeft > 0 && Math.abs(label.getBoundingClientRect().left - before) < 1;
-        })()"""), "workload names must stay visible during horizontal scrolling"
-        await page.evaluate("window.scrollTo(0, document.querySelector('.table-scroll').getBoundingClientRect().top + scrollY - 16)")
+        await page.evaluate("window.scrollTo(450, document.querySelector('.comparison-table').getBoundingClientRect().top + scrollY)")
+        await page.wait_for_frames()
+        assert await page.evaluate("""scrollX > 0 &&
+          Math.abs(document.querySelector('.comparison-table tbody th[scope=row]').getBoundingClientRect().left) < 1"""), "workload names stay visible during horizontal page scrolling"
         await page.screenshot(output / "mobile.png")
-        assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-        evidence = await page.evaluate("""(() => {
-          const panel = Array.from(document.querySelectorAll('details[id]'))
-            .find(item => item.querySelector('.trace-table') && item.textContent.includes('JVM compilation'));
-          if (!panel) return false;
-          panel.open = true;
-          panel.scrollIntoView();
-          return true;
-        })()""")
-        if evidence:
-            assert await page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-            await page.screenshot(output / "evidence-mobile.png")
-            await page.set_viewport(1440, 1100)
-            await page.evaluate("document.querySelector('details[id][open]').scrollIntoView()")
-            await page.screenshot(output / "evidence-desktop.png")
+        assert await page.evaluate("document.querySelectorAll('.evidence, .all-evidence, .ratio small').length") == 0
         assert not page.exceptions, page.exceptions
         other = await page.evaluate("""Array.from(document.querySelector('#snapshot').options)
             .find(option => !option.selected)?.value || ''""")
@@ -331,14 +348,13 @@ async def check(url: str, output: Path):
             # measurement empty. Wait for client hydration, not a timing value.
             await page.wait_for_selector('td[data-target="cpython"][data-baseline="true"]')
             assert not page.exceptions, page.exceptions
-        (output / "result.json").write_text(json.dumps({"rows": count, "runtime_columns": len(LABELS), "filters": cases,
+        (output / "result.json").write_text(json.dumps({"rows": count, "runtime_columns": len(LABELS), "workloads": cases,
                                                        "target_groups": list(GROUPS), "fixed_baseline": "cpython",
                                                        "heatmap_edges": True, "inline_sources": True,
                                                        "source_request_races": True, "mobile_source_split": "1:2",
                                                        "sticky_workloads": True,
                                                        "snapshot_navigation": bool(other),
-                                                       "jit_evidence": evidence,
-                                                       "mobile_overflow": False}, indent=2) + "\n")
+                                                       "page_scrolling": True, "diagnostic_ui": False}, indent=2) + "\n")
 
 
 def main():

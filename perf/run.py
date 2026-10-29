@@ -304,7 +304,8 @@ def run(args):
                 built[case, target] = build["command"]
                 for row in rows:
                     row.update(build_seconds=elapsed, command=build["command"],
-                               build_commands=build["build_commands"], artifacts=artifacts)
+                               build_commands=build["build_commands"], artifacts=artifacts,
+                               code_size=build.get("code_size"))
                     # Correctness before timing: size, alternating size, and edge cases.
                     for size in sorted({1, 2, row["size"], row["size"] + 1}):
                         check = execute(build["command"] + [str(size), "1", "0", "1"], timeout=args.timeout)

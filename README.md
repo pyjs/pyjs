@@ -945,7 +945,10 @@ with `pyjs template`.
   Both reject overflow instead of silently wrapping or producing infinity.
   Generated operation codecs use these tokens without an untyped object tree.
 - JVM dictionaries support ordinary integer, float, Boolean and reference
-  values with reference keys. Iteration and live, reusable key views preserve
+  values with integer or reference keys. Integer keys retain signed 64-bit
+  precision and compare by value. Float keys, nullable numeric keys and Boolean
+  operands for integer-keyed dictionaries remain explicit compilation boundaries.
+  Iteration and live, reusable key views preserve
   insertion order. Updating values does not invalidate an iterator; changing
   its key set raises `RuntimeError`. Scalar `get` requires a matching default;
   omitted/`None` defaults for scalar values remain explicit boundaries.
@@ -955,6 +958,7 @@ with `pyjs template`.
   Dictionary subscription raises `KeyError` for missing keys without
   evaluating the mapping or key twice. Present `None` values remain valid.
   String and nullable-string keys retain Python-style quoted messages;
+  integer keys use their decimal spelling.
   `KeyError()` and `KeyError("")` remain distinct. Formatting uses pinned
   Unicode 16 printability rather than the host JDK's Unicode version.
   The existing UTF-16 representation conflates adjacent high/low surrogate
@@ -984,7 +988,7 @@ with `pyjs template`.
   including nullable strings. Floats and other mixed item domains remain
   explicit unsupported boundaries.
   Dictionary membership checks keys, including nullable strings/Booleans,
-  independently of their values. Existing reference-key storage restrictions
+  independently of their values. The dictionary key storage restrictions above
   still apply. Membership syntax evaluates the needle before the container,
   including application and declared native `__contains__` methods. Explicit
   method calls retain receiver-first evaluation order.
@@ -1093,6 +1097,15 @@ with `pyjs template`.
   Source and result
   must have matching item storage and representation; converting other
   iterable kinds or item layouts remains unsupported.
+- JVM `list.pop()` and `list.pop(index)` remove and return the selected item
+  in place, preserving aliases, shallow identity and numeric storage. Negative
+  indices count from the end. Empty lists and out-of-range indices raise
+  `IndexError`; vacated array slots are cleared. Removing the last element is
+  constant time; removing an earlier element shifts the following items.
+- JVM `math.sqrt()` accepts integers, Booleans and floats. Negative inputs
+  raise `ValueError`; negative zero, positive infinity and NaN retain their
+  floating-point behavior. The implementation uses Java's native square root
+  after a Python-compatible domain check.
 - JVM custom Python exception classes retain inherited catches, typed fields,
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;

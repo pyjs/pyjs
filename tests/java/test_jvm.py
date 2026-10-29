@@ -1293,16 +1293,16 @@ def main() -> int:
     assert "$exception$KeyError: 'missing'" in result.stderr
 
 
-def test_jvm_dictionary_rejects_primitive_keys():
+def test_jvm_dictionary_rejects_float_keys():
     with pytest.raises(
         JVMUnsupported,
-        match="dictionaries require reference keys and reference or scalar values",
+        match="dictionaries require integer or reference keys and reference or scalar values",
     ):
         transpile_jvm(
             """
             def main() -> int:
-                values: dict[int, int] = {1: 42}
-                return values[1]
+                values: dict[float, int] = {1.0: 42}
+                return values[1.0]
             """
         )
 

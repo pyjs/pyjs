@@ -8,6 +8,7 @@ from html.parser import HTMLParser
 import pytest
 
 from perf.app import mount
+from perf.categories import CATEGORIES, category_for, summarize_category
 from perf.harness.build import ROOT, build
 from perf.harness.jit import summarize_jit
 from perf.harness.process import execute
@@ -133,12 +134,10 @@ def test_new_python_workloads_execute_as_javascript(tmp_path, case):
         parse_samples(measured.stdout, expected(case, size, 3), 1, 2)
 
 
-@pytest.mark.parametrize("case", EXPANDED_CASES)
+@pytest.mark.parametrize("case", ("histogram",) + EXPANDED_CASES)
 @pytest.mark.parametrize("target", ("rust", "java", "pyjs-llvm", "pyjs-jvm"))
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Native benchmark adapters target Linux")
 def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
-    if target == "pyjs-jvm" and case in ("towers", "spectralnorm", "nbody"):
-        pytest.skip("JVM lacks list.pop / stdlib math imports; runner retains failed cells")
     requirements = {"rust": ("rustc",), "java": ("java", "javac"),
                     "pyjs-jvm": ("java", "javac"), "pyjs-llvm": ("clang",)}
     tools = {name: tool(name) for name in requirements[target]}
@@ -153,15 +152,6 @@ def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
         measured = execute(result["command"] + [str(size), "2", "0", "1"])
         assert measured.returncode == 0, measured.stderr
         parse_samples(measured.stdout, expected(case, size, 2), 0, 1)
-
-
-def test_towers_jvm_pop_boundary_is_explicit():
-    from pyjs.java import transpile_jvm
-    from pyjs.java.diagnostics import JVMUnsupported
-
-    source = (ROOT / "cases/towers/workload.py").read_text()
-    with pytest.raises(JVMUnsupported, match="unsupported JVM scalar operation pop"):
-        transpile_jvm(source + "\ndef main() -> int:\n    return kernel(3)\n")
 
 
 def snapshot():
@@ -188,9 +178,14 @@ def test_matrix_groups_inputs_and_keeps_missing_and_failed_cells():
             super().__init__()
             self.headers = []
             self.rows = []
+            self.comparison = False
 
         def handle_starttag(self, tag, attrs):
             attrs = dict(attrs)
+            if tag == "table":
+                self.comparison = attrs.get("class") == "comparison-table"
+            if not self.comparison:
+                return
             if tag == "th" and attrs.get("scope") == "col":
                 self.headers.append(attrs.get("data-target"))
             if tag == "tr" and "data-case" in attrs:
@@ -200,7 +195,7 @@ def test_matrix_groups_inputs_and_keeps_missing_and_failed_cells():
 
     data = snapshot()
     data["rows"].append({**data["rows"][0], "size": 48})
-    # HTML includes all raw evidence; inspect table structure rather than that scaffolding.
+    # Inspect table structure without coupling the test to source-panel markup.
     matrix = Matrix()
     matrix.feed(render_html(view(data, ["example"], "example", "/perf/")))
     assert matrix.headers == [None, *LABELS]
@@ -241,7 +236,52 @@ def test_target_pairs_have_fixed_order_and_explicit_comparison_references():
         "rust": ["cpython"], "pyjs-llvm": ["cpython"],
         "java": ["cpython"], "pyjs-jvm": ["cpython"],
     }
-    assert 'id="group"' in html and 'id="baseline"' not in html
+    assert 'id="group"' not in html and 'id="baseline"' not in html
+    assert 'id="workload"' not in html
+    assert 'data-view=' not in html
+    assert 'data-coverage-' not in html and 'data-partial' not in html
+    assert 'category-coverage' not in html
+
+
+def test_category_catalog_covers_each_workload_once():
+    assigned = [case for _, _, cases in CATEGORIES.values() for case in cases]
+    assert len(assigned) == len(set(assigned))
+    assert set(assigned) == set(CASES)
+    assert category_for("future-workload") == "other"
+
+
+def test_category_averages_weight_workloads_equally():
+    rows = []
+    for case, size, reference, target in [("a", 1, 100, 25), ("a", 2, 1000, 250), ("b", 1, 10, 10)]:
+        rows.extend({"case": case, "size": size, "target": name, "status": "ok", "warm_seconds": {"median": value}}
+                    for name, value in [("cpython", reference), ("javascript", target)])
+    scores = summarize_category(rows, ["cpython", "javascript", "rust"], "warm")
+    assert scores["cpython"] == 1
+    assert scores["javascript"] == pytest.approx(0.5)  # sqrt(0.25 * 1), not three equally weighted inputs
+    assert scores["rust"] is None
+    rows[-1]["status"] = "failed"
+    scores = summarize_category(rows, ["javascript"], "warm")
+    assert scores["javascript"] is None
+    assert summarize_category(rows, ["javascript"], "compile")["javascript"] is None
+
+
+@pytest.mark.parametrize("bad", [0, -1, None, float("inf"), float("nan")])
+def test_category_summary_excludes_invalid_measurements(bad):
+    rows = [{"case": "a", "size": 1, "target": target, "status": "ok", "warm_seconds": {"median": value}}
+            for target, value in [("cpython", 1), ("javascript", bad)]]
+    assert summarize_category(rows, ["javascript"], "warm")["javascript"] is None
+
+
+def test_categories_are_static_sections_with_unique_workload_rows():
+    data = snapshot()
+    data["rows"] += [{**data["rows"][0], "case": case, "metadata": {**data["rows"][0]["metadata"], "name": case}}
+                     for case in ("matrix", "objects", "fibonacci", "textscan", "future-workload")]
+    html = render_html(view(data, ["example"], "example", "/perf/"))
+    for key in CATEGORIES:
+        assert f'id="category-{key}"' in html
+        assert f'href="#category-{key}"' in html
+    for case in ("sieve", "matrix", "objects", "fibonacci", "textscan", "future-workload"):
+        assert html.count(f'data-case="{case}"') == 1
 
 
 def test_source_expansions_follow_each_input_and_only_link_recorded_artifacts():
@@ -285,7 +325,10 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
     run = tmp_path / "first"
     run.mkdir()
     path = run / "results.json"
-    path.write_text(json.dumps(snapshot()))
+    data = snapshot()
+    data["warnings"] = ["run diagnostic marker"]
+    data["rows"][0]["warnings"] = ["measurement diagnostic marker"]
+    path.write_text(json.dumps(data))
     app = Application()
     mount(app, root=tmp_path)
     with Server(app, port=0, quiet=True) as server:
@@ -294,7 +337,17 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
         source = body.decode()
         assert "<script>bad()" not in source
         assert "&lt;script&gt;bad()" in source
-        assert "wrong result &lt;unsafe&gt;" in source
+        assert "wrong result" not in source
+        assert "Raw samples, commands and metadata" not in source
+        assert "run diagnostic marker" not in source
+        assert "measurement diagnostic marker" not in source
+        assert 'class="table-wrap"' in source and 'class="table-scroll"' not in source
+        assert b'/evidence/' not in body
+        assert request(server, "GET", "/perf/evidence/")[0] == 404
+        assert "vs CPython" not in source and 'class="baseline-note"' not in source
+        assert 'class="evidence"' not in source and "Run information, versions and JSON" not in source
+        assert "test CPU" in source and "test host" in source
+        assert "Run the performance harness" in source
         assert 'data-warm=""' in source
         assert 'data-warm="0.1"' in source
         assert 'data-latest="true"' in source
@@ -309,7 +362,6 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
         data.update(created="2026-02-01", label="New measurement", complete=False)
         (newer / "results.json").write_text(json.dumps(data))
         assert b"New measurement" in request(server, "GET", "/perf/")[2]
-        assert b"coverage is incomplete" in request(server, "GET", "/perf/")[2]
         historical = request(server, "GET", "/perf/?run=first")[2]
         assert b"New measurement" not in historical
         assert b'data-latest="false"' in historical
@@ -320,19 +372,18 @@ def test_live_ui_escapes_sources_and_keeps_failure_without_timing(tmp_path):
     assert not list(tmp_path.rglob("*.html"))
 
 
-def test_evidence_explains_forks_and_jit_failures_before_raw_json():
-    data = snapshot()
-    data["rows"][0].update(loops=2, forks=[[
-        {"phase": "warmup", "ns": 8_000_000}, {"phase": "warmup", "ns": 4_000_000},
-        {"phase": "sample", "ns": 2_000_000}, {"phase": "sample", "ns": 6_000_000}]],
-        jvm_diagnostics={"status": "ok", "compiled": [], "failures": [
-            {"method": "PyjsProgram kernel (J)J", "reasons": ["too many local variables"]}]},
-        artifacts={"build/sieve/pyjs-jvm/24-jit.xml": 123})
-    html = render_html(view(data, ["example"], "example", "/perf/"))
-    assert '<td>1</td><td>4.000</td><td>2.000</td><td>2.000</td><td>1.000–3.000</td>' in html
-    assert "PyjsProgram kernel (J)J: too many local variables" in html
-    assert 'href="/perf/artifact/example/build/sieve/pyjs-jvm/24-jit.xml"' in html
-    assert html.index("First warmup") < html.index("Raw samples, commands and metadata")
+def test_comparison_routes_respect_mount_prefix(tmp_path):
+    run = tmp_path / "saved"
+    run.mkdir()
+    (run / "results.json").write_text(json.dumps(snapshot()))
+    app = Application()
+    mount(app, root=tmp_path, prefix="/docs/benchmarks")
+    with Server(app, port=0, quiet=True) as server:
+        status, _, body = request(server, "GET", "/docs/benchmarks/")
+        assert status == 200 and b'/docs/benchmarks/page.js' in body
+        assert b'/evidence/' not in body
+        assert request(server, "GET", "/docs/benchmarks/evidence/")[0] == 404
+        assert request(server, "GET", "/perf/")[0] == 404
 
 
 def test_missing_tool_is_explicit():

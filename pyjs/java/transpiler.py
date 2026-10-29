@@ -1738,6 +1738,8 @@ class JVMEmitter:
                 value_type = self.expression(node.args[0])
                 if value_type == "J":
                     self.code.emit(0x8A)
+                elif value_type == "Z":
+                    self.code.emit(0x87)
                 elif value_type != "D":
                     raise JVMUnsupported(
                         "fixed-width float construction requires a number",
@@ -2217,6 +2219,25 @@ class JVMEmitter:
                 )
             if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "set":
                 return sets.call(self, node, target, semantic_receiver, leading_argument)
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "pop"):
+                if node.keywords or len(node.args) > 1:
+                    raise JVMUnsupported("JVM list.pop accepts one positional index", node)
+                if node.args:
+                    actual = self.expression(node.args[0])
+                    if actual == "Z":
+                        self.code.emit(0x85)
+                    elif actual != "J":
+                        raise JVMUnsupported("JVM list.pop index must be an integer", node)
+                else:
+                    self.long_constant(-1)
+                owner = self.list_class(semantic_receiver)
+                item_type = self.list_item_type(semantic_receiver)
+                if not any(method.name == "pop" for method in owner.methods):
+                    owner.add_method(self.list_pop_method(owner, item_type))
+                reference = self.class_file.method_reference(owner.name, "pop", f"(J){item_type}")
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                return item_type
             if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name == "copy"
                     and not node.args and not node.keywords):
@@ -2938,10 +2959,7 @@ class JVMEmitter:
             if key is None:
                 raise JVMUnsupported("JVM dictionary unpacking is not implemented", node)
             self.code.emit(0x59)
-            actual_key = self.expression(key, expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary literal changes key type", key)
-            self.convert_native_argument(actual_key, key_type, key)
+            self.dictionary_key(key, key_type)
             actual_value = self.expression(value, expected=value_type)
             if not self.compatible(actual_value, value_type):
                 raise JVMUnsupported("JVM dictionary literal changes value type", value)
@@ -2982,12 +3000,7 @@ class JVMEmitter:
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             return "Ljava/util/Set;"
         if target.name == "__contains__" and len(node.args) == 1:
-            actual = (self.load(leading_argument) if leading_argument is not None
-                      else self.expression(node.args[0]))
-            actual = self.refine_reference(node.args[0], actual, key_type)
-            if not self.compatible(actual, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type, leading_argument)
             self.dictionary_key_guard(key_type)
             reference = self.class_file.method_reference(
                 "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z",
@@ -3004,10 +3017,7 @@ class JVMEmitter:
             self.code.emit(0x85)
             return "J"
         if target.name == "__setitem__" and len(node.args) == 2:
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             actual_value = self.expression(node.args[1], expected=value_descriptor)
             if not self.compatible(actual_value, value_descriptor):
                 raise JVMUnsupported(
@@ -3025,10 +3035,7 @@ class JVMEmitter:
             self.code.emit(0x57)
             return "V"
         if target.name in {"__getitem__", "pop"} and len(node.args) == 1:
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             self.dictionary_key_guard(key_type)
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
@@ -3045,6 +3052,11 @@ class JVMEmitter:
             if key_type == "Ljava/lang/String;":
                 self.load(key_slot)
                 self.string_repr()
+            elif key_type == "Ljava/lang/Long;":
+                self.load(key_slot)
+                self.dictionary_value_cast("J")
+                reference = self.class_file.method_reference("java/lang/String", "valueOf", "(J)Ljava/lang/String;")
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
             else:
                 self.string_constant("key not found")
             name = emit_exception_class(
@@ -3072,10 +3084,7 @@ class JVMEmitter:
         if target.name in {"get", "pop", "setdefault"} and len(node.args) in {1, 2}:
             if target.name == "setdefault" and len(node.args) != 2:
                 raise JVMUnsupported("JVM dict.setdefault requires an explicit default", node)
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             get = self.class_file.method_reference(
                 "java/util/HashMap",
                 "remove" if target.name == "pop" else "get",
@@ -3134,6 +3143,17 @@ class JVMEmitter:
             f"unsupported JVM dictionary operation {target.name}",
             node,
         )
+
+    def dictionary_key(self, node, descriptor, leading_argument=None):
+        actual = (self.load(leading_argument) if leading_argument is not None
+                  else self.expression(node, expected=descriptor))
+        if leading_argument is not None:
+            actual = self.refine_reference(node, actual, descriptor)
+        if descriptor == "Ljava/lang/Long;" and actual == "Z":
+            raise JVMUnsupported("JVM integer dictionary keys do not support Boolean operands", node)
+        if not self.compatible(actual, descriptor):
+            raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+        self.convert_native_argument(actual, descriptor, node)
 
     def dictionary_value_cast(self, descriptor: str) -> None:
         wrappers = {
@@ -3411,7 +3431,7 @@ class JVMEmitter:
         name, descriptor = emit_iterator_next(owner, self.throw_python, collection=collection)
         reference = self.class_file.method_reference(owner.name, name, descriptor)
         self.code.emit(0xB8, reference.to_bytes(2, "big"))
-        self.checkcast(item_type)
+        self.dictionary_value_cast(item_type)
         self.assign_iterator_target(node, item_type, semantic_item)
         self.code.branch(0xA7, self.block_label(node.body))
 
@@ -5088,6 +5108,85 @@ class JVMEmitter:
         code.emit(0xB1)
         return Method(0x0001, "remove", f"({item_type})V", code.render(), 7, index + 1)
 
+    def list_pop_method(self, class_file: ClassFile, item_type: str) -> Method:
+        """Remove one live element, preserving aliases and releasing its old slot."""
+        code = Bytecode()
+        data = class_file.field_reference(class_file.name, "data", f"[{item_type}")
+        length = class_file.field_reference(class_file.name, "length", "I")
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.branch(0x9A, "nonempty")
+        self.throw_python("IndexError", "pop from empty list", code, class_file)
+        code.mark("nonempty")
+        code.local(0x16, 1)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9C, "validate")
+        code.local(0x16, 1)
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x85)
+        code.emit(0x61)
+        code.local(0x37, 1)
+        code.mark("validate")
+        code.local(0x16, 1)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9B, "invalid")
+        code.local(0x16, 1)
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x85)
+        code.emit(0x94)
+        code.branch(0x9B, "valid")
+        code.mark("invalid")
+        self.throw_python("IndexError", "pop index out of range", code, class_file)
+        code.mark("valid")
+        code.local(0x16, 1)
+        code.emit(0x88)
+        code.local(0x36, 3)
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x15, 3)
+        code.emit(self.array_load_opcode(item_type))
+        load = {"J": 0x16, "D": 0x18, "F": 0x17, "Z": 0x15,
+                "B": 0x15, "C": 0x15, "S": 0x15, "I": 0x15}.get(item_type, 0x19)
+        store = {0x16: 0x37, 0x18: 0x39, 0x17: 0x38, 0x15: 0x36, 0x19: 0x3A}[load]
+        code.local(store, 4)
+        # arraycopy handles both primitive and reference arrays, including overlap.
+        for offset in (1, 0):
+            code.local(0x19, 0)
+            code.emit(0xB4, data.to_bytes(2, "big"))
+            code.local(0x15, 3)
+            if offset:
+                code.emit(0x04)
+                code.emit(0x60)
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x04)
+        code.emit(0x64)
+        code.local(0x15, 3)
+        code.emit(0x64)
+        copy = class_file.method_reference("java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V")
+        code.emit(0xB8, copy.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0x59)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        code.emit(0x04)
+        code.emit(0x64)
+        code.emit(0xB5, length.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0xB4, data.to_bytes(2, "big"))
+        code.local(0x19, 0)
+        code.emit(0xB4, length.to_bytes(2, "big"))
+        zero = {"J": 0x09, "D": 0x0E, "F": 0x0B, "Z": 0x03,
+                "B": 0x03, "C": 0x03, "S": 0x03, "I": 0x03}.get(item_type, 0x01)
+        code.emit(zero)
+        code.emit(self.array_store_opcode(item_type))
+        code.local(load, 4)
+        code.emit({0x16: 0xAD, 0x18: 0xAF, 0x17: 0xAE, 0x15: 0xAC, 0x19: 0xB0}[load])
+        return Method(0x0001, "pop", f"(J){item_type}", code.render(), 7, 6 if item_type in {"J", "D"} else 5)
+
     def list_extend_method(self, class_file: ClassFile, item_type: str) -> Method:
         code = Bytecode()
         length = class_file.field_reference(class_file.name, "length", "I")
@@ -6063,11 +6162,13 @@ class JVMEmitter:
         value_descriptor = self.value_type(value)
         if key_type in {"Ljava/lang/Long;", "Ljava/lang/Double;"}:
             raise JVMUnsupported("JVM dictionaries do not support nullable numeric keys", source)
+        if key_type == "J":
+            key_type = "Ljava/lang/Long;"
         if not _is_reference_descriptor(key_type) or not (
             _is_reference_descriptor(value_descriptor) or value_descriptor in {"J", "D", "Z"}
         ):
             raise JVMUnsupported(
-                "JVM dictionaries require reference keys and reference or scalar values",
+                "JVM dictionaries require integer or reference keys and reference or scalar values",
                 source,
             )
         return key_type, value_descriptor
