@@ -5,22 +5,19 @@
 - Rust benchmarks match Cargo's Linux release defaults, removing inherited
   standard-library debug information from the measured executable size.
 
-- Performance comparisons collect explanations above the controls, put the
-  color key on the desktop metric bar, and offer a code-size view for complete
-  runnable artifacts, with secondary gzip figures for JavaScript.
-
 - The performance page uses a sticky metric button bar, keeping comparisons
   switchable while scrolling through workloads without covering column labels.
+  Explanations sit above the controls; the color key stays on the desktop bar.
 
 - Performance source views fold generated runtime and module scaffolding while
   keeping algorithm instructions visible. Code-size figures count complete
-  runnable artifacts, including support code, with gzip sizes for JavaScript.
+  runnable artifacts, including support code, in a dedicated code-size view
+  with secondary gzip figures for JavaScript.
 
-- JVM compiles integer-keyed dictionaries, indexed/default `list.pop()` and
-  `math.sqrt()`, enabling the Histogram, Towers, Spectral norm and N-body
-  benchmarks without rewriting their algorithms. Pops preserve aliases and
-  release removed references; invalid indices and negative square roots raise
-  catchable Python exceptions. Float conversion also accepts Boolean values.
+- JVM compiles integer-keyed dictionaries and `math.sqrt()`, enabling the
+  Histogram, Spectral norm and N-body benchmarks without rewriting their
+  algorithms. Negative square roots raise catchable Python exceptions.
+  Float conversion also accepts Boolean values.
 
 - The performance comparison uses full-page scrolling instead of a nested
   table viewport, with inline source comparisons and a compact machine/toolchain
@@ -29,6 +26,19 @@
   runtime columns stay visible, with handwritten and transpiled targets paired.
 - A category heatmap summarizes benchmark ratios and links to static workload
   sections, with equal workload weighting and no repeated coverage counters.
+
+- JVM supports `list.pop()` with default, positive, negative and boolean
+  indices, preserving item identity and numeric representation. Invalid
+  indices raise `IndexError` without changing the list.
+- JVM supports `list(mapping)` and `list(mapping.keys())` to snapshot keys
+  in insertion order before changing a dictionary, and `del mapping[key]`
+  with a catchable `KeyError` for absent keys.
+
+- Reduce cold compiler analysis time and memory use by reusing flow write
+  summaries, avoiding redundant annotation analysis, and allocating
+  reachability sets only when needed. Finalized
+  functions are reused during dependency scheduling.
+- Preserve complete source spans for the first assignment to an instance field.
 
 - JVM supports `math.isfinite()`, first-match `list.remove()` for strings,
   integers and booleans, same-storage list unpacking, reference-valued

@@ -4486,6 +4486,39 @@ def require_ready_owner(owner: StateOwner) -> None:
 )
 
 
+LIST_POP_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_pop_result",
+    '''
+        values = [10, 20, 30, 40]
+        last = values.pop()
+        first = values.pop(0)
+        negative = values.pop(-2)
+        values.append(50)
+        boolean = values.pop(True)
+        represented = [int8(127)].pop()
+        floating = [float32(16777216)].pop()
+        nested = [[1]]
+        inner = nested[0]
+        same = nested.pop() is inner
+        mapping = {"first": int8(127), "second": int8(0)}
+        keys = list(mapping)
+        view_keys = list(mapping.keys())
+        for key in keys:
+            del mapping[key]
+    ''',
+    (
+        ("default and first indices", "last != 40 or first != 10"),
+        ("negative and boolean indices", "negative != 20 or boolean != 50"),
+        ("live suffix remains ordered", "len(values) != 1 or values[0] != 30"),
+        ("integer representation preserved", "int(represented + 1) != -128"),
+        ("floating representation preserved", "int(floating + 1) != 16777216"),
+        ("reference identity preserved", "not same or len(nested) != 0"),
+        ("key snapshots retain order and independent storage", "len(mapping) != 0 or len(keys) != 2 or keys[0] != 'first' or view_keys[1] != 'second'"),
+    ),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",

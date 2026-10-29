@@ -91,6 +91,13 @@ def main() -> str:
     for key in values:
         order += str(key) + ","
     assert order == "-3,4294967296,1,2,"
+    keys = list(values)
+    view_keys = list(values.keys())
+    for key in keys:
+        del values[key]
+    assert len(values) == 0
+    assert keys[0] == -3 and keys[1] == 4294967296
+    assert view_keys[2] == 1 and view_keys[3] == 2
     assert 1000 not in values
     try:
         values[1001]
@@ -99,6 +106,13 @@ def main() -> str:
         assert cast(int, error.args[0]) == 1001
     else:
         raise AssertionError("missing key accepted")
+    try:
+        del values[1001]
+    except KeyError as error:
+        assert str(error) == "1001"
+        assert cast(int, error.args[0]) == 1001
+    else:
+        raise AssertionError("missing deletion accepted")
     return "ok"
 ''', tmp_path)
 
@@ -135,7 +149,9 @@ def main() -> str:
 ''', tmp_path)
 
 
-@pytest.mark.parametrize("operation", ["values[True] = 7", "values.get(True, 0)", "True in values"])
+@pytest.mark.parametrize("operation", [
+    "values[True] = 7", "values.get(True, 0)", "True in values", "del values[True]",
+])
 def test_integer_dictionary_rejects_boolean_key_operands(operation):
     with pytest.raises(JVMUnsupported, match="integer dictionary keys do not support Boolean operands"):
         transpile_jvm(f'''def main() -> int:
