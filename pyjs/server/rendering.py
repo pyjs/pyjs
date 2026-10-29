@@ -25,6 +25,7 @@ def html(body, js, css, script_type, title=""):
         tag(
             "head",
             tag("meta", {"charset": "utf-8"}),
+            tag("meta", {"name": "viewport", "content": "width=device-width, initial-scale=1"}),
             tag("title", title),
             tag("link", {"rel": "icon", "href": "data:,"}),
             tag("link", {"rel": "stylesheet", "href": css}),

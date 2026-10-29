@@ -231,6 +231,17 @@
   reverified; the previous coordinate-based cache is left untouched.
 - Node discovery skips its shared cache when the working directory is no
   longer accessible, while retaining relative-path cache isolation.
+- LLVM integer dictionary/set lookup hoists key loading and equality dispatch
+  out of its dense scan, retaining full-width equality and first-match order.
+- LLVM keeps non-suspending range-loop cursors in function-local storage and
+  reuses checked list/tuple indices instead of repeating normalization and
+  bounds checks. Negative indexing, catchable errors and suspended-generator
+  state retain their existing behavior.
+- JVM-generated functions compute operand-stack bounds from control flow,
+  avoiding oversized declarations that prevented HotSpot JIT compilation.
+- JavaScript lowers direct builtin `range()` loops to counted loops, retaining
+  argument evaluation order, independent loop-target assignment and loop-else
+  behavior without a generator/iterator allocation.
 - Node provisioning delegates to sdkmgr's mise/nvm providers instead of
   downloading archives into PyJS's own cache. Explicit executable selections
   remain supported; configure custom download mirrors through the provider.
@@ -322,6 +333,31 @@
   returns and unwinding restore the caller's state, independently per thread.
   Suppressed context remains inspectable, and exception reuse breaks implicit
   cycles. Native Java failures may be retained without mutating their state.
+- A source-first performance lab under `perf/` compares shared Python workloads
+  on CPython and PyJS JavaScript, LLVM and JVM targets with JavaScript, Rust and Java
+  references. Bounded sequential runs retain correctness checks, exact tool
+  versions, raw samples, startup and warmed timings, memory and build costs.
+  JSON snapshots feed a live PyJS UI exposing source, generated code, failures
+  and measurement caveats rather than an aggregate language ranking. Its
+  comparison matrix puts workloads in rows and runtimes in columns, with
+  a fixed CPython baseline, paired handwritten/transpiled target columns,
+  target-group filtering and pinned workload labels. A row-scaled heatmap
+  highlights relative costs among non-CPython targets, and clicking a cell
+  expands side-by-side Python and selected-runtime source directly beneath its
+  row, including on phones. Matching outlines connect selection and code;
+  the newest run is clearly identified and history stays under run details. Bounded
+  batch calibration, readable per-fork traces and warmup-drift warnings flag
+  weak measurements. Optional separate JVM compilation diagnostics expose
+  rejected JIT compilation without contaminating the measured timings.
+  Fifteen workloads include recursive Fibonacci, heap sort, dictionary counting,
+  Unicode scanning, binary trees and Mandelbrot alongside sieve, matrix and
+  object traversal, plus N-queens, permutations, Towers of Hanoi, bouncing
+  particles, spectral norm and N-body; independent oracles validate every
+  measured batch. Comparable algorithms use ordinary language idioms rather
+  than per-language benchmark tricks; unsupported targets remain explicit.
+- `pyjs serve` and `pyjs docs serve` can open a local URL after startup with
+  `--open PATH`. Application factories and explicit docs-server extensions let
+  live Python UI share the same local server as documentation.
 - JVM supports explicit exception causes and `from None`, with read-only
   cause/suppression state, identity-preserving replacement and Java cause
   reporting. Native failures can be retained as causes without mutating their

@@ -47,6 +47,7 @@ from tests.backend_semantics import (
     BOOLEAN_NUMERIC_CONTRACT,
     MODULAR_POWER_CONTRACT,
     PORTABLE_FAILURE_SOURCES,
+    RANGE_LOOP_CONTRACT,
     RANGE_NUMERIC_LOOKUP_CONTRACT,
 )
 from tests.semantics.helpers import RuntimeResult, assert_semantics, run_javascript
@@ -102,9 +103,9 @@ def test_static_array_metadata_survives_typed_dict_annotation_wrappers(wrapper):
 
 @pytest.mark.parametrize(
     "contract",
-    [*BACKEND_CONTRACTS.values(), BOOLEAN_NUMERIC_CONTRACT, RANGE_NUMERIC_LOOKUP_CONTRACT,
+    [*BACKEND_CONTRACTS.values(), RANGE_LOOP_CONTRACT, BOOLEAN_NUMERIC_CONTRACT, RANGE_NUMERIC_LOOKUP_CONTRACT,
      BINARY_POWER_CONTRACT, MODULAR_POWER_CONTRACT],
-    ids=[*BACKEND_CONTRACTS, "Boolean numerics", "Range numeric lookup", "Binary power", "Modular power"],
+    ids=[*BACKEND_CONTRACTS, "range loop", "Boolean numerics", "Range numeric lookup", "Binary power", "Modular power"],
 )
 def test_shared_numeric_contract_runs_under_cpython(contract):
     namespace = {}
@@ -1495,8 +1496,8 @@ def assert_javascript_contract_result(contract, actual):
 
 @pytest.mark.parametrize(
     "contract",
-    [*BACKEND_CONTRACTS.values(), BOOLEAN_NUMERIC_CONTRACT],
-    ids=[*BACKEND_CONTRACTS, "Boolean numerics"],
+    [*BACKEND_CONTRACTS.values(), RANGE_LOOP_CONTRACT, BOOLEAN_NUMERIC_CONTRACT],
+    ids=[*BACKEND_CONTRACTS, "range loop", "Boolean numerics"],
 )
 def test_shared_numeric_contract_runs_under_javascript(contract):
     actual, _javascript = run_javascript(contract.print_source)

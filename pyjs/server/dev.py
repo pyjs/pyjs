@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import contextlib
+import contextvars
 import hashlib
 import html
 import importlib
@@ -20,6 +21,7 @@ import tempfile
 import threading
 import time
 import traceback
+import webbrowser
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
@@ -45,6 +47,26 @@ SESSION_COOKIE = "pyjs-session"
 DEVTOOLS_PREFIX = "/_pyjs"
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 _MISSING = object()
+_LAUNCH_OPTIONS = contextvars.ContextVar("pyjs_launch_options", default=None)
+
+
+def browser_url(base: str, path: str) -> str:
+    """Resolve a local application path, never an unrelated browser destination."""
+    parts = urlsplit(path)
+    if (not path.startswith("/") or path.startswith("//") or parts.scheme or parts.netloc
+            or "\\" in path or any(ord(char) < 32 for char in path)):
+        raise ValueError("browser path must be a local absolute path such as /perf/")
+    return base.rstrip("/") + path
+
+
+@contextlib.contextmanager
+def launch_options(**options):
+    """Apply CLI listener/browser options to a package's ordinary serve() call."""
+    token = _LAUNCH_OPTIONS.set({key: value for key, value in options.items() if value is not None})
+    try:
+        yield
+    finally:
+        _LAUNCH_OPTIONS.reset(token)
 
 
 class MemoryNamespace(MutableMapping[str, Any]):
@@ -1069,16 +1091,24 @@ class Server:
         self.started.set()
         return self
 
-    async def serve_async(self) -> None:
+    async def serve_async(self, *, open_path: str | None = None) -> None:
+        destination = browser_url(self.url, open_path) if open_path is not None else None
         await self.start_async()
         self._print_listeners()
         try:
+            if destination:
+                try:
+                    opened = await asyncio.to_thread(webbrowser.open, destination)
+                    if not opened:
+                        print(f"Open {destination} in your browser.", file=sys.stderr)
+                except (webbrowser.Error, OSError) as error:
+                    print(f"Browser unavailable: {error}. Open {destination}", file=sys.stderr)
             await self._shutdown_event.wait()
         finally:
             await self.close_async()
 
-    def serve_forever(self) -> None:
-        asyncio.run(self.serve_async())
+    def serve_forever(self, *, open_path: str | None = None) -> None:
+        asyncio.run(self.serve_async(open_path=open_path))
 
     def start(self) -> Self:
         if self._closed:
@@ -1763,7 +1793,14 @@ def serve(
     websocket_routes=None,
     host="",
     port=8000,
+    open_path=None,
 ) -> None:
+    options = _LAUNCH_OPTIONS.get() or {}
+    host = options.get("host", host)
+    port = options.get("port", port)
+    open_path = options.get("open_path", open_path)
+    if open_path is not None:
+        browser_url("http://localhost", open_path)
     server = create_server(
         module,
         css,
@@ -1779,7 +1816,10 @@ def serve(
         port=port,
     )
     try:
-        server.serve_forever()
+        if open_path is None:
+            server.serve_forever()
+        else:
+            server.serve_forever(open_path=open_path)
     except KeyboardInterrupt:
         print("\nServer stopped.")
     finally:

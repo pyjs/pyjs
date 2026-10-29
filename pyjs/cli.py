@@ -33,6 +33,7 @@ from pyjs.scaffolding import (
     version_string,
 )
 from pyjs.server import page
+from pyjs.server.dev import Application, browser_url, launch_options
 from pyjs.server.dev import serve as serve_application
 from pyjs.testing.capture import capture_url
 from pyjs.tooling.node import Node
@@ -169,8 +170,12 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "target",
         nargs="?",
-        help="application module or Python file; defaults to the project configuration",
+        help="application module, Python file, or module:factory; defaults to the project configuration",
     )
+    serve.add_argument("--host", help="listener host (default: application setting or loopback)")
+    serve.add_argument("--port", type=int, help="listener port; 0 selects an available port")
+    serve.add_argument("--open", nargs="?", const="/", dest="open_path", metavar="PATH",
+                       help="open a local URL path after startup (default: /)")
 
     create_command = subcommands.add_parser("create", help="create a PyJS project or file")
     create_command.add_argument(
@@ -898,7 +903,28 @@ def _configured_application(command_parser: argparse.ArgumentParser) -> str:
 
 
 def _serve(args, command_parser: argparse.ArgumentParser) -> int:
+    if args.open_path is not None:
+        try:
+            browser_url("http://localhost", args.open_path)
+        except ValueError as error:
+            command_parser.error(str(error))
+    with launch_options(host=args.host, port=args.port, open_path=args.open_path):
+        return _serve_target(args, command_parser)
+
+
+def _serve_target(args, command_parser: argparse.ArgumentParser) -> int:
     target = args.target or _configured_application(command_parser)
+    module, separator, attribute = target.partition(":")
+    if (separator and attribute.isidentifier()
+            and all(part.isidentifier() for part in module.split("."))
+            and not Path(target).is_file()):
+        application = _entry_point(target, command_parser)
+        if callable(application):
+            application = application()
+        if not isinstance(application, Application):
+            command_parser.error("server factory must return a pyjs.server.dev.Application")
+        serve_application(application)
+        return 0
     path = Path(target)
     if path.is_file():
         path = path.resolve()
@@ -919,7 +945,12 @@ def _serve(args, command_parser: argparse.ArgumentParser) -> int:
         except (ImportError, ModuleNotFoundError, ValueError):
             main_spec = None
         if main_spec is not None:
-            runpy.run_module(target, run_name="__main__", alter_sys=True)
+            previous = sys.argv
+            try:
+                sys.argv = [target]
+                runpy.run_module(target, run_name="__main__", alter_sys=True)
+            finally:
+                sys.argv = previous
             return 0
     serve_application(target)
     return 0

@@ -1,0 +1,5 @@
+name = "Recursive Fibonacci"
+category = "Recursion · calls · branches"
+description = "Compute Fibonacci(N) using the deliberately naive recursive recurrence."
+sizes = [20, 25]
+notes = "Every implementation uses the same recursive algorithm, without memoization. Measures call/branch lowering, not the best way to compute Fibonacci. Results fit exact Number and signed 64-bit integers."

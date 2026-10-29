@@ -3,6 +3,8 @@
 import struct
 from dataclasses import dataclass, field
 
+from pyjs.java.stack import stack_bound
+
 
 def _u1(value: int) -> bytes:
     return struct.pack(">B", value)
@@ -43,6 +45,7 @@ class ConstantPool:
     def __init__(self) -> None:
         self.entries: list[bytes | None] = []
         self.indexes = {}
+        self.descriptors: dict[int, str] = {}
 
     def add(self, key, value: bytes, *, wide: bool = False) -> int:
         if key in self.indexes:
@@ -52,6 +55,8 @@ class ConstantPool:
         if wide:
             self.entries.append(None)
         self.indexes[key] = index
+        if key[0] in {"field", "method", "interface_method"}:
+            self.descriptors[index] = key[-1]
         return index
 
     def utf8(self, value: str) -> int:
@@ -217,7 +222,7 @@ class Method:
     name: str
     descriptor: str
     code: bytes
-    max_stack: int
+    max_stack: int | None
     max_locals: int
     line_numbers: tuple[tuple[int, int], ...] = ()
     annotations: tuple[Annotation, ...] = ()
@@ -336,7 +341,8 @@ class ClassFile:
         # slots, and handlers enter with one exception. A byte-length bound
         # avoids reserving 65,535 slots for small methods at JIT transitions,
         # while retaining any tighter maximum supplied by a helper emitter.
-        max_stack = min(method.max_stack, 2 * len(code) + 1)
+        max_stack = (stack_bound(code, self.constants.descriptors, method.exception_handlers)
+                     if method.max_stack is None else min(method.max_stack, 2 * len(code) + 1))
         handlers = []
         for handler in method.exception_handlers:
             if not (

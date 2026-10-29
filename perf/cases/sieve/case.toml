@@ -1,0 +1,5 @@
+name = "Prime sieve"
+category = "Integer loops · indexed storage"
+description = "Count primes up to N with the sieve of Eratosthenes, including flag allocation."
+sizes = [2000, 20000]
+notes = "Python and Rust use growable integer lists; Java uses a long array. Storage representation, allocation strategy and boxing are visible differences, not normalized away. All variants use integer flags rather than bitsets."

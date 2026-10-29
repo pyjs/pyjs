@@ -8,7 +8,63 @@ import pytest
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
-from pyjs.server.dev import Application, JsonSnapshot, Server
+from pyjs.server.dev import Application, JsonSnapshot, Server, browser_url
+
+
+@pytest.mark.parametrize("result", [True, False, OSError("no desktop")])
+def test_browser_opens_actual_url_after_startup_and_server_survives_failure(monkeypatch, capsys, result):
+    app = Application()
+    ready = []
+
+    @app.on_startup
+    async def startup():
+        ready.append(True)
+
+    app.get("/results/", lambda request: "live results")
+    server = Server(app, port=0, quiet=True)
+
+    def open_browser(url):
+        assert ready == [True]
+        assert url == server.url + "/results/?run=latest#table"
+        assert request(server, "GET", "/results/")[2] == b"live results"
+        server.shutdown()
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr("pyjs.server.dev.webbrowser.open", open_browser)
+    try:
+        server.serve_forever(open_path="/results/?run=latest#table")
+    finally:
+        server.close()
+    assert server._closed
+    if result is not True:
+        assert "Open " + server.url in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("path", ["https://example.com", "//example.com", "/\\example.com", "relative", "/\n"])
+def test_browser_destination_is_local(path):
+    with pytest.raises(ValueError, match="local absolute path"):
+        browser_url("http://localhost:1234", path)
+
+
+def test_browser_is_not_opened_if_startup_fails(monkeypatch):
+    app = Application()
+
+    @app.on_startup
+    async def startup():
+        raise RuntimeError("startup failed")
+
+    opened = []
+    monkeypatch.setattr("pyjs.server.dev.webbrowser.open", opened.append)
+    server = Server(app, port=0, quiet=True)
+    try:
+        with pytest.raises(RuntimeError, match="startup failed"):
+            server.serve_forever(open_path="/")
+    finally:
+        server.close()
+    assert opened == []
+    assert server._closed
 
 
 def request(server, method, path, body=None, headers=None):

@@ -72,7 +72,12 @@ def test_unannotated_generator_methods_infer_their_item_type():
         export class Values {
 
             *generate(limit) {
-                for (var value of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)((function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;i+=step)yield i})(0,limit,1))) {
+                const $range_start0 = +(0);
+                const $range_stop1 = +(limit);
+                const $range_step2 = +(1);
+                if ($range_step2 === 0) throw new RangeError('range() arg 3 must not be zero');
+                for (let $range_index3 = $range_start0; $range_step2 > 0 ? $range_index3 < $range_stop1 : $range_index3 > $range_stop1; $range_index3 += $range_step2) {
+                    var value = $range_index3;
                     yield String(value);
                 }
             }

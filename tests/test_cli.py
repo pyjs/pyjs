@@ -759,6 +759,46 @@ def test_serve_uses_default_runner_for_module(tmp_path, monkeypatch):
     assert served == ["serve_module"]
 
 
+def test_serve_factory_forwards_launch_options_and_restores_context(tmp_path, monkeypatch):
+    from pyjs.server import dev
+
+    (tmp_path / "live_factory.py").write_text(
+        "from pyjs.server.dev import Application\n"
+        "def create_app():\n    return Application(name='Live')\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(tmp_path)
+    calls = []
+
+    def serve(app):
+        assert isinstance(app, dev.Application)
+        calls.append(dev._LAUNCH_OPTIONS.get())
+
+    monkeypatch.setattr(cli, "serve_application", serve)
+    assert main(["serve", "live_factory:create_app", "--host", "127.0.0.1",
+                 "--port", "0", "--open", "/perf/?run=latest"]) == 0
+    assert calls == [{"host": "127.0.0.1", "port": 0, "open_path": "/perf/?run=latest"}]
+    assert dev._LAUNCH_OPTIONS.get() is None
+
+
+def test_serve_package_inherits_options_without_cli_arguments(tmp_path, monkeypatch):
+    from pyjs.server import dev
+
+    package = tmp_path / "launch_package"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "__main__.py").write_text("")
+    monkeypatch.syspath_prepend(tmp_path)
+    before = sys.argv
+
+    def run(*args, **kwargs):
+        assert sys.argv == ["launch_package"]
+        assert dev._LAUNCH_OPTIONS.get() == {"port": 0, "open_path": "/"}
+
+    monkeypatch.setattr(cli.runpy, "run_module", run)
+    assert main(["serve", "launch_package", "--port", "0", "--open"]) == 0
+    assert sys.argv is before
+    assert dev._LAUNCH_OPTIONS.get() is None
+
+
 def test_serve_uses_default_runner_for_file(tmp_path, monkeypatch):
     application = tmp_path / "standalone.py"
     application.write_text("def main():\n    return None\n", encoding="utf-8")

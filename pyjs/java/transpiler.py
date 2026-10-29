@@ -796,8 +796,9 @@ class JVMEmitter:
             self.function_name(function),
             self.descriptor(function),
             self.code.render(),
-            # The class writer caps this conservative maximum by code size.
-            0xFFFF,
+            # Calculate a tight stack bound after branch targets are resolved.
+            # Oversized declarations can prevent HotSpot JIT compilation.
+            None,
             self.local_count,
             tuple(self.code.line_numbers),
             exception_handlers=tuple(handlers),
@@ -4972,7 +4973,7 @@ class JVMEmitter:
             "<init>",
             self.descriptor(initializer),
             code.render(),
-            0xFFFF,
+            None,
             index,
         )
 

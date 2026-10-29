@@ -30,7 +30,12 @@ def pack(source: Path, destination: Path) -> Path:
         cwd=NPM_ROOT,
         capture=True,
     )
-    return destination / json.loads(result.stdout)[0]["filename"]
+    packages = json.loads(result.stdout)
+    # npm 12 keys records by package name; earlier releases return an array.
+    records = list(packages.values()) if isinstance(packages, dict) else packages
+    if len(records) != 1:
+        raise AssertionError(f"Expected one packed package, got {len(records)}")
+    return destination / records[0]["filename"]
 
 
 def assert_output(command: list[str], expected: str, cwd: Path):
@@ -38,6 +43,14 @@ def assert_output(command: list[str], expected: str, cwd: Path):
     actual = result.stdout.strip()
     if actual != expected:
         raise AssertionError(f"Expected {expected!r}, got {actual!r}")
+
+
+def assert_serve_help(output: str):
+    # Verify the interface, not help prose or terminal-dependent wrapping.
+    required = ("usage: pyjs serve", "target", "--host", "--port", "--open")
+    normalized = " ".join(output.split())
+    if any(value not in normalized for value in required):
+        raise AssertionError(f"The portable CLI did not expose the serve interface:\n{output}")
 
 
 def main():
@@ -82,8 +95,7 @@ def main():
         serve_help = run(
             [str(executable), "serve", "--help"], cwd=project, capture=True
         ).stdout
-        if "application module or Python file" not in serve_help:
-            raise AssertionError("The portable CLI did not expose the serve command.")
+        assert_serve_help(serve_help)
         assert_output(
             [str(executable), "-c", "print(sum(range(10)))"],
             "45",

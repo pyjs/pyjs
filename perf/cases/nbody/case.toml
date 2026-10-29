@@ -1,0 +1,5 @@
+name = "N-body"
+category = "Floating point · pairwise forces · mutable objects"
+description = "Advance eight bodies through N gravitational steps, updating each pair's velocities before advancing positions."
+sizes = [100, 1000]
+notes = "Inspired by Benchmarks Game and Are We Fast Yet? NBody. Uses a synthetic deterministic eight-body system, softening squared 1.0 and timestep 0.001, not the Jovian initial conditions/energy-output protocol. Identical scalar binary64 operations and pair order everywhere. Rust split_at_mut expresses disjoint mutable borrows, not a different algorithm. Return a position-weighted checksum truncated at 1e-6 resolution. No reciprocal-square-root approximation, parallelism, SIMD intrinsics or fast-math."

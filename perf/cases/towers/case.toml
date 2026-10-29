@@ -1,0 +1,5 @@
+name = "Towers of Hanoi"
+category = "Recursion · nested containers · stack mutation"
+description = "Move N disks between three explicit stacks, validate the final stack, and checksum the moves and disks."
+sizes = [10, 15]
+notes = "Inspired by Are We Fast Yet?'s Towers family. Uses ordinary growable array stacks in every language instead of that suite's linked disks; Java uses ArrayList<Long>. Every recursive move performs a pop and append. No closed-form move-count shortcut, preallocated flat-stack emulation or iterative rewrite."

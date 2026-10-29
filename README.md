@@ -288,6 +288,11 @@ After installation, `python -m NAME` starts either package layout through its
 ordinary Python entry point. `pyjs serve` is also available as a convenience
 and uses the application recorded in `pyproject.toml`.
 
+`pyjs serve --open /some/path/` opens that local URL after the server starts;
+`--open` alone opens `/`. Use `--host` and `--port` to choose the listener
+(`--port 0` selects an available port). Explicit `module:create_app` targets
+can return a `pyjs.server.dev.Application` for live Python routes.
+
 `--single-file` explicitly requests one standalone Python file and requires a
 file template when combined with `--template`. The `pyjs-examples`
 distribution registers both file and directory templates and contains the
@@ -746,6 +751,15 @@ Build generations mutate process-global imports and must run serially.
 The built-in development server is run from Python source with
 `pyjs.server.dev.serve(__file__)`; generated starters and examples already
 provide this entry point.
+
+For reproducible cross-runtime comparisons, see the [performance lab](perf/README.md).
+It runs shared Python workloads on CPython, JavaScript, LLVM and JVM, alongside
+handwritten JavaScript, Rust and Java references, and saves JSON with raw evidence and explicit
+correctness or support failures. Open the live Python-authored UI with
+`uv run pyjs serve perf.app:create_app --open /perf/`; no report HTML is written.
+Configured docs servers can also mount live routes with
+`pyjs docs serve --app module:mount --open /some/path/`, where `mount(application)`
+registers routes alongside the documentation.
 
 Web compatibility modules can declare exact npm dependencies as module
 metadata. `pyjs npm sync` analyzes the configured application and installs only

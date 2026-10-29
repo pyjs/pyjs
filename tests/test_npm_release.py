@@ -15,6 +15,41 @@ from npm.scripts.release import (
     validate_versions,
     verified_archive,
 )
+from npm.tests.smoke_test import assert_serve_help
+
+
+def test_portable_serve_help_contract_matches_cli(capsys):
+    from pyjs.cli import main
+
+    with pytest.raises(SystemExit) as stopped:
+        main(["serve", "--help"])
+    assert stopped.value.code == 0
+    output = capsys.readouterr().out
+    assert_serve_help(output)
+    assert_serve_help(output.replace(" ", "\n"))
+    for missing in ("usage: pyjs serve", "target", "--host", "--port", "--open"):
+        with pytest.raises(AssertionError, match="serve interface"):
+            assert_serve_help(output.replace(missing, ""))
+
+
+@pytest.mark.parametrize("by_name", (False, True))
+def test_npm_pack_accepts_array_and_named_records(tmp_path, monkeypatch, by_name):
+    from npm.tests import smoke_test
+
+    record = {"filename": "example-1.0.0.tgz"}
+    data = {"example": record} if by_name else [record]
+    monkeypatch.setattr(smoke_test, "run", lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args, 0, stdout=json.dumps(data)))
+    assert smoke_test.pack(tmp_path / "source", tmp_path) == tmp_path / record["filename"]
+
+
+def test_npm_pack_rejects_unexpected_package_count(tmp_path, monkeypatch):
+    from npm.tests import smoke_test
+
+    monkeypatch.setattr(smoke_test, "run", lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args, 0, stdout="[]"))
+    with pytest.raises(AssertionError, match="Expected one packed package"):
+        smoke_test.pack(tmp_path / "source", tmp_path)
 
 
 def write_package(path, name, version, **metadata):

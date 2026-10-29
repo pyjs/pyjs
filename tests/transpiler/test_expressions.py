@@ -1653,10 +1653,6 @@ def test_common_numeric_string_conversions_validate_input():
 
 
 def test_range_supports_python_argument_forms():
-    range_generator = (
-        "(function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;"
-        "i+=step)yield i})"
-    )
     at(
         """
         def main():
@@ -1676,18 +1672,33 @@ def test_range_supports_python_argument_forms():
             for index: int in range(6, 0, -2):
                 print(index)
         """,
-        f"""
-        export function main() {{
-            for (var index of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)({range_generator}(0,3,1))) {{
+        """
+        export function main() {
+            const $range_start0 = +(0);
+            const $range_stop1 = +(3);
+            const $range_step2 = +(1);
+            if ($range_step2 === 0) throw new RangeError('range() arg 3 must not be zero');
+            for (let $range_index3 = $range_start0; $range_step2 > 0 ? $range_index3 < $range_stop1 : $range_index3 > $range_stop1; $range_index3 += $range_step2) {
+                var index = $range_index3;
                 console.log(index);
-            }}
-            for (var index of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)({range_generator}(2,6,1))) {{
+            }
+            const $range_start4 = +(2);
+            const $range_stop5 = +(6);
+            const $range_step6 = +(1);
+            if ($range_step6 === 0) throw new RangeError('range() arg 3 must not be zero');
+            for (let $range_index7 = $range_start4; $range_step6 > 0 ? $range_index7 < $range_stop5 : $range_index7 > $range_stop5; $range_index7 += $range_step6) {
+                var index = $range_index7;
                 console.log(index);
-            }}
-            for (var index of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)({range_generator}(6,0,-2))) {{
+            }
+            const $range_start8 = +(6);
+            const $range_stop9 = +(0);
+            const $range_step10 = +(-2);
+            if ($range_step10 === 0) throw new RangeError('range() arg 3 must not be zero');
+            for (let $range_index11 = $range_start8; $range_step10 > 0 ? $range_index11 < $range_stop9 : $range_index11 > $range_stop9; $range_index11 += $range_step10) {
+                var index = $range_index11;
                 console.log(index);
-            }}
-        }}
+            }
+        }
         """,
     )
 

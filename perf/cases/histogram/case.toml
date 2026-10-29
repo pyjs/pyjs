@@ -1,0 +1,5 @@
+name = "Dictionary histogram"
+category = "Hashing · lookup · mutation"
+description = "Count a deterministic stream into 257 integer keys, then compute a key-weighted total."
+sizes = [2000, 20000]
+notes = "Uses ordinary maps rather than a dense counting array. Java boxes Long keys/values, JavaScript uses Number Map, Rust uses its default randomized HashMap, and CPython uses dict. PyJS LLVM currently uses a dense linear key scan, not a hash table. JVM numeric dictionaries remain unsupported. Representation and lookup complexity differ explicitly."
