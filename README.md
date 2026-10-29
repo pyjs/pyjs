@@ -778,8 +778,12 @@ from the installed xterm packages.
 `NpmImport(..., styles=("css/package.css",))` includes package-relative,
 self-contained styles in the managed vendor module. Styles mount once per
 package/version/path when imported in a document; imports in Node do not
-require a DOM. CSS with imports or URLs is rejected rather than resolving
-assets relative to the application's page. The styles are part of vendor
+require a DOM. Package styles precede application styles, so application
+overrides retain their normal cascade priority. The initial validation is
+conservative: CSS imports, URL/image functions and CSS escapes are rejected.
+Asset bundling is not supported. Separate declarations are merged
+deterministically while preserving declared stylesheet order; contradictory
+orders are errors. The styles are part of vendor
 cache identity and are delivered by the same development and packaging paths
 as other managed npm dependencies.
 

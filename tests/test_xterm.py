@@ -61,7 +61,7 @@ def main():
 
     async def run():
         port = free_port()
-        server = create_server('xterm_test_app', port=port)
+        server = create_server('xterm_test_app', port=port, css='.xterm .xterm-viewport{cursor:crosshair} .xterm .composition-view{color:rgb(1,2,3)}')
         server.start()
         try:
             async with Browser(headless=True) as browser:
@@ -77,6 +77,8 @@ def main():
                 assert await page.evaluate("getComputedStyle(document.querySelector('.xterm-helper-textarea')).opacity") == '0'
                 assert await page.evaluate('demo.terminal.buffer.active.getLine(0).translateToString(true)') == 'PyJS red'
                 assert await page.evaluate('demo.terminal.buffer.active.getLine(1).translateToString(true)') == 'Unicode: 🐍'
+                assert await page.evaluate("getComputedStyle(document.querySelector('.xterm-viewport')).cursor") == 'crosshair'
+                assert await page.evaluate("getComputedStyle(document.querySelector('.composition-view')).color") == 'rgb(1, 2, 3)'
                 columns = await page.evaluate('demo.terminal.cols')
                 await page.evaluate("demo.surface.style.width='350px';demo.fit.fit()")
                 assert await page.evaluate('demo.terminal.cols') < columns

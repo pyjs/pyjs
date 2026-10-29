@@ -11,6 +11,7 @@ from pyjs.tooling.npm import (
     NpmPackage,
     collect_npm_imports,
     collect_npm_packages,
+    merge_npm_imports,
     module_npm_packages,
 )
 
@@ -208,7 +209,8 @@ def test_styles_are_merged_and_part_of_vendor_identity(tmp_path, monkeypatch):
         install_module(monkeypatch, name, ())
         sys.modules[name].__pyjs_npm_imports__ = (NpmImport(package, '$style', styles),)
     imports = collect_npm_imports(['style.first', 'style.second'])
-    assert imports == (NpmImport(package, '$style', ('theme.css', 'base.css')),)
+    assert len(imports) == 1
+    assert imports[0].styles == ('base.css', 'theme.css')
     npm = Mock()
     project = ManagedNpmProject(tmp_path, npm)
     assets = tmp_path / 'node_modules' / package.name
@@ -239,3 +241,78 @@ def test_failed_styles_bundle_does_not_reuse_a_stale_vendor(tmp_path):
     with pytest.raises(FileNotFoundError):
         project.sync((package,), imports)
     assert project.vendor_for(imports) is None
+
+
+def test_import_merge_is_deterministic_for_split_targets(tmp_path):
+    package = NpmPackage('example-style', '1.2.3')
+    first = NpmImport(package, '$style', ('theme.css',))
+    second = NpmImport(package, '$style', ('base.css',))
+    imports = merge_npm_imports((first, second))
+    assert imports == merge_npm_imports((second, first))
+    project = ManagedNpmProject(tmp_path, Mock())
+    assets = tmp_path / 'node_modules' / package.name
+    assets.mkdir(parents=True)
+    for path in ('base.css', 'theme.css'):
+        (assets / path).write_text('.terminal{color:red}')
+    vendor = project.sync((package,), imports).vendor
+    vendor.write_text('bundled')
+    assert project.vendor_for(tuple({first, second})) == vendor
+    assert merge_npm_imports((NpmImport(package, '$style', ('theme.css', 'base.css')),)) == (
+        NpmImport(package, '$style', ('theme.css', 'base.css')),)
+    with pytest.raises(ValueError, match='Conflicting npm stylesheet order'):
+        merge_npm_imports((NpmImport(package, '$style', ('theme.css', 'base.css')),
+                           NpmImport(package, '$style', ('base.css', 'theme.css'))))
+
+
+def test_failed_npm_install_restores_metadata_and_retries(tmp_path):
+    package = NpmPackage('example-style', '1.2.3')
+    npm = Mock()
+    project = ManagedNpmProject(tmp_path, npm)
+    assets = tmp_path / 'node_modules' / package.name
+    assets.mkdir(parents=True)
+    (assets / 'theme.css').write_text('.terminal{color:red}')
+    old = (NpmImport(package, '$style'),)
+    new = (NpmImport(package, '$style', ('theme.css',)),)
+    project.sync((package,), old).vendor.write_text('old vendor')
+    (tmp_path / 'package-lock.json').write_text('{}')
+    metadata = (tmp_path / 'package.json').read_text()
+    npm.sync.side_effect = RuntimeError('Install failed')
+    with pytest.raises(RuntimeError, match='Install failed'):
+        project.sync((package,), new)
+    assert project.vendor_for(new) is None
+    assert (tmp_path / 'package.json').read_text() == metadata
+    npm.sync.side_effect = None
+    npm.reset_mock()
+    project.sync((package,), new)
+    npm.sync.assert_called_once()
+    npm.bundle.assert_called_once()
+
+
+@pytest.mark.parametrize('css', [
+    '@import "asset.css";', r'@\69mport "asset.css";',
+    '.x{background:url(asset.png)}', r'.x{background:u\72l(asset.png)}',
+    '.x{background:image-set("asset.png" 1x)}',
+    '.x{background:-webkit-image-set("asset.png" 1x)}',
+    '.x{background:image("asset.png")}', '.x{background:src("asset.png")}',
+    '.x{content:"/*"}.y{background:url(asset.png)}/*end*/',
+])
+def test_package_css_rejects_asset_constructs_before_bundling(tmp_path, css):
+    package = NpmPackage('example-style', '1.2.3')
+    project = ManagedNpmProject(tmp_path, Mock())
+    path = tmp_path / 'node_modules' / package.name / 'theme.css'
+    path.parent.mkdir(parents=True)
+    path.write_text(css)
+    with pytest.raises(ValueError, match='self-contained'):
+        project.sync((package,), (NpmImport(package, '$style', ('theme.css',)),))
+    project.npm.bundle.assert_not_called()
+
+
+def test_split_target_merge_retains_declarations_not_incidental_tie_order():
+    package = NpmPackage('example-style', '1.2.3')
+    first = NpmImport(package, '$style', ('first.css',))
+    second = NpmImport(package, '$style', ('second.css',))
+    ordered = NpmImport(package, '$style', ('second.css', 'first.css'))
+    target_a = merge_npm_imports((first, second))
+    target_b = merge_npm_imports((ordered,))
+    assert merge_npm_imports((*target_a, *target_b)) == merge_npm_imports((first, second, ordered))
+    assert merge_npm_imports((*target_a, *target_b))[0].styles == ('second.css', 'first.css')
