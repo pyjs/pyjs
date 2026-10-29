@@ -175,15 +175,11 @@ def test_list_pop_preserves_nested_iterator_representation(environment):
         assert scope.search("item").representation == annotation_representation(int8)
 
 
-@pytest.mark.parametrize("backend", ["jvm", "webassembly"])
-def test_represented_pop_keeps_other_backend_capability_diagnostic(backend):
-    from pyjs.java.transpiler import JVMUnsupported, transpile_jvm
+def test_represented_pop_keeps_webassembly_capability_diagnostic():
     from pyjs.webassembly.transpiler import WebAssemblyUnsupported, transpile_webassembly
 
-    transpile, error = ((transpile_jvm, JVMUnsupported) if backend == "jvm"
-                        else (transpile_webassembly, WebAssemblyUnsupported))
-    with pytest.raises(error, match="pop"):
-        transpile('''
+    with pytest.raises(WebAssemblyUnsupported, match="pop"):
+        transpile_webassembly('''
             from pyjs import int8
             def main() -> int:
                 value = [int8(127)].pop()

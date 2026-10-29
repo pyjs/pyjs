@@ -14,6 +14,16 @@ def test_shared_list_pop_contract(tmp_path):
     assert_matches_python(LIST_POP_CONTRACT.source, tmp_path)
 
 
+def test_pop_retains_fixed_width_arithmetic(tmp_path):
+    assert_matches_python('''
+        from pyjs import int8
+        def main() -> int:
+            value = [int8(127)].pop()
+            assert int(value + 1) == -128
+            return 42
+    ''', tmp_path)
+
+
 def test_list_operations_compile_to_android_dex(tmp_path):
     assert_compiles_to_android_dex(LIST_POP_CONTRACT.source, tmp_path)
 

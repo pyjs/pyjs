@@ -137,8 +137,8 @@ def test_new_python_workloads_execute_as_javascript(tmp_path, case):
 @pytest.mark.parametrize("target", ("rust", "java", "pyjs-llvm", "pyjs-jvm"))
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Native benchmark adapters target Linux")
 def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
-    if target == "pyjs-jvm" and case in ("towers", "spectralnorm", "nbody"):
-        pytest.skip("JVM lacks list.pop / stdlib math imports; runner retains failed cells")
+    if target == "pyjs-jvm" and case in ("spectralnorm", "nbody"):
+        pytest.skip("JVM lacks stdlib math imports; runner retains failed cells")
     requirements = {"rust": ("rustc",), "java": ("java", "javac"),
                     "pyjs-jvm": ("java", "javac"), "pyjs-llvm": ("clang",)}
     tools = {name: tool(name) for name in requirements[target]}
@@ -153,15 +153,6 @@ def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
         measured = execute(result["command"] + [str(size), "2", "0", "1"])
         assert measured.returncode == 0, measured.stderr
         parse_samples(measured.stdout, expected(case, size, 2), 0, 1)
-
-
-def test_towers_jvm_pop_boundary_is_explicit():
-    from pyjs.java import transpile_jvm
-    from pyjs.java.diagnostics import JVMUnsupported
-
-    source = (ROOT / "cases/towers/workload.py").read_text()
-    with pytest.raises(JVMUnsupported, match="unsupported JVM scalar operation pop"):
-        transpile_jvm(source + "\ndef main() -> int:\n    return kernel(3)\n")
 
 
 def snapshot():
