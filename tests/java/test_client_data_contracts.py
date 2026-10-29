@@ -4,6 +4,7 @@ from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classpath import read_jvm_class
 from tests.backend_semantics import (
     AWAIT_ATTRIBUTE_SOURCE,
+    BENCHMARK_PRIMITIVE_CONTRACTS,
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
@@ -14,6 +15,11 @@ from tests.backend_semantics import (
 )
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_matches_python
+
+
+@pytest.mark.parametrize("contract", BENCHMARK_PRIMITIVE_CONTRACTS.values(), ids=BENCHMARK_PRIMITIVE_CONTRACTS)
+def test_benchmark_primitive_contract(contract, tmp_path):
+    assert_matches_python(contract.source, tmp_path)
 
 
 @pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT], ids=["truth", "split", "pop"])

@@ -12,36 +12,33 @@ from pyjs.web.network import fetch
 class Controls:
     def __init__(self):
         metric = document.querySelector("#metric")
-        group = document.querySelector("#group")
-        case = document.querySelector("#workload")
-        assert isinstance(metric, HTMLSelectElement)
-        assert isinstance(group, HTMLSelectElement)
-        assert isinstance(case, HTMLSelectElement)
-        self.metric = metric
-        self.group = group
-        self.case = case
-        self.metric.addEventListener("change", self.update)
-        self.group.addEventListener("change", self.update)
-        self.case.addEventListener("change", self.update)
+        assert isinstance(metric, Element)
+        self.metric = "warm"
+        metric.addEventListener("click", self.choose_metric)
         snapshot = document.querySelector("#snapshot")
         assert isinstance(snapshot, HTMLSelectElement)
         self.snapshot = snapshot
         self.snapshot.addEventListener("change", self.choose_snapshot)
         self.source_request = 0
-        table = document.querySelector(".comparison-table")
-        assert isinstance(table, Element)
-        table.addEventListener("click", self.choose_source)
-        table.addEventListener("keydown", self.source_key)
-        window.addEventListener("resize", self.update)
+        for table in document.querySelectorAll(".comparison-table"):
+            table.addEventListener("click", self.choose_source)
+            table.addEventListener("keydown", self.source_key)
         self.update(Event("change"))
 
     def choose_snapshot(self, event: Event):
         window.location.href = "?run=" + self.snapshot.value if self.snapshot.value else window.location.pathname
 
-    def size_sources(self):
-        scroller = document.querySelector(".table-scroll")
-        assert isinstance(scroller, Element)
-        scroller.setAttribute("style", "--source-width:" + str(scroller.clientWidth) + "px")
+    def choose_metric(self, event: Event):
+        target = event.target
+        if not isinstance(target, Element):
+            return
+        button = target.closest("button[data-metric]")
+        if button is None:
+            return
+        self.metric = button.getAttribute("data-metric") or "warm"
+        for item in document.querySelectorAll("#metric button"):
+            item.setAttribute("aria-pressed", "true" if item == button else "false")
+        self.update(event)
 
     def close_sources(self, restore_focus: bool = False):
         self.source_request += 1
@@ -60,6 +57,51 @@ class Controls:
     def source_key(self, event: Event):
         if isinstance(event, KeyboardEvent) and event.key == "Escape":
             self.close_sources(True)
+
+    def render_source(self, code: Element, text: str, ranges: str):
+        code.textContent = ""
+        lines = text.split("\n")
+        starts: list[int] = []
+        ends: list[int] = []
+        try:
+            for item in ranges.split(";"):
+                if item:
+                    pair = item.split(":")
+                    start, end = int(pair[0]), int(pair[1])
+                    if start < 0 or end <= start or end > len(lines) or (ends and start < ends[-1]):
+                        raise ValueError("Invalid source range")
+                    starts.append(start)
+                    ends.append(end)
+        except Exception:
+            starts = []
+            ends = []
+        if not starts:
+            plain = document.createElement("pre")
+            plain.textContent = text
+            code.appendChild(plain)
+            return
+        cursor = 0
+        for index in range(len(starts) + 1):
+            boundary = starts[index] if index < len(starts) else len(lines)
+            if cursor < boundary:
+                self.source_block(code, lines, cursor, boundary, False)
+            if index < len(starts):
+                self.source_block(code, lines, starts[index], ends[index], True)
+                cursor = ends[index]
+
+    def source_block(self, code: Element, lines: list[str], start: int, end: int, algorithm: bool):
+        block = document.createElement("details")
+        block.setAttribute("class", "code-fold")
+        block.setAttribute("data-algorithm", "true" if algorithm else "false")
+        if algorithm:
+            block.setAttribute("open", "")
+        heading = document.createElement("summary")
+        heading.textContent = ("Algorithm" if algorithm else "Runtime / scaffolding") + " · lines " + str(start + 1) + "–" + str(end)
+        content = document.createElement("pre")
+        content.textContent = "\n".join(lines[start:end]) + ("\n" if end < len(lines) else "")
+        block.appendChild(heading)
+        block.appendChild(content)
+        code.appendChild(block)
 
     async def choose_source(self, event: Event):
         target = event.target
@@ -84,17 +126,11 @@ class Controls:
         self.close_sources()
         request = self.source_request
         panel.removeAttribute("hidden")
-        panel.setAttribute("data-runtime", runtime)
         button.setAttribute("aria-expanded", "true")
         cell.setAttribute("data-source-selected", "true")
         cue = cell.querySelector(".source-cue")
         if cue is not None:
             cue.textContent = "Showing code ↓"
-        # A filtered table has fewer columns; the expansion must span just those.
-        content = panel.querySelector("td")
-        assert isinstance(content, Element)
-        content.setAttribute("colspan", "8" if self.group.value == "all" else "4")
-        self.size_sources()
         title = panel.querySelector(".target-title")
         code = panel.querySelector(".target-code")
         status = panel.querySelector(".source-status")
@@ -109,7 +145,7 @@ class Controls:
         status.textContent = ""
         link.setAttribute("hidden", "")
         link.removeAttribute("href")
-        code.textContent = source.textContent
+        self.render_source(code, source.textContent or "", "")
         url = source.getAttribute("data-url") or ""
         if url == "":
             return
@@ -123,45 +159,29 @@ class Controls:
                 raise ValueError("Artifact unavailable")
             text = await response.text()
             if request == self.source_request:
-                code.textContent = text
+                self.render_source(code, text, response.headers.get("X-PyJS-Algorithm-Ranges") or "")
                 status.textContent = ""
         except Exception:
             if request == self.source_request:
                 status.textContent = "Could not load generated code. The artifact may have been removed; close and reopen to retry."
 
     def update(self, event: Event):
-        metric = "warm"
-        group = "all"
-        selected = "all"
-        if isinstance(self.metric, HTMLSelectElement):
-            metric = self.metric.value
-        if isinstance(self.group, HTMLSelectElement):
-            group = self.group.value
-        if isinstance(self.case, HTMLSelectElement):
-            selected = self.case.value
-        table = document.querySelector(".comparison-table")
-        assert isinstance(table, Element)
-        table.setAttribute("data-view", group)
-        for item in table.querySelectorAll("[data-group]"):
-            if group == "all" or item.getAttribute("data-group") == "python" or item.getAttribute("data-group") == group:
-                item.removeAttribute("hidden")
-            else:
-                item.setAttribute("hidden", "")
-        for heading in table.querySelectorAll("thead th[data-target]"):
+        metric = self.metric
+        for cell in document.querySelectorAll("[data-summary-target]"):
+            label = cell.querySelector(".category-value")
+            assert isinstance(label, Element)
+            label.textContent = cell.getAttribute("data-label-" + metric) or "—"
+            cell.setAttribute("style", cell.getAttribute("data-style-" + metric) or "")
+        for heading in document.querySelectorAll(".comparison-table thead th[data-target]"):
             heading.setAttribute("data-baseline", "true" if heading.getAttribute("data-target") == "cpython" else "false")
-        rows = table.querySelectorAll("tbody tr[data-case]")
+        rows = document.querySelectorAll(".comparison-table tbody tr[data-case]")
         for row in rows:
-            case = row.getAttribute("data-case")
-            if selected == "all" or selected == case:
-                row.removeAttribute("hidden")
-            else:
-                row.setAttribute("hidden", "")
             cells = row.querySelectorAll("td[data-target]")
             smallest = 0.0
             largest = 0.0
             for cell in cells:
                 value = cell.getAttribute("data-" + metric) or ""
-                if value != "" and not cell.hasAttribute("hidden") and cell.getAttribute("data-target") != "cpython":
+                if value != "" and cell.getAttribute("data-target") != "cpython":
                     number = float(value)
                     if number > 0:
                         if smallest == 0 or number < smallest:
@@ -176,6 +196,11 @@ class Controls:
                 value = cell.getAttribute("data-" + metric) or ""
                 display = cell.querySelector(".measurement")
                 assert isinstance(display, Element)
+                for note in cell.querySelectorAll(".code-gzip"):
+                    if metric == "size" and value != "" and note.textContent:
+                        note.removeAttribute("hidden")
+                    else:
+                        note.setAttribute("hidden", "")
                 for ratio in cell.querySelectorAll(".ratio"):
                     ratio.removeAttribute("data-comparison")
                     text = ratio.querySelector(".ratio-value")
@@ -185,7 +210,7 @@ class Controls:
                     display.textContent = "—"
                     continue
                 number = float(value)
-                if not is_baseline and number > 0 and largest > smallest and smallest > 0 and not cell.hasAttribute("hidden"):
+                if not is_baseline and number > 0 and largest > smallest and smallest > 0:
                     heat = (math.log(number) - math.log(smallest)) / (math.log(largest) - math.log(smallest))
                     cell.setAttribute("data-heat", str(heat))
                     cell.setAttribute("style", "background-color:hsl(" + str(round(155 - 135 * heat, 2)) + " 32% 18%)")
@@ -193,6 +218,8 @@ class Controls:
                     display.textContent = str(round(number / 1024, 2)) + " MiB"
                 elif metric == "compile":
                     display.textContent = str(round(number, 3)) + " s"
+                elif metric == "size":
+                    display.textContent = str(round(number / 1024, 2)) + " KiB"
                 else:
                     display.textContent = str(round(number * 1000, 3)) + " ms"
                 for ratio in cell.querySelectorAll(".ratio"):
@@ -208,28 +235,18 @@ class Controls:
                         text.textContent = "same"
                     elif number < float(reference):
                         suffix = " less memory" if metric == "memory" else " faster"
+                        if metric == "size":
+                            suffix = " smaller"
                         factor = round(float(reference) / number, 2)
                         text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
                         ratio.setAttribute("data-comparison", "lower")
                     else:
                         suffix = " more memory" if metric == "memory" else " slower"
+                        if metric == "size":
+                            suffix = " larger"
                         factor = round(number / float(reference), 2)
                         text.textContent = "≈ same" if factor == 1 else str(factor) + "×" + suffix
                         ratio.setAttribute("data-comparison", "higher")
-        # Keep an expanded source attached to the visible row and selected pair.
-        for panel in table.querySelectorAll(".source-row:not([hidden])"):
-            runtime = panel.getAttribute("data-runtime") or "cpython"
-            allowed = (group == "all" or runtime == "cpython" or
-                       (group == "js" and (runtime == "javascript" or runtime == "pyjs-js")) or
-                       (group == "native" and (runtime == "rust" or runtime == "pyjs-llvm")) or
-                       (group == "jvm" and (runtime == "java" or runtime == "pyjs-jvm")))
-            if not allowed or (selected != "all" and panel.getAttribute("data-source-case") != selected):
-                self.close_sources()
-            else:
-                content = panel.querySelector("td")
-                assert isinstance(content, Element)
-                content.setAttribute("colspan", "8" if group == "all" else "4")
-        self.size_sources()
 
 
 def main():

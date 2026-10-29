@@ -2,6 +2,7 @@ import pytest
 
 from tests.backend_semantics import (
     AWAIT_ATTRIBUTE_SOURCE,
+    BENCHMARK_PRIMITIVE_CONTRACTS,
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
@@ -12,6 +13,11 @@ from tests.backend_semantics import (
     REPLACED_RECEIVER_CONTRACTS,
 )
 from tests.semantics.helpers import assert_semantics
+
+
+@pytest.mark.parametrize("contract", BENCHMARK_PRIMITIVE_CONTRACTS.values(), ids=BENCHMARK_PRIMITIVE_CONTRACTS)
+def test_benchmark_primitive_contract(contract):
+    assert_semantics(contract.print_source + "\nmain()\n")
 
 
 @pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT, LOCAL_COLLECTION_CONTRACT], ids=["truth", "split", "pop", "local-collections"])

@@ -107,9 +107,9 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if not isinstance(result, ast.Call):
             return result
         target = getattr(result.func, "obj", None)
-        from .math import isfinite
+        from .math import isfinite, sqrt
 
-        if getattr(target, "py_func", None) is isfinite and result.args:
+        if getattr(target, "py_func", None) in {isfinite, sqrt} and result.args:
             # Python math accepts integers; native Java calls intentionally do
             # not implicitly widen their ABI arguments. Coerce at this stdlib
             # boundary without relaxing every native method's type contract.
@@ -430,6 +430,7 @@ JVM_ENVIRONMENT = create_analysis_environment(
         stdlib_imports={
             ("math", None): ("pyjs.java.math", None),
             ("math", "isfinite"): ("pyjs.java.math", "isfinite"),
+            ("math", "sqrt"): ("pyjs.java.math", "sqrt"),
             ("typing", "cast"): ("pyjs.stdlib.typing", "cast"),
             ("pyjs.server", "API"): ("pyjs.server.jvm_client", "API"),
         }

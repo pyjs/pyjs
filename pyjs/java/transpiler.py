@@ -1738,6 +1738,8 @@ class JVMEmitter:
                 value_type = self.expression(node.args[0])
                 if value_type == "J":
                     self.code.emit(0x8A)
+                elif value_type == "Z":
+                    self.code.emit(0x87)
                 elif value_type != "D":
                     raise JVMUnsupported(
                         "fixed-width float construction requires a number",
@@ -2957,10 +2959,7 @@ class JVMEmitter:
             if key is None:
                 raise JVMUnsupported("JVM dictionary unpacking is not implemented", node)
             self.code.emit(0x59)
-            actual_key = self.expression(key, expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary literal changes key type", key)
-            self.convert_native_argument(actual_key, key_type, key)
+            self.dictionary_key(key, key_type)
             actual_value = self.expression(value, expected=value_type)
             if not self.compatible(actual_value, value_type):
                 raise JVMUnsupported("JVM dictionary literal changes value type", value)
@@ -3001,12 +3000,7 @@ class JVMEmitter:
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             return "Ljava/util/Set;"
         if target.name == "__contains__" and len(node.args) == 1:
-            actual = (self.load(leading_argument) if leading_argument is not None
-                      else self.expression(node.args[0]))
-            actual = self.refine_reference(node.args[0], actual, key_type)
-            if not self.compatible(actual, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type, leading_argument)
             self.dictionary_key_guard(key_type)
             reference = self.class_file.method_reference(
                 "java/util/HashMap", "containsKey", "(Ljava/lang/Object;)Z",
@@ -3023,10 +3017,7 @@ class JVMEmitter:
             self.code.emit(0x85)
             return "J"
         if target.name == "__setitem__" and len(node.args) == 2:
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             actual_value = self.expression(node.args[1], expected=value_descriptor)
             if not self.compatible(actual_value, value_descriptor):
                 raise JVMUnsupported(
@@ -3044,10 +3035,7 @@ class JVMEmitter:
             self.code.emit(0x57)
             return "V"
         if target.name in {"__getitem__", "pop", "__delitem__"} and len(node.args) == 1:
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             self.dictionary_key_guard(key_type)
             self.code.emit(0x5C)
             contains = self.class_file.method_reference(
@@ -3064,6 +3052,11 @@ class JVMEmitter:
             if key_type == "Ljava/lang/String;":
                 self.load(key_slot)
                 self.string_repr()
+            elif key_type == "Ljava/lang/Long;":
+                self.load(key_slot)
+                self.dictionary_value_cast("J")
+                reference = self.class_file.method_reference("java/lang/String", "valueOf", "(J)Ljava/lang/String;")
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
             else:
                 self.string_constant("key not found")
             name = emit_exception_class(
@@ -3094,10 +3087,7 @@ class JVMEmitter:
         if target.name in {"get", "pop", "setdefault"} and len(node.args) in {1, 2}:
             if target.name == "setdefault" and len(node.args) != 2:
                 raise JVMUnsupported("JVM dict.setdefault requires an explicit default", node)
-            actual_key = self.expression(node.args[0], expected=key_type)
-            if not self.compatible(actual_key, key_type):
-                raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
-            self.convert_native_argument(actual_key, key_type, node.args[0])
+            self.dictionary_key(node.args[0], key_type)
             get = self.class_file.method_reference(
                 "java/util/HashMap",
                 "remove" if target.name == "pop" else "get",
@@ -3156,6 +3146,17 @@ class JVMEmitter:
             f"unsupported JVM dictionary operation {target.name}",
             node,
         )
+
+    def dictionary_key(self, node, descriptor, leading_argument=None):
+        actual = (self.load(leading_argument) if leading_argument is not None
+                  else self.expression(node, expected=descriptor))
+        if leading_argument is not None:
+            actual = self.refine_reference(node, actual, descriptor)
+        if descriptor == "Ljava/lang/Long;" and actual == "Z":
+            raise JVMUnsupported("JVM integer dictionary keys do not support Boolean operands", node)
+        if not self.compatible(actual, descriptor):
+            raise JVMUnsupported("JVM dictionary key has an incompatible type", node)
+        self.convert_native_argument(actual, descriptor, node)
 
     def dictionary_value_cast(self, descriptor: str) -> None:
         wrappers = {
@@ -3433,7 +3434,7 @@ class JVMEmitter:
         name, descriptor = emit_iterator_next(owner, self.throw_python, collection=collection)
         reference = self.class_file.method_reference(owner.name, name, descriptor)
         self.code.emit(0xB8, reference.to_bytes(2, "big"))
-        self.checkcast(item_type)
+        self.dictionary_value_cast(item_type)
         self.assign_iterator_target(node, item_type, semantic_item)
         self.code.branch(0xA7, self.block_label(node.body))
 
@@ -6106,11 +6107,13 @@ class JVMEmitter:
         value_descriptor = self.value_type(value)
         if key_type in {"Ljava/lang/Long;", "Ljava/lang/Double;"}:
             raise JVMUnsupported("JVM dictionaries do not support nullable numeric keys", source)
+        if key_type == "J":
+            key_type = "Ljava/lang/Long;"
         if not _is_reference_descriptor(key_type) or not (
             _is_reference_descriptor(value_descriptor) or value_descriptor in {"J", "D", "Z"}
         ):
             raise JVMUnsupported(
-                "JVM dictionaries require reference keys and reference or scalar values",
+                "JVM dictionaries require integer or reference keys and reference or scalar values",
                 source,
             )
         return key_type, value_descriptor

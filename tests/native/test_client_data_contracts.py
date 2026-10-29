@@ -3,6 +3,7 @@ import pytest
 from pyjs.tooling.llvm import LLVM
 from tests.backend_semantics import (
     AWAIT_ATTRIBUTE_SOURCE,
+    BENCHMARK_PRIMITIVE_CONTRACTS,
     DICTIONARY_POP_CONTRACT,
     EXPLICIT_SPLIT_CONTRACT,
     LIST_TRUTH_CONTRACT,
@@ -12,6 +13,13 @@ from tests.backend_semantics import (
     REPLACED_ATTRIBUTE_CONTRACT,
     REPLACED_RECEIVER_CONTRACTS,
 )
+
+
+@pytest.mark.parametrize("contract", BENCHMARK_PRIMITIVE_CONTRACTS.values(), ids=BENCHMARK_PRIMITIVE_CONTRACTS)
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_benchmark_primitive_contract(contract, tmp_path, optimize):
+    result = LLVM().assert_matches_python(contract.source, directory=tmp_path, optimize=optimize)
+    assert result.native.returncode == 0, contract.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("contract", [LIST_TRUTH_CONTRACT, EXPLICIT_SPLIT_CONTRACT, DICTIONARY_POP_CONTRACT, LOCAL_COLLECTION_CONTRACT], ids=["truth", "split", "pop", "local-collections"])

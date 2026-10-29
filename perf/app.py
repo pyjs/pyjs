@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 
+from perf.artifacts import fold_header, recorded_code_size
 from perf.page import main
 from perf.view import view
 from pyjs.javascript.transpiler import bundle_with_source_map
@@ -20,7 +21,16 @@ def snapshots(root):
             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", directory.name) and directory.is_dir():
                 source = directory / "results.json"
                 if source.is_file() and source.resolve().is_relative_to(root.resolve()):
-                    found.append((directory.name, json.loads(source.read_text())))
+                    data = json.loads(source.read_text())
+                    sizes = {}
+                    for row in data["rows"]:
+                        key = (row["case"], row["target"])
+                        if "code_size" not in row:
+                            if key not in sizes:
+                                sizes[key] = recorded_code_size(row, directory)
+                            if sizes[key] is not None:
+                                row["code_size"] = sizes[key]
+                    found.append((directory.name, data))
     return sorted(found, key=lambda item: (item[1]["created"], item[0]), reverse=True)
 
 
@@ -66,7 +76,22 @@ def mount(application, *, root=None, prefix="/perf/"):
         if (not allowed or not candidate.is_relative_to((root / name).resolve()) or
                 not candidate.is_relative_to(root.resolve()) or candidate.suffix not in {".js", ".ll", ".txt", ".xml", ".log"} or not candidate.is_file()):
             return Response.text("Not found", status=404)
-        return Response(candidate.read_bytes(), headers={"X-Content-Type-Options": "nosniff"})
+        content = candidate.read_bytes()
+        headers = {"X-Content-Type-Options": "nosniff"}
+        parts = Path(path).parts
+        if len(parts) == 4 and parts[0] == "build" and parts[3] in {"generated.js", "generated.ll", "bytecode.txt"}:
+            case, target = parts[1:3]
+            source = data.get("sources", {}).get(f"cases/{case}/workload.py", "")
+            metadata = None
+            manifest = candidate.parent / "source-ranges.json"
+            if manifest.is_file() and manifest.resolve().is_relative_to(root.resolve()):
+                try:
+                    metadata = json.loads(manifest.read_text())
+                except (ValueError, OSError):
+                    pass
+            if source:
+                headers["X-PyJS-Algorithm-Ranges"] = fold_header(source, target, content.decode(), metadata)
+        return Response(content, headers=headers)
 
 
 def create_app():

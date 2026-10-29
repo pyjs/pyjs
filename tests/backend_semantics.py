@@ -3875,6 +3875,56 @@ LOCAL_COLLECTION_CONTRACT = _contract(
 )
 
 
+BENCHMARK_PRIMITIVE_CONTRACTS = {
+    "list-pop": _contract(
+        "from pyjs import js",
+        "list_pop_result",
+        '''
+        values = [10, 20, 30, 40]
+        alias = values
+        middle = values.pop(1)
+        last = values.pop()
+        first = values.pop(-2)
+        remaining = values.pop()
+        empty_size = len(alias)
+        values.append(50)
+        ''',
+        (
+            ("indexed and default pops return removed elements", "middle != 20 or last != 40 or first != 10 or remaining != 30"),
+            ("mutation preserves aliases and later growth", "empty_size != 0 or len(alias) != 1 or alias[0] != 50"),
+        ),
+    ),
+    "integer-keys": _contract(
+        "from pyjs import js",
+        "integer_keys_result",
+        '''
+        values: dict[int, int] = {1000: 1, -3: 2, 4294967296: 3}
+        values[1000] = values.get(1000, 0) + 10
+        copied = values.copy()
+        removed = values.pop(-3)
+        absent = values.get(-3, 99)
+        order = 0
+        for key in values.keys():
+            order = order * 10 + values[key]
+        ''',
+        (
+            ("integer keys compare by value beyond boxed caches", "values[1000] != 11 or 1000 not in values or -3 in values"),
+            ("pop and get preserve independent copy", "removed != 2 or absent != 99 or copied[-3] != 2"),
+            ("64-bit keys and ordered iteration", "order != 113 or values[4294967296] != 3"),
+        ),
+    ),
+    "sqrt": _contract(
+        "from pyjs import js\nimport math\nfrom math import sqrt as root",
+        "sqrt_result",
+        "value = math.sqrt(2.0)",
+        (
+            ("sqrt imports and integer inputs", "root(4) != 2.0 or math.sqrt(0.0) != 0.0"),
+            ("irrational result retains binary64 precision", "value < 1.4142135623730949 or value > 1.4142135623730952"),
+        ),
+    ),
+}
+
+
 DICTIONARY_POP_CONTRACT = _contract(
     '''
     from pyjs import js

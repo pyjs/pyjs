@@ -57,8 +57,12 @@ is outside the timed interval. Other adapters return a string without that
 write. This asymmetry is disclosed, not corrected using an estimated overhead.
 The native GC heap remains alive across batches and is destroyed at exit.
 
-Rust uses release optimization (-O), ordinary bounds checks, and black_box on
-runtime kernel input to discourage hoisting. LLVM uses Clang -O2, without
+Rust uses Cargo-equivalent Linux release flags: `-O`, `-C embed-bitcode=no`
+and `-C strip=debuginfo`. Stripping removes debug information inherited from
+the precompiled standard library, not runtime code. Ordinary bounds checks
+remain, and black_box on runtime kernel input discourages hoisting. LTO,
+abort-on-panic and size-oriented optimization are not enabled.
+LLVM uses Clang -O2, without
 fast-math or CPU-specific flags. Java uses javac defaults and JVM defaults.
 Python's GC remains enabled (this harness does not use timeit's GC suppression).
 Source and generated artifacts allow investigation of unexpected optimizations.
