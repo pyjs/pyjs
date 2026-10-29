@@ -99,7 +99,9 @@ const __pyjsEntry__ = {main(size, loops) {
     elif target == "rust":
         (output / "program.rs").write_text((case_dir / "reference.rs").read_text() +
                                           "\n" + (ADAPTERS / "rust_driver.rs").read_text())
-        run([tools["rustc"]["path"], "-O", "--edition=2024", output / "program.rs", "-o", output / "program"])
+        # Match Cargo release defaults, including debug info inherited from std.
+        run([tools["rustc"]["path"], "-O", "--edition=2024", "-C", "embed-bitcode=no",
+             "-C", "strip=debuginfo", output / "program.rs", "-o", output / "program"])
         command = [str(output / "program")]
     elif target == "pyjs-llvm":
         from pyjs.native.llvm import transpile_llvm_module

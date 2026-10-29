@@ -110,6 +110,22 @@ def test_python_adapter_checks_real_output_and_preserves_existing_destination(tm
     assert (directory / "program.py").read_bytes() == original
 
 
+def test_rust_adapter_matches_cargo_release_defaults(tmp_path):
+    rustc = tool("rustc")
+    if not rustc["path"]:
+        pytest.skip("Rust is required for the release adapter check")
+    directory = tmp_path / "rust"
+    result = build("matrix", "rust", directory, {"rustc": rustc})
+    assert result["build_commands"][0][1:7] == [
+        "-O", "--edition=2024", "-C", "embed-bitcode=no", "-C", "strip=debuginfo"]
+    assert result["code_size"] == {"bytes": (directory / "program").stat().st_size,
+                                   "files": ["program"]}
+    for size in (24, 25, 64, 65):
+        measured = execute(result["command"] + [str(size), "1", "0", "1"])
+        assert measured.returncode == 0, measured.stderr
+        parse_samples(measured.stdout, expected("matrix", size, 1), 0, 1)
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_javascript_reference_matches_oracle(tmp_path, case):
     node = tool("node")

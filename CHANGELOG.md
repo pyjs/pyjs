@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rust benchmarks match Cargo's Linux release defaults, removing inherited
+  standard-library debug information from the measured executable size.
+
 - Performance comparisons collect explanations above the controls, put the
   color key on the desktop metric bar, and offer a code-size view for complete
   runnable artifacts, with secondary gzip figures for JavaScript.

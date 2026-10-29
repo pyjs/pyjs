@@ -150,6 +150,9 @@ JavaScript also reports deterministic gzip-compressed bytes, without applying
 a minifier to either implementation. Folding changes only the display, never
 the counted bytes. Older snapshots can derive sizes from matching retained
 build artifacts without rerunning or changing their recorded timings.
+Rust builds match Cargo's Linux release defaults, including removal of
+standard-library debug information. Older snapshots built with only `-O`
+retain their original, larger binaries and size figures.
 CPython is the shared baseline, stated once rather than repeated in every cell.
 Raw samples, warnings and JVM diagnostic logs remain in the harness output for
 local investigation; the comparison UI does not expose diagnostic pages.
