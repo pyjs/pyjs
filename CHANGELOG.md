@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add typed xterm.js and FitAddon browser bindings for terminal output, input,
+  fitting and disposal.
+- Bundle self-contained package CSS through managed npm imports, preserving
+  stylesheet identity across development and packaged applications.
+
 - Rust benchmarks match Cargo's Linux release defaults, removing inherited
   standard-library debug information from the measured executable size.
 
