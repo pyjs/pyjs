@@ -35,8 +35,9 @@ to submit a coherent batch of unsaved modules and discard closed buffers.
 It represents an authoritative generation; per-document notification versions
 otherwise increase monotonically. `force: true` bypasses the snapshot cache.
 
-Successful results include `schemaVersion: 1`, `uri`, document `version`, service
-`revision`, `sourceHash`, `status`, `cached`, `symbols`, and `occurrences`.
+Successful results include `schemaVersion: 1`, `uri`, document `version`,
+service `revision`, `sourceHash`, `status`, `cached`, `symbols`, and
+`occurrences`.
 Function signatures and identifier types come from the compiler's analysis of
 compiler-selected definitions, including methods. Global values reflect their
 actual types after Python initialization. This is not yet a general Python type
@@ -62,8 +63,8 @@ Results have one of four states:
 
 Successful snapshots are retained for every workspace module visited by the
 analysis, including dependencies. They are persisted in SQLite under
-`$XDG_CACHE_HOME/pyjs/analysis` (default `~/.cache/pyjs/analysis`), partitioned by
-workspace, interpreter and compiler fingerprint. Source and dependency content
+`$XDG_CACHE_HOME/pyjs/analysis` (default `~/.cache/pyjs/analysis`), partitioned
+by workspace, interpreter and compiler fingerprint. Source and dependency content
 hashes are checked against open buffers or disk before reuse. Unsaved results
 can only be reused with matching source; they never replace different disk
 content. Cache write failures do not prevent live analysis.
