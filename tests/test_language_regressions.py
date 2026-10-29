@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,137 @@ from pyjs.language.session import AnalysisSession
 from pyjs.language.store import SnapshotStore
 
 SOURCE = 'from pyjs import js\n@js\ndef answer():\n    return 42\n'
+
+
+@pytest.mark.parametrize('collision', ['later_directory', 'shadowed_module'])
+def test_opening_a_shadowed_file_preserves_import_precedence(tmp_path, collision):
+    if collision == 'later_directory':
+        base = tmp_path / 'src'
+        base.mkdir()
+        first, second = base / 'example.py', tmp_path / 'example.py'
+    else:
+        base = tmp_path
+        (base / 'example').mkdir()
+        first, second = base / 'example' / '__init__.py', base / 'example.py'
+    first.write_text(SOURCE)
+    second.write_text(SOURCE.replace('42', '"other"'))
+    main = base / 'main.py'
+    main.write_text('from example import answer\n' + SOURCE.replace('return 42', 'return answer()').replace('def answer', 'def result'))
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        for opened in (False, True):
+            if opened:
+                session.update(second.as_uri(), 1, second.read_text())
+            result = session.snapshot(main.as_uri(), force=True)
+            assert result['status'] == 'ready', result
+            assert result['symbols'][0]['type'] == 'result() -> int'
+            assert str(first) in result['dependencies']
+            assert str(second) not in result['dependencies']
+    finally:
+        session.shutdown()
+
+
+def test_normalized_identifiers_preserve_original_source_spans(tmp_path):
+    helper = tmp_path / 'units.py'
+    source = ('from pyjs import js\n@js\nclass ﬁBox:\n'
+              '    @staticmethod\n    def ﬁle(µs: int):\n        return µs\n'
+              '@js\ndef answer():\n    return ﬁBox.ﬁle(42)\n')
+    helper.write_text(source)
+    main = tmp_path / 'main.py'
+    main.write_text('from units import answer\n' + SOURCE.replace('return 42', 'return answer()').replace('def answer', 'def result'))
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        result = session.snapshot(main.as_uri())
+        assert result['status'] == 'ready', result
+        result = session.cached_snapshot(helper.as_uri())
+        assert result['status'] == 'ready', result
+        names = {item['name'] for item in result['occurrences']}
+        assert {'fiBox', 'file', 'μs'} <= names
+        for item in result['occurrences']:
+            text = source.splitlines()[item['line'] - 1][item['column']:item['endColumn']]
+            assert unicodedata.normalize('NFKC', text) == item['name'], item
+    finally:
+        session.shutdown()
+
+
+def test_parameterless_protocol_methods_accept_null_params(tmp_path):
+    child = subprocess.Popen([sys.executable, '-m', 'pyjs', 'lsp', '--root', str(tmp_path)],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    try:
+        for index, method in enumerate(['initialize', 'pyjs/indexState', 'shutdown']):
+            write_message(child.stdin, {'jsonrpc': '2.0', 'id': index, 'method': method, 'params': None})
+            response = read_message(child.stdout)
+            assert response['id'] == index
+            assert 'result' in response
+        write_message(child.stdin, {'jsonrpc': '2.0', 'method': 'exit', 'params': None})
+        assert child.wait(timeout=5) == 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.communicate(timeout=5)
+
+
+@pytest.mark.parametrize('layout', ['module', 'package', 'src'])
+def test_saved_workspace_dependency_overrides_worker_bootstrap(tmp_path, layout):
+    base = tmp_path / 'src' if layout == 'src' else tmp_path
+    dependency = base / ('json/__init__.py' if layout == 'package' else 'json.py')
+    dependency.parent.mkdir(parents=True, exist_ok=True)
+    dependency.write_text(SOURCE)
+    main = base / 'main.py'
+    main.write_text('from json import answer\n' + SOURCE.replace('return 42', 'return answer()').replace('def answer', 'def result'))
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        result = session.snapshot(main.as_uri())
+        assert result['status'] == 'ready', result
+        assert result['symbols'][0]['type'] == 'result() -> int'
+        assert str(dependency) in result['dependencies']
+    finally:
+        session.shutdown()
+
+
+@pytest.mark.parametrize('package', [False, True])
+def test_unsaved_namespace_child_does_not_replace_existing_module(tmp_path, package):
+    dependency = tmp_path / ('example/__init__.py' if package else 'example.py')
+    dependency.parent.mkdir(exist_ok=True)
+    dependency.write_text(SOURCE)
+    main = tmp_path / 'main.py'
+    main.write_text('from example import answer\n' + SOURCE.replace('return 42', 'return answer()').replace('def answer', 'def result'))
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        session.update((tmp_path / 'example' / 'unused.py').as_uri(), 1, 'VALUE = 42\n')
+        result = session.snapshot(main.as_uri())
+        assert result['status'] == 'ready', result
+        assert result['symbols'][0]['type'] == 'result() -> int'
+        assert str(dependency) in result['dependencies']
+    finally:
+        session.shutdown()
+
+
+def test_protocol_recovers_after_invalid_uri_types(tmp_path):
+    child = subprocess.Popen([sys.executable, '-m', 'pyjs', 'lsp', '--root', str(tmp_path)],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    try:
+        write_message(child.stdin, {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize'})
+        assert read_message(child.stdout)['id'] == 1
+        for method, extra in [('pyjs/moduleSnapshot', {}), ('pyjs/moduleSnapshot', {'force': True}),
+                              ('pyjs/moduleState', {})]:
+            for uri in [42, {'invalid': 'uri'}, [], True, None]:
+                write_message(child.stdin, {'jsonrpc': '2.0', 'id': 2, 'method': method,
+                                            'params': {'uri': uri} | extra})
+                response = read_message(child.stdout)
+                assert response is not None
+                assert response['id'] == 2
+                assert response['error']['code'] == -32602
+        write_message(child.stdin, {'jsonrpc': '2.0', 'id': 3, 'method': 'pyjs/indexState'})
+        assert read_message(child.stdout)['result']['status'] == 'idle'
+        write_message(child.stdin, {'jsonrpc': '2.0', 'id': 4, 'method': 'shutdown'})
+        assert read_message(child.stdout)['id'] == 4
+        write_message(child.stdin, {'jsonrpc': '2.0', 'method': 'exit'})
+        assert child.wait(timeout=5) == 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.communicate(timeout=5)
 
 
 @pytest.mark.parametrize('module', ['example', 'json', 'pkg.helper'])

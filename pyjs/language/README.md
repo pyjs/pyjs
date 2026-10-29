@@ -66,13 +66,15 @@ Results have one of four states:
 Successful snapshots are retained for every workspace module visited by the
 analysis, including dependencies. They are persisted in SQLite under
 `$XDG_CACHE_HOME/pyjs/analysis` (default `~/.cache/pyjs/analysis`), partitioned
-by workspace, interpreter and compiler fingerprint. Source and dependency content
-hashes are checked against open buffers or disk before reuse. Unsaved results
+by workspace, interpreter and compiler fingerprint. Source and dependency
+content hashes are checked against open buffers or disk before reuse. Unsaved results
 can only be reused with matching source; they never replace different disk
 content. Cache write failures do not prevent live analysis.
 Revisions are allocated through the cache database so they remain distinct
 after a restart and between services sharing that cache. If allocation fails,
 the session stops reading that cache and continues with local revisions.
+Allocation waits up to one second for a writer; sustained contention can
+therefore disable shared-cache reuse for that session.
 
 `pyjs/indexProject` starts background indexing of `[tool.pyjs].application` and
 its reachable modules; module names, packages and workspace `.py` paths are

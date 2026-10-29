@@ -29,25 +29,33 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
     def find_spec(self, fullname, path=None, target=None):
         leaf = fullname.rsplit(".", 1)[-1]
+        namespaces = []
         for directory in path if path is not None else sys.path:
             base = Path(directory).resolve()
+            spec = importlib.machinery.PathFinder.find_spec(fullname, [str(base)])
             for filename in (base / leaf / "__init__.py", base / (leaf + ".py")):
+                if filename.name != '__init__.py' and spec is not None and spec.loader is not None and spec.submodule_search_locations is not None:
+                    break
                 if str(filename) in self.overlays and self.allowed(filename):
                     return importlib.util.spec_from_file_location(
                         fullname, filename, loader=self,
                         submodule_search_locations=[str(filename.parent)] if filename.name == '__init__.py' else None,
                     )
-            package = base / leaf
-            if self.allowed(package) and any(Path(name).is_relative_to(package) for name in self.overlays):
-                if not (package / "__init__.py").is_file():
-                    spec = importlib.machinery.ModuleSpec(fullname, loader=None, is_package=True)
-                    spec.submodule_search_locations = [str(package)]
+            if spec is not None and spec.loader is not None:
+                if spec.origin and spec.origin.endswith(".py") and self.allowed(Path(spec.origin).resolve()):
+                    spec.loader = self
                     return spec
-        spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        if spec is not None and spec.origin and spec.origin.endswith(".py"):
-            if self.allowed(Path(spec.origin).resolve()):
-                spec.loader = self
-                return spec
+                return None
+            if spec is not None:
+                namespaces.extend(spec.submodule_search_locations or ())
+            package = base / leaf
+            if (self.allowed(package) and str(package) not in namespaces
+                    and any(Path(name).is_relative_to(package) for name in self.overlays)):
+                namespaces.append(str(package))
+        if namespaces:
+            spec = importlib.machinery.ModuleSpec(fullname, loader=None, is_package=True)
+            spec.submodule_search_locations = namespaces
+            return spec
         return None
 
     def allowed(self, filename):
@@ -92,6 +100,15 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path) -
     name = ".".join(parts)
     sys.path[:0] = [str(base), str(root)]
     sources = Sources(root, overlays, target, journal)
+    # Saved workspace imports can also collide with modules needed to start the worker.
+    for prefix, existing in list(sys.modules.items()):
+        if "." in prefix or getattr(getattr(existing, '__spec__', None), 'origin', None) in ('built-in', 'frozen'):
+            continue
+        spec = sources.find_spec(prefix, [str(base), str(root)])
+        if spec is not None and spec.loader is sources and getattr(existing, '__file__', None) != spec.origin:
+            for loaded in list(sys.modules):
+                if loaded == prefix or loaded.startswith(prefix + "."):
+                    del sys.modules[loaded]
     # Bootstrap imports must not claim an explicitly selected workspace identity.
     for filename in overlays:
         file = Path(filename)

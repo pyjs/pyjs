@@ -65,6 +65,8 @@ class AnalysisSession:
         self.store = SnapshotStore(directory)
 
     def path(self, uri: str) -> Path:
+        if not isinstance(uri, str):
+            raise ValueError("Expected a local file URI string")
         parsed = urlparse(uri)
         if parsed.scheme != "file" or parsed.netloc not in ("", "localhost"):
             raise ValueError("Expected a local file URI")

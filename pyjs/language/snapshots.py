@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import io
 import tokenize
+import unicodedata
 from pathlib import Path
 
 from pyjs.analysis.objects import Class, Function, Instance, Module
@@ -43,11 +44,16 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
     snapshots = {}
     file_lines = {path: text.splitlines() for path, text in sources.items()}
     declaration_names = {}
+    name_starts = {}
+    name_ends = {}
     for path, text in sources.items():
         keyword_line = 0
         for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type == tokenize.NAME:
+                name_starts[path, *token.start] = token
+                name_ends[path, *token.end] = token
             if keyword_line and token.type == tokenize.NAME:
-                declaration_names[path, keyword_line, token.string] = token.start
+                declaration_names[path, keyword_line, unicodedata.normalize('NFKC', token.string)] = token
                 keyword_line = 0
             elif token.type == tokenize.NAME and token.string in ('def', 'class'):
                 keyword_line = token.start[0]
@@ -103,7 +109,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             if isinstance(node, ast.ClassDef):
                 value = module.scope.names.get(node.name)
                 if value is not None:
-                    definitions[id(value)] = definition(path, *declaration_names[path, node.lineno, node.name])
+                    definitions[id(value)] = definition(path, *declaration_names[path, node.lineno, node.name].start)
             targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
             for target in targets:
                 if isinstance(target, ast.Name):
@@ -123,7 +129,8 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
                 continue
             node = function.original_node
             line = node.lineno + fragment.line_delta
-            definitions[id(function)] = definition(path, *declaration_names[path, line, function.name])
+            declaration = declaration_names[path, line, function.name]
+            definitions[id(function)] = definition(path, *declaration.start)
             bindings = parameter_definitions[id(function)] = {}
             qualified = function.cls.name + "." + function.name if function.cls is not None else function.name
             positional = [*node.args.posonlyargs, *node.args.args]
@@ -155,7 +162,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             snapshot["occurrences"].append({"name": function.name, "type": label(function.return_type),
                 "kind": "function", "line": definitions[id(function)]["definitionLine"],
                 "column": start, "endLine": definitions[id(function)]["definitionLine"],
-                "endColumn": start + len(function.name), "signature": signature,
+                "endColumn": declaration.end[1], "signature": signature,
                 "documentation": documentation[id(function)], "hint": False, **definitions[id(function)]})
             for parameter in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
                               *([node.args.vararg] if node.args.vararg else []),
@@ -166,7 +173,8 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
                     bindings[parameter.arg] = definition(path, span["line"], span["column"])
                     value_type = label(value.type)
                     snapshot["occurrences"].append({"name": parameter.arg, "type": value_type, "kind": "parameter",
-                        **span, "endLine": span["line"], "endColumn": span["column"] + len(parameter.arg),
+                        **span, "endLine": span["line"],
+                        "endColumn": name_starts[path, span['line'], span['column']].end[1],
                         "signature": parameter.arg + ": " + value_type, "documentation": "Parameter of " + signature,
                         "hint": False, **bindings[parameter.arg]})
             body = function.node
@@ -198,10 +206,11 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             name = node.id if isinstance(node, ast.Name) else node.attr
             if isinstance(node, ast.Attribute):
                 span["line"] = span["endLine"]
-                span["column"] = span["endColumn"] - len(name)
+                token = name_ends.get((path, span['line'], span['endColumn']))
+                span["column"] = token.start[1] if token is not None else span["endColumn"] - len(name)
             if span["column"] < 0 or span["line"] < 1 or span["line"] > len(file_lines[path]):
                 continue
-            if file_lines[path][span["line"] - 1][span["column"]:span["endColumn"]] != name:
+            if unicodedata.normalize('NFKC', file_lines[path][span["line"] - 1][span["column"]:span["endColumn"]]) != name:
                 continue
             kind = "function" if isinstance(value, Function) else "class" if isinstance(value, Class) else "variable"
             value_type = label(value if isinstance(value, Class) else value.type)

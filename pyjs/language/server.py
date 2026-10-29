@@ -96,6 +96,8 @@ def serve(root: Path, *, session=None, methods=None, interpreter=None) -> int:
                         send({"id": None, "error": {"code": -32600, "message": "Invalid request"}})
                         continue
                     parameters = message.get("params", {})
+                    if parameters is None:
+                        parameters = {}
                     try:
                         if not isinstance(parameters, dict):
                             raise ValueError("Expected named parameters")
