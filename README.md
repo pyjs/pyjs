@@ -1105,7 +1105,8 @@ with `pyjs template`.
 - JVM `math.sqrt()` accepts integers, Booleans and floats. Negative inputs
   raise `ValueError`; negative zero, positive infinity and NaN retain their
   floating-point behavior. The implementation uses Java's native square root
-  after a Python-compatible domain check.
+  after a Python-compatible domain check. Domain errors currently use the
+  message `math domain error`; wording differs from newer CPython releases.
 - JVM custom Python exception classes retain inherited catches, typed fields,
   owned identity, custom initializers and module-scoped class identity.
   String/integer/Boolean positional arguments supply text without `super()`;

@@ -64,6 +64,7 @@ const __pyjsEntry__ = {main(size, loops) {
             javascript = result.javascript
             (output / "generated.js").write_text(javascript)
             (output / "source-ranges.json").write_text(json.dumps({
+                "schema": 1,
                 "sha256": hashlib.sha256(javascript.encode()).hexdigest(),
                 "ranges": javascript_ranges(result.source_map, (case_dir / "workload.py").read_text()),
             }))

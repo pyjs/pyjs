@@ -64,9 +64,28 @@ def javascript_ranges(source_map, source):
     """Use compiler scope provenance, not brace counting or minifier heuristics."""
     functions, classes, methods = algorithm_names(source)
     names = functions | classes | methods
-    return merge_ranges((scope.start_line, scope.end_line + 1)
-                        for scope in source_map.generated_scopes
-                        if scope.scope.source.filename == "workload.py" and scope.scope.name in names)
+    declarations = {}
+    ranges = []
+    for generated in source_map.generated_scopes:
+        scope = generated.scope
+        if scope.source.filename != "workload.py":
+            continue
+        if scope.source not in declarations:
+            owned = {}
+            # Method scopes carry bare names; resolve their owner in the compiled
+            # source, whose inserted decorators shift the original line numbers.
+            for node in ast.parse(scope.source.text).body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    owned[node.lineno - 1, node.name] = node.name
+                elif isinstance(node, ast.ClassDef):
+                    for method in node.body:
+                        if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            owned[method.lineno - 1, method.name] = f"{node.name}.{method.name}"
+            declarations[scope.source] = owned
+        name = declarations[scope.source].get((scope.start_line, scope.name))
+        if name in names:
+            ranges.append((generated.start_line, generated.end_line + 1))
+    return merge_ranges(ranges)
 
 
 def algorithm_ranges(source, target, text):
@@ -126,7 +145,7 @@ def algorithm_ranges(source, target, text):
 
 def fold_header(source, target, text, metadata=None):
     digest = hashlib.sha256(text.encode()).hexdigest()
-    if isinstance(metadata, dict) and metadata.get("sha256") == digest:
+    if isinstance(metadata, dict) and metadata.get("schema") == 1 and metadata.get("sha256") == digest:
         ranges = metadata.get("ranges")
     else:
         ranges = algorithm_ranges(source, target, text)

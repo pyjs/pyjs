@@ -228,6 +228,17 @@ async def check_folding(page, output):
         await page.set_viewport(1440, 1100)
         await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
 
+    for case, method in (("bounce", "step()"), ("objects", "score()"),
+                         ("binarytrees", "count()"), ("nbody", "constructor(")):
+        selector = f'tr[data-case="{case}"] td[data-target="pyjs-js"] button'
+        if not await page.evaluate(f"document.querySelector({json.dumps(selector)}) !== null"):
+            continue
+        await page.click(selector)
+        await page.wait_for("document.querySelector('.source-row:not([hidden]) .target-code details[data-algorithm=true][open]') !== null", "class source folds")
+        visible = await page.evaluate("Array.from(document.querySelectorAll('.source-row:not([hidden]) details[data-algorithm=true][open] pre')).map(item => item.textContent).join('\\n')")
+        assert method in visible and "constructor(" in visible, case
+        await page.evaluate("document.querySelector('.source-row:not([hidden]) [data-close-source]').click()")
+
 
 async def check_code_sizes(page, output):
     await page.click('#metric [data-metric="size"]')

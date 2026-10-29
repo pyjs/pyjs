@@ -92,6 +92,54 @@ def main(value: int) -> int:
         assert "function main" not in visible and "moduleCache" not in visible
 
 
+@pytest.mark.parametrize("case, method", [
+    ("bounce", "step()"), ("objects", "score()"),
+    ("binarytrees", "count()"), ("nbody", "constructor("),
+])
+def test_fresh_js_manifests_include_algorithm_class_methods(tmp_path, case, method):
+    output = tmp_path / case
+    build(case, "pyjs-js", output, {"node": {"path": "node"}})
+    text = (output / "generated.js").read_text()
+    metadata = json.loads((output / "source-ranges.json").read_text())
+    visible = "\n".join("\n".join(text.split("\n")[a:b]) for a, b in metadata["ranges"])
+    assert "constructor(" in visible
+    assert method in visible
+    assert "function kernel" in visible
+    assert "function batch" not in visible and "function main" not in visible
+    source = (ROOT / "cases" / case / "workload.py").read_text()
+    assert fold_header(source, "pyjs-js", text, metadata) == ";".join(
+        f"{a}:{b}" for a, b in metadata["ranges"])
+
+
+def test_js_method_scope_ownership_excludes_same_named_adapter_methods():
+    source = '''class Box:
+    def __init__(self, value: int):
+        self.value = value
+    def score(self) -> int:
+        return self.value + 1
+def kernel(value: int) -> int:
+    return Box(value).score()
+'''
+    entry = ("from pyjs import js\n" + source.replace("class Box:", "@js\nclass Box:")
+             .replace("def kernel", "@js\ndef kernel") + '''
+@js
+class Adapter:
+    def score(self) -> int:
+        return 777
+@js
+def main() -> int:
+    return kernel(2) + Adapter().score()
+''')
+    with compile_source(entry, filename="workload.py", module_name="perf_workload") as result:
+        ranges = javascript_ranges(result.source_map, source)
+        visible = "\n".join("\n".join(result.javascript.split("\n")[a:b]) for a, b in ranges)
+        assert "constructor(value)" in visible
+        assert "return this.value + 1;" in visible
+        assert "function kernel" in visible
+        assert "return 777;" in result.javascript and "return 777;" not in visible
+        assert "function main" not in visible
+
+
 @pytest.mark.parametrize("target, names", [
     ("cpython", ["program.py", "driver.py"]),
     ("javascript", ["program.cjs"]), ("pyjs-js", ["program.cjs"]),
@@ -129,8 +177,26 @@ def test_old_snapshot_sizes_require_matching_retained_artifacts(tmp_path):
                                     [[1, 2], [0, 1]], [[0, True]]])
 def test_invalid_fold_metadata_leaves_source_unfolded(ranges):
     text = "first\nsecond\n"
-    metadata = {"sha256": hashlib.sha256(text.encode()).hexdigest(), "ranges": ranges}
+    metadata = {"schema": 1, "sha256": hashlib.sha256(text.encode()).hexdigest(), "ranges": ranges}
     assert fold_header(SOURCE, "pyjs-js", text, metadata) == ""
+
+
+def test_unversioned_class_manifest_uses_complete_declaration_fallback():
+    text = """define('perf_workload', function (__export_js__, __import_js__) {
+class Box {
+    constructor(value) {
+        this.value = value;
+    }
+}
+__export_js__.Box = Box;
+function kernel(value) {
+    return value;
+}
+__export_js__.kernel = kernel;
+});
+"""
+    old = {"sha256": hashlib.sha256(text.encode()).hexdigest(), "ranges": [[7, 10]]}
+    assert fold_header(SOURCE, "pyjs-js", text, old) == "1:6;7:10"
 
 
 def test_built_js_folding_and_shipped_sizes_reach_live_ui(tmp_path):
@@ -144,6 +210,7 @@ def test_built_js_folding_and_shipped_sizes_reach_live_ui(tmp_path):
                                    "gzip_bytes": len(gzip.compress(shipped, mtime=0))}
     manifest = output / "source-ranges.json"
     metadata = json.loads(manifest.read_text())
+    assert metadata["schema"] == 1
     assert metadata["sha256"] == hashlib.sha256(generated).hexdigest()
     assert metadata["ranges"]
     source = (ROOT / "cases" / "sieve" / "workload.py").read_text()
