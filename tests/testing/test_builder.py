@@ -270,7 +270,7 @@ def test_value():
     assert result == BrowserBundle(
         "javascript",
         "stylesheet",
-        SourceMap().shifted(2),
+        SourceMap(),
         imports,
     )
 
