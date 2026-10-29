@@ -543,11 +543,11 @@ class BrowserRunnerApp(CustomElement):
     async def runSingleTest(
         self,
         frame: HTMLIFrameElement,
-        source: str,
+        module_url: str,
         css: str,
         nodeid: str,
     ) -> SingleTestRun:
-        return await execute_single_test(frame, source, css, nodeid)
+        return await execute_single_test(frame, module_url, css, nodeid)
 
     def resetRunnerState(self, selected_nodeids: list[str], current_nodeid: str | None):
         should_reset = self.prepareRunSession(selected_nodeids, current_nodeid)
@@ -559,8 +559,17 @@ class BrowserRunnerApp(CustomElement):
 
 
 @js
+async def load_test_module(frame: HTMLIFrameElement, module_url: str) -> None: ...
+
+
+load_test_module.source("""
+return frame.contentWindow.Function('url', 'return import(url)')(module_url);
+""")
+
+
+@js
 async def execute_single_test(
-    frame: HTMLIFrameElement, source: str, css: str, nodeid: str
+    frame: HTMLIFrameElement, module_url: str, css: str, nodeid: str
 ) -> SingleTestRun:
     logs: list[ConsoleLine] = []
     # Test bundles extend their iframe window with the runner protocol fields.
@@ -593,8 +602,7 @@ async def execute_single_test(
     frame_window.__pyjsAutoRun__ = False
 
     try:
-        run_bundle = frame_window.Function(source)
-        run_bundle()
+        await load_test_module(frame, module_url)
         manifest: list[BrowserTest] = frame_window.__pyjsSelectedTests
         selected_test: BrowserTest | None = None
         for test in manifest:
@@ -662,11 +670,7 @@ class TransportMessageListener:
         app = self.app
         app.resetRunnerState(selected_nodeids, current_nodeid)
         app.setStatus(app.summarizeResults())
-        response = await fetch(
-            "/bundle.js?run_id=" + encodeURIComponent(message["run_id"]),
-            FetchOptions("no-store"),
-        )
-        source = await response.text()
+        module_url = "/bundle.js?run_id=" + encodeURIComponent(message["run_id"])
         css_response = await fetch(
             "/bundle.css?run_id=" + encodeURIComponent(message["run_id"]),
             FetchOptions("no-store"),
@@ -679,7 +683,7 @@ class TransportMessageListener:
                 app.renderTestListSelf()
 
                 frame = app.createFrameForTest(nodeid)
-                run = await app.runSingleTest(frame, source, css, nodeid)
+                run = await app.runSingleTest(frame, module_url, css, nodeid)
                 result = run.result
                 results.append(result)
                 app.setTestConsoleLines(nodeid, run.consoleLines)

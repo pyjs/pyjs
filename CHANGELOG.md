@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Browser tests execute as modules, supporting managed npm dependencies and
+  their stylesheets in each isolated test frame. Error stacks retain Python
+  source locations.
+
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving
