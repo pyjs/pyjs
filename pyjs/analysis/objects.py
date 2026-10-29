@@ -10,7 +10,7 @@ import types
 import typing
 import weakref
 from collections.abc import Callable, Iterable
-from functools import partial
+from functools import cached_property, partial
 from typing import Generic
 
 from pyjs.decorators import *
@@ -656,10 +656,13 @@ class Object:
         self.name = name
         self.scope = scope
         self.container = container
+
+    @cached_property
+    def visited(self):
         # Shared analyzer objects must not own compilation entry points. Source
         # and server compilation APIs may intentionally retain their result,
         # but discarding that result must make the entire graph collectible.
-        self.visited = weakref.WeakSet()
+        return weakref.WeakSet()
 
     @property
     def py_obj(self):
@@ -3082,11 +3085,8 @@ class Function(Object):
         self.send_type: Class | UnionType | None = None
         self.send_representation: ValueRepresentation | None = None
         self.is_partial_client = False
-        self.virtual_visited = weakref.WeakSet()
-        self.render_visited = weakref.WeakSet()
         self.render_classes: set[Class] = set()
         self.render_virtual_dependencies: set[Function] = set()
-        self.hydrate_visited = weakref.WeakSet()
         self.compilation_entry_points: tuple[Function, ...] = ()
         self.compilation_objects: set[Object] = set()
         self.compilation_cleanup: Callable[[], None] | None = None
@@ -3100,6 +3100,18 @@ class Function(Object):
         self.is_property_setter = False
         self.property_setter: Function | None = None
         self.overloads: tuple[Function, ...] = ()
+
+    @cached_property
+    def virtual_visited(self):
+        return weakref.WeakSet()
+
+    @cached_property
+    def render_visited(self):
+        return weakref.WeakSet()
+
+    @cached_property
+    def hydrate_visited(self):
+        return weakref.WeakSet()
 
     def set_return_representation(
         self,
@@ -3450,7 +3462,10 @@ class Instance(Object):
         self.storage_binding = None
         apply_representation(self, None)
         self.member_dependency: Class | None = None
-        self.virtual_visited = weakref.WeakSet()
+
+    @cached_property
+    def virtual_visited(self):
+        return weakref.WeakSet()
 
     @property
     def storage_declaration(self):
@@ -3655,8 +3670,8 @@ class Name(ast.Name):
         self.obj = obj
         assert isinstance(obj, (Object, UnionType))
         self.runtime_dependency = runtime_dependency
-        assert isinstance(self.obj, (Object, UnionType)), f"{self.obj} is not an Object"
-        super().__init__(**{"id": obj.name, **kwargs})
+        kwargs.setdefault("id", obj.name)
+        super().__init__(**kwargs)
 
 
 def is_lexical_super_call(node: ast.AST, function: Function | None) -> bool:

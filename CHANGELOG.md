@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reduce cold compiler analysis time and memory use by reusing flow write
+  summaries, avoiding redundant annotation analysis, and allocating
+  reachability sets only when needed. Finalized
+  functions are reused during dependency scheduling.
+- Preserve complete source spans for the first assignment to an instance field.
+
 - JVM supports `math.isfinite()`, first-match `list.remove()` for strings,
   integers and booleans, same-storage list unpacking, reference-valued
   `set(iterable)`, and `dict.setdefault(key, default)`. Unsupported item
