@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Editor clients can request compiler-backed completions and call signatures
+  for valid Python buffers, including unsaved imports, inferred members and
+  generic call types. Custom queries analyze the cursor's function and its
+  dependencies without replacing full-module snapshots.
+
 - Document editing commands expose typed arguments and success results for
   native text insertion and undo history where the browser supports them.
 

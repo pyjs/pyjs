@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from . import CURSOR_QUERY_SCHEMA
 from .store import SnapshotStore, cache_directory
 
 
@@ -36,6 +37,7 @@ class AnalysisSession:
         self.cache: dict[str, dict] = {}
         self.store = (SnapshotStore(cache_dir if cache_dir is not None else cache_directory(self.root))
                       if self.interpreter == sys.executable else None)
+        self.query_schema = CURSOR_QUERY_SCHEMA if self.interpreter == sys.executable else None
         self.analysis_lock = threading.RLock()
         self.index_state = "idle"
         self.syntax: dict[str, bool] = {}
@@ -50,12 +52,14 @@ class AnalysisSession:
         try:
             probe = subprocess.run([
                 self.interpreter, '-I', '-c',
-                'import json,sys; from pathlib import Path; '
+                'import json,sys; from pathlib import Path; import pyjs.language as language; '
                 'from pyjs.language.store import cache_directory; '
-                'print(json.dumps(str(cache_directory(Path(sys.argv[1])))))', str(self.root),
+                'print(json.dumps([str(cache_directory(Path(sys.argv[1]))), '
+                'getattr(language, "CURSOR_QUERY_SCHEMA", 0)]))', str(self.root),
             ], cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 text=True, timeout=min(self.timeout, 5), check=True)
-            directory = Path(json.loads(probe.stdout))
+            name, query_schema = json.loads(probe.stdout)
+            directory = Path(name)
             if not directory.is_absolute():
                 raise ValueError('Expected an absolute cache directory')
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -63,6 +67,7 @@ class AnalysisSession:
         if self.cache_dir is not None:
             directory = self.cache_dir / directory.name
         self.store = SnapshotStore(directory)
+        self.query_schema = query_schema
 
     def path(self, uri: str) -> Path:
         if not isinstance(uri, str):
@@ -164,7 +169,17 @@ class AnalysisSession:
         with self.analysis_lock:
             return self._analyze(uri, force=force)
 
-    def _analyze(self, uri: str, *, force: bool = False) -> dict:
+    def completion(self, uri: str, line: int, column: int) -> dict:
+        """Query a name using one-based lines and Unicode code-point columns."""
+        with self.analysis_lock:
+            return self._analyze(uri, force=True, query={'action': 'complete', 'line': line, 'column': column})
+
+    def signatures(self, uri: str, line: int, column: int) -> dict:
+        """Query the innermost call at a Unicode code-point source position."""
+        with self.analysis_lock:
+            return self._analyze(uri, force=True, query={'action': 'signatures', 'line': line, 'column': column})
+
+    def _analyze(self, uri: str, *, force: bool = False, query: dict | None = None) -> dict:
         path = str(self.path(uri))
         with self.lock:
             if self.stopped:
@@ -177,6 +192,13 @@ class AnalysisSession:
         result = {"uri": uri, "version": version, "schemaVersion": 1,
                   "sourceHash": hashlib.sha256(text.encode()).hexdigest(), "cached": False,
                   "symbols": [], "occurrences": [], "message": "", "revision": 0}
+        if query is not None:
+            lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            line, column = query['line'], query['column']
+            if (type(line) is not int or type(column) is not int or not 1 <= line <= len(lines)
+                    or not 0 <= column <= len(lines[line - 1])):
+                raise ValueError('Query position is outside the source buffer')
+            result |= {'items': [], 'signatures': [], 'truncated': False, 'line': line, 'column': column}
         if cached is not None:
             return cached
         try:
@@ -186,6 +208,8 @@ class AnalysisSession:
         except SyntaxError as error:
             return result | {"status": "pending", "message": f"Waiting for valid Python: {error}"}
         self._ensure_runtime()
+        if query is not None and self.query_schema != CURSOR_QUERY_SCHEMA:
+            raise ValueError('The selected interpreter needs PyJS with cursor query support')
         with tempfile.TemporaryDirectory(prefix="pyjs-analysis-") as directory:
             output = Path(directory) / "snapshot.json"
             analyzed = {"status": "error", "message": "Analysis worker exited unexpectedly", "dependencies": {}}
@@ -204,7 +228,7 @@ class AnalysisSession:
                         self.process = process
                     try:
                         process.communicate(json.dumps({"root": str(self.root), "path": path,
-                                                        "sources": sources}), timeout=self.timeout)
+                                                        "sources": sources, "query": query}), timeout=self.timeout)
                     finally:
                         self._terminate(process)
                         with self.lock:

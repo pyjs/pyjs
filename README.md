@@ -1219,7 +1219,8 @@ complete executable examples.
 
 ## Editor analysis
 
-Run `pyjs lsp --root PATH` for experimental, versioned module snapshots. Pass
+Run `pyjs lsp --root PATH` for experimental, versioned module snapshots and
+compiler-backed completion and signature queries. Pass
 `--python /path/to/python` to execute analysis with project dependencies in a
 separate interpreter containing PyJS. See the
 [editor analysis protocol](pyjs/language/README.md) for source synchronization,
