@@ -62,9 +62,13 @@ def serve(root: Path, *, session=None, methods=None, interpreter=None) -> int:
         with output_lock:
             write_message(sys.stdout.buffer, {"jsonrpc": "2.0", **message})
 
-    def analyze(request_id, parameters):
+    def analyze(request_id, parameters, query=None):
         try:
-            result = session.snapshot(parameters["uri"], force=parameters.get("force", False))
+            if query is None:
+                result = session.snapshot(parameters["uri"], force=parameters.get("force", False))
+            else:
+                method = session.signatures if query == 'pyjs/signatureHelp' else session.completion
+                result = method(parameters['uri'], parameters['line'], parameters['column'])
             if request_id in cancelled:
                 cancelled.discard(request_id)
                 send({"id": request_id, "error": {"code": -32800, "message": "Request cancelled"}})
@@ -107,7 +111,9 @@ def serve(root: Path, *, session=None, methods=None, interpreter=None) -> int:
                         if method == "initialize" and not initialized:
                             initialized = True
                             result = {"capabilities": {"textDocumentSync": {"openClose": True, "change": 1},
-                                      "experimental": {"pyjsModuleSnapshots": {"schemaVersion": 1}}},
+                                      "experimental": {"pyjsModuleSnapshots": {"schemaVersion": 1},
+                                          "pyjsSourceQueries": {"schemaVersion": 1,
+                                              "methods": ["pyjs/completion", "pyjs/signatureHelp"]}}},
                                       "serverInfo": {"name": "pyjs"}}
                         elif not initialized:
                             send({"id": request_id, "error": {"code": -32002, "message": "Server not initialized"}})
@@ -145,16 +151,17 @@ def serve(root: Path, *, session=None, methods=None, interpreter=None) -> int:
                         elif method == "textDocument/didClose":
                             session.close(parameters["textDocument"]["uri"])
                             continue
-                        elif method == "pyjs/moduleSnapshot":
+                        elif method in ("pyjs/moduleSnapshot", "pyjs/completion", "pyjs/signatureHelp"):
                             if "documents" in parameters:
                                 session.replace_documents(parameters["documents"])
                             if "text" in parameters:
                                 session.update(parameters["uri"], parameters["version"], parameters["text"])
-                            cached = None if parameters.get("force") else session.cached_snapshot(parameters["uri"])
+                            query = None if method == 'pyjs/moduleSnapshot' else method
+                            cached = None if query or parameters.get("force") else session.cached_snapshot(parameters["uri"])
                             if cached is not None:
                                 send({"id": request_id, "result": cached})
                             else:
-                                executor.submit(analyze, request_id, parameters)
+                                executor.submit(analyze, request_id, parameters, query)
                             continue
                         else:
                             if request_id is not None:

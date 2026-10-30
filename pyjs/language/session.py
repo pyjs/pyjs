@@ -164,7 +164,17 @@ class AnalysisSession:
         with self.analysis_lock:
             return self._analyze(uri, force=force)
 
-    def _analyze(self, uri: str, *, force: bool = False) -> dict:
+    def completion(self, uri: str, line: int, column: int) -> dict:
+        """Query a name using one-based lines and Unicode code-point columns."""
+        with self.analysis_lock:
+            return self._analyze(uri, force=True, query={'action': 'complete', 'line': line, 'column': column})
+
+    def signatures(self, uri: str, line: int, column: int) -> dict:
+        """Query the innermost call at a Unicode code-point source position."""
+        with self.analysis_lock:
+            return self._analyze(uri, force=True, query={'action': 'signatures', 'line': line, 'column': column})
+
+    def _analyze(self, uri: str, *, force: bool = False, query: dict | None = None) -> dict:
         path = str(self.path(uri))
         with self.lock:
             if self.stopped:
@@ -177,6 +187,13 @@ class AnalysisSession:
         result = {"uri": uri, "version": version, "schemaVersion": 1,
                   "sourceHash": hashlib.sha256(text.encode()).hexdigest(), "cached": False,
                   "symbols": [], "occurrences": [], "message": "", "revision": 0}
+        if query is not None:
+            lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            line, column = query['line'], query['column']
+            if (type(line) is not int or type(column) is not int or not 1 <= line <= len(lines)
+                    or not 0 <= column <= len(lines[line - 1])):
+                raise ValueError('Query position is outside the source buffer')
+            result |= {'items': [], 'signatures': [], 'truncated': False, 'line': line, 'column': column}
         if cached is not None:
             return cached
         try:
@@ -204,7 +221,7 @@ class AnalysisSession:
                         self.process = process
                     try:
                         process.communicate(json.dumps({"root": str(self.root), "path": path,
-                                                        "sources": sources}), timeout=self.timeout)
+                                                        "sources": sources, "query": query}), timeout=self.timeout)
                     finally:
                         self._terminate(process)
                         with self.lock:
