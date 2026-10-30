@@ -38,7 +38,8 @@
 
 - JavaScript `JSON.stringify` accepts primitive values and arrays of
   primitives as well as object records. Ordinary Python dictionaries remain
-  excluded because their JavaScript representation is a `Map`.
+  excluded because their JavaScript representation is a `Map`. Implicit and
+  bare Python returns serialize as `null`, including in callback use.
   BigInt-backed `int64` values receive a compilation diagnostic; convert them
   explicitly to strings or safe-range integers. Named `value=` arguments
   serialize the value directly, without an extra object wrapper.

@@ -40,6 +40,42 @@ def test_json_stringify_unicode_round_trip():
     ''')
 
 
+@pytest.mark.parametrize("ending", ["", "return", "return None"])
+@pytest.mark.parametrize("argument", ["produce(calls, False)", "value=produce(calls, False)"])
+def test_json_stringify_missing_return_is_null(ending, argument):
+    assert_semantics(f'''
+        from pyjs import js
+        from pyjs.javascript import JSON, JSONObject
+
+        class Record(JSONObject):
+            value: str | None
+
+        @js
+        def produce(calls: list[int], hit: bool) -> str | None:
+            calls.append(1)
+            if hit:
+                return "found"
+            {ending}
+
+        @js
+        def nothing() -> None:
+            pass
+
+        def main():
+            calls: list[int] = []
+            serialized = JSON.stringify({argument})
+            print(serialized == "null", len(serialized), len(calls))
+            decoded: Record = JSON.parse('{{"value":' + serialized + '}}')
+            print(decoded["value"] is None)
+            print(JSON.stringify(produce(calls, True)), len(calls))
+            mapped = list(map(JSON.stringify, [produce(calls, False)]))
+            print(mapped[0], len(mapped[0]), len(calls))
+            print(JSON.stringify(nothing()))
+
+        main()
+    ''')
+
+
 @pytest.mark.parametrize("annotation", ["dict[str, str]", "list[dict[str, str]]", "set[str]"])
 def test_json_stringify_rejects_non_json_containers(annotation):
     with pytest.raises(CompilationError, match="JSON.stringify expects"):

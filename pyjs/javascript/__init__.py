@@ -438,6 +438,7 @@ class JSON:
         return json.loads(value)
 
     @staticmethod
+    @js.inline("JSON.stringify(({value}) ?? null)")
     def stringify(value: JSONObject | list[JSONObject] | JSONScalar | list[JSONScalar]) -> str:
         return _stringify_unchecked(value)
 
@@ -473,6 +474,11 @@ def _analyze_stringify(call):
     return result
 
 
+def _stringify_value(value: JSONObject | list[JSONObject] | JSONScalar | list[JSONScalar]) -> str:
+    return JSON.stringify(value)
+
+
+JSON.stringify.value(_stringify_value)
 configure_js(JSON.stringify, analysis=_analyze_stringify)
 
 
