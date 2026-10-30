@@ -392,8 +392,10 @@ def test_json_stringify_rejects_map_backed_dicts():
             'JSON.stringify({"name": "PyJS"})',
             "               ^^^^^^^^^^^^^^^^",
             "pyjs.CompilationError: Argument 'value' to JSON.stringify expects "
-            "JSONObject|list[JSONObject], got dict[str, str] [PYJS1104]",
-            "help: Pass a value compatible with JSONObject|list[JSONObject].",
+            "JSONObject|list[JSONObject]|str|bool|int|float|NoneType|"
+            "list[str | bool | int | float | NoneType], got dict[str, str] [PYJS1104]",
+            "help: Pass a value compatible with JSONObject|list[JSONObject]|str|"
+            "bool|int|float|NoneType|list[str | bool | int | float | NoneType].",
         ),
         filename="json_stringify.py",
     )

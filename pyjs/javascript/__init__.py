@@ -8,6 +8,7 @@ from typing import TypedDict
 from urllib.parse import quote
 
 from pyjs import js
+from pyjs.decorators import configure_js
 
 __all__ = [
     "ArrayBuffer",
@@ -421,6 +422,9 @@ class JSONObject(TypedDict):
     pass
 
 
+type JSONScalar = str | bool | int | float | None
+
+
 @js.inline("JSON.stringify({value})")
 def _stringify_unchecked(value: object) -> str:
     return json.dumps(value, default=vars, separators=(",", ":"))
@@ -428,14 +432,54 @@ def _stringify_unchecked(value: object) -> str:
 
 @js.native
 class JSON:
-    """Parse and serialize statically typed JSON object values."""
+    """Parse typed object records and serialize JSON-compatible values."""
     @staticmethod
     def parse[T: JSONObject | list[JSONObject]](value: str) -> T:
         return json.loads(value)
 
     @staticmethod
-    def stringify(value: JSONObject | list[JSONObject]) -> str:
+    @js.inline("JSON.stringify(({value}) ?? null)")
+    def stringify(value: JSONObject | list[JSONObject] | JSONScalar | list[JSONScalar]) -> str:
         return _stringify_unchecked(value)
+
+
+def _analyze_stringify(call):
+    import ast
+
+    from pyjs.analysis.diagnostics import DiagnosticCode
+    from pyjs.analysis.value_representation import analyzed_representation
+
+    call.visitor.validate_call_shape(call.node, call.function)
+    if any(isinstance(value, ast.Starred) for value in call.node.args):
+        call.visitor.fail(
+            call.node, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            "JSON.stringify requires one explicit value argument",
+        )
+    result = call.standard()
+    value = result.args[0] if result.args else result.keywords[0].value
+    representation = analyzed_representation(value)
+    if representation is not None and any(
+        numeric.kind == "integer" and numeric.bits == 64
+        for numeric in representation.numeric_formats
+    ):
+        call.visitor.fail(
+            call.node,
+            DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+            "JSON.stringify cannot serialize int64 values as JavaScript BigInt",
+            help="Convert int64 values to strings, or explicitly to int within the safe integer range.",
+        )
+    # Native keyword calls normally build an options object; JSON takes a value.
+    result.args = [value]
+    result.keywords = []
+    return result
+
+
+def _stringify_value(value: JSONObject | list[JSONObject] | JSONScalar | list[JSONScalar]) -> str:
+    return JSON.stringify(value)
+
+
+JSON.stringify.value(_stringify_value)
+configure_js(JSON.stringify, analysis=_analyze_stringify)
 
 
 @js.native

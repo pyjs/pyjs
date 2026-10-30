@@ -36,6 +36,14 @@
   their stylesheets in each isolated test frame. Error stacks retain Python
   source locations.
 
+- JavaScript `JSON.stringify` accepts primitive values and arrays of
+  primitives as well as object records. Ordinary Python dictionaries remain
+  excluded because their JavaScript representation is a `Map`. Implicit and
+  bare Python returns serialize as `null`, including in callback use.
+  BigInt-backed `int64` values receive a compilation diagnostic; convert them
+  explicitly to strings or safe-range integers. Named `value=` arguments
+  serialize the value directly, without an extra object wrapper.
+
 - Add typed xterm.js and FitAddon browser bindings for terminal output, input,
   fitting and disposal.
 - Bundle self-contained package CSS through managed npm imports, preserving
