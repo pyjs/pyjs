@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Language snapshots preserve located compiler and syntax diagnostics,
+  including source ranges, error codes, related locations and repair guidance.
+  Compiler locations follow Python's physical lines even when source contains
+  form feeds or Unicode line separators inside strings and comments.
+
 - Editor clients can request compiler-backed completions and call signatures
   for valid Python buffers, including unsaved imports, inferred members and
   generic call types. Custom queries analyze the cursor's function and its
