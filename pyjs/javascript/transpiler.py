@@ -2294,7 +2294,11 @@ class Transpiler(_Unparser):
     def visit_GeneratorExp(self, node):
         self.write("(($iterator)=>(function*(){")
         self.visit_comprehension_loops(node, outer_iter="$iterator")
-        self.write("})())((")
+        uses_receiver = any(isinstance(item, ast.Name) and item.id == "self"
+                            and isinstance(getattr(item, "obj", None), Instance)
+                            for item in ast.walk(node))
+        # Generators without self can run before super() initializes this.
+        self.write("}).call(this))((" if uses_receiver else "})())((")
         self.traverse_iterable(node.generators[0].iter)
         self.write(")[Symbol.iterator]())")
 
