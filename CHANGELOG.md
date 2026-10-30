@@ -53,6 +53,13 @@
   functions are reused during dependency scheduling.
 - Preserve complete source spans for the first assignment to an instance field.
 
+- Add `pyjs lsp` for versioned compiler type snapshots, source definitions,
+  unsaved module batches, background indexing and persistent caches. An
+  optional project interpreter keeps service and execution environments apart.
+  Workspace imports preserve interpreter startup modules, and source positions
+  follow Python physical lines, including comments containing Unicode
+  separators and unsaved buffers with mixed line endings.
+
 - JVM supports `math.isfinite()`, first-match `list.remove()` for strings,
   integers and booleans, same-storage list unpacking, reference-valued
   `set(iterable)`, and `dict.setdefault(key, default)`. Unsupported item
