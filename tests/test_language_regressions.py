@@ -1,6 +1,8 @@
 """Source-generation and import edge cases through real analysis workers."""
 
 import concurrent.futures
+import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -375,5 +377,58 @@ def test_bare_interpreter_name_is_resolved_from_path(tmp_path, monkeypatch):
     session = AnalysisSession(tmp_path, interpreter=executable.name, cache_dir=tmp_path / 'cache')
     try:
         assert session.interpreter == str(executable)
+    finally:
+        session.shutdown()
+
+
+@pytest.mark.parametrize('endings', [('\n',), ('\r\n',), ('\r',), ('\n', '\r', '\r\n')])
+@pytest.mark.parametrize('batch', [False, True])
+def test_overlay_physical_newlines_preserve_raw_identity_and_cache(tmp_path, endings, batch):
+    def ending_source(source):
+        return ''.join(line + endings[i % len(endings)]
+                       for i, line in enumerate(source.split('\n')[:-1]))
+
+    helper = tmp_path / 'helper.py'
+    main = tmp_path / 'main.py'
+    helper_source = ending_source('from pyjs import js\n# before\u2028after\n@js\n'
+                                 'def twice(value: int):\n    return value * 2\n')
+    main_source = ending_source('from pyjs import js\nfrom helper import twice\n@js\n'
+                               'def answer(value: int):\n    return twice(value)\n')
+    sources = {str(helper): helper_source, str(main): main_source}
+    for name, source in sources.items():
+        compile(source, name, 'exec')
+    session = AnalysisSession(tmp_path, cache_dir=tmp_path / 'cache')
+    try:
+        if batch:
+            session.replace_documents([{'uri': Path(path).as_uri(), 'version': 1, 'text': text}
+                                       for path, text in sources.items()])
+        else:
+            for path, text in sources.items():
+                session.update(Path(path).as_uri(), 1, text)
+        result = session.snapshot(main.as_uri())
+        assert result['status'] == 'ready', result
+        assert result['symbols'][0]['type'] == 'answer(value: int) -> int'
+        assert result['sourceHash'] == hashlib.sha256(main_source.encode()).hexdigest()
+        for path, source in sources.items():
+            assert result['dependencies'][path] == hashlib.sha256(source.encode()).hexdigest()
+            snapshot = session.cached_snapshot(Path(path).as_uri())
+            assert snapshot is not None and snapshot['status'] == 'ready'
+            assert snapshot['sourceHash'] == hashlib.sha256(source.encode()).hexdigest()
+            lines = io.StringIO(source, newline=None).getvalue().split('\n')
+            for item in snapshot['occurrences']:
+                assert lines[item['line'] - 1][item['column']:item['endColumn']] == item['name'], item
+                if item.get('definitionPath') in ('main.py', 'helper.py'):
+                    definition = io.StringIO(sources[str(tmp_path / item['definitionPath'])], newline=None).getvalue().split('\n')
+                    assert definition[item['definitionLine'] - 1][item['definitionColumn']:].startswith(item['name']), item
+        normalized = io.StringIO(main_source, newline=None).getvalue()
+        alternate = normalized if normalized != main_source else normalized.replace('\n', '\r\n')
+        with pytest.raises(ValueError, match='version'):
+            session.update(main.as_uri(), 1, alternate)
+        session.update(main.as_uri(), 2, alternate)
+        changed = session.snapshot(main.as_uri())
+        assert changed['status'] == 'ready', changed
+        assert not changed['cached'] and changed['revision'] > result['revision']
+        assert changed['sourceHash'] == hashlib.sha256(alternate.encode()).hexdigest()
+        assert session.snapshot(main.as_uri())['cached']
     finally:
         session.shutdown()

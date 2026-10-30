@@ -37,6 +37,10 @@ def functions(container, seen=None):
 
 
 def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str) -> dict:
+    source_hashes = {path: hashlib.sha256(text.encode()).hexdigest()
+                     for path, text in sources.items()}
+    sources = {path: text.replace('\r\n', '\n').replace('\r', '\n')
+               for path, text in sources.items()}
     definitions = {}
     parameter_definitions = {}
     signatures = {}
@@ -82,7 +86,7 @@ def collect(entry: Function, root: Path, sources: dict[str, str], synthetic: str
             continue
         modules.append((module, path))
         snapshots[path] = {"status": "ready", "message": "", "symbols": [], "occurrences": [],
-                           "sourceHash": hashlib.sha256(sources[path].encode()).hexdigest()}
+                           "sourceHash": source_hashes[path]}
 
     def location(fragment, node):
         path = resolve(fragment.source.filename)

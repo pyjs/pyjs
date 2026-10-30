@@ -79,6 +79,8 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Flush before execution so the parent can validate even a killed worker.
         with self.journal.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps([filename, self.dependencies[filename]]) + "\n")
+        # Match Python's physical lines without changing overlay identity.
+        source = source.replace('\r\n', '\n').replace('\r', '\n')
         if Path(filename) == self.target:
             if ENTRY in vars(module) or any(
                 isinstance(node, ast.Name) and node.id == ENTRY for node in ast.walk(ast.parse(source))
