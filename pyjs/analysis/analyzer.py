@@ -722,6 +722,37 @@ def iterable_item_type(value_type, *, iterator=False):
     return protocol.item_type if protocol is not None else value_type
 
 
+def initializer_declares_field(initializer, name):
+    if not isinstance(initializer, Function):
+        return False
+    initializers = [initializer]
+    owner = initializer.cls
+    while owner is not None and owner.super is not None:
+        owner = owner.super
+        inherited = owner.find_attrs("__init__", search_bases=False)
+        if isinstance(inherited, Function):
+            initializers.append(inherited)
+    for method in initializers:
+        definition = method.original_node
+        if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        arguments = definition.args.posonlyargs + definition.args.args
+        if not arguments:
+            continue
+        receiver = arguments[0].arg
+        pending = list(definition.body)
+        while pending:
+            node = pending.pop()
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Name) and node.value.id == receiver
+                    and node.attr == name):
+                return True
+            pending.extend(ast.iter_child_nodes(node))
+    return False
+
+
 def field_owner(field):
     if not isinstance(field, Instance):
         return None
@@ -4348,6 +4379,8 @@ class InferenceVisitor(ast.NodeVisitor):
                     if (
                         value_init is not None
                         and value_init is not self.func
+                        and (value_type is None or initializer_declares_field(value_init, target.attr) or
+                             parent.obj.cls.find_attrs("initialize", search_bases=False) is not self.func)
                         and not value_init.is_analyzed
                     ):
                         raise DependencyError(value_init) from None
@@ -5631,10 +5664,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 node is self.assignment_target
                 and isinstance(value_obj, Instance)
                 and value_obj.name == "self"
-                and value_init is self.func
+                and (value_init is self.func or
+                     (client_initializer is self.func and not initializer_declares_field(value_init, node.attr)))
             ):
-                # The constructor declares these fields; initialize may read
-                # them and must not become a prerequisite of their declaration.
+                # initialize() may add fields, but resets of constructor-owned
+                # fields must wait for their original type, including unions.
                 raise
             for initializer in (value_init, client_initializer):
                 if (

@@ -1,5 +1,8 @@
 import textwrap
 
+import pytest
+
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.testing.helpers import (
     ad,
     assert_transpile,
@@ -2911,6 +2914,441 @@ def test_a_property_implementing_a_base_annotation_is_emitted():
 
         export function main() {
             return new Impl(2.0).f();
+        }
+        """,
+    )
+
+
+def test_constructor_can_call_initialize_to_declare_fields():
+    assert_transpile(
+        """
+        @js
+        class Widget:
+            def __init__(self):
+                self.initialize()
+
+            def initialize(self) -> None:
+                self.value = 42
+
+            def read(self) -> int:
+                return self.value
+
+        def main():
+            print(Widget().read())
+        """,
+        """
+        export class Widget {
+
+            constructor() {
+                this.initialize();
+            }
+
+            initialize() {
+                this.value = 42;
+            }
+
+            read() {
+                return this.value;
+            }
+        }
+
+        export function main() {
+            console.log(new Widget().read());
+        }
+        """,
+    )
+
+
+def test_constructor_and_initialize_can_declare_separate_fields():
+    assert_transpile(
+        """
+        @js
+        class Widget:
+            def __init__(self):
+                self.label = "ready"
+                self.initialize()
+
+            def initialize(self) -> None:
+                self.values: list[int] = []
+                self.enabled = True
+
+            def read(self) -> str:
+                self.values.append(42)
+                return self.label if self.enabled else "disabled"
+
+        def main():
+            print(Widget().read())
+        """,
+        """
+        export class Widget {
+
+            constructor() {
+                this.label = 'ready';
+                this.initialize();
+            }
+
+            initialize() {
+                this.values = [];
+                this.enabled = true;
+            }
+
+            read() {
+                (this.values.push(42), null);
+                return this.enabled ? this.label : 'disabled';
+            }
+        }
+
+        export function main() {
+            console.log(new Widget().read());
+        }
+        """,
+    )
+
+
+def test_initialize_writes_still_check_constructor_field_types():
+    with pytest.raises(CompilationError, match="Cannot assign str.*int"):
+        transpile_line(
+            """
+            @js
+            class Widget:
+                def __init__(self):
+                    self.count: int = 0
+                    self.initialize()
+
+                def initialize(self) -> None:
+                    self.count = "wrong"
+
+            def main():
+                print(Widget().count)
+            """
+        )
+
+
+def test_initialize_reads_do_not_hide_a_real_dependency_cycle():
+    with pytest.raises(CompilationError, match="dependency cycle"):
+        transpile_line(
+            """
+            @js
+            class Widget:
+                def __init__(self):
+                    self.first = self.second
+                    self.initialize()
+
+                def initialize(self) -> None:
+                    self.second = self.first
+
+            def main():
+                print(Widget().first)
+            """
+        )
+
+
+def test_initialize_empty_container_waits_for_constructor_element_type():
+    assert_transpile(
+        """
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.items = []
+
+            def __init__(self):
+                self.items: list[int] = [1]
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.items.append(42)
+            print(widget.items[0])
+        """,
+        """
+        import { get_list_item as $get_list_item } from './pyjs.python.js';
+
+        export class Widget {
+
+            initialize() {
+                this.items = [];
+            }
+
+            constructor() {
+                this.items = [1];
+            }
+        }
+
+        export function main() {
+            var widget = new Widget();
+            widget.initialize();
+            (widget.items.push(42), null);
+            console.log($get_list_item(widget.items, 0));
+        }
+        """,
+    )
+
+
+def test_initialize_reset_preserves_constructor_optional_field_type():
+    assert_transpile(
+        """
+        @js
+        class Controller:
+            def abort(self) -> int:
+                return 42
+
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.controller = None
+
+            def __init__(self):
+                self.controller: Controller | None = None
+
+            def stop(self) -> int:
+                if self.controller is not None:
+                    return self.controller.abort()
+                return 0
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.controller = Controller()
+            print(widget.stop())
+        """,
+        """
+        export class Controller {
+
+            abort() {
+                return 42;
+            }
+        }
+
+        export class Widget {
+
+            initialize() {
+                this.controller = null;
+            }
+
+            constructor() {
+                this.controller = null;
+            }
+
+            stop() {
+                if (this.controller != null) {
+                    return this.controller.abort();
+                }
+                return 0;
+            }
+        }
+
+        export function main() {
+            var widget = new Widget();
+            widget.initialize();
+            widget.controller = new Controller();
+            console.log(widget.stop());
+        }
+        """,
+    )
+
+
+def test_initialize_reset_preserves_constructor_union_field_type():
+    assert_transpile(
+        """
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.value = 0
+
+            def __init__(self):
+                self.value: int | str = "ready"
+
+            def read(self) -> str:
+                if isinstance(self.value, str):
+                    return self.value
+                return str(self.value)
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.value = "changed"
+            print(widget.read())
+        """,
+        """
+        export class Widget {
+
+            initialize() {
+                this.value = 0;
+            }
+
+            constructor() {
+                this.value = 'ready';
+            }
+
+            read() {
+                if ((typeof this.value === 'string')) {
+                    return this.value;
+                }
+                return String(this.value);
+            }
+        }
+
+        export function main() {
+            var widget = new Widget();
+            widget.initialize();
+            widget.value = 'changed';
+            console.log(widget.read());
+        }
+        """,
+    )
+
+
+def test_custom_element_initializer_preserves_annotated_constructor_field():
+    assert_transpile(
+        """
+        from pyjs.web.domx import CustomElement, tag
+        from pyjs.web.dom import AbortController
+        from pyjs.web.events import Event
+
+        @js
+        class Layout(CustomElement):
+            def __init__(self):
+                super().__init__()
+                self.controller: AbortController | None = None
+
+            def initialize(self):
+                self.controller = None
+                self.addEventListener("click", self.stop)
+
+            def stop(self, event: Event):
+                if self.controller is not None:
+                    self.controller.abort()
+
+        @js
+        class Page(Layout):
+            def __init__(self):
+                super().__init__()
+                tag(self, 'Page')
+
+        def main():
+            return Page()
+        """,
+        """
+        import { CustomElement, tag } from './pyjs.web.domx.js';
+
+        export class Layout extends CustomElement {
+
+            _create() {
+                super._create();
+                this.controller = null;
+                return this;
+            }
+
+            _hydrate() {
+                super._hydrate();
+            }
+
+            initialize() {
+                this.controller = null;
+                this.addEventListener('click', this.stop.bind(this));
+            }
+
+            stop(event) {
+                if (this.controller != null) {
+                    this.controller.abort();
+                }
+            }
+        }
+        customElements.define('pyjs-layout', Layout)
+
+        export class Page extends Layout {
+
+            _create() {
+                super._create();
+                tag(this, 'Page');
+                return this;
+            }
+
+            _hydrate() {
+                super._hydrate();
+            }
+        }
+        customElements.define('pyjs-page', Page)
+
+        export function main() {
+            return new Page()._create();
+        }
+        """,
+    )
+
+
+def test_subclass_initializer_preserves_base_constructor_field():
+    assert_transpile(
+        """
+        from pyjs.web.domx import CustomElement
+        from pyjs.web.dom import AbortController
+        from pyjs.web.events import Event
+
+        @js
+        class Base(CustomElement):
+            def __init__(self):
+                super().__init__()
+                self.controller: AbortController | None = None
+
+        @js
+        class Layout(Base):
+            def __init__(self):
+                super().__init__()
+
+            def initialize(self):
+                self.controller = None
+                self.addEventListener("click", self.stop)
+
+            def stop(self, event: Event):
+                if self.controller is not None:
+                    self.controller.abort()
+
+        def main():
+            return Layout()
+        """,
+        """
+        import { CustomElement } from './pyjs.web.domx.js';
+
+        export class Base extends CustomElement {
+
+            _create() {
+                super._create();
+                this.controller = null;
+                return this;
+            }
+
+            _hydrate() {
+                super._hydrate();
+            }
+        }
+        customElements.define('pyjs-base', Base)
+
+        export class Layout extends Base {
+
+            _create() {
+                super._create();
+                return this;
+            }
+
+            _hydrate() {
+                super._hydrate();
+            }
+
+            initialize() {
+                this.controller = null;
+                this.addEventListener('click', this.stop.bind(this));
+            }
+
+            stop(event) {
+                if (this.controller != null) {
+                    this.controller.abort();
+                }
+            }
+        }
+        customElements.define('pyjs-layout', Layout)
+
+        export function main() {
+            return new Layout()._create();
         }
         """,
     )

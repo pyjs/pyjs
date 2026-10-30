@@ -3383,6 +3383,14 @@ FIELD_ASSIGNMENT_CONTRACT = _contract(
             self.count = self.count + 1
 
     @js
+    class Initialized:
+        def __init__(self):
+            self.initialize()
+
+        def initialize(self) -> None:
+            self.count = 42
+
+    @js
     def make_row(count: int) -> Row:
         return Row(count)
 
@@ -3409,6 +3417,7 @@ FIELD_ASSIGNMENT_CONTRACT = _contract(
     """,
     "field_assignment_result",
     """
+    initialized = Initialized()
     rows: list[Row] = []
     for index in [0, 1, 2]:
         rows.append(make_row(index))
@@ -3442,6 +3451,7 @@ FIELD_ASSIGNMENT_CONTRACT = _contract(
     conditional_count = (conditional if state[0] == 1 else rows[0]).count
     """,
     (
+        ("constructor calls initialize to declare fields", "initialized.count != 42"),
         ("initialize reads fields declared by the constructor", "initialized_count != 3"),
         ("indexed factory result waits for constructor fields", "rows[0].count != 8"),
         ("assignment mutates the existing object", "alias.count != 8"),
