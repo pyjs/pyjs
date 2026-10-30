@@ -15924,8 +15924,21 @@ class CallGraphVisitor(ast.NodeVisitor):
         if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
             self.entry_point.tailwind_classes.update(argument.value.split())
 
+    def retain_hydration_reference(self, node):
+        if not getattr(node, "is_ref", False) or not isinstance(node.obj, Class):
+            return
+        method = getattr(node.obj.py_cls, "__pyjs_reference_method__", None)
+        if method is None:
+            return
+        module = self.func.cls.container if self.func.is_method else self.func.container
+        if node.obj.container is not module:
+            node.hydration_type_alias = module.register_inline_dependency(node.obj, self.entry_point)
+        self.enter_class(node.obj)
+        self.enter(node.obj.find(method))
+
     def visit_Call(self, node: ast.Call):
         self.collect_tailwind_classes(node)
+        self.retain_hydration_reference(node)
         func = node.func.obj
         module = self.func.cls.container if self.func.is_method else self.func.container
         for name, dependency in getattr(node, "dependency_objects", {}).items():
@@ -16232,8 +16245,10 @@ class HydrationGraphVisitor(ast.NodeVisitor):
         self.has_bindings = False
 
     def visit_Assign(self, node: ast.Assign):
-        if hydration_ref_call(node.value) is None:
+        reference = hydration_ref_call(node.value)
+        if reference is None:
             return
+        self.client.retain_hydration_reference(reference)
         for target in node.targets:
             if isinstance(target, ast.Attribute):
                 self.elements.add(target.obj)

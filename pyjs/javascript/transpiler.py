@@ -3051,7 +3051,7 @@ class HydrateGenerator(ast.NodeVisitor):
             elif issubclass(reference.obj.py_cls, ProxyElement):
                 self.write(
                     " = new "
-                    f"{javascript_identifier(reference.obj.name)}()"
+                    f"{getattr(reference, 'hydration_type_alias', javascript_identifier(reference.obj.name))}()"
                     f"._hydrate(document.getElementById(self_id+'-{target.attr}'));"
                 )
             elif issubclass(node.value.obj.py_cls, ContextProxy):

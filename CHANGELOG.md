@@ -15,6 +15,9 @@
 - Bundle self-contained package CSS through managed npm imports, preserving
   stylesheet identity across development and packaged applications.
 
+- Hydrated proxy references retain their client helpers and imported type
+  names without retaining unused browser construction paths.
+
 - Rust benchmarks match Cargo's Linux release defaults, removing inherited
   standard-library debug information from the measured executable size.
 
