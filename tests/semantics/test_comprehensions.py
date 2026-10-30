@@ -704,7 +704,7 @@ def test_collection_constructors_infer_items_and_empty_context():
             var tuple_values = Array.from(((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)((function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;i+=step)yield i})(0,3,1)));
             var tuple_keys = Array.from(new Map([['a', 1]]).keys());
             var copied = new Map(new Map([['a', 1]]));
-            var pairs = new Map((($iterator)=>(function*(){for(const value of $iterator){yield [String(value), value];}}).call(this))((((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)((function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;i+=step)yield i})(0,2,1)))[Symbol.iterator]()));
+            var pairs = new Map((($iterator)=>(function*(){for(const value of $iterator){yield [String(value), value];}})())((((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)((function*(start,stop,step){for(let i=start;step>0?i<stop:i>stop;i+=step)yield i})(0,2,1)))[Symbol.iterator]()));
             var empty_mapping = new Map();
         }
         """,
@@ -1054,7 +1054,7 @@ def test_nested_generator_expressions_preserve_item_types_and_order():
         """
         export function main() {
             var pairs = [['a', 1], ['b', 2]];
-            var values = (($iterator)=>(function*(){for(const [name, score] of $iterator){if(score > 1){for(const suffix of ['x', 'y']){if(suffix !== 'x'){yield name + suffix;}}}}}).call(this))((pairs)[Symbol.iterator]());
+            var values = (($iterator)=>(function*(){for(const [name, score] of $iterator){if(score > 1){for(const suffix of ['x', 'y']){if(suffix !== 'x'){yield name + suffix;}}}}})())((pairs)[Symbol.iterator]());
             for (var value of values) {
                 console.log(value);
             }
