@@ -4348,7 +4348,8 @@ class InferenceVisitor(ast.NodeVisitor):
                     if (
                         value_init is not None
                         and value_init is not self.func
-                        and parent.obj.cls.find_attrs("initialize", search_bases=False) is not self.func
+                        and (value_type is None or
+                             parent.obj.cls.find_attrs("initialize", search_bases=False) is not self.func)
                         and not value_init.is_analyzed
                     ):
                         raise DependencyError(value_init) from None

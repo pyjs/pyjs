@@ -3004,3 +3004,25 @@ def test_initialize_reads_do_not_hide_a_real_dependency_cycle():
                 print(Widget().first)
             """
         )
+
+
+def test_initialize_empty_container_waits_for_constructor_element_type():
+    javascript = transpile_line(
+        """
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.items = []
+
+            def __init__(self):
+                self.items: list[int] = [1]
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.items.append(42)
+            print(widget.items[0])
+        """
+    )
+    assert "this.items = [];" in javascript
+    assert "this.items = [1];" in javascript
