@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Language snapshots preserve located compiler and syntax diagnostics,
+  including source ranges, error codes, related locations and repair guidance.
+
 - Document editing commands expose typed arguments and success results for
   native text insertion and undo history where the browser supports them.
 

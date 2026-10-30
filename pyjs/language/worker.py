@@ -15,6 +15,7 @@ from types import ModuleType
 
 from pyjs.analysis.analyzer import analyze_module, release_compilation
 from pyjs.decorators import configure_js
+from pyjs.language.diagnostics import error_diagnostics
 from pyjs.language.snapshots import collect
 
 ENTRY = "__pyjs_editor_entry__"
@@ -179,7 +180,8 @@ def main(startup_modules: frozenset[str] | None = None):
     except BaseException as error:
         # SystemExit from imported code is an analysis failure, not a server shutdown.
         result = {"status": "error", "message": f"{type(error).__name__}: {error}",
-                  "symbols": [], "occurrences": [], "dependencies": {}}
+                  "symbols": [], "occurrences": [], "dependencies": {},
+                  "diagnostics": error_diagnostics(error)}
     Path(sys.argv[1]).write_text(json.dumps(result), encoding="utf-8")
 
 

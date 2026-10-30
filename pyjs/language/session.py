@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from .diagnostics import error_diagnostics
 from .store import SnapshotStore, cache_directory
 
 
@@ -120,7 +121,8 @@ class AnalysisSession:
                     and self._unchanged(cached["dependencies"], sources)):
                 self.cache[path] = cached
                 self.revision = max(self.revision, cached['revision'])
-                return cached | {"uri": uri, "version": version, "schemaVersion": 1, "cached": True}
+                return cached | {"uri": uri, "version": version, "schemaVersion": 1,
+                                 "cached": True, "diagnostics": []}
         return None
 
     def _valid_sources(self, sources: dict[str, str]) -> bool:
@@ -176,7 +178,7 @@ class AnalysisSession:
             sources[path] = text
         result = {"uri": uri, "version": version, "schemaVersion": 1,
                   "sourceHash": hashlib.sha256(text.encode()).hexdigest(), "cached": False,
-                  "symbols": [], "occurrences": [], "message": "", "revision": 0}
+                  "symbols": [], "occurrences": [], "diagnostics": [], "message": "", "revision": 0}
         if cached is not None:
             return cached
         try:
@@ -184,7 +186,8 @@ class AnalysisSession:
             for filename, source in sources.items():
                 ast.parse(source, filename)
         except SyntaxError as error:
-            return result | {"status": "pending", "message": f"Waiting for valid Python: {error}"}
+            return result | {"status": "pending", "message": f"Waiting for valid Python: {error}",
+                             "diagnostics": error_diagnostics(error)}
         self._ensure_runtime()
         with tempfile.TemporaryDirectory(prefix="pyjs-analysis-") as directory:
             output = Path(directory) / "snapshot.json"

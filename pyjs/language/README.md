@@ -46,7 +46,8 @@ otherwise increase monotonically. `force: true` bypasses the snapshot cache.
 
 Successful results include `schemaVersion: 1`, `uri`, document `version`,
 service `revision`, `sourceHash`, `status`, `cached`, `symbols`, and
-`occurrences`.
+`occurrences`. Results also contain a `diagnostics` array, empty when no
+located error is available.
 Function signatures and identifier types come from the compiler's analysis of
 compiler-selected definitions, including methods. Global values reflect their
 actual types after Python initialization. This is not yet a general Python type
@@ -69,6 +70,24 @@ Results have one of four states:
 - `pending`: an open buffer is not valid Python; nothing was executed.
 - `error`: initialization or analysis failed or exceeded its time limit.
 - `superseded`: source or a tracked dependency changed during analysis.
+
+Located compiler errors retain the compiler diagnostic structure: `code`,
+`severity`, `message`, `primary`, `secondary`, `notes`, and `help`. Each label
+contains `file`, `start`, `end`, and an optional `message`. Diagnostic ranges
+use **zero-based lines and Unicode code-point columns**, with exclusive ends,
+matching the compiler's JSON diagnostics. They differ from the one-based lines
+in symbols and occurrences. Filenames can refer to imported or external source;
+clients must apply their own workspace navigation policy.
+
+Invalid open buffers return a `pending` snapshot with a syntax diagnostic
+before any workspace code runs. Syntax errors encountered while importing
+other files instead have status `error`. Their code is the Python exception
+class name, such as `SyntaxError` or `IndentationError`. Compiler errors use
+their existing `PYJS` codes and preserve related locations and guidance.
+Unlocated failures, including timeouts and ordinary initialization exceptions,
+remain in `message` with an empty diagnostic array. Analysis stops at the first
+failure; diagnostics are not a complete project error census. Superseded
+results never publish worker diagnostics from the abandoned source generation.
 
 Successful snapshots are retained for every workspace module visited by the
 analysis, including dependencies. They are persisted in SQLite under
