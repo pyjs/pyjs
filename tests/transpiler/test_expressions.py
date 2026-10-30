@@ -2070,12 +2070,12 @@ def test_browser_json_methods():
         """,
         """
         def main() -> None:
-            encoded: str = JSON.[JSON]stringify(Payload(name='PyJS'))
+            encoded: str = JSON.[JSON]stringify!(Payload(name='PyJS'))
             decoded: Payload = JSON.[JSON]parse(encoded)
         """,
         """
         export function main() {
-            var encoded = JSON.stringify(({name: 'PyJS'}));
+            var encoded = JSON.stringify((({name: 'PyJS'})) ?? null);
             var decoded = JSON.parse(encoded);
         }
         """,
