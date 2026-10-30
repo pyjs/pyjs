@@ -2920,6 +2920,13 @@ class Document(Node):
         toBox: str = "border",
     ) -> DOMQuad: ...
 
+    def execCommand(self, commandId: str, showUI: bool = False, value: str = "") -> bool:
+        """Invoke a legacy editing command, preserving native editing history.
+
+        Availability is browser-dependent; false means the command was rejected.
+        """
+        ...
+
     def createAttribute(self, localName: str) -> Attr: ...
 
     def createAttributeNS(self, namespace: str | None, qualifiedName: str) -> Attr: ...

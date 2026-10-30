@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Document editing commands expose typed arguments and success results for
+  native text insertion and undo history where the browser supports them.
+
 - Generator expressions inside instance methods preserve their receiver,
   including nested expressions and deferred attribute reads.
 
