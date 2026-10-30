@@ -25,6 +25,67 @@ def signature(result):
     return result['signatures'][0]
 
 
+@pytest.mark.parametrize('annotation,body', [
+    ('int32', 'int32(value)'),
+    ('list[int32]', '[int32(value)]'),
+    ('tuple[int32, int32]', '(int32(value), int32(value))'),
+    ('dict[str, int32]', '{"value": int32(value)}'),
+])
+@pytest.mark.parametrize('argument', ['', '1'])
+@pytest.mark.parametrize('compatible', [True, False])
+@pytest.mark.parametrize('asynchronous', [False, True])
+def test_fallback_preserves_declared_result_representation(
+        tmp_path, annotation, body, argument, compatible, asynchronous):
+    consumed = annotation if compatible else annotation.replace('int32', 'int64')
+    modifier = 'async ' if asynchronous else ''
+    await_call = 'await ' if asynchronous else ''
+    result = query(tmp_path, f'''from pyjs import js, int32, int64
+@js
+{modifier}def render(value: int) -> {annotation}:
+    return {body}
+@js
+def consume(value: {consumed}) -> int:
+    return 1
+@js
+{modifier}def example():
+    value = {await_call}render({argument}§)
+    return consume(value)
+''')
+    if compatible:
+        assert signature(result)['parameters'] == ['value: int']
+    else:
+        assert result['status'] == 'error', result
+        assert 'PYJS1104' in result['message'] and 'line 11' in result['message']
+
+
+@pytest.mark.parametrize('call,expected', [
+    ('len(§"hello")', 'len(value: object) -> int'),
+    ('abs(§-1)', 'abs(value: int | float | bool) -> int'),
+    ('str(§1)', "str(other: object = '') -> str"),
+    ('int(§"1")', 'int(other: object = 0, base: int = 10) -> int'),
+    ('float(§1)', 'float(other: object = 0) -> float'),
+    ('bool(§1)', 'bool(arg: object = False) -> bool'),
+    ('list(§(1, 2))', 'list(values: Iterable[int] | None = None, /) -> list[int]'),
+    ('tuple(§[1, 2])', 'tuple(values: Iterable[object] | None = None, /) -> tuple[int, ...]'),
+    ('dict(§name=1)', 'dict(values: Iterable[tuple[str, int]] | None = None, /, **fields: int) -> dict[str, int]'),
+])
+def test_builtin_signatures_survive_special_lowering(tmp_path, call, expected):
+    result = query(tmp_path, 'from pyjs import js\n@js\ndef example():\n    value = ' + call + '\n    return value\n')
+    item = signature(result)
+    assert item['label'] == expected
+    assert item['activeParameter'] == (1 if call.startswith('dict(') else 0)
+
+
+@pytest.mark.parametrize('statement', ['abs(§)', 'return abs(§)', 'value = abs(§)\n    return value'])
+def test_missing_builtin_representation_source(tmp_path, statement):
+    result = query(tmp_path, 'from pyjs import js\n@js\ndef example():\n    ' + statement + '\n')
+    if statement.startswith('value'):
+        assert result['status'] == 'error', result
+        assert 'PYJS1104' in result['message']
+    else:
+        assert signature(result)['label'] == 'abs(value: int | float | bool) -> int | float'
+
+
 @pytest.mark.parametrize('arguments,active', [('§1, "a"', 0), ('1, §"a"', 1),
     ('1, title=§"a"', 1), ('1, title="a"§', 1)])
 def test_function_parameters_and_documentation(tmp_path, arguments, active):

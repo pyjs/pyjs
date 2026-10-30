@@ -10,12 +10,14 @@ from pyjs.analysis.analyzer import (
     JS_ENVIRONMENT,
     JavaScriptInferenceVisitor,
     analyzed_value_object,
+    analyzed_value_type,
     release_compilation,
     substitute_type_variables,
 )
 from pyjs.analysis.diagnostics import CompilationError, DiagnosticCode
-from pyjs.analysis.objects import Class
+from pyjs.analysis.objects import Class, Function, GenericClass
 from pyjs.analysis.type_relations import contains_type_variable, merge_return_types
+from pyjs.decorators import analysis_metadata
 from pyjs.language.queries import analyze_cursor
 from pyjs.language.snapshots import type_text
 
@@ -71,6 +73,7 @@ def signatures_module(module, entry_point, path: Path, source: str, line: int, c
             function, signature = self.resolve_called_function(node, target, call_target)
             self.ensure_call_signature_ready(node, function)
             return_type = None
+            results = []
             if signature is not None:
                 self.capture_callable(signature, signature.return_type, {})
                 return_type = signature.return_type
@@ -82,13 +85,24 @@ def signatures_module(module, entry_point, path: Path, source: str, line: int, c
                     result = call_target if isinstance(call_target, Class) else (
                         alternative.return_type or alternative.declared_return_type)
                     self.capture(alternative, result, {})
+                    results.append((alternative, result))
                     return_type = result if return_type is None else merge_return_types(return_type, result)
             arguments = [self.visit(argument.value if isinstance(argument, ast.Starred) else argument)
                          for argument in node.args]
             keywords = [ast.keyword(arg=keyword.arg, value=self.visit(keyword.value))
                         for keyword in node.keywords]
-            if return_type is not None and not contains_type_variable(return_type):
-                result, representation = self.apply_call_result_modifiers(target, function, return_type, None)
+            missing_representation_source = not arguments and not isinstance(target, ast.Attribute) and any(
+                analysis_metadata(alternative.py_obj, 'preserves_numeric_format', False)
+                for alternative, _ in results)
+            if (return_type is not None and not contains_type_variable(return_type)
+                    and not missing_representation_source):
+                representation = (signature.return_representation if signature is not None else
+                    self.merge_typed_representations(node, return_type, [
+                        (result, self.resolve_call_return_representation(node, result, target,
+                            alternative, arguments, {}, False, None, None))
+                        for alternative, result in results], 'Call results'))
+                result, representation = self.apply_call_result_modifiers(
+                    target, function, return_type, representation)
                 return self.build_call_node(node, func=target, call_target=call_target,
                     callable_signature=signature, signature_function=function, called_function=function,
                     return_type=result, return_representation=representation, args=arguments,
@@ -101,7 +115,23 @@ def signatures_module(module, entry_point, path: Path, source: str, line: int, c
 
         def visit_Call(self, node):
             value = self.query_expression(node, consumed=True)
-            return value if value is not None else super().visit_Call(node)
+            if value is not None:
+                return value
+            selected = self.matches(node)
+            before = len(collected[self.func]) if selected else 0
+            value = super().visit_Call(node)
+            # Intrinsic lowering may bypass call resolution. Look up its source
+            # declaration after normal analysis without revisiting arguments.
+            if selected and len(collected[self.func]) == before and isinstance(node.func, ast.Name):
+                target = self.scope.search(node.func.id)
+                if isinstance(target, (Class, GenericClass, Function)) and target.container.scope.is_builtins:
+                    result = analyzed_value_type(value)
+                    function = target if isinstance(target, Function) else (
+                        result.find_attrs('__init__') if isinstance(result, Class) else None)
+                    if isinstance(function, Function):
+                        self.ensure_call_signature_ready(node, function)
+                        self.capture(function, result, {})
+            return value
 
         def visit_Expr(self, node):
             value = self.query_expression(node.value)

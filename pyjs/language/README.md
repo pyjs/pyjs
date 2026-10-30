@@ -142,9 +142,13 @@ ordinary checks on later use. It does not invent unresolved generic bindings;
 when the result type still depends on a missing type argument, a consumed call
 currently returns an analysis error. A standalone or directly returned call
 can display the unspecialized declaration without consuming its result.
+Calls whose numeric result representation depends on an omitted argument
+follow the same restriction.
 
 Queries require compiled function context. They do not parse broken Python,
 complete a bare trailing dot, or provide project-wide import suggestions.
+Builtin calls retain their source declarations even when the compiler lowers
+them through operators, conversions or collection constructors.
 Large modules and broad partial-assignment prefixes may need substantial
 analysis time; use explicit requests rather than triggering on each keystroke.
 

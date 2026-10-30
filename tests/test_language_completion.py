@@ -61,6 +61,33 @@ def example(value: Model):
     assert labels(result)['name']['detail'] == 'name: str'
 
 
+@pytest.mark.parametrize('helper', ['method', 'transitive', 'function'])
+@pytest.mark.parametrize('suffix', ['', 'me'])
+def test_members_in_constructor_dependencies(tmp_path, helper, suffix):
+    source = '''from pyjs import js
+@js
+class Panel:
+    def __init__(self):
+        self.name = "Panel"
+'''
+    if helper == 'function':
+        source += '''        inspect_panel(self)
+@js
+def inspect_panel(panel: Panel):
+    return panel.na§SUFFIX
+'''
+    else:
+        source += '        self.prepare()\n'
+        if helper == 'transitive':
+            source += '    def prepare(self):\n        return self.inspect()\n    def inspect(self):\n'
+        else:
+            source += '    def prepare(self):\n'
+        source += '        return self.na§SUFFIX\n'
+    items = labels(complete(tmp_path, source.replace('SUFFIX', suffix)))
+    assert list(items) == ['name']
+    assert items['name']['detail'] == 'name: str'
+
+
 def test_narrowed_receiver_and_nullable_loop(tmp_path):
     result = complete(tmp_path, '''from pyjs import js
 @js

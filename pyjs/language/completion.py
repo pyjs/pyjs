@@ -12,6 +12,7 @@ from pyjs.analysis.analyzer import (
     JS_ENVIRONMENT,
     JavaScriptInferenceVisitor,
     analyzed_value_object,
+    flatten_objects,
     release_compilation,
 )
 from pyjs.analysis.diagnostics import CompilationError, DiagnosticCode
@@ -40,6 +41,7 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
                   and item.start[1] <= column <= item.end[1]), None)
 
     captured = {}
+    dependencies = {}
 
     @cache
     def selected_file(filename):
@@ -47,6 +49,30 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
 
     class CompletionVisitor(JavaScriptInferenceVisitor):
         def visit_FunctionDef(self, node):
+            try:
+                result = self.capture_function(node)
+            except DependencyError as error:
+                dependencies[self.func] = error.class_or_func
+                raise
+            dependencies.pop(self.func, None)
+            return result
+
+        def waits_for_current(self, function):
+            pending, seen = [function], set()
+            while pending:
+                current = pending.pop()
+                if current is self.func:
+                    return True
+                if current in seen:
+                    continue
+                seen.add(current)
+                if isinstance(current, Class):
+                    pending.extend(flatten_objects(current))
+                elif current in dependencies:
+                    pending.append(dependencies[current])
+            return False
+
+        def capture_function(self, node):
             fragment = self.func.source_fragment
             if fragment is None or not selected_file(fragment.source.filename):
                 return super().visit_FunctionDef(node)
@@ -98,7 +124,7 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
                     'property' if isinstance(value, Function) and value.is_property else
                     'function' if isinstance(value, Function) else 'variable')
             if isinstance(value, Function):
-                if value is not self.func and (not value.signature_analyzed
+                if not self.waits_for_current(value) and (not value.signature_analyzed
                         or value.return_type is None and value.declared_return_type is None):
                     raise DependencyError(value)
                 result = type_text(value.return_type or value.declared_return_type)
@@ -194,8 +220,11 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
             if isinstance(value, Instance):
                 for name in ('__init__', 'initialize'):
                     initializer = value.cls.find_attrs(name)
-                    if (isinstance(initializer, Function) and initializer is not self.func
-                            and not initializer.is_analyzed):
+                    # A constructor's helpers can use fields already inferred
+                    # before their call; waiting for that constructor adds a
+                    # cycle that ordinary member lookup does not require.
+                    if (isinstance(initializer, Function) and not initializer.is_analyzed
+                            and not self.waits_for_current(initializer)):
                         raise DependencyError(initializer)
             values = {}
             for name in self.attribute_names(value):
