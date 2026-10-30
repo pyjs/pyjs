@@ -2294,7 +2294,7 @@ class Transpiler(_Unparser):
     def visit_GeneratorExp(self, node):
         self.write("(($iterator)=>(function*(){")
         self.visit_comprehension_loops(node, outer_iter="$iterator")
-        self.write("})())((")
+        self.write("}).call(this))((")
         self.traverse_iterable(node.generators[0].iter)
         self.write(")[Symbol.iterator]())")
 

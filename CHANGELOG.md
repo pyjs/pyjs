@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Generator expressions inside instance methods preserve their receiver,
+  including nested expressions and deferred attribute reads.
+
 - Electron hosts can defer native window closes and send string messages to
   removable preload subscriptions without exposing Electron events to renderers.
 

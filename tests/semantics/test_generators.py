@@ -168,3 +168,40 @@ def test_generator_yields_must_match_the_declared_item_type():
         """,
         filename="generator_type.py",
     )
+
+
+def test_generator_expression_preserves_method_receiver_and_lazy_reads():
+    assert_semantics(
+        """\
+        from pyjs import js
+
+        @js
+        class Counter:
+            def __init__(self, value: int):
+                self.value = value
+
+            def values(self):
+                return (self.value + item for item in [1, 2] if item <= self.value)
+
+            def nested(self):
+                return (sum(self.value + inner for inner in [1, 2])
+                        for outer in [1, 2] if outer <= self.value)
+
+            def pairs(self):
+                return (self.value + item for outer in [1, 2]
+                        for item in [self.value, outer] if item > 0)
+
+        first = Counter(1)
+        second = Counter(10)
+        pending = first.values()
+        first.value = 3
+        for value in pending:
+            print(value)
+        for value in second.values():
+            print(value)
+        for value in first.nested():
+            print(value)
+        for value in first.pairs():
+            print(value)
+        """
+    )
