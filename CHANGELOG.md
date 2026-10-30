@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JavaScript source maps limit function-name labels to the function's opening
+  parenthesis, so browser debuggers retain parameter and local variable names.
+  Scope names also retain their correct indices across bundled Python modules.
+
 - Language snapshots preserve located compiler and syntax diagnostics,
   including source ranges, error codes, related locations and repair guidance.
   Compiler locations follow Python's physical lines even when source contains

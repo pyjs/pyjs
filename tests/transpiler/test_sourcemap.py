@@ -8,6 +8,8 @@ from pyjs.javascript.source import analyze_source
 from pyjs.javascript.sourcemap import (
     SourceMap,
     SourceMapping,
+    SourceScope,
+    encode_scopes,
     encode_unsigned_vlq,
     map_stack_trace,
 )
@@ -92,6 +94,49 @@ def main():
     ) == ("example.py", 2, 4)
 
 
+@pytest.mark.parametrize(
+    "declaration, statement",
+    [
+        ("def", "return result"),
+        ("async def", "return result"),
+        ("def", "yield result"),
+    ],
+)
+def test_function_name_mapping_does_not_rename_parameters_or_locals(
+    declaration, statement
+):
+    analysis = analyze_source(
+        f"{declaration} main(left: int, right: int = 2):\n"
+        f"    result = left + right\n    {statement}\n",
+        filename="bindings.py",
+        wrap=False,
+    )
+    try:
+        generated = transpile_module_with_source_map(
+            analysis.entry_point.container,
+        )
+    finally:
+        analysis.close()
+
+    source_map = SourceMap.from_json(generated.source_map.to_json())
+    lines = generated.javascript.splitlines()
+    named = [mapping for mapping in source_map.mappings if mapping.name]
+    assert len(named) == 1
+    function = named[0]
+    assert function.name == "main"
+    declaration = lines[function.generated_line]
+    opening_paren = declaration.index("(")
+    assert function.generated_column == opening_paren
+    assert source_map.lookup(function.generated_line, opening_paren + 1).name is None
+    for line, text in enumerate(lines):
+        for identifier in ("left", "right", "result"):
+            if identifier in text:
+                mapping = source_map.lookup(line, text.index(identifier))
+                assert mapping is not None and mapping.name is None
+    assert generated.source_map.scopes[0].name == "main"
+    assert generated.source_map.scopes[0].variables == ("left", "right", "result")
+
+
 def test_source_map_columns_use_utf16_code_units():
     analysis = analyze_source(
         'def main():\n    message = "🦒"; raise ValueError(message)\n',
@@ -154,6 +199,26 @@ def main():
     assert method.scope.variables == ("self", "amount", "result")
     assert method.values == ("this", "amount", "result")
     assert generated.javascript.splitlines()[method.start_line] == "    add(amount) {"
+
+
+def test_scope_name_deltas_continue_across_sources():
+    first = SourceFile.from_text("first.py", "def first(left):\n    return left\n")
+    second = SourceFile.from_text("second.py", "def second(right):\n    return right\n")
+    names = []
+    encoded = encode_scopes(
+        ["first.py", "empty.py", "second.py"],
+        names,
+        (
+            SourceScope(first, 0, 0, 1, 15, "first", ("left",)),
+            SourceScope(second, 0, 0, 1, 16, "second", ("right",)),
+        ),
+        (),
+    )
+
+    assert names == ["Global", "first", "Function", "left", "second", "right"]
+    # The second file resets positions, while kind/name/variable indices
+    # continue from Function/first/left, even across an empty source.
+    assert encoded == "BCAAA,BHAACE,DG,CBP,CAA,A,BCAAF,BHAAGE,DE,CBQ,CAA"
 
 
 def test_source_map_omits_scopes_for_synthetic_dataclass_methods():
