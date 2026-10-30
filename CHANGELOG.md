@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Browser `fetch` can be passed as an asynchronous callback, retaining its
+  optional request options and dictionary conversion. Direct calls also honor
+  keyword URL and request options.
+
 - Browser tests execute as modules, supporting managed npm dependencies and
   their stylesheets in each isolated test frame. Error stacks retain Python
   source locations.

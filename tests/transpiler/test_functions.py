@@ -1647,10 +1647,10 @@ def test_async_browser_transport_apis():
             location.hash = '#/active';
             var event = new MessageEvent('message');
             var message = event.data;
-            var response = await fetch('/bundle.js?run_id=' + encodeURIComponent('run 1'));
+            var response = await globalThis.fetch('/bundle.js?run_id=' + encodeURIComponent('run 1'));
             var source = await response.text();
-            await fetch('/result', (options => options instanceof Map ? Object.fromEntries(options) : options)(new Map([['method', 'POST'], ['body', source]])));
-            await fetch('/options', (options => options instanceof Map ? Object.fromEntries(options) : options)(window));
+            await globalThis.fetch('/result', (options => options instanceof Map ? Object.fromEntries(options) : options)(new Map([['method', 'POST'], ['body', source]])));
+            await globalThis.fetch('/options', (options => options instanceof Map ? Object.fromEntries(options) : options)(window));
         }
         """,
     )

@@ -692,7 +692,7 @@ def test_live_session_emits_topic_routing_and_transport_fallback():
                     async _poll() {
                         while (!this._closed && this.transport === 'poll') {
                             try {
-                                var response = await fetch(this.path + '/_live/poll?after=' + String(this.sequence));
+                                var response = await globalThis.fetch(this.path + '/_live/poll?after=' + String(this.sequence));
                                 if (response.status == 204) {
                                     continue
                                 }
