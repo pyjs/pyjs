@@ -93,13 +93,15 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
                               'startColumn': token.start[1], 'endColumn': token.end[1]})
             captured[self.func].append(({item['label']: item for item in items}, len(names) > 256))
 
-        @staticmethod
-        def describe(name, value):
+        def describe(self, name, value):
             kind = ('class' if isinstance(value, Class) else
                     'property' if isinstance(value, Function) and value.is_property else
                     'function' if isinstance(value, Function) else 'variable')
             if isinstance(value, Function):
-                result = type_text(value.return_type)
+                if value is not self.func and (not value.signature_analyzed
+                        or value.return_type is None and value.declared_return_type is None):
+                    raise DependencyError(value)
+                result = type_text(value.return_type or value.declared_return_type)
                 if value.is_property:
                     return kind, name + ': ' + result
                 parameters = [ast.unparse(parameter) for parameter in value.params]

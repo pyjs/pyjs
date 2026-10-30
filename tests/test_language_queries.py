@@ -172,3 +172,50 @@ def main():
         assert normal.types == 'def main(value: int) -> str:\n    return value.[int]__str__!().[str]upper!()'
         assert normal.javascript == ('export function main(value) {\n'
                                      '    return String(value).toUpperCase();\n}')
+
+
+@pytest.mark.parametrize('method', ['completion', 'signatures'])
+def test_selected_snapshot_only_compiler_is_rejected_before_execution(tmp_path, method):
+    from tests.test_language import project_interpreter
+
+    executable, library = project_interpreter(tmp_path / 'old', compiler=False)
+    package = library / 'pyjs' / 'language'
+    package.mkdir(parents=True)
+    (package.parent / '__init__.py').touch()
+    (package / '__init__.py').touch()
+    (package / 'store.py').write_text('def cache_directory(root):\n    return root / "old-cache"\n')
+    marker = tmp_path / 'executed'
+    (package / 'worker.py').write_text('from pathlib import Path\ndef main(startup):\n'
+                                     f'    Path({str(marker)!r}).touch()\n')
+    path = tmp_path / 'example.py'
+    path.write_text(SOURCE)
+    session = AnalysisSession(tmp_path, interpreter=executable, cache_dir=tmp_path / '.cache')
+    try:
+        with pytest.raises(ValueError, match='selected interpreter needs PyJS with cursor query support'):
+            getattr(session, method)(path.as_uri(), 8, 20)
+        assert not marker.exists()
+        assert session.process is None
+        assert not session.cache
+    finally:
+        session.shutdown()
+
+
+@pytest.mark.parametrize('method', ['completion', 'signatures'])
+def test_query_uses_selected_interpreter_dependencies(tmp_path, method):
+    from tests.test_language import project_interpreter
+
+    executable, library = project_interpreter(tmp_path / 'project-env')
+    (library / 'runtime_dependency.py').write_text(
+        'from pyjs import js\n@js\ndef render(value: str) -> str:\n    return value\n')
+    path = tmp_path / 'example.py'
+    source = ('from pyjs import js\nfrom runtime_dependency import render\n'
+              '@js\ndef example():\n    return render("hello")\n')
+    path.write_text(source)
+    session = AnalysisSession(tmp_path, interpreter=executable, cache_dir=tmp_path / '.cache')
+    try:
+        result = getattr(session, method)(path.as_uri(), 5, 17 if method == 'completion' else 18)
+        assert result['status'] == 'ready', result
+        item = result['items' if method == 'completion' else 'signatures'][0]
+        assert item['detail' if method == 'completion' else 'label'] == 'render(value: str) -> str'
+    finally:
+        session.shutdown()

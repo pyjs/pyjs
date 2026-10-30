@@ -109,6 +109,10 @@ Python embedders use `AnalysisSession.completion(uri, line, column)` and
 `AnalysisSession.signatures(uri, line, column)`. These are custom methods,
 not the standard LSP completion or signature-help protocol.
 
+The selected interpreter must contain a compiler with the same cursor-query
+schema. Older snapshot-only installations remain usable for snapshots, but
+cursor queries report an explicit error before executing workspace modules.
+
 Queries run in a fresh analysis worker. They execute module initialization
 once, then analyze the cursor's function and compiler-required dependencies
 without calling application entry points. Unrelated function bodies are not
