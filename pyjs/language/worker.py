@@ -94,7 +94,7 @@ class Sources(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
 
 def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path,
-            startup_modules: frozenset[str]) -> dict:
+            startup_modules: frozenset[str], query: dict | None = None) -> dict:
     source = overlays[str(target)]
     ast.parse(source, str(target))
     base = root / "src" if target.is_relative_to(root / "src") else root
@@ -157,6 +157,16 @@ def analyze(root: Path, target: Path, overlays: dict[str, str], journal: Path,
         raise ValueError('Selected module conflicts with an interpreter startup or compiler module')
     # The synthetic root selects the module without calling any application function.
     configure_js(getattr(module, ENTRY), enabled=True)
+    if query is not None:
+        from pyjs.language.completion import complete_module
+        from pyjs.language.signatures import signatures_module
+
+        action = query.get('action', 'complete')
+        if action not in ('complete', 'signatures'):
+            raise ValueError('Unknown source query')
+        query_module = signatures_module if action == 'signatures' else complete_module
+        return query_module(module, getattr(module, ENTRY), target, source,
+                            query['line'], query['column']) | {'dependencies': sources.dependencies}
     entry, _ = analyze_module(module, entry_point=getattr(module, ENTRY))
     try:
         modules = collect(entry, root, sources.texts, ENTRY)
@@ -175,7 +185,8 @@ def main(startup_modules: frozenset[str] | None = None):
     payload = json.loads(sys.stdin.read())
     try:
         result = analyze(Path(payload["root"]), Path(payload["path"]), payload["sources"],
-                         Path(sys.argv[1]).with_suffix(".dependencies.jsonl"), startup_modules)
+                         Path(sys.argv[1]).with_suffix(".dependencies.jsonl"), startup_modules,
+                         payload.get('query'))
         result["status"] = "ready"
     except BaseException as error:
         # SystemExit from imported code is an analysis failure, not a server shutdown.

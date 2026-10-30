@@ -96,7 +96,8 @@ Successful snapshots are retained for every workspace module visited by the
 analysis, including dependencies. They are persisted in SQLite under
 `$XDG_CACHE_HOME/pyjs/analysis` (default `~/.cache/pyjs/analysis`), partitioned
 by workspace, interpreter and compiler fingerprint. Source and dependency
-content hashes are checked against open buffers or disk before reuse. Unsaved results
+content hashes are checked against open buffers or disk before reuse. Unsaved
+results
 can only be reused with matching source; they never replace different disk
 content. Cache write failures do not prevent live analysis.
 Revisions are allocated through the cache database so they remain distinct
@@ -119,6 +120,63 @@ Dependency hashes are recorded before initialization, including when the worker
 raises, exits or times out. Such failures are superseded if their observed
 source generation has changed. Invalid JSON or request parameters return
 protocol errors; an invalid frame terminates the service and its worker.
+
+## Cursor queries
+
+`pyjs/completion` and `pyjs/signatureHelp` accept the same source
+synchronization fields as `pyjs/moduleSnapshot`, plus `line` and `column`.
+Lines are one-based;
+columns count Unicode code points from zero, after newline normalization.
+Python embedders use `AnalysisSession.completion(uri, line, column)` and
+`AnalysisSession.signatures(uri, line, column)`. These are custom methods,
+not the standard LSP completion or signature-help protocol.
+
+The selected interpreter must contain a compiler with the same cursor-query
+schema. Older snapshot-only installations remain usable for snapshots, but
+cursor queries report an explicit error before executing workspace modules.
+
+Queries run in a fresh analysis worker. They execute module initialization
+once, then analyze the cursor's function and compiler-required dependencies
+without calling application entry points. Unrelated function bodies are not
+validated, and declared signatures can be used before their bodies finish.
+Completion descriptions use source annotations when inference has not prepared
+the listed function; an unannotated return is shown as `unknown` in that case.
+All open buffers must contain valid Python syntax before execution begins.
+Timeouts, dependency checks, selected interpreters and source-generation
+statuses behave as they do for snapshots. Query results do not populate or
+reuse the module snapshot cache. A `ready` query answers the cursor request;
+it does not certify that the whole application compiles.
+
+Completion returns `items` and `truncated`. Each item contains `label`, `kind`,
+`detail`, replacement `text`, `startColumn` and `endColumn`. The replacement
+range covers the entire identifier on the requested line. Names are filtered
+by the prefix before the cursor and capped at 256. Member queries use inferred
+receiver types; unions expose only members shared by every alternative.
+When a partial identifier determines a later binding's type, candidates are
+checked individually through inference rather than assigning a guessed type.
+
+Signature help returns up to 20 `signatures`, each with `label`, `parameters`,
+`activeParameter` and `documentation`. The active parameter is a zero-based
+index, or null when it cannot be determined. The innermost call is selected.
+Resolved calls include generic specialization and union-method alternatives.
+Typed callbacks use synthetic argument names when their type has no names.
+Missing or incompatible arguments can still show declared signatures. For an
+assigned or nested call, the fallback uses known return types and retains
+ordinary checks on later use. It does not invent unresolved generic bindings;
+when the result type still depends on a missing type argument, a consumed call
+currently returns an analysis error. A standalone or directly returned call
+can display the unspecialized declaration without consuming its result.
+Calls whose numeric result representation depends on an omitted argument
+follow the same restriction.
+
+Queries require compiled function context. They do not parse broken Python,
+complete a bare trailing dot, or provide project-wide import suggestions.
+Builtin calls retain their source declarations even when the compiler lowers
+them through operators, conversions or collection constructors.
+Large modules and broad partial-assignment prefixes may need substantial
+analysis time; use explicit requests rather than triggering on each keystroke.
+
+## Current limits
 
 Current limits: a changed dependency rebuilds the compiler graph. First-time
 indexing still costs a full analysis, and indexing covers the configured
