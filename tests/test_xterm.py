@@ -8,7 +8,9 @@ import textwrap
 
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.server.dev import create_server
+from pyjs.testing.helpers import analyze_module_source
 from pyjs.testing.pytest_plugin import get_daemon_health, terminate_daemon_process
 from pyjs.tooling.browser import Browser, free_port
 from pyjs.tooling.npm import (
@@ -20,6 +22,18 @@ from pyjs.tooling.npm import (
 from pyjs.web.xterm import __pyjs_npm_imports__
 
 pytestmark = pytest.mark.pyjs_python
+
+
+def test_terminal_options_cannot_be_replaced():
+    with pytest.raises(CompilationError, match="Property 'options' is read-only"):
+        analyze_module_source('''
+            from pyjs import js
+            from pyjs.web.xterm import Terminal
+
+            @js
+            def main(terminal: Terminal):
+                terminal.options = terminal.options
+        ''')
 
 
 @pytest.mark.parametrize('startup', ['sync', 'await', 'reject'])
@@ -133,7 +147,8 @@ def test_xterm_mount_styles_options_input_fit_and_disposal(tmp_path, monkeypatch
     (tmp_path / 'pyproject.toml').touch()
     (tmp_path / 'xterm_test_app.py').write_text('''
 from pyjs import js
-from pyjs.web.domx import CustomElement, div, ref, tag
+from pyjs.web.domx import CustomElement, button, div, ref, tag
+from pyjs.web.events import Event
 from pyjs.web.xterm import TerminalOptions, Theme, create_terminal, create_fit, write
 
 @js
@@ -142,7 +157,9 @@ class Demo(CustomElement):
         super().__init__()
         self.surface = ref(div({'style': 'width:700px;height:250px'}))
         self.status = ref(div({'data-testid': 'received'}))
-        tag(self, self.surface, self.status)
+        self.settings = ref(button({'type': 'button', 'data-testid': 'configure'}, 'Configure'))
+        self.settings.addEventListener('click', self.configure)
+        tag(self, self.surface, self.status, self.settings)
 
     async def initialize(self):
         self.terminal = create_terminal(TerminalOptions(cols=37, rows=8,
@@ -158,6 +175,13 @@ class Demo(CustomElement):
         if line is not None:
             self.setAttribute('data-first-line', line.translateToString(True))
         self.setAttribute('data-ready', 'true')
+
+    def configure(self, event: Event):
+        self.terminal.options.fontSize = 22
+        self.terminal.options.fontFamily = 'monospace'
+        self.terminal.options.scrollback = 100
+        self.terminal.options.cursorBlink = True
+        self.fit.fit()
 
     def receive(self, text: str):
         self.status.textContent += text
@@ -195,6 +219,16 @@ def main():
                 assert await page.evaluate('demo.terminal.buffer.active.getLine(1).translateToString(true)') == 'Unicode: 🐍'
                 assert await page.evaluate("getComputedStyle(document.querySelector('.xterm-viewport')).cursor") == 'crosshair'
                 assert await page.evaluate("getComputedStyle(document.querySelector('.composition-view')).color") == 'rgb(1, 2, 3)'
+                columns = await page.evaluate('demo.terminal.cols')
+                await page.evaluate('window.beforeOptions = demo.terminal; true')
+                await page.click('[data-testid=configure]')
+                assert await page.evaluate('demo.terminal === beforeOptions')
+                assert await page.evaluate('demo.terminal.options.fontSize') == 22
+                assert await page.evaluate('demo.terminal.options.fontFamily') == 'monospace'
+                assert await page.evaluate('demo.terminal.options.scrollback') == 100
+                assert await page.evaluate('demo.terminal.options.cursorBlink') is True
+                assert await page.evaluate('demo.terminal.cols') < columns
+                assert await page.evaluate('demo.terminal.buffer.active.getLine(0).translateToString(true)') == 'PyJS red'
                 columns = await page.evaluate('demo.terminal.cols')
                 await page.evaluate("demo.surface.style.width='350px';demo.fit.fit()")
                 assert await page.evaluate('demo.terminal.cols') < columns

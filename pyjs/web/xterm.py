@@ -71,11 +71,26 @@ class BufferNamespace:
 
 
 @js.native
+class RuntimeOptions:
+    """Mutable options available on an existing terminal."""
+
+    def __init__(self):
+        self.fontSize: float = 14
+        self.fontFamily: str = "ui-monospace, monospace"
+        self.scrollback: int = 5000
+        self.cursorBlink: bool = True
+
+
+@js.native
 class Terminal:
     def __init__(self):
         self.cols: int = 80
         self.rows: int = 24
         self.buffer: BufferNamespace = BufferNamespace()
+
+    @property
+    def options(self) -> RuntimeOptions: ...
+
     def open(self, element: Element) -> None: ...
     def write(self, text: str, callback: Callable[[], None]) -> None: ...
     def focus(self) -> None: ...
