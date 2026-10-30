@@ -2,6 +2,7 @@ import ast
 import bisect
 import difflib
 import inspect
+import io
 import linecache
 import sys
 import textwrap
@@ -155,14 +156,14 @@ class SourceFile:
     def from_text(cls, filename: str, text: str):
         starts = [0]
         offset = 0
-        for line in text.splitlines(keepends=True)[:-1]:
+        for line in io.StringIO(text, newline='').readlines()[:-1]:
             offset += len(line.encode("utf-8"))
             starts.append(offset)
         return cls(filename, text, tuple(starts))
 
     @property
     def lines(self) -> list[str]:
-        return self.text.splitlines(keepends=True)
+        return io.StringIO(self.text, newline='').readlines()
 
     def offset(self, line: int, column: int) -> int:
         if line < 1:
@@ -215,7 +216,8 @@ class SourceFragment:
         if end_column is None:
             end_column = column + 1
         else:
-            end_column = max(column + 1, end_column + self.column_delta)
+            end_column = max(column + 1 if end_line == line else 0,
+                             end_column + self.column_delta)
         return SourceSpan(
             self.source,
             self.source.offset(line, column),
