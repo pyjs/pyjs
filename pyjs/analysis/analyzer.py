@@ -722,6 +722,29 @@ def iterable_item_type(value_type, *, iterator=False):
     return protocol.item_type if protocol is not None else value_type
 
 
+def initializer_declares_field(initializer, name):
+    if not isinstance(initializer, Function):
+        return False
+    definition = initializer.original_node
+    if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    arguments = definition.args.posonlyargs + definition.args.args
+    if not arguments:
+        return False
+    receiver = arguments[0].arg
+    pending = list(definition.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+                and isinstance(node.value, ast.Name) and node.value.id == receiver
+                and node.attr == name):
+            return True
+        pending.extend(ast.iter_child_nodes(node))
+    return False
+
+
 def field_owner(field):
     if not isinstance(field, Instance):
         return None
@@ -4348,7 +4371,7 @@ class InferenceVisitor(ast.NodeVisitor):
                     if (
                         value_init is not None
                         and value_init is not self.func
-                        and (value_type is None or
+                        and (value_type is None or initializer_declares_field(value_init, target.attr) or
                              parent.obj.cls.find_attrs("initialize", search_bases=False) is not self.func)
                         and not value_init.is_analyzed
                     ):
@@ -5633,10 +5656,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 node is self.assignment_target
                 and isinstance(value_obj, Instance)
                 and value_obj.name == "self"
-                and (value_init is self.func or client_initializer is self.func)
+                and (value_init is self.func or
+                     (client_initializer is self.func and not initializer_declares_field(value_init, node.attr)))
             ):
-                # Both lifecycle methods can declare fields. Their own writes
-                # must not depend on the other initializer finishing first.
+                # initialize() may add fields, but resets of constructor-owned
+                # fields must wait for their original type, including unions.
                 raise
             for initializer in (value_init, client_initializer):
                 if (

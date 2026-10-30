@@ -3026,3 +3026,94 @@ def test_initialize_empty_container_waits_for_constructor_element_type():
     )
     assert "this.items = [];" in javascript
     assert "this.items = [1];" in javascript
+
+
+def test_initialize_reset_preserves_constructor_optional_field_type():
+    javascript = transpile_line(
+        """
+        @js
+        class Controller:
+            def abort(self) -> int:
+                return 42
+
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.controller = None
+
+            def __init__(self):
+                self.controller: Controller | None = None
+
+            def stop(self) -> int:
+                if self.controller is not None:
+                    return self.controller.abort()
+                return 0
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.controller = Controller()
+            print(widget.stop())
+        """
+    )
+    assert "this.controller.abort()" in javascript
+
+
+def test_initialize_reset_preserves_constructor_union_field_type():
+    javascript = transpile_line(
+        """
+        @js
+        class Widget:
+            def initialize(self) -> None:
+                self.value = 0
+
+            def __init__(self):
+                self.value: int | str = "ready"
+
+            def read(self) -> str:
+                if isinstance(self.value, str):
+                    return self.value
+                return str(self.value)
+
+        def main():
+            widget = Widget()
+            widget.initialize()
+            widget.value = "changed"
+            print(widget.read())
+        """
+    )
+    assert "this.value = 'ready';" in javascript
+
+
+def test_custom_element_initializer_preserves_annotated_constructor_field():
+    javascript = transpile_line(
+        """
+        from pyjs.web.domx import CustomElement, tag
+        from pyjs.web.dom import AbortController
+        from pyjs.web.events import Event
+
+        @js
+        class Layout(CustomElement):
+            def __init__(self):
+                super().__init__()
+                self.controller: AbortController | None = None
+
+            def initialize(self):
+                self.controller = None
+                self.addEventListener("click", self.stop)
+
+            def stop(self, event: Event):
+                if self.controller is not None:
+                    self.controller.abort()
+
+        @js
+        class Page(Layout):
+            def __init__(self):
+                super().__init__()
+                tag(self, 'Page')
+
+        def main():
+            return Page()
+        """
+    )
+    assert "this.controller.abort();" in javascript
