@@ -8,7 +8,9 @@ import textwrap
 
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.server.dev import create_server
+from pyjs.testing.helpers import analyze_module_source
 from pyjs.testing.pytest_plugin import get_daemon_health, terminate_daemon_process
 from pyjs.tooling.browser import Browser, free_port
 from pyjs.tooling.npm import (
@@ -20,6 +22,18 @@ from pyjs.tooling.npm import (
 from pyjs.web.xterm import __pyjs_npm_imports__
 
 pytestmark = pytest.mark.pyjs_python
+
+
+def test_terminal_options_cannot_be_replaced():
+    with pytest.raises(CompilationError, match="Property 'options' is read-only"):
+        analyze_module_source('''
+            from pyjs import js
+            from pyjs.web.xterm import Terminal
+
+            @js
+            def main(terminal: Terminal):
+                terminal.options = terminal.options
+        ''')
 
 
 @pytest.mark.parametrize('startup', ['sync', 'await', 'reject'])
