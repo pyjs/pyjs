@@ -786,6 +786,12 @@ browser bindings; running shell commands requires a separately authorized PTY
 service. Applications that redistribute the bundle must retain the MIT notices
 from the installed xterm packages.
 
+Existing terminals expose mutable `terminal.options.fontSize`, `fontFamily`,
+`scrollback` and `cursorBlink`. Assign these properties to change rendering
+preferences without replacing the terminal or its input subscriptions. Call
+the fitting addon's `fit()` after font changes to update the visible dimensions.
+Reducing scrollback removes older lines from the emulator's screen buffer.
+
 `NpmImport(..., styles=("css/package.css",))` includes package-relative,
 self-contained styles in the managed vendor module. Styles mount once per
 package/version/path when imported in a document; imports in Node do not
