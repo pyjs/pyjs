@@ -4157,7 +4157,7 @@ class InferenceVisitor(ast.NodeVisitor):
             reaching_next = [
                 part for item in analyzed_statements
                 for part in statement_parts_reaching_next(item)
-            ]
+            ] if entry_narrowings else []
             preserved = {
                 name: current for name, (current, _) in entry_narrowings.items()
                 if all(self.writes_preserve_binding(item, name, current.cls, current.representation)

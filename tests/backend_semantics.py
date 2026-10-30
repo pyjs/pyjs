@@ -6276,6 +6276,47 @@ EXITED_BRANCH_NARROWING_CONTRACT = _contract(
         return item.value
 
     @js
+    def continued(values: list[Item | None], skip: int) -> int:
+        total = 0
+        for index in range(len(values)):
+            item = values[index]
+            if item is None:
+                continue
+            if index == skip:
+                item = None
+                continue
+            total += item.value
+        return total
+
+    @js
+    def broken(values: list[Item | None], stop: int) -> int:
+        total = 0
+        for index in range(len(values)):
+            item = values[index]
+            if item is None:
+                continue
+            if index == stop:
+                item = None
+                break
+            total += item.value
+        return total
+
+    @js
+    def retested(item: Item | None, stop: int) -> int:
+        total = 0
+        while item is not None:
+            total += 1
+            if total == stop:
+                item = None
+                continue
+            total += item.value
+        return total
+
+    @js
+    def loop_values() -> list[Item | None]:
+        return [Item(1), None, Item(2), Item(4)]
+
+    @js
     def loop_exit(item: Item | None, count: int) -> int:
         if item is None:
             return 0
@@ -6300,6 +6341,11 @@ EXITED_BRANCH_NARROWING_CONTRACT = _contract(
         ("nested write can exit", "nested(Item(2), True, True) != -4"),
         ("elif write can exit", "nested(Item(2), False, True) != -5"),
         ("nested exits leave the join narrowed", "nested(Item(2), True, False) != 2"),
+        ("continue skips the write's read", "continued(loop_values(), 2) != 5"),
+        ("a loop proof survives a continuing write", "continued(loop_values(), 9) != 7"),
+        ("break skips the write's read", "broken(loop_values(), 2) != 1"),
+        ("a loop proof survives a breaking write", "broken(loop_values(), 9) != 7"),
+        ("continue reaches the loop's retest", "retested(Item(2), 4) != 4"),
         ("break keeps its write after the loop", "loop_exit(Item(1), 3) != -6"),
         ("an unbroken loop keeps the value", "loop_exit(Item(1), 1) != 1"),
     ),

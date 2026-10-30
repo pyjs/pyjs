@@ -417,6 +417,72 @@ def test_exited_branch_shapes_keep_optional_proofs(branch):
         assert analysis.entry_point.return_type.name == "str"
 
 
+def test_continuing_write_keeps_a_proof_made_inside_the_loop():
+    at(
+        """
+        def main(values: list[str | None], clear: bool) -> int:
+            total = 0
+            for value in values:
+                if value is None:
+                    continue
+                if clear:
+                    value = None
+                    continue
+                total += len(value)
+            return total
+        """,
+        """
+        def main(values: list__strUNoneType, clear: bool) -> int:
+            total: int = 0
+            for value: str | None in values:
+                if value.[object]__is__!(None):
+                    continue
+                if clear:
+                    value = None
+                    continue
+                total = total.[int]__add__!(value.[str]__len__!())
+            return total
+        """,
+        """
+        export function main(values, clear) {
+            var total = 0;
+            for (var value of values) {
+                if (value == null) {
+                    continue
+                }
+                if (clear) {
+                    value = null;
+                    continue
+                }
+                total = total + [...value].length;
+            }
+            return total;
+        }
+        """,
+    )
+
+
+@pytest.mark.parametrize("loop", [
+    'for value in values:\n'
+    '    if value is None:\n        continue\n'
+    '    if clear:\n        value = None\n        break\n'
+    '    total += len(value)',
+    'value = values[0]\n'
+    'while value is not None:\n'
+    '    if clear:\n        value = None\n        continue\n'
+    '    total += len(value)\n'
+    '    clear = True',
+], ids=["for-break", "while-test-continue"])
+def test_loop_exits_keep_proofs_made_inside_the_loop(loop):
+    source = (
+        "def main(values: list[str | None], clear: bool) -> int:\n"
+        "    total = 0\n"
+        + textwrap.indent(loop + "\nreturn total\n", "    ")
+    )
+    with analyze_source(source) as analysis:
+        assert analysis.entry_point.return_type.name == "int"
+
+
 @pytest.mark.parametrize("body", [
     'if clear:\n    value = None\n    return ""\nelif keep:\n    value = None',
     'if keep:\n    if clear:\n        value = None\n        return ""\n    value = None',
