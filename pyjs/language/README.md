@@ -117,6 +117,8 @@ Queries run in a fresh analysis worker. They execute module initialization
 once, then analyze the cursor's function and compiler-required dependencies
 without calling application entry points. Unrelated function bodies are not
 validated, and declared signatures can be used before their bodies finish.
+Completion descriptions use source annotations when inference has not prepared
+the listed function; an unannotated return is shown as `unknown` in that case.
 All open buffers must contain valid Python syntax before execution begins.
 Timeouts, dependency checks, selected interpreters and source-generation
 statuses behave as they do for snapshots. Query results do not populate or

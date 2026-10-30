@@ -23,6 +23,69 @@ def labels(result):
     return {item['label']: item for item in result['items']}
 
 
+@pytest.mark.parametrize('annotation', ['', ' -> int'])
+@pytest.mark.parametrize('receiver', ['scope', 'self', 'instance', 'imported'])
+def test_descriptions_do_not_analyze_unrelated_broken_bodies(tmp_path, annotation, receiver):
+    broken = 'def broken(value: int)' + annotation + ':\n    return value.upper()\n'
+    if receiver in ('self', 'instance'):
+        broken = broken.replace('def broken(', 'def broken(self, ')
+        source = ('from pyjs import js\n@js\nclass View:\n'
+                  '    def __init__(self):\n        self.title = "View"\n'
+                  + ''.join('    ' + line + '\n' for line in broken.splitlines()))
+        if receiver == 'self':
+            source += '    def render(self) -> str:\n        return self.§title\n'
+        else:
+            source += '@js\ndef render(view: View):\n    return view.§title\n'
+    elif receiver == 'imported':
+        (tmp_path / 'helper.py').write_text('from pyjs import js\n@js\n' + broken)
+        source = ('from pyjs import js\nfrom helper import broken\n'
+                  '@js\ndef render():\n    return br§\n')
+    else:
+        source = 'from pyjs import js\n@js\n' + broken + '@js\ndef render():\n    return br§\n'
+    items = labels(complete(tmp_path, source))
+    assert items['broken']['detail'] == 'broken(value: int) -> ' + ('int' if annotation else 'unknown')
+    if receiver in ('self', 'instance'):
+        assert items['title']['detail'] == 'title: str'
+
+
+def test_completion_still_validates_called_function_bodies(tmp_path):
+    result = complete(tmp_path, '''from pyjs import js
+@js
+def broken(value: int) -> int:
+    return value.upper()
+@js
+def example():
+    broken(1)
+    return br§
+''')
+    assert result['status'] == 'error'
+    assert 'PYJS1003' in result['message']
+    assert result['items'] == []
+
+
+def test_unanalyzed_member_descriptions_preserve_binding_and_properties(tmp_path):
+    result = complete(tmp_path, '''from pyjs import js
+@js
+class Model:
+    @staticmethod
+    def render(value: int) -> str:
+        return value.upper()
+    @classmethod
+    def repeat(cls, value: str) -> str:
+        return missing
+    @property
+    def result(self) -> int:
+        return missing
+@js
+def example(model: Model):
+    return model.r§
+''')
+    items = labels(result)
+    assert items['render']['detail'] == 'render(value: int) -> str'
+    assert items['repeat']['detail'] == 'repeat(value: str) -> str'
+    assert items['result']['detail'] == 'result: int'
+
+
 def test_locals_and_shadowing_at_the_cursor(tmp_path):
     result = complete(tmp_path, '''from pyjs import js
 @js

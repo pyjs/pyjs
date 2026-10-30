@@ -124,14 +124,20 @@ def completion_environment(path: Path, source: str, line: int, column: int, repl
                     'property' if isinstance(value, Function) and value.is_property else
                     'function' if isinstance(value, Function) else 'variable')
             if isinstance(value, Function):
-                if not self.waits_for_current(value) and (not value.signature_analyzed
-                        or value.return_type is None and value.declared_return_type is None):
-                    raise DependencyError(value)
                 result = type_text(value.return_type or value.declared_return_type)
+                original = value.original_node
+                if result == 'unknown' and original is not None and original.returns is not None:
+                    result = ast.unparse(original.returns)
                 if value.is_property:
                     return kind, name + ': ' + result
-                parameters = [ast.unparse(parameter) for parameter in value.params]
-                return kind, name + '(' + ', '.join(parameters) + ') -> ' + result
+                if not value.signature_analyzed and original is not None:
+                    # Descriptions must not schedule unrelated function bodies.
+                    parameters = [*original.args.posonlyargs, *original.args.args]
+                    if value.is_method and not value.is_staticmethod:
+                        parameters = parameters[1:]
+                else:
+                    parameters = value.params
+                return kind, name + '(' + ', '.join(ast.unparse(parameter) for parameter in parameters) + ') -> ' + result
             try:
                 return kind, name + ': ' + type_text(value if isinstance(value, Class) else value.type)
             except (AttributeError, TypeError, ValueError):
