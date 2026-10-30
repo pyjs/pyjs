@@ -5,6 +5,9 @@
 - Generator expressions inside instance methods preserve their receiver,
   including nested expressions and deferred attribute reads.
 
+- Existing xterm terminals expose typed font, scrollback and cursor options
+  that can be updated without replacing their emulator or input subscription.
+
 - Electron hosts can defer native window closes and send string messages to
   removable preload subscriptions without exposing Electron events to renderers.
 
