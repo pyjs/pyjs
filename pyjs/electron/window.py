@@ -2,7 +2,13 @@
 from collections.abc import Callable
 
 from pyjs import js
-from pyjs.electron import BrowserWindow, WebContents, WindowOptions
+from pyjs.electron import BrowserWindow, Event, WebContents, WindowOptions
+
+
+@js.inline("{window}.on('close', {callback})")
+def on_close(window: BrowserWindow, callback: Callable[[Event], None]) -> None:
+    """Handle native close requests; preventDefault keeps the window open."""
+    ...
 
 
 @js.inline("new (require('electron').BrowserWindow)({options})")
