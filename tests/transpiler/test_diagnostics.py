@@ -39,6 +39,23 @@ def test_source_spans_follow_python_physical_lines(separator, newline):
     assert source.character_column(2, span.end_position.column) == lines[1].index('missing') + 7
 
 
+@pytest.mark.parametrize('newline', ['\n', '\r\n', '\r'])
+@pytest.mark.parametrize('expression', [
+    'str(\n    )', '[\n        "🐍",\n    ]', '{\n        "🐍": 42,\n    }',
+    '(\n        "🐍",\n    )', '("🐍"\n        + "x"\n    )',
+])
+def test_multiline_expression_spans_match_cpython(expression, newline):
+    text = ('def answer():\n    value = ' + expression + '\n    other = 3\n').replace('\n', newline)
+    source = SourceFile.from_text('example.py', text)
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, ast.expr):
+            continue
+        span = SourceFragment(source).span(node)
+        assert text.encode()[span.start:span.end].decode() == ast.get_source_segment(text, node)
+        assert (span.start_position.line, span.start_position.column) == (node.lineno - 1, node.col_offset)
+        assert (span.end_position.line, span.end_position.column) == (node.end_lineno - 1, node.end_col_offset)
+
+
 @pytest.mark.parametrize(("call", "expected"), [
     ('Child("wrong")', diagnostic_text(
         "constructor.py", 9, 'return Child("wrong")', "             ^^^^^^^",

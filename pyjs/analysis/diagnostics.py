@@ -216,7 +216,8 @@ class SourceFragment:
         if end_column is None:
             end_column = column + 1
         else:
-            end_column = max(column + 1, end_column + self.column_delta)
+            end_column = max(column + 1 if end_line == line else 0,
+                             end_column + self.column_delta)
         return SourceSpan(
             self.source,
             self.source.offset(line, column),

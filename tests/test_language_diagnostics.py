@@ -114,6 +114,19 @@ def test_compiler_locations_ignore_non_python_line_separators(tmp_path, session,
     }
 
 
+def test_multiline_diagnostic_ends_at_closing_delimiter(tmp_path, session):
+    main = tmp_path / 'main.py'
+    main.write_text('from pyjs import js\n@js\ndef answer() -> None:\n'
+                    '    value: int = str(\n    )\n    other = 3\n')
+    result = session.snapshot(main.as_uri())
+    assert result['status'] == 'error', result
+    assert result['diagnostics'][0]['code'] == 'PYJS1103'
+    assert result['diagnostics'][0]['primary'] == {
+        'file': str(main), 'start': {'line': 3, 'column': 17},
+        'end': {'line': 4, 'column': 5}, 'message': None,
+    }
+
+
 @pytest.mark.parametrize('attribute,value', [
     ('lineno', '"3"'), ('filename', 'Path("config.toml")'), ('offset', '1.5'),
     ('end_lineno', '"3"'), ('msg', 'Path("bad")'), ('offset', 'True'),
