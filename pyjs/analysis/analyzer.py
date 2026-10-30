@@ -725,23 +725,31 @@ def iterable_item_type(value_type, *, iterator=False):
 def initializer_declares_field(initializer, name):
     if not isinstance(initializer, Function):
         return False
-    definition = initializer.original_node
-    if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return False
-    arguments = definition.args.posonlyargs + definition.args.args
-    if not arguments:
-        return False
-    receiver = arguments[0].arg
-    pending = list(definition.body)
-    while pending:
-        node = pending.pop()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+    initializers = [initializer]
+    owner = initializer.cls
+    while owner is not None and owner.super is not None:
+        owner = owner.super
+        inherited = owner.find_attrs("__init__", search_bases=False)
+        if isinstance(inherited, Function):
+            initializers.append(inherited)
+    for method in initializers:
+        definition = method.original_node
+        if not isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
-                and isinstance(node.value, ast.Name) and node.value.id == receiver
-                and node.attr == name):
-            return True
-        pending.extend(ast.iter_child_nodes(node))
+        arguments = definition.args.posonlyargs + definition.args.args
+        if not arguments:
+            continue
+        receiver = arguments[0].arg
+        pending = list(definition.body)
+        while pending:
+            node = pending.pop()
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Name) and node.value.id == receiver
+                    and node.attr == name):
+                return True
+            pending.extend(ast.iter_child_nodes(node))
     return False
 
 
