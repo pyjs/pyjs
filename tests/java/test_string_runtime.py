@@ -6,6 +6,7 @@ import pytest
 from pyjs.android.api import AndroidAPI
 from pyjs.java import JVMUnsupported, read_jvm_class, transpile_jvm
 from tests.backend_semantics import (
+    EXITED_BRANCH_NARROWING_CONTRACT,
     OPTIONAL_BRANCH_CONTRACT,
     OPTIONAL_STRING_CONTRACT,
     STRING_SEARCH_CASES,
@@ -145,7 +146,11 @@ def test_string_repetition_preserves_empty_and_small_results(tmp_path, value, co
     assert result.stdout == value * count
 
 
-@pytest.mark.parametrize("contract", [OPTIONAL_STRING_CONTRACT, OPTIONAL_BRANCH_CONTRACT], ids=["short_circuit", "branch_merge"])
+@pytest.mark.parametrize(
+    "contract",
+    [OPTIONAL_STRING_CONTRACT, OPTIONAL_BRANCH_CONTRACT, EXITED_BRANCH_NARROWING_CONTRACT],
+    ids=["short_circuit", "branch_merge", "exited_branch"],
+)
 def test_optional_string_short_circuit_contract_matches_python_and_javascript(tmp_path, contract):
     expected = run_python(contract.source + "\nassert main() == 0\n")
     assert expected.returncode == 0, expected.stderr

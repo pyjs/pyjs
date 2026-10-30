@@ -7,6 +7,7 @@ import pytest
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM, LLVMRuntimeError
 from tests.backend_semantics import (
+    EXITED_BRANCH_NARROWING_CONTRACT,
     OPTIONAL_BRANCH_CONTRACT,
     OPTIONAL_FLOAT_CONTRACT,
     OPTIONAL_INTEGER_CONTRACT,
@@ -43,6 +44,12 @@ def test_shared_optional_string_contract(optimize):
 @pytest.mark.parametrize("optimize", [0, 2])
 def test_shared_optional_branch_contract(optimize):
     LLVM().assert_matches_python(OPTIONAL_BRANCH_CONTRACT.source, optimize=optimize,
+                                 sanitizers=("address", "undefined"))
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_exited_branch_narrowing_contract(optimize):
+    LLVM().assert_matches_python(EXITED_BRANCH_NARROWING_CONTRACT.source, optimize=optimize,
                                  sanitizers=("address", "undefined"))
 
 

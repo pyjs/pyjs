@@ -364,6 +364,139 @@ def test_compound_writes_invalidate_optional_proofs(proof, write):
     ''', filename="compound_write.py")
 
 
+def test_writes_on_exited_branches_keep_optional_proofs():
+    at(
+        """
+        def main(value: str | None, clear: bool) -> str:
+            if value is None:
+                return "absent"
+            if clear:
+                value = None
+                return "cleared"
+            return value.upper()
+        """,
+        """
+        def main(value: str | None, clear: bool) -> str:
+            if value.[object]__is__!(None):
+                return 'absent'
+            if clear:
+                value = None
+                return 'cleared'
+            return value.[str]upper!()
+        """,
+        """
+        export function main(value, clear) {
+            if (value == null) {
+                return 'absent';
+            }
+            if (clear) {
+                value = null;
+                return 'cleared';
+            }
+            return value.toUpperCase();
+        }
+        """,
+    )
+
+
+@pytest.mark.parametrize("branch", [
+    'if clear:\n    value = None\n    raise ValueError("cleared")',
+    'if keep:\n    pass\nelse:\n    value = None\n    return "cleared"',
+    'if keep:\n    pass\nelif clear:\n    value = None\n    return "cleared"',
+    'if keep:\n    if clear:\n        value = None\n        return "cleared"',
+    'if clear:\n    value = None\n    return "cleared"\nelse:\n    return value.lower()',
+], ids=["raise", "else", "elif", "nested", "both-exit"])
+def test_exited_branch_shapes_keep_optional_proofs(branch):
+    source = (
+        "def main(value: str | None, clear: bool, keep: bool) -> str:\n"
+        "    if value is None:\n"
+        '        return "absent"\n'
+        + textwrap.indent(branch + "\nreturn value.upper()\n", "    ")
+    )
+    with analyze_source(source) as analysis:
+        assert analysis.entry_point.return_type.name == "str"
+
+
+@pytest.mark.parametrize("body", [
+    'if clear:\n    value = None\n    return ""\nelif keep:\n    value = None',
+    'if keep:\n    if clear:\n        value = None\n        return ""\n    value = None',
+    'try:\n    if clear:\n        value = None\n        raise ValueError("x")\n'
+    'except ValueError:\n    pass',
+    'if clear:\n    try:\n        value = None\n        raise ValueError("x")\n'
+    '    except ValueError:\n        pass',
+    'with Quiet():\n    if clear:\n        value = None\n        raise ValueError("x")',
+    'if clear:\n    with Quiet():\n        value = None\n        raise ValueError("x")',
+    'while keep:\n    if clear:\n        value = None\n        break\n    keep = False',
+], ids=[
+    "live-elif", "live-nested", "caught-raise", "caught-in-branch", "suppressed-raise",
+    "suppressed-in-branch", "break",
+])
+def test_writes_reaching_later_code_still_invalidate_optional_proofs(body):
+    source = textwrap.dedent("""\
+        from pyjs import js
+
+        @js
+        class Quiet:
+            def __enter__(self) -> None:
+                return None
+
+            def __exit__(self, kind: object, error: object, trace: object) -> bool:
+                return True
+
+        def main(value: str | None, clear: bool, keep: bool) -> str:
+            if value is None:
+                return "absent"
+    """) + textwrap.indent(body + "\nreturn value.upper()\n", "    ")
+    ad(source, f'''
+          File "reaching_write.py", line {len(source.splitlines())}
+            return value.upper()
+                   ^^^^^^^^^^^
+        pyjs.CompilationError: Attribute 'upper' is not defined on every member of str | NoneType [PYJS1003]
+        help: Missing from NoneType. Narrow the value with isinstance() before accessing 'upper'.
+    ''', filename="reaching_write.py")
+
+
+def test_exited_branch_write_is_invalid_on_loop_backedge():
+    ad('''\
+        def main(value: str | None, clear: bool, enabled: bool):
+            if value is None:
+                return
+            while enabled:
+                print(value.upper())
+                if clear:
+                    value = None
+                    continue
+                enabled = False
+    ''', '''
+          File "exited_backedge.py", line 5
+            print(value.upper())
+                  ^^^^^^^^^^^
+        pyjs.CompilationError: Attribute 'upper' is not defined on every member of str | NoneType [PYJS1003]
+        help: Missing from NoneType. Narrow the value with isinstance() before accessing 'upper'.
+    ''', filename="exited_backedge.py")
+
+
+def test_finally_sees_writes_from_exited_branches():
+    ad('''\
+        def main(value: str | None, clear: bool) -> int:
+            if value is None:
+                return 0
+            try:
+                if clear:
+                    value = None
+                    return 1
+            finally:
+                print(value.upper())
+            return 2
+    ''', '''
+          File "exited_finally.py", line 9
+            print(value.upper())
+                  ^^^^^^^^^^^
+        pyjs.CompilationError: Attribute 'upper' is not defined on every member of str | NoneType [PYJS1003]
+        help: Missing from NoneType. Narrow the value with isinstance() before accessing 'upper'.
+    ''', filename="exited_finally.py")
+
+
 def test_optional_proof_is_invalid_on_loop_backedge():
     ad('''\
         def main(value: str | None, enabled: bool):
