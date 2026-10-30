@@ -73,7 +73,7 @@ Results have one of four states:
 
 Located compiler errors retain the compiler diagnostic structure: `code`,
 `severity`, `message`, `primary`, `secondary`, `notes`, and `help`. Each label
-contains `file`, `start`, `end`, and an optional `message`. Diagnostic ranges
+contains `file`, `start`, `end`, and a nullable `message`. Diagnostic ranges
 use **zero-based lines and Unicode code-point columns**, with exclusive ends,
 matching the compiler's JSON diagnostics. They differ from the one-based lines
 in symbols and occurrences. Filenames can refer to imported or external source;
@@ -84,6 +84,9 @@ before any workspace code runs. Syntax errors encountered while importing
 other files instead have status `error`. Their code is the Python exception
 class name, such as `SyntaxError` or `IndentationError`. Compiler errors use
 their existing `PYJS` codes and preserve related locations and guidance.
+Syntax ranges preserve Python's reported positions, including empty ranges;
+clients can display a caret for those. Malformed user-raised syntax metadata
+is treated as an unlocated failure.
 Unlocated failures, including timeouts and ordinary initialization exceptions,
 remain in `message` with an empty diagnostic array. Analysis stops at the first
 failure; diagnostics are not a complete project error census. Superseded

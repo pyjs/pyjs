@@ -1,9 +1,15 @@
+import ast
 import linecache
 import sys
 
 import pytest
 
-from pyjs.analysis.diagnostics import CompilationError, format_compilation_error
+from pyjs.analysis.diagnostics import (
+    CompilationError,
+    SourceFile,
+    SourceFragment,
+    format_compilation_error,
+)
 from pyjs.analysis.source import create_module
 from pyjs.javascript.source import analyze_source
 from pyjs.testing.helpers import (
@@ -12,6 +18,25 @@ from pyjs.testing.helpers import (
     assert_module_transpile,
     diagnostic_text,
 )
+
+
+@pytest.mark.parametrize('separator', ['\x0b', '\x0c', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029'])
+@pytest.mark.parametrize('newline', ['\n', '\r\n', '\r'])
+def test_source_spans_follow_python_physical_lines(separator, newline):
+    lines = ['"""before' + separator + 'after"""' + newline,
+             'label = "🐍"; result = missing' + newline]
+    text = ''.join(lines)
+    source = SourceFile.from_text('example.py', text)
+    node = next(node for node in ast.walk(ast.parse(text))
+                if isinstance(node, ast.Name) and node.id == 'missing')
+    span = SourceFragment(source).span(node)
+    assert source.lines == lines
+    assert source.line_text(2) == lines[1]
+    assert text.encode()[span.start:span.end] == b'missing'
+    assert span.start_position.line == 1
+    assert span.end_position.line == 1
+    assert source.character_column(2, span.start_position.column) == lines[1].index('missing')
+    assert source.character_column(2, span.end_position.column) == lines[1].index('missing') + 7
 
 
 @pytest.mark.parametrize(("call", "expected"), [

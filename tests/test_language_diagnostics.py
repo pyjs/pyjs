@@ -69,7 +69,7 @@ def test_invalid_open_sibling_has_diagnostic_without_executing_workspace(tmp_pat
     assert result['diagnostics'] == [{
         'code': 'SyntaxError', 'severity': 'error', 'message': 'invalid syntax',
         'primary': {'file': str(sibling), 'start': {'line': 1, 'column': 13},
-                    'end': {'line': 1, 'column': 15}, 'message': ''},
+                    'end': {'line': 1, 'column': 15}, 'message': None},
         'secondary': [], 'notes': [], 'help': [],
     }]
     assert not marker.exists()
@@ -100,6 +100,33 @@ def test_imported_syntax_error_is_located(tmp_path, session):
     assert result['diagnostics'][0]['code'] == 'SyntaxError'
     assert result['diagnostics'][0]['primary']['file'] == str(helper)
     assert result['diagnostics'][0]['primary']['start'] == {'line': 0, 'column': 11}
+
+
+@pytest.mark.parametrize('prefix', ['"""Doc\u2028line"""\n', '# before\x1cafter\n', '\f\n'])
+def test_compiler_locations_ignore_non_python_line_separators(tmp_path, session, prefix):
+    main = tmp_path / 'main.py'
+    main.write_text(prefix + INVALID.replace('    label', '\f\n    label'))
+    result = session.snapshot(main.as_uri())
+    assert result['status'] == 'error', result
+    assert result['diagnostics'][0]['primary'] == {
+        'file': str(main), 'start': {'line': 5, 'column': 24},
+        'end': {'line': 5, 'column': 31}, 'message': None,
+    }
+
+
+@pytest.mark.parametrize('attribute,value', [
+    ('lineno', '"3"'), ('filename', 'Path("config.toml")'), ('offset', '1.5'),
+    ('end_lineno', '"3"'), ('msg', 'Path("bad")'), ('offset', 'True'),
+])
+def test_malformed_syntax_errors_keep_the_original_failure_message(tmp_path, session, attribute, value):
+    main = tmp_path / 'main.py'
+    main.write_text('from pathlib import Path\n'
+                    'error = SyntaxError("bad", ("config.toml", 1, 1, "bad"))\n'
+                    f'error.{attribute} = {value}\nraise error\n')
+    result = session.snapshot(main.as_uri())
+    assert result['status'] == 'error', result
+    assert result['message'].startswith('SyntaxError: bad')
+    assert result['diagnostics'] == []
 
 
 def test_changed_dependency_discards_located_errors(tmp_path, session):

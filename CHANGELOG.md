@@ -4,6 +4,8 @@
 
 - Language snapshots preserve located compiler and syntax diagnostics,
   including source ranges, error codes, related locations and repair guidance.
+  Compiler locations follow Python's physical lines even when source contains
+  form feeds or Unicode line separators inside strings and comments.
 
 - Document editing commands expose typed arguments and success results for
   native text insertion and undo history where the browser supports them.
