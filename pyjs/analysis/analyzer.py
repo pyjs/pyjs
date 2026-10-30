@@ -4348,6 +4348,7 @@ class InferenceVisitor(ast.NodeVisitor):
                     if (
                         value_init is not None
                         and value_init is not self.func
+                        and parent.obj.cls.find_attrs("initialize", search_bases=False) is not self.func
                         and not value_init.is_analyzed
                     ):
                         raise DependencyError(value_init) from None
@@ -5631,10 +5632,10 @@ class InferenceVisitor(ast.NodeVisitor):
                 node is self.assignment_target
                 and isinstance(value_obj, Instance)
                 and value_obj.name == "self"
-                and value_init is self.func
+                and (value_init is self.func or client_initializer is self.func)
             ):
-                # The constructor declares these fields; initialize may read
-                # them and must not become a prerequisite of their declaration.
+                # Both lifecycle methods can declare fields. Their own writes
+                # must not depend on the other initializer finishing first.
                 raise
             for initializer in (value_init, client_initializer):
                 if (

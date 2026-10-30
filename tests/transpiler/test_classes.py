@@ -1,5 +1,8 @@
 import textwrap
 
+import pytest
+
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.testing.helpers import (
     ad,
     assert_transpile,
@@ -2914,3 +2917,90 @@ def test_a_property_implementing_a_base_annotation_is_emitted():
         }
         """,
     )
+
+
+def test_constructor_can_call_initialize_to_declare_fields():
+    javascript = transpile_line(
+        """
+        @js
+        class Widget:
+            def __init__(self):
+                self.initialize()
+
+            def initialize(self) -> None:
+                self.value = 42
+
+            def read(self) -> int:
+                return self.value
+
+        def main():
+            print(Widget().read())
+        """
+    )
+    assert "this.value = 42;" in javascript
+    assert "this.initialize();" in javascript
+    assert "return this.value;" in javascript
+
+
+def test_constructor_and_initialize_can_declare_separate_fields():
+    javascript = transpile_line(
+        """
+        @js
+        class Widget:
+            def __init__(self):
+                self.label = "ready"
+                self.initialize()
+
+            def initialize(self) -> None:
+                self.values: list[int] = []
+                self.enabled = True
+
+            def read(self) -> str:
+                self.values.append(42)
+                return self.label if self.enabled else "disabled"
+
+        def main():
+            print(Widget().read())
+        """
+    )
+    assert "this.enabled = true;" in javascript
+    assert "this.values = [];" in javascript
+    assert "this.label = 'ready';" in javascript
+
+
+def test_initialize_writes_still_check_constructor_field_types():
+    with pytest.raises(CompilationError, match="Cannot assign str.*int"):
+        transpile_line(
+            """
+            @js
+            class Widget:
+                def __init__(self):
+                    self.count: int = 0
+                    self.initialize()
+
+                def initialize(self) -> None:
+                    self.count = "wrong"
+
+            def main():
+                print(Widget().count)
+            """
+        )
+
+
+def test_initialize_reads_do_not_hide_a_real_dependency_cycle():
+    with pytest.raises(CompilationError, match="dependency cycle"):
+        transpile_line(
+            """
+            @js
+            class Widget:
+                def __init__(self):
+                    self.first = self.second
+                    self.initialize()
+
+                def initialize(self) -> None:
+                    self.second = self.first
+
+            def main():
+                print(Widget().first)
+            """
+        )
