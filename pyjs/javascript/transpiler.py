@@ -1004,7 +1004,9 @@ class Transpiler(_Unparser):
         self.record_source_mapping(self._generated_column + len(indentation))
         self.write(indentation + text)
 
-    def record_source_mapping(self, generated_column: int) -> None:
+    def record_source_mapping(
+        self, generated_column: int, *, name: str | None = None
+    ) -> None:
         node = self._mapping_node
         fragment = self._mapping_fragment
         if fragment is None or not isinstance(node, ast.AST):
@@ -1026,7 +1028,7 @@ class Transpiler(_Unparser):
                 source,
                 position.line,
                 original_column,
-                getattr(node, "name", None),
+                name,
             )
         )
 
@@ -1392,7 +1394,13 @@ class Transpiler(_Unparser):
             def_str = fill_suffix + " " + javascript_identifier(node.name)
         self.fill(def_str)
         generated_start = (self._generated_line, 4 * self._indent)
+        if self.source_maps:
+            # DevTools uses the opening paren's mapping to name a call frame.
+            # End that name before parameters so it cannot rename their bindings.
+            self.record_source_mapping(self._generated_column, name=node.name)
         with self.delimit("(", ")"):
+            if self.source_maps:
+                self.record_source_mapping(self._generated_column)
             self.traverse(node.args)
         with self.block():
             if func.has_source_decorator:

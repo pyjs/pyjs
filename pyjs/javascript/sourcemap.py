@@ -166,6 +166,7 @@ def encode_scopes(
     encoded = []
     scope_indexes = {}
     scope_count = 0
+    original_state = {"line": 0, "column": 0, "name": 0, "kind": 0, "variable": 0}
 
     def encode_source_scopes(
         source: SourceFile,
@@ -176,7 +177,9 @@ def encode_scopes(
         lines = source.text.splitlines(keepends=True)
         end_line = max(0, len(lines) - 1)
         end_column = utf16_length(lines[-1].rstrip("\r\n")) if lines else 0
-        state = {"line": 0, "column": 0, "name": 0, "kind": 0, "variable": 0}
+        # Only positions reset between sources; name deltas span the stream.
+        state = original_state
+        state["line"] = state["column"] = 0
 
         def original_scope(
             start: tuple[int, int],
