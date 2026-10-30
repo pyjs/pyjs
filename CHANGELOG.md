@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Electron hosts can defer native window closes and send string messages to
+  removable preload subscriptions without exposing Electron events to renderers.
+
 - Browser `fetch` can be passed as an asynchronous callback, retaining its
   optional request options and dictionary conversion. Direct calls also honor
   keyword URL and request options.
