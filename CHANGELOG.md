@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Agent UI compositions cover tool activity, public reasoning summaries, plans,
+  confirmations, citations, context usage, and prompt inputs. Conversation
+  Markdown renders through pinned browser parser and sanitizer packages.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

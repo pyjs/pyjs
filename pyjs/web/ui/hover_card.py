@@ -2,7 +2,7 @@ from typing import cast
 
 from pyjs import js
 from pyjs.web.dom import Element, document
-from pyjs.web.domx import ProxyElement, a, ref, tw
+from pyjs.web.domx import ProxyElement, ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent, MouseEvent
 from pyjs.web.ui import Widget
 from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
@@ -10,14 +10,15 @@ from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
 
 @js
 class HoverCardTrigger(ProxyElement):
-    def __init__(self, *children, href: str = "#"):
-        self.element = a(
+    def __init__(self, *children, href: str | None = "#"):
+        self.element = tag('a' if href is not None else 'button',
+            {'href': href} if href is not None else {'type': 'button'},
             tw(
                 "font-medium text-slate-950 underline decoration-slate-300 underline-offset-4 "
                 "outline-none hover:decoration-slate-950 focus-visible:ring-2 "
                 "focus-visible:ring-slate-400"
             ),
-            {"data-slot": "hover-card-trigger", "href": href},
+            {"data-slot": "hover-card-trigger"},
             *children,
         )
 
@@ -67,6 +68,8 @@ class HoverCard(Widget):
         self.trigger.element.addEventListener("mouseenter", self.show)
         self.trigger.element.addEventListener("mouseleave", self.maybe_hide)
         self.trigger.element.addEventListener("focus", self.show)
+        if self.trigger.element.tagName == "BUTTON":
+            self.trigger.element.addEventListener("click", self.show)
         self.trigger.element.addEventListener("blur", self.maybe_hide)
         self.content.addEventListener("mouseenter", self.show)
         self.content.addEventListener("mouseleave", self.maybe_hide)

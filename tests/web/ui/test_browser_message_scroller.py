@@ -1,8 +1,10 @@
 import pytest
 
 from pyjs import js
+from pyjs.testing.web import wait_for_frames
+from pyjs.web.domx import div
 from pyjs.web.events import KeyboardEvent
-from pyjs.web.ui.message_scroller import MessageScroller
+from pyjs.web.ui.message_scroller import MessageScroller, MessageScrollerItem
 from tests.web.ui.browser import bubbling_click, mount
 from tests.web.ui.scroller import constrain_scroller, dispatch_wheel, tall_item
 
@@ -126,6 +128,20 @@ def test_message_scroller_prepend_preserves_visible_offset():
 
 
 @js
+def test_reader_scroll_during_programmatic_guard_survives_resize():
+    scroller = MessageScroller(tall_item("A", 160), tall_item("B", 160), auto_scroll=True)
+    constrain_scroller(scroller, 90)
+    mount(scroller)
+    scroller.scroll_to_latest()
+    assert scroller.autoscrolling
+    scroller.viewport.scrollTop = 0
+    # A resize can run before the browser dispatches the pending scroll event.
+    scroller.content_resized(None, None)
+    assert scroller.mode == "free-scrolling"
+    assert scroller.viewport.scrollTop == 0
+
+
+@js
 def test_message_scroller_replace_follows_only_at_the_live_edge():
     scroller = MessageScroller(
         tall_item("A", 80),
@@ -142,3 +158,29 @@ def test_message_scroller_replace_follows_only_at_the_live_edge():
     scroller.replace_messages(tall_item("C", 80), tall_item("D", 80), tall_item("E", 80))
     assert scroller.viewport.scrollTop == previous
     assert not scroller.is_at_latest()
+
+
+@js
+async def test_layout_reflow_and_hidden_appends_keep_following():
+    scroller = MessageScroller(
+        MessageScrollerItem(div('word ' * 400)),
+        MessageScrollerItem(div('word ' * 400)), auto_scroll=True,
+    )
+    constrain_scroller(scroller, 200)
+    scroller.style.width = '700px'
+    host = div(scroller)
+    mount(host)
+    await wait_for_frames(3)
+    assert scroller.is_at_latest()
+    scroller.style.width = '300px'
+    await wait_for_frames(5)
+    assert scroller.mode == 'following-bottom'
+    assert scroller.is_at_latest()
+    host.style.display = 'none'
+    await wait_for_frames(3)
+    scroller.append_messages(tall_item('While hidden', 300))
+    await wait_for_frames(3)
+    host.style.display = 'block'
+    await wait_for_frames(5)
+    assert scroller.mode == 'following-bottom'
+    assert scroller.is_at_latest()
