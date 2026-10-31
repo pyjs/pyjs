@@ -266,7 +266,7 @@ class MessageScroller(Widget):
         self.autoscrolling = True
         self.setAttribute("data-autoscrolling", "true")
         self.viewport.scrollTop = top
-        self._saved_scroll_top = top
+        self._saved_scroll_top = self.viewport.scrollTop
         if self.autoscroll_timer != 0:
             clearTimeout(self.autoscroll_timer)
         self.autoscroll_timer = setTimeout(self._clear_autoscrolling, 180)
@@ -523,10 +523,12 @@ class MessageScroller(Widget):
         self.user_intent(event)
 
     def scrolled(self, event: Event):
+        expected = self._saved_scroll_top
         if self.isConnected:
             self._saved_scroll_top = self.viewport.scrollTop
-        if self.autoscrolling:
+        if self.autoscrolling and expected is not None and abs(self.viewport.scrollTop - expected) < 1:
             return
+        self._reset_autoscrolling_flag()
         if self.auto_scroll and self.is_at_latest():
             self._set_mode("following-bottom")
         elif not self.is_at_latest() and self.mode == "following-bottom":
@@ -536,6 +538,13 @@ class MessageScroller(Widget):
         sync_scroll_fade(self.viewport)
 
     def content_resized(self, entries: object, observer: object) -> None:
+        # Scroll and resize notifications can arrive in either order. A reader
+        # moving away during our short programmatic-scroll guard still owns
+        # their position; token arrival must not pull them back to the bottom.
+        if (self.mode == "following-bottom" and self._saved_scroll_top is not None
+                and abs(self.viewport.scrollTop - self._saved_scroll_top) > self.scroll_edge_threshold
+                and not self.is_at_latest()):
+            self._set_mode("free-scrolling")
         if self.mode == "anchored-to-message":
             anchored = self._anchored_item()
             if anchored is not None:

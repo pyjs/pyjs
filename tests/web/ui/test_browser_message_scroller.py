@@ -126,6 +126,20 @@ def test_message_scroller_prepend_preserves_visible_offset():
 
 
 @js
+def test_reader_scroll_during_programmatic_guard_survives_resize():
+    scroller = MessageScroller(tall_item("A", 160), tall_item("B", 160), auto_scroll=True)
+    constrain_scroller(scroller, 90)
+    mount(scroller)
+    scroller.scroll_to_latest()
+    assert scroller.autoscrolling
+    scroller.viewport.scrollTop = 0
+    # A resize can run before the browser dispatches the pending scroll event.
+    scroller.content_resized(None, None)
+    assert scroller.mode == "free-scrolling"
+    assert scroller.viewport.scrollTop == 0
+
+
+@js
 def test_message_scroller_replace_follows_only_at_the_live_edge():
     scroller = MessageScroller(
         tall_item("A", 80),
