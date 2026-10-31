@@ -60,13 +60,15 @@ remain readable. Browser builds need the managed npm dependencies:
 pyjs npm sync your_app:main
 ```
 
-The renderer uses pinned markdown-it and DOMPurify packages. It allows formatting,
-code, lists, tables, and absolute HTTP(S) links. It excludes images, embedded
+The renderer uses pinned markdown-it and DOMPurify packages. It allows
+formatting, code, lists, tables, and absolute HTTP(S) links. It excludes images, embedded
 media, styles, scripts, forms, application-relative links, and automatic
 external resource fetching. Links open in a separate tab without an opener.
-Raw HTML remains literal text. Parsing limits nested structures to 20 levels;
-parser or sanitizer failures retain the original text without interrupting
-conversation updates. Citations also accept only absolute HTTP(S) URLs.
+Raw HTML and image descriptions remain literal text. Bare HTTP(S) URLs become
+links; hostnames without a scheme remain text. Parsing limits nesting and token
+creation before rendering, including tables that pad sparse rows. Replies
+that reach either limit, or encounter a parser or sanitizer failure, remain
+visible as complete plain text. Citations also accept only HTTP(S) URLs.
 `CodeBlock` displays literal text; it does not execute or syntax-highlight code.
 
 Do not pass private model reasoning to a `Reasoning` control. It is intended

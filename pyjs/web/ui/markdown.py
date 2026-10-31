@@ -15,13 +15,31 @@ __pyjs_npm_imports__ = (
 
 @js.inline(r"""((element, text) => {{
     try {{
-        const parser = new $markdown.default({{html: false, maxNesting: 20}});
+        const parser = new $markdown.default({{html: false, linkify: true, maxNesting: 20}});
+        // A short table can expand into many padded cells. Stop token creation
+        // before amplification reaches the sanitizer or browser layout.
+        const tokenLimit = 8192;
+        let remaining = tokenLimit;
+        for (const stage of [parser.block, parser.inline]) {{
+            const State = stage.State;
+            stage.State = class extends State {{
+                push(...args) {{
+                    if (--remaining < 0) throw new Error('Markdown token limit');
+                    return super.push(...args);
+                }}
+            }};
+        }}
+        parser.renderer.rules.image = (tokens, index) => parser.utils.escapeHtml(tokens[index].content);
         const tokens = parser.parse(text, {{}});
         // The parser discards blocks beyond its nesting limit. Preserve the
         // entire source as text instead of silently losing that content.
-        if (tokens.some(token => token.level >= 19)) throw new Error('Markdown nesting limit');
+        let size = 0;
+        for (const token of tokens) {{
+            size += 1 + (token.children?.length || 0);
+            if (token.level >= 19 || size > tokenLimit) throw new Error('Markdown complexity limit');
+        }}
         element.innerHTML = $purify.default.sanitize(parser.renderer.render(tokens, parser.options, {{}}), {{
-            ALLOWED_TAGS: ['p','br','strong','em','del','code','pre','blockquote','ul','ol','li',
+            ALLOWED_TAGS: ['p','br','strong','em','del','s','code','pre','blockquote','ul','ol','li',
                 'h1','h2','h3','h4','h5','h6','hr','a','table','thead','tbody','tr','th','td'],
             ALLOWED_ATTR: ['href','title','start'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false
         }});
