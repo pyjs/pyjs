@@ -991,6 +991,18 @@ def body_can_fall_through(
     return True
 
 
+def statement_parts_reaching_next(statement: ast.stmt):
+    """Yield the parts of a statement that can run before the next statement."""
+    if not isinstance(statement, ast.If):
+        yield statement
+        return
+    yield statement.test
+    for branch in (statement.body, statement.orelse):
+        if body_can_fall_through(branch, loop_control_exits=True):
+            for child in branch:
+                yield from statement_parts_reaching_next(child)
+
+
 def literal_iterable_is_nonempty(node: ast.expr) -> bool:
     # A splice avoids repeated analysis, not source-shape proofs. Inspect its
     # original syntax, rather than visiting the typed value a second time.
@@ -4139,10 +4151,17 @@ class InferenceVisitor(ast.NodeVisitor):
                 assertion_narrowings = narrow_visitor.get_condition_narrowings(statement.test, True)
             stmt = narrow_visitor.visit(statement)
             analyzed_statements = stmt if isinstance(stmt, list) else [stmt]
+            # An exited branch's write cannot reach the next statement. Loops
+            # and try statements keep checking every write, because a continue
+            # reaches the next iteration and a finally block runs after return.
+            reaching_next = [
+                part for item in analyzed_statements
+                for part in statement_parts_reaching_next(item)
+            ] if entry_narrowings else []
             preserved = {
                 name: current for name, (current, _) in entry_narrowings.items()
                 if all(self.writes_preserve_binding(item, name, current.cls, current.representation)
-                       for item in analyzed_statements)
+                       for item in reaching_next)
             }
             if isinstance(statement, (ast.For, ast.While)):
                 invalid = entry_narrowings.keys() - preserved.keys()

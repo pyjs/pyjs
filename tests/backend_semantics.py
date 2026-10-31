@@ -6201,6 +6201,157 @@ OPTIONAL_STRING_CONTRACT = _contract(
 )
 
 
+EXITED_BRANCH_NARROWING_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Item:
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+    @js
+    class Slot:
+        item: Item | None
+
+        def __init__(self, item: Item | None) -> None:
+            self.item = item
+
+        def take(self, clear: bool) -> int:
+            if self.item is not None:
+                if clear:
+                    self.item = None
+                    return -1
+                return self.item.value
+            return 0
+
+    @js
+    def clears_returned_field() -> bool:
+        slot = Slot(Item(7))
+        return slot.take(True) == -1 and slot.item is None
+
+    @js
+    def returned(item: Item | None, clear: bool) -> int:
+        if item is None:
+            return 0
+        if clear:
+            item = None
+            return -1
+        return item.value
+
+    @js
+    def raised(item: Item | None, clear: bool) -> int:
+        if item is None:
+            return 0
+        try:
+            if clear:
+                item = None
+                raise ValueError("cleared")
+            return item.value
+        except ValueError:
+            return -2
+
+    @js
+    def else_branch(item: Item | None, keep: bool) -> int:
+        if item is None:
+            return 0
+        if keep:
+            pass
+        else:
+            item = None
+            return -3
+        return item.value
+
+    @js
+    def nested(item: Item | None, first: bool, second: bool) -> int:
+        if item is None:
+            return 0
+        if first:
+            if second:
+                item = None
+                return -4
+        elif second:
+            item = None
+            return -5
+        return item.value
+
+    @js
+    def continued(values: list[Item | None], skip: int) -> int:
+        total = 0
+        for index in range(len(values)):
+            item = values[index]
+            if item is None:
+                continue
+            if index == skip:
+                item = None
+                continue
+            total += item.value
+        return total
+
+    @js
+    def broken(values: list[Item | None], stop: int) -> int:
+        total = 0
+        for index in range(len(values)):
+            item = values[index]
+            if item is None:
+                continue
+            if index == stop:
+                item = None
+                break
+            total += item.value
+        return total
+
+    @js
+    def retested(item: Item | None, stop: int) -> int:
+        total = 0
+        while item is not None:
+            total += 1
+            if total == stop:
+                item = None
+                continue
+            total += item.value
+        return total
+
+    @js
+    def loop_values() -> list[Item | None]:
+        return [Item(1), None, Item(2), Item(4)]
+
+    @js
+    def loop_exit(item: Item | None, count: int) -> int:
+        if item is None:
+            return 0
+        for index in range(count):
+            if index == 1:
+                item = None
+                break
+        return -6 if item is None else item.value
+    ''',
+    "exited_branch_narrowing_result",
+    "",
+    (
+        ("field narrowing survives a returning write", "Slot(Item(7)).take(False) != 7"),
+        ("returning field write still runs", "not clears_returned_field()"),
+        ("empty field keeps the outer path", "Slot(None).take(False) != 0"),
+        ("local narrowing survives a returning write", "returned(Item(5), False) != 5"),
+        ("returning local write still exits", "returned(Item(5), True) != -1"),
+        ("local narrowing survives a raising write", "raised(Item(4), False) != 4"),
+        ("raising write reaches its handler", "raised(Item(4), True) != -2"),
+        ("else write can exit", "else_branch(Item(3), False) != -3"),
+        ("else write leaves the kept path narrowed", "else_branch(Item(3), True) != 3"),
+        ("nested write can exit", "nested(Item(2), True, True) != -4"),
+        ("elif write can exit", "nested(Item(2), False, True) != -5"),
+        ("nested exits leave the join narrowed", "nested(Item(2), True, False) != 2"),
+        ("continue skips the write's read", "continued(loop_values(), 2) != 5"),
+        ("a loop proof survives a continuing write", "continued(loop_values(), 9) != 7"),
+        ("break skips the write's read", "broken(loop_values(), 2) != 1"),
+        ("a loop proof survives a breaking write", "broken(loop_values(), 9) != 7"),
+        ("continue reaches the loop's retest", "retested(Item(2), 4) != 4"),
+        ("break keeps its write after the loop", "loop_exit(Item(1), 3) != -6"),
+        ("an unbroken loop keeps the value", "loop_exit(Item(1), 1) != 1"),
+    ),
+)
+
+
 UNION_NONE_GUARD_CONTRACT = _contract(
     '''
     from pyjs import js

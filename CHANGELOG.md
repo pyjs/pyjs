@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A narrowed value now stays narrowed after an `if` branch that reassigns it
+  and then leaves through `return`, `raise`, `break` or `continue`, because
+  that write cannot reach the next statement. A write that can reach a later
+  read, on the next loop iteration, after the loop, in `finally`, through a
+  caught exception or past a suppressing context manager, still requires a
+  new check.
+
 - JavaScript source maps limit function-name labels to the function's opening
   parenthesis, so browser debuggers retain parameter and local variable names.
   Scope names also retain their correct indices across bundled Python modules.

@@ -1,7 +1,11 @@
 import pytest
 
 from tests.backend_semantics import (
-    OPTIONAL_OBJECT_CONTRACT, UNION_NONE_GUARD_CONTRACT, UNPACK_FIELD_CONTRACT, UNPACK_TARGET_SOURCE,
+    EXITED_BRANCH_NARROWING_CONTRACT,
+    OPTIONAL_OBJECT_CONTRACT,
+    UNION_NONE_GUARD_CONTRACT,
+    UNPACK_FIELD_CONTRACT,
+    UNPACK_TARGET_SOURCE,
 )
 
 from .helpers import assert_semantics
@@ -105,6 +109,10 @@ def test_object_assignments_preserve_possible_none():
 
 def test_multiple_concrete_members_survive_none_guards():
     assert_semantics(UNION_NONE_GUARD_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_narrowing_survives_writes_on_exited_branches():
+    assert_semantics(EXITED_BRANCH_NARROWING_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_fixed_unpacking_evaluates_the_source_once():
