@@ -829,8 +829,11 @@ def validate_program_ir(program: ProgramIR) -> None:
                             )
 
 
-def build_program_ir(entry_point: Function) -> ProgramIR:
-    """Preserve reachable layouts after inference and tree shaking finish."""
+def build_program_ir(
+    entry_point: Function,
+    additional_entry_points: tuple[Function, ...] = (),
+) -> ProgramIR:
+    """Preserve layouts reached from one or more analyzed roots."""
 
     def object_key(value) -> tuple[str, str, str, int]:
         py_obj = getattr(value.py_obj, "__func__", value.py_obj)
@@ -841,7 +844,9 @@ def build_program_ir(entry_point: Function) -> ProgramIR:
             getattr(value, "lineno", 0) or 0,
         )
 
-    reached = entry_point.compilation_objects
+    reached = set(entry_point.compilation_objects)
+    for additional_entry_point in additional_entry_points:
+        reached.update(additional_entry_point.compilation_objects)
     value_types = set()
 
     def retain_layout(value_type):

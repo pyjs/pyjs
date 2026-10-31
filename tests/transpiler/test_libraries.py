@@ -84,6 +84,49 @@ def test_math_module_alias_preserves_typed_members():
     )
 
 
+def test_math_trigonometry_can_be_passed_as_callable_values():
+    assert_compiled_sources(
+        """
+        from collections.abc import Callable
+        from math import cos, sin
+        from pyjs import js
+
+        @js
+        def apply(
+            callback: Callable[[float], float],
+            value: float,
+        ) -> float:
+            return callback(value)
+
+        @js
+        def main() -> float:
+            return apply(sin, 0.0) + apply(cos, 0.0)
+        """,
+        {
+            "pyjs.stdlib.math": """
+                export function sin(value) {
+                    return Math.sin(value);
+                }
+
+                export function cos(value) {
+                    return Math.cos(value);
+                }
+            """,
+            "_pyjs_source_": """
+                import { sin as $sin, cos as $cos } from './pyjs.stdlib.math.js';
+
+                export function apply(callback, value) {
+                    return callback(value);
+                }
+
+                export function main() {
+                    return apply($sin, 0.0) + apply($cos, 0.0);
+                }
+            """,
+        },
+    )
+
+
 def test_typing_cast_refines_types_without_emitting_runtime_code():
     at(
         """

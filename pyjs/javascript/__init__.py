@@ -4,7 +4,7 @@ import json
 import random
 import time
 from datetime import UTC, datetime
-from typing import TypedDict
+from typing import Self, TypedDict
 from urllib.parse import quote
 
 from pyjs import js
@@ -31,6 +31,11 @@ __all__ = [
     "Uint8ClampedArray",
     "Uint16Array",
     "Uint32Array",
+    "WebAssembly",
+    "WebAssemblyInstance",
+    "WebAssemblyInstantiatedSource",
+    "WebAssemblyMemory",
+    "WebAssemblyModule",
     "encodeURIComponent",
 ]
 
@@ -97,6 +102,80 @@ class DataView:
         )
         self.byteOffset: int = byteOffset
 
+    def getFloat32(self, byteOffset: int, littleEndian: bool = False) -> float:
+        return float(read_data_view(self, "f", byteOffset, littleEndian))
+
+    def getInt32(self, byteOffset: int, littleEndian: bool = False) -> int:
+        return int(read_data_view(self, "i", byteOffset, littleEndian))
+
+    def setFloat32(
+        self,
+        byteOffset: int,
+        value: float,
+        littleEndian: bool = False,
+    ) -> None:
+        write_data_view(self, "f", byteOffset, value, littleEndian)
+
+    def setInt32(
+        self,
+        byteOffset: int,
+        value: int,
+        littleEndian: bool = False,
+    ) -> None:
+        write_data_view(self, "i", byteOffset, value, littleEndian)
+
+
+@js.native
+def read_data_view(
+    view: DataView,
+    format_code: str,
+    byte_offset: int,
+    little_endian: bool,
+) -> int | float:
+    import struct
+
+    if byte_offset < 0 or byte_offset + 4 > view.byteLength:
+        raise ValueError("DataView read is outside its range")
+    byte_order = "<" if little_endian else ">"
+    return struct.unpack_from(
+        byte_order + format_code,
+        view.buffer._bytes,
+        view.byteOffset + byte_offset,
+    )[0]
+
+
+@js.native
+def write_data_view(
+    view: DataView,
+    format_code: str,
+    byte_offset: int,
+    value: int | float,
+    little_endian: bool,
+) -> None:
+    import math
+    import struct
+
+    if byte_offset < 0 or byte_offset + 4 > view.byteLength:
+        raise ValueError("DataView write is outside its range")
+    if format_code == "i":
+        if isinstance(value, float) and not math.isfinite(value):
+            value = 0
+        converted = int(value) & 0xFFFFFFFF
+        value = converted - 0x100000000 if converted >= 0x80000000 else converted
+    else:
+        value = float(value)
+        if math.isfinite(value):
+            try:
+                struct.pack("f", value)
+            except OverflowError:
+                value = math.copysign(math.inf, value)
+    struct.pack_into(
+        ("<" if little_endian else ">") + format_code,
+        view.buffer._bytes,
+        view.byteOffset + byte_offset,
+        value,
+    )
+
 
 @js.native
 class TypedArray:
@@ -138,13 +217,13 @@ class TypedArray:
         for index, value in enumerate(items, offset):
             write_typed_array_item(self, index, value)
 
-    def slice(self, start: int = 0, end: int | None = None) -> TypedArray:
+    def slice(self, start: int = 0, end: int | None = None) -> Self:
         first, stop, _step = slice(start, end).indices(self.length)
         return type(self)([
             read_typed_array_item(self, index) for index in range(first, stop)
         ])
 
-    def subarray(self, begin: int = 0, end: int | None = None) -> TypedArray:
+    def subarray(self, begin: int = 0, end: int | None = None) -> Self:
         first, stop, _step = slice(begin, end).indices(self.length)
         return type(self)(
             self.buffer,
@@ -247,6 +326,41 @@ class Uint32Array(TypedArray):
     _kind = "unsigned"
     _size = 4
     BYTES_PER_ELEMENT = 4
+
+
+@js.native
+class WebAssemblyMemory:
+    """Linear memory exported by an ECMAScript WebAssembly instance."""
+    buffer: ArrayBuffer
+
+
+@js.native
+class WebAssemblyModule:
+    """Compiled ECMAScript WebAssembly module."""
+    pass
+
+
+@js.native
+class WebAssemblyInstance:
+    """Instantiated ECMAScript WebAssembly module and its exports."""
+    exports: object
+
+
+@js.native
+class WebAssemblyInstantiatedSource:
+    """Result of compiling and instantiating WebAssembly bytes."""
+    module: WebAssemblyModule
+    instance: WebAssemblyInstance
+
+
+@js.native
+class WebAssembly:
+    """ECMAScript WebAssembly namespace."""
+    @staticmethod
+    async def instantiate(
+        source: ArrayBuffer | TypedArray,
+        imports: object | None = None,
+    ) -> WebAssemblyInstantiatedSource: ...
 
 
 @js.native
