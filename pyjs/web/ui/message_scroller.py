@@ -541,8 +541,11 @@ class MessageScroller(Widget):
         # Scroll and resize notifications can arrive in either order. A reader
         # moving away during our short programmatic-scroll guard still owns
         # their position; token arrival must not pull them back to the bottom.
+        # Reflow and restoring a hidden panel may move toward the live edge;
+        # that displacement alone does not express a reader leaving it.
         if (self.mode == "following-bottom" and self._saved_scroll_top is not None
-                and abs(self.viewport.scrollTop - self._saved_scroll_top) > self.scroll_edge_threshold
+                and (self.viewport.scrollTop - self._saved_scroll_top if self.newest_first else
+                     self._saved_scroll_top - self.viewport.scrollTop) > self.scroll_edge_threshold
                 and not self.is_at_latest()):
             self._set_mode("free-scrolling")
         if self.mode == "anchored-to-message":

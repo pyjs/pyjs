@@ -4,7 +4,7 @@ from pyjs import js
 from pyjs.web.dom import Element
 from pyjs.web.domx import div, tag, tw
 from pyjs.web.events import KeyboardEvent
-from pyjs.web.html import HTMLFormElement, HTMLTextAreaElement
+from pyjs.web.html import HTMLElement, HTMLFormElement, HTMLTextAreaElement
 from pyjs.web.ui import Widget
 from pyjs.web.ui.button import Button
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
@@ -27,13 +27,19 @@ class PromptInput(Widget):
         self.addEventListener("keydown", self.keydown)
 
     def keydown(self, event: KeyboardEvent):
-        if (event.key != "Enter" or event.shiftKey or event.isComposing
+        if (event.defaultPrevented or event.key != "Enter" or event.shiftKey or event.isComposing
+                or event.keyCode == 229 or event.repeat
                 or not isinstance(event.target, HTMLTextAreaElement)):
             return
         form = self.closest("form")
         if isinstance(form, HTMLFormElement):
             event.preventDefault()
-            form.requestSubmit()
+            submitter = form.querySelector('button:not([type]),button[type="submit"],input[type="submit"],input[type="image"]')
+            if isinstance(submitter, HTMLElement):
+                if not submitter.matches(':disabled'):
+                    form.requestSubmit(submitter)
+            else:
+                form.requestSubmit()
 
 
 @js
@@ -89,7 +95,7 @@ def Checkpoint(label: str, *actions):
 
 @js
 def Context(used: int, capacity: int, *details):
-    return HoverCard(HoverCardTrigger(str(used) + " / " + str(capacity) + " tokens"),
+    return HoverCard(HoverCardTrigger(str(used) + " / " + str(capacity) + " tokens", href=None),
         HoverCardContent(tag("progress", {"value": str(used), "max": str(max(1, capacity)),
                                           "aria-label": "Context used"}, tw("w-full")), *details))
 
@@ -110,8 +116,10 @@ def FileTreeFile(name: str, *children):
 
 
 @js
-def InlineCitation(label: str, *details, href: str = "#"):
-    return HoverCard(HoverCardTrigger(label, href=href), HoverCardContent(*details))
+def InlineCitation(label: str, *details, href: str = ""):
+    href = href.strip()
+    safe_href = href if href.lower().startswith(('https://', 'http://')) else None
+    return HoverCard(HoverCardTrigger(label, href=safe_href), HoverCardContent(*details))
 
 
 @js
