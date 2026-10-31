@@ -1259,6 +1259,36 @@ def test_self_parameter_annotations_require_the_concrete_receiver_type():
     )
 
 
+def test_self_return_keeps_concrete_typed_array_views():
+    at(
+        """
+        from pyjs.javascript import Uint8Array
+        from pyjs.web.encoding import TextDecoder
+
+        def main(values: Uint8Array) -> str:
+            selected = values.subarray(1)
+            copied = values.slice(0, 1)
+            return (
+                TextDecoder().decode(selected)
+                + TextDecoder().decode(copied)
+            )
+        """,
+        """
+        def main(values: Uint8Array) -> str:
+            selected: Uint8Array = values.[TypedArray]subarray(1)
+            copied: Uint8Array = values.[TypedArray]slice(0, 1)
+            return TextDecoder().[TextDecoder]decode(selected).[str]__add__!(TextDecoder().[TextDecoder]decode(copied))
+        """,
+        """
+        export function main(values) {
+            var selected = values.subarray(1);
+            var copied = values.slice(0, 1);
+            return new TextDecoder().decode(selected) + new TextDecoder().decode(copied);
+        }
+        """,
+    )
+
+
 def test_self_return_annotation_requires_a_method():
     ad(
         """\

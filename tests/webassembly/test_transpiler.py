@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import shutil
 import subprocess
 import sys
@@ -8,7 +9,19 @@ import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.tooling.browser import Browser
-from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+from pyjs.webassembly import (
+    WebAssemblyUnsupported,
+    grow_memory,
+    load_f32,
+    load_f64,
+    load_i32,
+    memory_byte_length,
+    reset_memory,
+    store_f32,
+    store_f64,
+    store_i32,
+    transpile_webassembly,
+)
 from tests.backend_semantics import (
     APPLICATION_GENERIC_UNION_ORDER_CONTRACT,
     ASSERT_NARROWING_CONTRACT,
@@ -126,11 +139,11 @@ def test_receiver_domain_keeps_wasm_inheritance_boundary():
         transpile_webassembly(RECEIVER_DOMAIN_CONTRACTS["default"].source)
 
 
-def test_list_truth_contract_wasm_boundary():
+def test_shared_list_truth_contract(tmp_path):
     from tests.backend_semantics import LIST_TRUTH_CONTRACT
 
-    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly call target __len__ is not implemented at line 5$"):
-        transpile_webassembly(LIST_TRUTH_CONTRACT.source)
+    result = int(execute(tmp_path, LIST_TRUTH_CONTRACT.source))
+    assert result == 0, LIST_TRUTH_CONTRACT.failure(result)
 
 
 def test_awaited_attribute_contract_keeps_wasm_string_boundary():
@@ -215,23 +228,23 @@ def test_reference_tuple_contract_keeps_the_wasm_collection_boundary():
     assert str(caught.value) == "WebAssembly value type tuple__str__variadic is not implemented"
 
 
-def test_fixed_tuple_assignment_keeps_the_wasm_collection_boundary():
-    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type tuple__"):
+def test_fixed_tuple_assignment_reaches_the_wasm_string_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
         transpile_webassembly(FIXED_TUPLE_ASSIGNMENT_CONTRACT.source)
 
 
-def test_list_copy_contract_keeps_the_wasm_constructor_boundary():
+def test_list_copy_contract_keeps_the_wasm_identity_boundary():
     from tests.backend_semantics import LIST_COPY_CONTRACT
     with pytest.raises(WebAssemblyUnsupported) as caught:
         transpile_webassembly(LIST_COPY_CONTRACT.source)
     assert str(caught.value) == (
-        "WebAssembly call target list__int is not implemented at line 4"
+        "WebAssembly call target __is__ is not implemented at line 18"
     )
 
 
-def test_range_loops_keep_the_wasm_iteration_boundary():
-    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly iteration currently requires a list$"):
-        transpile_webassembly(RANGE_LOOP_CONTRACT.source)
+def test_shared_range_loop_contract(tmp_path):
+    result = int(execute(tmp_path, RANGE_LOOP_CONTRACT.source))
+    assert result == 0, RANGE_LOOP_CONTRACT.failure(result)
 
 
 def test_extracted_union_result_reaches_the_wasm_value_boundary():
@@ -278,7 +291,7 @@ def test_bytes_construction_keeps_the_wasm_binary_boundary():
 
 @pytest.mark.parametrize("expression", ["range(Index())", "enumerate([1], Index())"])
 def test_index_constructors_keep_the_wasm_iteration_boundary(expression):
-    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly iteration currently requires a list"):
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly numeric conversion is not implemented"):
         transpile_webassembly(f'''
             class Index:
                 def __index__(self) -> int:
@@ -410,7 +423,7 @@ def execute(tmp_path, source: str, arguments: str = "") -> str:
 def test_unpacking_fields_keeps_the_wasm_checked_sequence_boundary():
     # The shared list-arity helper requires object storage unavailable here;
     # this source was already unsupported before the JS unpacking improvement.
-    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type object is not implemented"):
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly call target unpack_exact is not implemented"):
         transpile_webassembly(UNPACK_FIELD_CONTRACT.source)
 
 
@@ -503,10 +516,10 @@ def test_literal_tuple_instance_contract_keeps_wasm_single_target_boundary():
         transpile_webassembly(ISINSTANCE_LITERAL_TUPLE_CONTRACT.source)
 
 
-def test_positional_minmax_contract_keeps_wasm_builtin_boundary():
+def test_shared_positional_minmax_contract(tmp_path):
     from tests.backend_semantics import POSITIONAL_MINMAX_CONTRACT
-    with pytest.raises(WebAssemblyUnsupported, match="call target min is not implemented"):
-        transpile_webassembly(POSITIONAL_MINMAX_CONTRACT.source)
+    result = int(execute(tmp_path, POSITIONAL_MINMAX_CONTRACT.source))
+    assert result == 0, POSITIONAL_MINMAX_CONTRACT.failure(result)
 
 
 def test_webassembly_reversed_protocol_contract(tmp_path):
@@ -532,8 +545,8 @@ def test_inherited_fields_have_an_explicit_webassembly_boundary(contract):
         transpile_webassembly(contract.source)
 
 
-def test_mapping_lookup_contract_has_explicit_tuple_storage_boundary():
-    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type tuple__int_list__float is not implemented"):
+def test_mapping_lookup_contract_has_explicit_mapping_storage_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type dict__str_tuple__int_list__float is not implemented"):
         transpile_webassembly(MAPPING_LOOKUP_REPRESENTATION_CONTRACT.source)
 
 
@@ -559,18 +572,25 @@ def test_scalar_set_relations_have_an_explicit_webassembly_boundary():
         transpile_webassembly(SCALAR_SET_RELATIONS_CONTRACT.source)
 
 
-@pytest.mark.parametrize("target, message", [
-    ("list[int8]", "WebAssembly call target list__int is not implemented"),
-    ("tuple[int8, ...]", "WebAssembly value type tuple__int__variadic is not implemented"),
-])
-def test_explicit_sequence_constructor_has_a_webassembly_capability_boundary(target, message):
-    with pytest.raises(WebAssemblyUnsupported, match=message):
-        transpile_webassembly(f'''from pyjs import int8
+def test_explicit_variadic_tuple_constructor_has_a_webassembly_capability_boundary():
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type tuple__int__variadic is not implemented"):
+        transpile_webassembly('''from pyjs import int8
 def main() -> int:
     source = [int8(127)]
-    copied = {target}(source)
+    copied = tuple[int8, ...](source)
     return int(copied[0] + 1)
 ''')
+
+
+def test_explicit_list_constructor_keeps_fixed_width_items(tmp_path):
+    result = execute(tmp_path, '''from pyjs import int8
+def main() -> int:
+    source = [int8(127)]
+    copied = list[int8](source)
+    return int(copied[0] + 1)
+''')
+
+    assert result == "-128"
 
 
 def test_set_constructor_representation_has_an_explicit_webassembly_boundary():
@@ -658,6 +678,135 @@ def main() -> int:
     assert transpile_webassembly(source).binary == transpile_webassembly(source).binary
 
 
+def test_linear_memory_reference_runtime_round_trips_and_grows():
+    reset_memory()
+    store_i32(0, 2**32 - 7)
+    store_f32(4, 1.5)
+    store_f64(8, 2.25)
+
+    assert load_i32(0) == -7
+    assert load_f32(4) == 1.5
+    assert load_f64(8) == 2.25
+    assert grow_memory(1) == 1
+    assert memory_byte_length() == 2 * 65_536
+    assert load_f64(8) == 2.25
+
+    with pytest.raises(IndexError):
+        store_f64(-1, 0.0)
+    with pytest.raises(IndexError):
+        load_i32(memory_byte_length() - 3)
+
+
+def test_webassembly_exports_persistent_linear_memory_only_when_reached(tmp_path):
+    source = """
+from pyjs.webassembly import grow_memory, store_f32, store_f64, store_i32
+
+
+def main(value: float) -> int:
+    if value < 0.0:
+        return grow_memory(1)
+    store_i32(0, -7)
+    store_f32(4, 1.5)
+    store_f64(8, value)
+    return 16
+"""
+    path = transpile_webassembly(source).write(tmp_path / "memory.wasm")
+    plain_path = transpile_webassembly(
+        "def main() -> int:\n    return 1\n"
+    ).write(tmp_path / "plain.wasm")
+    script = """
+const fs = require('fs');
+const memoryPath = process.argv[1];
+const plainPath = process.argv[2];
+Promise.all([
+    WebAssembly.instantiate(fs.readFileSync(memoryPath)),
+    WebAssembly.instantiate(fs.readFileSync(plainPath)),
+]).then(([withMemory, plain]) => {
+    const {exports} = withMemory.instance;
+    if (exports.main(2.25) !== 16n) throw new Error('descriptor');
+    let view = new DataView(exports.memory.buffer);
+    if (view.getInt32(0, true) !== -7) throw new Error('i32');
+    if (view.getFloat32(4, true) !== 1.5) throw new Error('f32');
+    if (view.getFloat64(8, true) !== 2.25) throw new Error('f64');
+    if (exports.main(-1.0) !== 1n) throw new Error('grow result');
+    if (exports.memory.buffer.byteLength !== 131072) throw new Error('grow');
+    view = new DataView(exports.memory.buffer);
+    if (view.getFloat64(8, true) !== 2.25) throw new Error('persistence');
+    if ('memory' in plain.instance.exports) throw new Error('unused memory');
+    console.log('ok');
+}).catch(error => { console.error(error); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        [node(), "-e", script, str(path), str(plain_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == "ok"
+
+
+def test_webassembly_exports_multiple_functions_with_shared_memory(tmp_path):
+    source = """
+from pyjs.webassembly import load_i32, store_i32
+
+
+def initialize(value: int) -> int:
+    store_i32(0, value)
+    return load_i32(0)
+
+
+def increment(delta: int) -> int:
+    value = load_i32(0) + delta
+    store_i32(0, value)
+    return load_i32(0)
+
+
+def read() -> int:
+    return load_i32(0)
+"""
+    module = transpile_webassembly(
+        source,
+        exports=("initialize", "increment", "read"),
+    )
+    path = module.write(tmp_path / "multi-export.wasm")
+    script = """
+const fs = require('fs');
+WebAssembly.instantiate(fs.readFileSync(process.argv[1])).then(({instance}) => {
+    const {exports} = instance;
+    if (exports.initialize(40n) !== 40n) throw new Error('initialize');
+    if (exports.increment(2n) !== 42n) throw new Error('increment');
+    if (exports.read() !== 42n) throw new Error('read');
+    if (exports.memory.buffer.byteLength !== 65536) throw new Error('memory');
+    if ('main' in exports) throw new Error('unexpected main');
+    console.log('ok');
+}).catch(error => { console.error(error); process.exit(1); });
+"""
+
+    result = subprocess.run(
+        [node(), "-e", script, str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == "ok"
+
+
+@pytest.mark.parametrize(
+    ("exports", "message"),
+    [
+        ((), "at least one"),
+        (("main", "main"), "unique"),
+        (("memory",), "cannot be named memory"),
+    ],
+)
+def test_webassembly_rejects_invalid_export_sets(exports, message):
+    with pytest.raises(ValueError, match=message):
+        transpile_webassembly("def main() -> int:\n    return 1\n", exports=exports)
+
+
 def test_webassembly_state_machine_executes_a_scalar_loop(tmp_path):
     result = execute(
         tmp_path,
@@ -702,6 +851,35 @@ def main() -> int:
     assert result == "42"
 
 
+def test_webassembly_executes_an_imported_helper_with_a_client_constant(
+    tmp_path,
+    monkeypatch,
+):
+    module_name = "pyjs_webassembly_imported_constant"
+    (tmp_path / f"{module_name}.py").write_text(
+        "from typing import Final\n\n"
+        "from pyjs import JS\n\n"
+        "INCREMENT: Final[JS] = 2\n\n"
+        "def increment(value: int) -> int:\n"
+        "    return value + INCREMENT\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop(module_name, None)
+
+    result = execute(
+        tmp_path,
+        f"""
+from {module_name} import increment
+
+
+def main() -> int:
+    return increment(40)
+""",
+    )
+
+    assert result == "42"
+
+
 def test_webassembly_executes_float_control_flow_and_arithmetic(tmp_path):
     source = """
 def main(left: float, right: float) -> float:
@@ -722,6 +900,21 @@ def main(numerator: float, denominator: float) -> float:
 
     with pytest.raises(subprocess.CalledProcessError):
         execute(tmp_path, source, "1.0, 0.0")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(0, "0"), (1, "1"), (-1, "1"), (-2, "0")],
+)
+def test_webassembly_boolean_operators_short_circuit(tmp_path, value, expected):
+    source = """
+def main(value: int) -> bool:
+    positive = value > 0 and 10 // value > 1
+    non_positive = not positive
+    return positive or (non_positive and value == -1)
+"""
+
+    assert execute(tmp_path, source, f"{value}n") == expected
 
 
 def test_webassembly_float_abs_and_isfinite_match_python(tmp_path):
@@ -1076,6 +1269,447 @@ def test_webassembly_gc_lists_execute_in_a_managed_browser():
     result = asyncio.run(execute_in_browser(compilation.binary, ""))
 
     assert result == 15
+
+
+def test_webassembly_gc_tuples_execute_literals_parameters_and_indexing(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def total(values: tuple[int, float, int]) -> float:
+    return values[0] + values[1] + values[-1] + len(values)
+
+
+def main() -> float:
+    return total((1, 2.5, 3))
+""",
+    )
+
+    assert result == "9.5"
+
+
+def test_webassembly_gc_tuples_support_nested_destructuring(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def pair() -> tuple[tuple[int, float], int]:
+    return ((1, 2.5), 3)
+
+
+def main() -> float:
+    (left, middle), right = pair()
+    return left + middle + right
+""",
+    )
+
+    assert result == "6.5"
+
+
+def test_webassembly_gc_tuple_list_iteration_supports_destructuring(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> float:
+    values: list[tuple[int, float]] = [(1, 2.5), (3, 4.5)]
+    total = 0.0
+    for integer, floating in values:
+        total += integer + floating
+    return total
+""",
+    )
+
+    assert result == "11"
+
+
+def test_webassembly_gc_tuple_fields_hold_application_objects(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+class Point:
+    def __init__(self, x: float):
+        self.x = x
+
+
+class Segment:
+    def __init__(self, endpoints: tuple[Point, Point]):
+        self.endpoints = endpoints
+
+    def length(self) -> float:
+        return self.endpoints[1].x - self.endpoints[0].x
+
+
+def main() -> float:
+    return Segment((Point(1.5), Point(4.0))).length()
+""",
+    )
+
+    assert result == "2.5"
+
+
+def test_webassembly_range_supports_positive_and_negative_steps(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> int:
+    total = 0
+    for value in range(5):
+        total += value
+    for value in range(8, 3, -2):
+        total += value
+    for value in range(2, 5):
+        total += value
+    for value in range(1, 5, -1):
+        total += 100
+    return total
+""",
+    )
+
+    assert result == "37"
+
+
+def test_webassembly_range_stops_before_signed_overflow(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> int:
+    count = 0
+    for value in range(9223372036854775806, 9223372036854775807, 2):
+        count += 1
+    for value in range(-9223372036854775807, -9223372036854775808, -2):
+        count += 1
+    return count
+""",
+    )
+
+    assert result == "2"
+
+
+def test_webassembly_range_zero_step_traps(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError):
+        execute(
+            tmp_path,
+            """
+def main() -> int:
+    total = 0
+    for value in range(0, 3, 0):
+        total += value
+    return total
+""",
+        )
+
+
+def test_webassembly_enumerate_and_zip_compose_iterators(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> int:
+    total = 0
+    for index, pair in enumerate(zip([1, 2], range(3, 5)), start=1):
+        total += index * (pair[0] + pair[1])
+    return total
+""",
+    )
+
+    assert result == "16"
+
+
+def test_webassembly_enumerate_preserves_fixed_width_list_items(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+from pyjs import int8
+
+
+def main() -> int:
+    values: list[int8] = [int8(2), int8(3)]
+    total = 0
+    for index, value in enumerate(values, 4):
+        total += index * int(value)
+    return total
+""",
+    )
+
+    assert result == "23"
+
+
+def test_webassembly_enumerate_traps_before_index_overflow(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError):
+        execute(
+            tmp_path,
+            """
+def main() -> int:
+    total = 0
+    for index, value in enumerate([1, 2], 9223372036854775807):
+        total += index * value
+    return total
+""",
+        )
+
+
+def test_webassembly_zip_stops_at_shortest_input(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> int:
+    total = 0
+    for left, right in zip([1, 2], [3]):
+        total += left * right
+    return total
+""",
+    )
+
+    assert result == "3"
+
+
+def test_webassembly_strict_zip_traps_on_different_lengths(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError):
+        execute(
+            tmp_path,
+            """
+def main() -> int:
+    total = 0
+    for left, right in zip([1, 2], [3], strict=True):
+        total += left * right
+    return total
+""",
+        )
+
+
+def test_webassembly_numeric_intrinsics_execute_python_values(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+from math import hypot, sqrt
+
+
+def main() -> float:
+    small = min(4.0, 2.0, 3.0)
+    large = max(4.0, 2.0, 3.0)
+    return sqrt(9.0) + hypot(3e200, 4e200) / 1e200 + small + large
+""",
+    )
+
+    assert result == "14"
+
+
+def test_webassembly_trigonometry_uses_explicit_math_imports(tmp_path):
+    module = transpile_webassembly(
+        """
+from math import cos, radians, sin
+
+
+def main() -> float:
+    return sin(radians(30.0)) + cos(radians(60.0))
+"""
+    )
+    path = module.write(tmp_path / "trigonometry.wasm")
+    script = """
+const fs = require('fs');
+WebAssembly.compile(fs.readFileSync(process.argv[1])).then(module => {
+    const imports = WebAssembly.Module.imports(module);
+    return WebAssembly.instantiate(module, {
+        math: {sin: Math.sin, cos: Math.cos},
+    }).then(instance => {
+        console.log(JSON.stringify([
+            imports.map(value => [value.module, value.name, value.kind]),
+            instance.exports.main(),
+        ]));
+    });
+}).catch(error => {console.error(error); process.exit(1)});
+"""
+    result = subprocess.run(
+        [node(), "-e", script, str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    imports, value = json.loads(result.stdout)
+    assert imports == [
+        ["math", "sin", "function"],
+        ["math", "cos", "function"],
+    ]
+    assert value == pytest.approx(1.0)
+
+
+def test_webassembly_hypot_prefers_infinity_and_preserves_nan(tmp_path):
+    source = """
+from math import hypot
+
+
+def main(left: float, right: float) -> float:
+    return hypot(left, right)
+"""
+
+    assert execute(tmp_path, source, "Infinity, NaN") == "Infinity"
+    assert execute(tmp_path, source, "NaN, 0.0") == "NaN"
+
+
+def test_webassembly_extrema_evaluate_arguments_once(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+class Values:
+    def __init__(self):
+        self.reads = 0
+
+    def take(self, value: int) -> int:
+        self.reads += 1
+        return value
+
+
+def main() -> int:
+    values = Values()
+    selected = min(values.take(4), values.take(2), values.take(3))
+    return selected * 10 + values.reads
+""",
+    )
+
+    assert result == "23"
+
+
+def test_webassembly_sqrt_negative_value_traps(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError):
+        execute(
+            tmp_path,
+            """
+from math import sqrt
+
+
+def main() -> float:
+    return sqrt(-1.0)
+""",
+        )
+
+
+def test_webassembly_list_copy_concat_and_truthiness_are_independent(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> float:
+    source = [1.0, 2.0]
+    copied = list(source)
+    combined = source + [3.0]
+    copied[0] = 4.0
+    combined[1] = 5.0
+    empty: list[float] = []
+    if empty:
+        return -1.0
+    if not copied:
+        return -1.0
+    return source[0] * 100.0 + copied[0] * 10.0 + combined[1] + combined[2]
+""",
+    )
+
+    assert result == "148"
+
+
+def test_webassembly_list_comprehensions_scope_filter_and_unpack(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> int:
+    value = 10
+    products = [
+        left * right
+        for left, right in zip(range(1, 7), range(2, 8))
+        if left > 2
+    ]
+    grid = [[row * 10 + column for column in range(3)] for row in range(2)]
+    return value + products[0] + products[-1] + len(products) + grid[1][2]
+""",
+    )
+
+    assert result == "80"
+
+
+def test_webassembly_list_comprehensions_preserve_fixed_width_items(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+from pyjs import int8
+
+
+def main() -> int8:
+    values = [int8(index * 100) for index in range(3)]
+    return values[2]
+""",
+    )
+
+    assert result == "-56"
+
+
+def test_webassembly_nullable_gc_results_narrow_after_identity_checks(tmp_path):
+    source = """
+def choose(flag: bool) -> list[float] | None:
+    return [1.5, 2.5] if flag else None
+
+
+def main(flag: bool) -> float:
+    result = choose(flag)
+    if result is None:
+        return -1.0
+    return result[0] + result[1]
+"""
+
+    assert execute(tmp_path, source, "1") == "4"
+    assert execute(tmp_path, source, "0") == "-1"
+
+
+def test_webassembly_nullable_gc_fields_hold_application_objects(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+class Node:
+    def __init__(self, value: int, next_node: Node | None):
+        self.value = value
+        self.next_node = next_node
+
+
+def main() -> int:
+    tail = Node(2, None)
+    head = Node(1, tail)
+    if head.next_node is None:
+        return -1
+    if tail.next_node is not None:
+        return -2
+    return head.value * 10 + head.next_node.value
+""",
+    )
+
+    assert result == "12"
+
+
+def test_webassembly_simultaneous_index_assignment_evaluates_rhs_first(tmp_path):
+    result = execute(
+        tmp_path,
+        """
+def main() -> float:
+    values = [[1.0], [2.0]]
+    left = 0
+    right = 1
+    values[left], values[right] = values[right], values[left]
+    return values[0][0] * 10.0 + values[1][0]
+""",
+    )
+
+    assert result == "21"
+
+
+@pytest.mark.parametrize(("name", "expected"), [("range", "7"), ("zip", "7"), ("enumerate", "7")])
+def test_application_functions_named_like_iterators_stay_ordinary_calls(tmp_path, name, expected):
+    result = execute(tmp_path, f"""
+def {name}(value: int) -> list[int]:
+    return [value]
+
+
+def main() -> int:
+    total = 0
+    for value in {name}(7):
+        total += value
+    return total
+""")
+
+    assert result == expected
 
 
 def test_webassembly_gc_slice_rejects_inheritance():
