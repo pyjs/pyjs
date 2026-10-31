@@ -17,6 +17,9 @@ conversation. It demonstrates:
   `InputGroup`
 - entirely in-memory server state that resets on restart
 
+See [Agent conversation patterns](AI_ELEMENTS.md) for reusable AI UI
+compositions and their transport boundaries.
+
 ## Architecture
 
 Chat deliberately uses the native browser `WebSocket` rather than hiding an
