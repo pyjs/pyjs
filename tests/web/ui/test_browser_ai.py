@@ -1,12 +1,32 @@
 import pytest
 
 from pyjs import js
+from pyjs.tooling.npm import NpmImport, NpmPackage
+from pyjs.web.dom import Element, window
 from pyjs.web.domx import require_element, tag
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.ui.ai import (
-    Checkpoint, Confirmation, Context, FileTree, FileTreeFile, FileTreeFolder,
-    InlineCitation, ModelSelector, Plan, PromptInput, Queue, QueueItem, Reasoning,
-    Sources, StackTrace, Subagent, Suggestion, Task, Terminal, TestResults, Tool,
+    Checkpoint,
+    Confirmation,
+    Context,
+    FileTree,
+    FileTreeFile,
+    FileTreeFolder,
+    InlineCitation,
+    ModelSelector,
+    Plan,
+    PromptInput,
+    Queue,
+    QueueItem,
+    Reasoning,
+    Sources,
+    StackTrace,
+    Subagent,
+    Suggestion,
+    Task,
+    Terminal,
+    TestResults,
+    Tool,
 )
 from pyjs.web.ui.input_group import InputGroupTextarea
 from pyjs.web.ui.markdown import Markdown
@@ -74,6 +94,11 @@ class Submissions:
 
 
 @js
+def consume_enter(event: Event):
+    event.preventDefault()
+
+
+@js
 def test_prompt_input_enter_preserves_shift_and_composition():
     textarea = InputGroupTextarea('Message')
     form = tag('form', PromptInput(textarea, Suggestion('Send')))
@@ -82,6 +107,97 @@ def test_prompt_input_enter_preserves_shift_and_composition():
     mount(form)
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', shiftKey=True, bubbles=True, cancelable=True))
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', isComposing=True, bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    textarea.addEventListener('keydown', consume_enter)
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    textarea.removeEventListener('keydown', consume_enter)
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 1
+
+
+@js
+def test_markdown_pre_mount_updates_and_remount_keep_original_source():
+    message = Markdown('Old')
+    message.set_text('**Latest** and `<b>`')
+    mount(message)
+    assert require_element(message, 'strong').textContent == 'Latest'
+    assert require_element(message, 'code').textContent == '<b>'
+    message.remove()
+    mount(message)
+    assert require_element(message, 'strong').textContent == 'Latest'
+    assert require_element(message, 'code').textContent == '<b>'
+
+
+__pyjs_npm_imports__ = (NpmImport(NpmPackage('dompurify', '3.4.17'), '$purify'),)
+
+
+@js.inline("""(() => {{
+    const original = $purify.default.sanitize;
+    $purify.default.sanitize = () => {{ throw new Error('sanitizer unavailable'); }};
+    try {{ {message}.set_text('<img src=x onerror=alert(1)>'); }}
+    finally {{ $purify.default.sanitize = original; }}
+}})()""")
+def render_with_failed_sanitizer(message: Markdown) -> None:
+    raise NotImplementedError
+
+
+@js
+def test_markdown_pathological_input_and_renderer_failure_recover():
+    message = Markdown('Before')
+    mount(message)
+    message.set_text('> ' * 2000 + 'deep quote')
+    assert 'deep quote' in message.body.textContent
+    assert message.querySelectorAll('blockquote').length <= 20
+    message.set_text('*a ' * 4000)
+    assert len(message.body.textContent) >= 8000
+    render_with_failed_sanitizer(message)
+    assert message.body.textContent == '<img src=x onerror=alert(1)>'
+    assert message.body.querySelector('img') is None
+    message.set_text('**Recovered**')
+    assert require_element(message, 'strong').textContent == 'Recovered'
+    assert message.body.className == ''
+
+
+@js.inline('{element}.click()')
+def activate(element: Element) -> None:
+    raise NotImplementedError
+
+
+@js
+def test_context_and_untrusted_citations_are_buttons():
+    panel = tag('div', Context(1, 2),
+                InlineCitation('Bad', href=' javascript:alert(1)'),
+                InlineCitation('Local', href='/api/action'),
+                InlineCitation('Source', href=' https://example.com '))
+    mount(panel)
+    assert panel.querySelectorAll('button[type=button]').length == 3
+    assert panel.querySelectorAll('a[href]').length == 1
+    assert require_element(panel, 'a').getAttribute('href') == 'https://example.com'
+    original_url = window.location.href
+    activate(require_element(panel, 'button'))
+    assert window.location.href == original_url
+    assert require_element(panel, '[data-slot=hover-card]').getAttribute('data-state') == 'open'
+
+
+@js
+def test_prompt_input_honors_disabled_submitter_repeat_and_ime_keycode():
+    textarea = InputGroupTextarea('Message')
+    send = tag('button', {'type': 'submit', 'disabled': ''}, 'Send')
+    fieldset = tag('fieldset', send)
+    form = tag('form', PromptInput(textarea, fieldset))
+    submissions = Submissions()
+    form.addEventListener('submit', submissions)
+    mount(form)
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    send.removeAttribute('disabled')
+    fieldset.setAttribute('disabled', '')
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    fieldset.removeAttribute('disabled')
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', repeat=True, bubbles=True, cancelable=True))
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', keyCode=229, bubbles=True, cancelable=True))
     assert submissions.count == 0
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
     assert submissions.count == 1

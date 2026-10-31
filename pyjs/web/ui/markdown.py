@@ -8,21 +8,32 @@ from pyjs.web.ui import Widget
 from pyjs.web.ui.typeset import Typeset
 
 __pyjs_npm_imports__ = (
-    NpmImport(NpmPackage("marked", "18.1.2"), "$marked"),
+    NpmImport(NpmPackage("markdown-it", "15.0.3"), "$markdown"),
     NpmImport(NpmPackage("dompurify", "3.4.17"), "$purify"),
 )
 
 
 @js.inline(r"""((element, text) => {{
-    element.innerHTML = $purify.default.sanitize($marked.marked.parse(text, {{async: false}}), {{
-        ALLOWED_TAGS: ['p','br','strong','em','del','code','pre','blockquote','ul','ol','li',
-            'h1','h2','h3','h4','h5','h6','hr','a','table','thead','tbody','tr','th','td'],
-        ALLOWED_ATTR: ['href','title','start'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false
-    }});
-    for (const link of element.querySelectorAll('a')) {{
-        const href = link.getAttribute('href') || '';
-        if (!/^https?:\/\//i.test(href)) link.removeAttribute('href');
-        else {{ link.setAttribute('target', '_blank'); link.setAttribute('rel', 'noopener noreferrer'); }}
+    try {{
+        const parser = new $markdown.default({{html: false, maxNesting: 20}});
+        const tokens = parser.parse(text, {{}});
+        // The parser discards blocks beyond its nesting limit. Preserve the
+        // entire source as text instead of silently losing that content.
+        if (tokens.some(token => token.level >= 19)) throw new Error('Markdown nesting limit');
+        element.innerHTML = $purify.default.sanitize(parser.renderer.render(tokens, parser.options, {{}}), {{
+            ALLOWED_TAGS: ['p','br','strong','em','del','code','pre','blockquote','ul','ol','li',
+                'h1','h2','h3','h4','h5','h6','hr','a','table','thead','tbody','tr','th','td'],
+            ALLOWED_ATTR: ['href','title','start'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false
+        }});
+        for (const link of element.querySelectorAll('a')) {{
+            const href = link.getAttribute('href') || '';
+            if (!/^https?:\/\//i.test(href)) link.removeAttribute('href');
+            else {{ link.setAttribute('target', '_blank'); link.setAttribute('rel', 'noopener noreferrer'); }}
+        }}
+        element.className = '';
+    }} catch {{
+        element.textContent = text;
+        element.className = 'whitespace-pre-wrap';
     }}
 }})({element}, {text})""")
 def render_markdown(element: Element, text: str) -> None:
@@ -42,8 +53,9 @@ class Markdown(Widget):
         self.append(Typeset(self.body, preset="chat"))
 
     def initialize(self):
-        self.set_text(self.body.textContent or "")
+        source = self.get_data('source')
+        self.set_text(source if source is not None else self.body.textContent or "")
 
     def set_text(self, text: str):
+        self.set_data('source', text)
         render_markdown(self.body, text)
-        self.body.setAttribute("class", "")
