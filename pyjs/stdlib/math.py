@@ -25,9 +25,15 @@ def sqrt(value: float) -> float: ...
 def sin(value: float) -> float: ...
 
 
+sin.value.source("return Math.sin(value);")
+
+
 @wgsl.native
 @js.inline("Math.cos({value})")
 def cos(value: float) -> float: ...
+
+
+cos.value.source("return Math.cos(value);")
 
 
 @wgsl.native

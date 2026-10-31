@@ -1,9 +1,16 @@
 from collections.abc import Awaitable, Callable
+from typing import cast
 
 import pytest
 
 from pyjs import js
-from pyjs.javascript import Date, Uint8Array
+from pyjs.javascript import (
+    ArrayBuffer,
+    DataView,
+    Date,
+    Uint8Array,
+    WebAssembly,
+)
 from pyjs.testing.web import next_frame
 from pyjs.web.clipboard import navigator as clipboard_navigator
 from pyjs.web.crypto import crypto
@@ -36,6 +43,11 @@ from pyjs.web.timers import (
 from pyjs.web.url import URL
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js.native
+class AnswerExports:
+    def main(self) -> int: ...
 
 
 @js
@@ -84,6 +96,32 @@ def test_date_now_uses_native_epoch_milliseconds():
 
     assert first > 1_000_000_000_000
     assert second >= first
+
+
+@js
+def test_data_view_reads_and_writes_binary_records():
+    buffer = ArrayBuffer(12)
+    view = DataView(buffer, 4, 8)
+    view.setInt32(0, 0xFFFFFFFF, True)
+    view.setFloat32(4, 2.5, True)
+
+    assert view.getInt32(0, True) == -1
+    assert view.getFloat32(4, True) == 2.5
+
+
+@js
+async def test_webassembly_bytes_instantiate_with_typed_exports():
+    module = Uint8Array([
+        0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00,
+        0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7F,
+        0x03, 0x02, 0x01, 0x00,
+        0x07, 0x08, 0x01, 0x04, 0x6D, 0x61, 0x69, 0x6E, 0x00, 0x00,
+        0x0A, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2A, 0x0B,
+    ])
+    instantiated = await WebAssembly.instantiate(module)
+    exports = cast(AnswerExports, instantiated.instance.exports)
+
+    assert exports.main() == 42
 
 
 @js

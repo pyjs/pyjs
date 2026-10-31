@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Direct WebAssembly compiles a larger typed subset. Fixed tuples lower to
+  immutable GC structs, with constant indexing, `len()`, nested destructuring
+  and tuple object fields. `T | None` lowers to a nullable GC reference for
+  lists, tuples and application objects. Lists gain truth tests, independent
+  copies, concatenation and nested or filtered comprehensions, including their
+  fixed-width item formats.
+- Direct WebAssembly iterates `range()` with positive and negative steps, and
+  composes lists and ranges through `enumerate()` and `zip()`, including
+  `strict=True`. A zero step, a strict length mismatch and index overflow trap.
+  Simultaneous assignments such as matrix row swaps evaluate the right side
+  first.
+- Direct WebAssembly lowers positional `min()` and `max()`, `math.sqrt()`,
+  overflow-safe `math.hypot()`, `math.radians()`, imported immutable scalar
+  constants and short-circuiting `and`, `or` and `not` on booleans. Negative
+  square roots trap. `math.sin()` and `math.cos()` become imports from the
+  `math` module, which the host must provide.
+- `transpile_webassembly()` accepts an ordered `exports` tuple and emits every
+  named function into one module, so calls can share state. Reached code can use
+  the new `pyjs.webassembly` linear-memory API, which exports one memory and has
+  a CPython reference implementation for tests.
+- `pyjs.javascript` declares `WebAssembly.instantiate()` with its module,
+  instance and memory results, plus 32-bit `DataView` accessors that also work
+  under CPython. Typed array `slice()` and `subarray()` keep their concrete
+  type, so a `Uint8Array` view stays a `Uint8Array`.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

@@ -77,6 +77,22 @@ def test_typed_array_view_ranges_are_validated():
         DataView(buffer, 11)
 
 
+def test_data_view_reads_and_writes_fixed_width_values():
+    buffer = ArrayBuffer(16)
+    view = DataView(buffer, 4, 8)
+
+    view.setInt32(0, 0xFFFFFFFF, True)
+    view.setFloat32(4, 1.5, True)
+
+    assert view.getInt32(0, True) == -1
+    assert view.getFloat32(4, True) == 1.5
+    assert typed_array_bytes(Uint8Array(buffer))[4:8] == b"\xff\xff\xff\xff"
+    with pytest.raises(ValueError, match="outside"):
+        view.getInt32(8, True)
+    with pytest.raises(ValueError, match="outside"):
+        view.setFloat32(-1, 2.0, True)
+
+
 def test_buffer_source_offsets_count_typed_elements():
     values = Uint32Array([10, 20, 30])
     assert buffer_source_bytes(values, 1, 1) == struct.pack("<I", 20)
