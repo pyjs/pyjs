@@ -78,9 +78,11 @@ def test_markdown_updates_fences_lists_and_blocks_active_content():
                      '<input autofocus><iframe src="https://example.com"></iframe>')
     assert message.querySelector('h2') is None
     assert message.body.querySelector('script,img,input,iframe,style') is None
-    assert message.querySelectorAll('a[href]').length == 1
-    assert require_element(message, 'a[href]').getAttribute('rel') == 'noopener noreferrer'
-    assert require_element(message, 'a[href]').getAttribute('target') == '_blank'
+    assert message.querySelectorAll('a[href]').length == 3
+    for link in message.querySelectorAll('a[href]'):
+        assert (link.getAttribute('href') or '').startswith('https://')
+        assert link.getAttribute('rel') == 'noopener noreferrer'
+        assert link.getAttribute('target') == '_blank'
 
 
 @js
@@ -196,8 +198,80 @@ def test_prompt_input_honors_disabled_submitter_repeat_and_ime_keycode():
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
     assert submissions.count == 0
     fieldset.removeAttribute('disabled')
-    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', repeat=True, bubbles=True, cancelable=True))
+    repeated = KeyboardEvent('keydown', key='Enter', repeat=True, bubbles=True, cancelable=True)
+    textarea.dispatchEvent(repeated)
+    assert repeated.defaultPrevented
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', keyCode=229, bubbles=True, cancelable=True))
     assert submissions.count == 0
     textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
     assert submissions.count == 1
+
+
+@js
+def test_prompt_input_uses_form_ownership_and_default_submitter_tree_order():
+    textarea = InputGroupTextarea('Message')
+    first = tag('button', {'form': 'prompt', 'disabled': '', 'type': ''}, 'First')
+    other = tag('form', {'id': 'other'})
+    foreign = tag('button', {'form': 'other', 'type': 'submit'}, 'Other action')
+    fallback = tag('button', {'type': 'submit'}, 'Fallback')
+    form = tag('form', {'id': 'prompt'}, PromptInput(textarea, fallback))
+    submissions = Submissions()
+    form.addEventListener('submit', submissions)
+    mount(tag('div', first, form, other))
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    first.removeAttribute('disabled')
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 1
+    first.remove()
+    form.insertBefore(foreign, form.firstChild)
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 2
+    fallback.remove()
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 3
+
+
+@js
+def test_prompt_input_external_textarea_and_image_submitter():
+    textarea = InputGroupTextarea('Message')
+    textarea.setAttribute('form', 'external-prompt')
+    form = tag('form', {'id': 'external-prompt'})
+    image = tag('input', {'type': 'image', 'form': 'external-prompt', 'disabled': '', 'alt': 'Send'})
+    submissions = Submissions()
+    form.addEventListener('submit', submissions)
+    mount(tag('div', PromptInput(textarea), form, image))
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 0
+    image.removeAttribute('disabled')
+    textarea.dispatchEvent(KeyboardEvent('keydown', key='Enter', bubbles=True, cancelable=True))
+    assert submissions.count == 1
+
+
+@js
+def test_markdown_retains_retractions_image_labels_and_bare_links():
+    message = Markdown('~~retracted~~ kept\n\nSee https://example.com and www.example.org\n\n'
+                       'before ![important chart <label>](https://example.com/chart.png) after')
+    mount(message)
+    assert require_element(message, 's').textContent == 'retracted'
+    assert message.querySelectorAll('a[href]').length == 1
+    assert require_element(message, 'a[href]').getAttribute('href') == 'https://example.com'
+    assert 'www.example.org' in message.body.textContent
+    assert 'important chart <label>' in message.body.textContent
+    assert message.querySelector('img,label') is None
+    for link in message.querySelectorAll('a[href]'):
+        assert link.getAttribute('rel') == 'noopener noreferrer'
+
+
+@js
+def test_markdown_bounds_padded_tables_without_discarding_the_source():
+    message = Markdown('|A|B|\n|-|-|\n|1|2|')
+    mount(message)
+    assert message.querySelectorAll('td').length == 2
+    source = ('|' + 'a|' * 256 + '\n|' + '-|' * 256 + '\n' + '|x|\n' * 256 + '\n') * 8
+    source += 'END OF MESSAGE'
+    message.set_text(source)
+    assert message.body.textContent == source
+    assert message.querySelector('table') is None
+    message.set_text('**Recovered**')
+    assert require_element(message, 'strong').textContent == 'Recovered'

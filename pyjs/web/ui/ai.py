@@ -1,10 +1,15 @@
 """Composable agent UI. Actions remain owned by the application's transport."""
 
 from pyjs import js
-from pyjs.web.dom import Element
+from pyjs.web.dom import Document, DocumentFragment, Element
 from pyjs.web.domx import div, tag, tw
 from pyjs.web.events import KeyboardEvent
-from pyjs.web.html import HTMLElement, HTMLFormElement, HTMLTextAreaElement
+from pyjs.web.html import (
+    HTMLButtonElement,
+    HTMLFormElement,
+    HTMLInputElement,
+    HTMLTextAreaElement,
+)
 from pyjs.web.ui import Widget
 from pyjs.web.ui.button import Button
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
@@ -15,7 +20,7 @@ from pyjs.web.ui.trace import CodeBlock, TraceStep
 
 @js
 class PromptInput(Widget):
-    """Enter submits the enclosing form; Shift+Enter and IME retain text editing."""
+    """Enter submits the associated form; Shift+Enter and IME retain text editing."""
 
     def __init__(self, control: Element, *actions):
         super().__init__()
@@ -28,18 +33,26 @@ class PromptInput(Widget):
 
     def keydown(self, event: KeyboardEvent):
         if (event.defaultPrevented or event.key != "Enter" or event.shiftKey or event.isComposing
-                or event.keyCode == 229 or event.repeat
+                or event.keyCode == 229
                 or not isinstance(event.target, HTMLTextAreaElement)):
             return
-        form = self.closest("form")
+        form = event.target.form
         if isinstance(form, HTMLFormElement):
             event.preventDefault()
-            submitter = form.querySelector('button:not([type]),button[type="submit"],input[type="submit"],input[type="image"]')
-            if isinstance(submitter, HTMLElement):
-                if not submitter.matches(':disabled'):
-                    form.requestSubmit(submitter)
-            else:
-                form.requestSubmit()
+            if event.repeat:
+                return
+            root = form.getRootNode()
+            # Form ownership may cross the descendant tree. form.elements also
+            # excludes image submitters, so inspect controls in tree order.
+            if isinstance(root, (Document, DocumentFragment, Element)):
+                for submitter in root.querySelectorAll('button,input'):
+                    if (isinstance(submitter, (HTMLButtonElement, HTMLInputElement))
+                            and submitter.form is form and submitter.type in ('submit', 'image')):
+                        if not submitter.matches(':disabled'):
+                            form.requestSubmit(submitter)
+                        return
+            form.requestSubmit()
+
 
 
 @js
