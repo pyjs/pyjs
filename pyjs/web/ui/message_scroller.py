@@ -341,6 +341,9 @@ class MessageScroller(Widget):
     def _layout_anchor(self, item: HTMLElement) -> None:
         peek = self.scroll_previous_item_peek
         viewport_height = self.viewport.clientHeight
+        # Collapsing a panel is not evidence that its reply outgrew the view.
+        if viewport_height == 0:
+            return
         item_top = item.offsetTop
         item_height = item.offsetHeight
         desired = item_top - peek

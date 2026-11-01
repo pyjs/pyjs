@@ -46,6 +46,12 @@ and provides a jump-to-latest control. Prepend earlier messages using
 `prepend_messages`; do not create a second scrolling conversation. Keep stable
 message identities when combining saved history and streamed updates.
 
+Keyboard following requires the application's layout to resize the scroller.
+For content-resizing keyboards, include `interactive-widget=resizes-content`
+in the page's viewport meta tag. Browsers that resize only the visual viewport
+need application-level viewport handling; observing the scroller alone cannot
+detect a keyboard that covers it without changing its size.
+
 Pass a caller-owned textarea and buttons to `PromptInput`. The application
 owns sending, cancellation, attachments, retries, and draft persistence. This
 keeps transport failures from destroying a draft or sending a prompt twice.

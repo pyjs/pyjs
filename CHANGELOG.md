@@ -16,7 +16,9 @@
   confirmations, citations, context usage, and prompt inputs. Conversation
   Markdown renders through pinned browser parser and sanitizer packages.
   Conversation scrollers follow the latest message when their viewport resizes,
-  including when a mobile keyboard opens, while preserving older reading positions.
+  while preserving older reading positions. Keyboard following requires the
+  application to resize the scroller when the keyboard opens. Collapsing a
+  panel to zero height preserves its reply anchor for reopening.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because

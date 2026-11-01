@@ -210,3 +210,26 @@ async def test_viewport_resize_follows_latest_without_moving_an_older_reader():
     assert scroller.mode == "free-scrolling"
     assert abs(scroller.viewport.scrollTop - previous) < 2
     assert scroller.scroll_button.getAttribute("data-active") == "true"
+
+
+@js
+async def test_collapsed_viewport_preserves_reply_anchor():
+    scroller = MessageScroller(tall_item("Earlier", 500), auto_scroll=True)
+    constrain_scroller(scroller, 500)
+    mount(scroller)
+    await wait_for_frames(3)
+    question = tall_item("Question", 40, scroll_anchor=True)
+    scroller.append_messages(question, tall_item("Reply", 250))
+    await wait_for_frames(3)
+    assert scroller.mode == "anchored-to-message"
+    previous = question.offsetTop - scroller.viewport.scrollTop
+
+    constrain_scroller(scroller, 0)
+    await wait_for_frames(3)
+    assert scroller.viewport.clientHeight == 0
+    assert scroller.mode == "anchored-to-message"
+    assert question.getAttribute("data-anchored") == "true"
+    constrain_scroller(scroller, 500)
+    await wait_for_frames(3)
+    assert scroller.mode == "anchored-to-message"
+    assert abs(question.offsetTop - scroller.viewport.scrollTop - previous) < 2
