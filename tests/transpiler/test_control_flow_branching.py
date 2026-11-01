@@ -91,7 +91,7 @@ def test_none_guard_narrows_a_union_with_multiple_concrete_members():
                 return 'absent';
             }
             if (((value)=>typeof value==='boolean'||Number.isInteger(value))(value)) {
-                return String(value + 1);
+                return String((value + 1));
             }
             return value.toUpperCase();
         }

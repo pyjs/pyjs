@@ -1097,8 +1097,8 @@ def main():
     assert "console.log([1, 2].length);" in analysis.javascript
     assert "console.log(new Map([['answer', 42]]).size);" in analysis.javascript
     assert "console.log(new Basket(4).__len__());" in analysis.javascript
-    assert "Math.abs(-3)" in analysis.javascript
-    assert "Math.abs(-1.5)" in analysis.javascript
+    assert "Math.abs((-3))" in analysis.javascript
+    assert "Math.abs((-1.5))" in analysis.javascript
     assert "Math.round(value)" in analysis.javascript
     assert "__len__()" in analysis.javascript
 

@@ -12,6 +12,13 @@
   and local time zone; JavaScript uses the runtime's locale and time zone.
   Localized strings are not a portable serialization format.
 
+- A narrowed value now stays narrowed after an `if` branch that reassigns it
+  and then leaves through `return`, `raise`, `break` or `continue`, because
+  that write cannot reach the next statement. A write that can reach a later
+  read, on the next loop iteration, after the loop, in `finally`, through a
+  caught exception or past a suppressing context manager, still requires a
+  new check.
+
 - Agent UI compositions cover tool activity, public reasoning summaries, plans,
   confirmations, citations, context usage, and prompt inputs. Conversation
   Markdown renders through pinned browser parser and sanitizer packages.
@@ -24,13 +31,6 @@
   it explicitly, and server-rendered conversation Markdown stays escaped text.
   JavaScript inline methods preserve compound receivers, including
   `(value or '').lower()` when filtering mixed-case HTTP/HTTPS links.
-
-- A narrowed value now stays narrowed after an `if` branch that reassigns it
-  and then leaves through `return`, `raise`, `break` or `continue`, because
-  that write cannot reach the next statement. A write that can reach a later
-  read, on the next loop iteration, after the loop, in `finally`, through a
-  caught exception or past a suppressing context manager, still requires a
-  new check.
 
 - JavaScript source maps limit function-name labels to the function's opening
   parenthesis, so browser debuggers retain parameter and local variable names.
