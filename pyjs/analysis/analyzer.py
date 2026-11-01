@@ -3911,9 +3911,9 @@ class InferenceVisitor(ast.NodeVisitor):
 
     @staticmethod
     def branch_initializes_optional(statements, target_node, expected, initialized):
-        # Both live paths must establish presence. A nested/conditional write
-        # invalidates this simple proof; a subsequent direct assignment can
-        # establish it again. Do not infer the entire join from the None arm.
+        # Every live path must establish presence. Loops and exception regions
+        # remain conservative; a subsequent direct assignment can establish
+        # the proof again. Do not infer the entire join from the None arm.
         if any(isinstance(node, ast.Call) for node in ast.walk(target_node)):
             # Re-evaluating a call need not return the object tested or
             # assigned earlier in this branch.
@@ -3928,6 +3928,18 @@ class InferenceVisitor(ast.NodeVisitor):
             if isinstance(statement, UnpackAssignment):
                 initialized = InferenceVisitor.branch_initializes_optional(
                     statement.assignments, target_node, expected, initialized
+                )
+                continue
+            if isinstance(statement, ast.If):
+                if any(target_name == (name := ast.unparse(node)) or target_name.startswith(name + ".")
+                       for node in InferenceVisitor.written_targets([statement.test])):
+                    initialized = False
+                initialized = all(
+                    InferenceVisitor.branch_initializes_optional(
+                        branch, target_node, expected, initialized
+                    )
+                    for branch in (statement.body, statement.orelse)
+                    if body_can_fall_through(branch, loop_control_exits=True)
                 )
                 continue
             if isinstance(statement, ast.AnnAssign):

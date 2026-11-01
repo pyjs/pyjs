@@ -6411,6 +6411,17 @@ _INITIALIZED_GUARD_DEFINITIONS = '''
         return value.value + 1
 
     @js
+    def nested(item: Cached | None, mode: int) -> int:
+        if item is None:
+            if mode == 0:
+                item = Cached(14)
+            elif mode == 1:
+                item = Cached(15)
+            else:
+                return -1
+        return item.value
+
+    @js
     class Holder:
         def __init__(self, item: Cached | None):
             self.item = item
@@ -6443,6 +6454,10 @@ INITIALIZED_GUARD_CONTRACT = _contract(
         ("isinstance guard keeps matching member", "typed(Cached(4), False) != 5"),
         ("optional field is initialized", "Holder(None).read(False) != 10"),
         ("optional field is retained", "Holder(Cached(6)).read(False) != 6"),
+        ("first nested arm initializes", "nested(None, 0) != 14"),
+        ("second nested arm initializes", "nested(None, 1) != 15"),
+        ("nested rejection never reaches read", "nested(None, 2) != -1"),
+        ("present value skips nested branch", "nested(Cached(4), 2) != 4"),
     ),
 )
 
