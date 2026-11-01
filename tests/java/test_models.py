@@ -167,8 +167,9 @@ def main() -> int:
 
 @pytest.mark.parametrize(("field", "message"), [
     ('name: str = Field(alias="title")', "does not support aliases"),
-    ('names: list[str] = Field(default_factory=list)', "does not support default factories"),
-    ('names: list[str] = []', "requires a scalar default"),
+    ('names: list[str] = Field(default_factory=lambda: [])', "supports only list/dict default factories"),
+    ('names: list[str] = ["initial"]', "requires a scalar or empty collection default"),
+    ('names: list[str] = Field(default_factory=dict)', "requires a matching collection default"),
     ('name: str = Field(default="ok", frozen=True)', "does not support freezing or exclusion"),
     ('name: str = Field(default="ok", exclude=True)', "does not support freezing or exclusion"),
     ('name: bytes = b"ok"', "has an unsupported type"),

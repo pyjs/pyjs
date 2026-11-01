@@ -909,8 +909,12 @@ with `pyjs template`.
   keyword-only construction, inherited fields, scalar defaults, nested models,
   and supported JVM collection types. Compiler type checks apply; Pydantic
   coercion and `Field` constraints remain server-side, not JVM validators.
+  Empty list/dictionary defaults and built-in `list`/`dict` default factories
+  allocate fresh collections for each model and each missing JSON field.
+  Explicit `None` remains distinct from an omitted nullable collection.
   Custom validators/serializers, initialization hooks, aliases, generic models,
-  mutable defaults/factories, frozen fields, and dynamic extras are rejected.
+  non-empty collection defaults, custom factories, frozen fields, and dynamic
+  extras are rejected.
   Field access, `instance.model_dump_json()` and
   `Model.model_validate_json(text)` are supported. JSON methods use the typed
   API codec: finite scalars, string literals, nullable values, lists,

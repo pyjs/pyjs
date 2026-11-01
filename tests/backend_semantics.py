@@ -4529,6 +4529,51 @@ LIST_POP_CONTRACT = _contract(
 )
 
 
+MODEL_COLLECTION_DEFAULTS_CONTRACT = _contract(
+    '''
+        from pydantic import BaseModel, Field
+        from pyjs import js
+        @js
+        class Item(BaseModel):
+            names: list[str] = Field(default_factory=list)
+            counts: dict[str, int] = Field(default_factory=dict)
+            optional: list[int] | None = Field(default_factory=list)
+        @js
+        class Child(Item):
+            extra: list[str] = []
+            cache: dict[str, int] = {}
+        @js
+        class Envelope(BaseModel):
+            items: list[Child] = Field(default_factory=list)
+    ''',
+    "model_collection_defaults_result",
+    '''
+        first = Child()
+        second = Child()
+        first.names.append('first')
+        first.counts['first'] = 1
+        first.extra.append('child')
+        first.cache['child'] = 4
+        decoded = Child.model_validate_json('{}')
+        another = Child.model_validate_json('{}')
+        decoded.names.append('decoded')
+        decoded.counts['decoded'] = 2
+        explicit = Child(optional=None, names=['explicit'], counts={'explicit': 3})
+        envelope = Envelope.model_validate_json('{"items":[{}]}')
+        roundtrip = Envelope.model_validate_json(envelope.model_dump_json())
+        envelope.items[0].extra.append('nested')
+    ''',
+    (
+        ("constructor defaults are independent", "len(second.names) != 0 or len(second.counts) != 0 or len(second.extra) != 0 or len(second.cache) != 0"),
+        ("decoder defaults are independent", "len(another.names) != 0 or len(another.counts) != 0"),
+        ("omitted optional factory is a collection", "first.optional is None or len(first.optional) != 0"),
+        ("explicit nullable value stays null", "explicit.optional is not None"),
+        ("explicit values override factories", "explicit.names[0] != 'explicit' or explicit.counts['explicit'] != 3"),
+        ("nested omission and round trip", "len(roundtrip.items[0].extra) != 0"),
+    ),
+)
+
+
 LIST_EXTEND_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_extend_result",

@@ -7,6 +7,11 @@
   steps. Slices preserve item representations and own their list storage.
   Slice assignment, deletion and first-class slice objects remain unsupported.
 
+- JVM Pydantic models support empty list/dictionary defaults and the built-in
+  `list`/`dict` default factories. Construction and JSON decoding create fresh
+  collections per model, including inherited and nullable fields. Custom
+  factories and non-empty collection defaults remain unsupported.
+
 - JVM lists support `extend()` from another list with matching item storage,
   including self-extension, empty inputs and shallow reference preservation.
   Other iterable shapes receive an explicit unsupported-operation diagnostic.
