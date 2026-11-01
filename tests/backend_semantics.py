@@ -6669,6 +6669,93 @@ INITIALIZED_TRUTH_GUARD_CONTRACT = _contract(
 )
 
 
+CALL_GUARD_NARROWING_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Item:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    class Store:
+        def __init__(self, item: Item | None):
+            self.item = item
+
+        def current(self) -> Store:
+            return self
+
+        def read(self) -> int:
+            if self.current().item is None:
+                return 0
+            return self.current().item.value
+
+    @js
+    def returned(store: Store) -> int:
+        if store.current().item is None:
+            return 0
+        return store.current().item.value
+
+    @js
+    def raised(store: Store) -> int:
+        try:
+            if store.current().item is None:
+                raise ValueError("empty")
+            return store.current().item.value
+        except ValueError:
+            return -1
+
+    @js
+    def asserted(store: Store) -> int:
+        assert store.current().item is not None
+        return store.current().item.value
+
+    @js
+    def else_returned(store: Store) -> int:
+        if store.current().item is not None:
+            pass
+        else:
+            return 0
+        return store.current().item.value
+
+    @js
+    def type_guard(store: Store) -> int:
+        if not isinstance(store.current().item, Item):
+            return 0
+        return store.current().item.value
+
+    @js
+    def continued(store: Store) -> int:
+        total = 0
+        for index in range(3):
+            if store.current().item is None:
+                continue
+            total += store.current().item.value
+        return total
+
+    @js
+    def compound(first: Store, second: Store) -> int:
+        if first.current().item is None or second.current().item is None:
+            return 0
+        return first.current().item.value + second.current().item.value
+    ''',
+    "call_guard_narrowing_result",
+    "present = Store(Item(5))\nempty = Store(None)",
+    (
+        ("early return preserves call narrowing", "returned(present) != 5 or returned(empty) != 0"),
+        ("raise preserves call narrowing", "raised(present) != 5 or raised(empty) != -1"),
+        ("assert preserves call narrowing", "asserted(present) != 5"),
+        ("else return preserves call narrowing", "else_returned(present) != 5 or else_returned(empty) != 0"),
+        ("type guard preserves call narrowing", "type_guard(present) != 5 or type_guard(empty) != 0"),
+        ("continue preserves call narrowing", "continued(present) != 15 or continued(empty) != 0"),
+        ("method body preserves call narrowing", "present.read() != 5 or empty.read() != 0"),
+        ("compound guard preserves both calls", "compound(present, present) != 10"),
+        ("compound guard exits for either absence", "compound(empty, present) != 0 or compound(present, empty) != 0"),
+    ),
+)
+
+
 EXITED_BRANCH_NARROWING_CONTRACT = _contract(
     '''
     from pyjs import js

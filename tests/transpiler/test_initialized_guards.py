@@ -28,6 +28,57 @@ def test_compound_optional_initialization_preserves_exact_analyzed_and_javascrip
     )
 
 
+def test_call_receiver_early_exit_preserves_exact_lowering():
+    at(
+        '''
+        @js
+        class Holder:
+            def __init__(self, value: int | None):
+                self.value = value
+            def current(self) -> Holder:
+                return self
+        @js
+        def main(holder: Holder) -> int:
+            if holder.current().value is None:
+                return 0
+            return holder.current().value + 1
+        ''',
+        '''
+        class Holder:
+
+            def __init__(value: int | None) -> None:
+                self.value = value
+
+            def current() -> Holder:
+                return self
+
+        def main(holder: Holder) -> int:
+            if holder.[Holder]current().value.[object]__is__!(None):
+                return 0
+            return holder.[Holder]current().value.[int]__add__!(1)
+        ''',
+        '''
+        export class Holder {
+
+            constructor(value) {
+                this.value = value;
+            }
+
+            current() {
+                return this;
+            }
+        }
+
+        export function main(holder) {
+            if (holder.current().value == null) {
+                return 0;
+            }
+            return holder.current().value + 1;
+        }
+        ''',
+    )
+
+
 def test_compatible_iterable_initialization_preserves_exact_lowering():
     at(
         '''

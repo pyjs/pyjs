@@ -3914,10 +3914,7 @@ class InferenceVisitor(ast.NodeVisitor):
         # Every live path must establish presence. Loops and exception regions
         # remain conservative; a subsequent direct assignment can establish
         # the proof again. Do not infer the entire join from the None arm.
-        if any(isinstance(node, ast.Call) for node in ast.walk(target_node)):
-            # Re-evaluating a call need not return the object tested or
-            # assigned earlier in this branch.
-            return False
+        repeated_call = any(isinstance(node, ast.Call) for node in ast.walk(target_node))
         target_name = ast.unparse(target_node)
         for statement in statements:
             if hasattr(statement, "flow_statements"):
@@ -3960,7 +3957,10 @@ class InferenceVisitor(ast.NodeVisitor):
                 # Structural and iterable assignments can establish presence
                 # without nominal ancestry. Numeric promotions, however, do
                 # not establish the runtime kind of a narrowed union arm.
-                initialized = all(any(
+                # An assignment through a call does not prove that a later
+                # call returns the same receiver. Existing condition proofs
+                # with no assignment retain their ordinary narrowing rules.
+                initialized = not repeated_call and all(any(
                     is_return_type_compatible(member, actual)
                     and not is_numeric_promotion(actual, member)
                     and not (is_builtin_class(actual, "bool") and is_builtin_class(member, "int"))
