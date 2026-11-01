@@ -10,8 +10,10 @@
 - JVM Pydantic models support empty list/dictionary defaults and the built-in
   `list`/`dict` default factories. Construction and JSON decoding create fresh
   collections per model, including inherited fields. Nullable lists and
-  reference-valued dictionaries distinguish missing fields from explicit null;
-  nullable primitive-valued dictionary JSON decoding remains unsupported.
+  reference-valued dictionaries distinguish missing fields from explicit null.
+  JSON decoding of primitive-valued dictionaries is limited to non-nullable
+  model fields with an empty default; required, nullable, and nested
+  primitive-valued dictionaries remain unsupported.
   Custom factories and non-empty collection defaults remain unsupported.
 
 - JVM lists support `extend()` from another list with matching item storage,
