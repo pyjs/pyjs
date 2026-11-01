@@ -72,3 +72,22 @@ def test_extend_rejects_other_iterable_storage(source):
         "JVM list.extend requires a list with matching item storage at line 3 "
         "while compiling extension.main"
     )
+
+
+@pytest.mark.parametrize("item_type,initial,source_type,source", [
+    ("float", "1.5", "int", "2"),
+    ("int", "1", "bool", "True"),
+    ("int | None", "None, 1", "int", "2"),
+])
+def test_extend_rejects_lists_with_different_item_storage(item_type, initial, source_type, source):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''def main() -> int:
+    values: list[{item_type}] = [{initial}]
+    other: list[{source_type}] = [{source}]
+    values.extend(other)
+    return len(values)
+''', filename="extension.py")
+    assert str(caught.value) == (
+        "JVM list.extend requires a list with matching item storage at line 4 "
+        "while compiling extension.main"
+    )
