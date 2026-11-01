@@ -138,6 +138,8 @@ def test_date_construction_and_accessors_use_the_native_javascript_builtin():
             release = Date("2026-08-30T00:00:00")
             iso = epoch.toISOString()
             localized = release.toLocaleDateString()
+            local_datetime = release.toLocaleString()
+            local_time = release.toLocaleTimeString()
             month = current.getMonth()
             day = current.getDate()
             year = current.getFullYear()
@@ -151,6 +153,8 @@ def test_date_construction_and_accessors_use_the_native_javascript_builtin():
             release: Date = Date('2026-08-30T00:00:00')
             iso: str = epoch.[Date]toISOString()
             localized: str = release.[Date]toLocaleDateString()
+            local_datetime: str = release.[Date]toLocaleString()
+            local_time: str = release.[Date]toLocaleTimeString()
             month: int = current.[Date]getMonth()
             day: int = current.[Date]getDate()
             year: int = current.[Date]getFullYear()
@@ -164,6 +168,8 @@ def test_date_construction_and_accessors_use_the_native_javascript_builtin():
             var release = new Date('2026-08-30T00:00:00');
             var iso = epoch.toISOString();
             var localized = release.toLocaleDateString();
+            var local_datetime = release.toLocaleString();
+            var local_time = release.toLocaleTimeString();
             var month = current.getMonth();
             var day = current.getDate();
             var year = current.getFullYear();

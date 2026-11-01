@@ -408,6 +408,12 @@ class Date:
     def toLocaleDateString(self) -> str:
         return self._datetime.astimezone().strftime("%x")
 
+    def toLocaleString(self) -> str:
+        return self._datetime.astimezone().strftime("%x %X")
+
+    def toLocaleTimeString(self) -> str:
+        return self._datetime.astimezone().strftime("%X")
+
 
 @js.native
 class Math:

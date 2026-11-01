@@ -87,6 +87,18 @@ def test_date_now_uses_native_epoch_milliseconds():
 
 
 @js
+def test_date_local_formatting_preserves_seconds_and_date_without_changing_the_instant():
+    date = Date("2026-11-01T12:34:56Z")
+    later = Date("2026-11-01T12:34:57Z")
+    tomorrow = Date("2026-11-02T12:34:56Z")
+    assert date.toLocaleString() != tomorrow.toLocaleString()
+    assert date.toLocaleTimeString() != later.toLocaleTimeString()
+    assert date.toLocaleString() != ""
+    assert date.toLocaleTimeString() != ""
+    assert date.toISOString() == "2026-11-01T12:34:56.000Z"
+
+
+@js
 def test_date_construction_and_string_primitives_use_native_browser_apis():
     epoch = Date(0)
     current = Date()

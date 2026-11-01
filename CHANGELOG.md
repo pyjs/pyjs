@@ -6,6 +6,12 @@
   including self-extension, empty inputs and shallow reference preservation.
   Other iterable shapes receive an explicit unsupported-operation diagnostic.
 
+- JavaScript `Date` exposes no-argument `toLocaleString()` and
+  `toLocaleTimeString()`, with local date/time formatting for Python rendering.
+  Python uses the process's time locale (C unless the application changes it)
+  and local time zone; JavaScript uses the runtime's locale and time zone.
+  Localized strings are not a portable serialization format.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

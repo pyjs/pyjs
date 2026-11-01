@@ -451,6 +451,36 @@ def test_date_construction_and_accessors_have_cpython_fallbacks():
     assert release.toLocaleDateString()
 
 
+@pytest.mark.parametrize("value", [0, 1793539800000, "2026-11-01T01:30:00-04:00",
+                                  "2026-11-01T01:30:00-05:00"])
+def test_date_local_datetime_and_time_use_the_process_locale(value):
+    expected = (datetime.fromisoformat(value) if isinstance(value, str)
+                else datetime.fromtimestamp(value / 1000)).astimezone()
+    date = Date(value)
+    assert date.toLocaleString() == expected.strftime("%x %X")
+    assert date.toLocaleTimeString() == expected.strftime("%X")
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="Process time zone override needs tzset")
+@pytest.mark.parametrize(("zone", "value", "local"), [
+    ("NPT-5:45", "1970-01-01T00:00:00+00:00", "1970-01-01T05:45:00"),
+    ("EST5", "1970-01-01T00:00:00+00:00", "1969-12-31T19:00:00"),
+    ("EST5EDT,M3.2.0/2,M11.1.0/2", "2026-03-08T06:59:00+00:00", "2026-03-08T01:59:00"),
+    ("EST5EDT,M3.2.0/2,M11.1.0/2", "2026-03-08T07:00:00+00:00", "2026-03-08T03:00:00"),
+])
+def test_date_local_display_uses_offset_and_dst_not_utc(monkeypatch, zone, value, local):
+    try:
+        with monkeypatch.context() as context:
+            context.setenv("TZ", zone)
+            time.tzset()
+            date = Date(value)
+            expected = datetime.fromisoformat(local)
+            assert date.toLocaleString() == expected.strftime("%x %X")
+            assert date.toLocaleTimeString() == expected.strftime("%X")
+    finally:
+        time.tzset()
+
+
 def test_document_create_element_works_after_direct_html_import():
     assert isinstance(document.createElement("section"), HTMLElement)
     assert document.body.style.overflow == "visible"
