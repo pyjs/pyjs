@@ -238,11 +238,15 @@ artifacts.
 
 ### Browser and platform verification
 
-Run browser tests autonomously with the managed Chrome runner:
+Browser tests default to isolated, headless Chrome. Its temporary profile and
+process are removed when the test daemon exits (after 120 idle seconds by
+default). Use `--pyjs-headed` to inspect that isolated window. The explicit
+`--pyjs-browser=system` option opens your normal browser and leaves tab cleanup
+to you; do not use it for unattended tests.
 
 ```bash
-uv run pytest -q -m pyjs_web --pyjs-target=web --pyjs-browser=managed
-uv run pytest -q examples -m pyjs_web --pyjs-target=web --pyjs-browser=managed
+uv run pytest -q -m pyjs_web --pyjs-target=web
+uv run pytest -q examples -m pyjs_web --pyjs-target=web
 ```
 
 Use `uv run python scripts/capture_runner_screenshot.py` when changing the

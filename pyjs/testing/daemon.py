@@ -92,7 +92,7 @@ class PrototypeDaemon:
         idle_seconds: int,
         project_root: Path,
         cache_dir: Path,
-        browser_mode: str = "system",
+        browser_mode: str = "managed",
         headed: bool = False,
         browser_width: int = 1440,
         browser_height: int = 1000,
@@ -789,7 +789,7 @@ def main() -> int:
     parser.add_argument("--idle-seconds", type=int, default=120)
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument("--cache-dir", type=Path, default=Path.cwd() / ".pytest_cache" / "pyjs")
-    parser.add_argument("--browser-mode", choices=("system", "managed"), default="system")
+    parser.add_argument("--browser-mode", choices=("system", "managed"), default="managed")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--browser-width", type=int, default=1440)
     parser.add_argument("--browser-height", type=int, default=1000)

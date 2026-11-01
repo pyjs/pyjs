@@ -37,7 +37,7 @@ RUN_RESPONSE_TIMEOUT_SECONDS = 75
 RESPONSE_TIMEOUT_GRACE_SECONDS = 15
 DAEMON_LOG_TAIL_LINES = 20
 RENDER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-DEFAULT_BROWSER_MODE = "system"
+DEFAULT_BROWSER_MODE = "managed"
 DEFAULT_BROWSER_WIDTH = 1440
 DEFAULT_BROWSER_HEIGHT = 1000
 DEFAULT_COLOR_SCHEME = "system"
@@ -250,7 +250,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--pyjs-browser",
         choices=["system", "managed"],
         default=None,
-        help="Use the system browser runner or a PyJS-managed Chrome instance.",
+        help="Use isolated managed Chrome (default), or opt into the system browser.",
     )
     group.addoption(
         "--pyjs-headed",

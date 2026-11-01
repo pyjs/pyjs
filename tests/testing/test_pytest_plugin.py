@@ -592,11 +592,11 @@ def pytest_config(tmp_path, *, options=None, ini=None):
     )
 
 
-def test_browser_configuration_defaults_preserve_the_system_browser_workflow(tmp_path):
+def test_browser_configuration_defaults_to_isolated_headless_chrome(tmp_path):
     settings = BrowserTestConfig.from_pytest(pytest_config(tmp_path))
 
     assert settings == BrowserTestConfig(
-        "system",
+        "managed",
         False,
         1440,
         1000,
@@ -659,7 +659,7 @@ def test_browser_command_line_overrides_ini_values(tmp_path):
 
 
 def test_managed_only_browser_configuration_is_rejected_for_system_browser(tmp_path):
-    config = pytest_config(tmp_path, ini={"pyjs_color_scheme": "dark"})
+    config = pytest_config(tmp_path, ini={"pyjs_browser": "system", "pyjs_color_scheme": "dark"})
 
     with pytest.raises(pytest.UsageError, match="requires pyjs_browser"):
         BrowserTestConfig.from_pytest(config)
@@ -688,6 +688,7 @@ def test_daemon_must_match_project_and_cache(tmp_path):
         "project_root": str(project_root),
         "cache_dir": str(cache_dir),
         "artifacts_dir": str(cache_dir / "artifacts"),
+        "browser_mode": "system",
     }
     settings = BrowserTestConfig(
         "system",

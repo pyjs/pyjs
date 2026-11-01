@@ -494,9 +494,13 @@ def test_runner_page_build_failure_wakes_browser_connection_wait(tmp_path, monke
     assert "unsupported runner code" in daemon.runner_page_error
 
 
-def test_managed_browser_connection_waits_for_browser_startup(tmp_path):
+@pytest.mark.parametrize("mode", ["managed", "system"])
+def test_browser_connection_opens_personal_tab_only_when_requested(tmp_path, monkeypatch, mode):
     daemon = make_daemon(tmp_path)
-    daemon.browser_mode = "managed"
+    if mode == "system":
+        daemon.browser_mode = mode
+    open_tab = Mock()
+    monkeypatch.setattr("pyjs.testing.daemon.webbrowser.open_new_tab", open_tab)
     browser = object()
 
     async def connect_after_daemon_health_is_available():
@@ -506,6 +510,10 @@ def test_managed_browser_connection_waits_for_browser_startup(tmp_path):
         return await browser_task
 
     assert asyncio.run(connect_after_daemon_health_is_available()) is browser
+    if mode == "system":
+        open_tab.assert_called_once_with(daemon.runner_url)
+    else:
+        open_tab.assert_not_called()
 
 
 def test_runner_page_build_failure_returns_without_browser_connection_timeout(tmp_path):
@@ -532,7 +540,7 @@ def test_daemon_status_exposes_runner_state(tmp_path):
     assert status["reusable"] is True
     assert status["pending_runs"] == 0
     assert status["runner_page_error"] == "runner compilation failed"
-    assert status["browser_mode"] == "system"
+    assert status["browser_mode"] == "managed"
     assert status["headed"] is False
     assert status["browser_width"] == 1440
     assert status["browser_height"] == 1000
