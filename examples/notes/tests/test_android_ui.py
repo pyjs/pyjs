@@ -119,6 +119,21 @@ class HiddenShare(ViewAssertion):
             assert view.getVisibility() == View.GONE
 
 
+class FinishShare(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            activity = cast(NotesActivity, view.getContext())
+            assert not activity.is_finishing()
+            activity.finish()
+            assert activity.is_finishing()
+
+
+def test_share_activity_can_explicitly_finish() -> None:
+    launch_intent(share_intent("Preview"))
+    by_id(i32(102)).check(FinishShare())
+
+
 def test_share_intent_launch_recreation_and_unsupported_payloads() -> None:
     intent = share_intent("First 雪\nhttps://example.com/")
     intent.put_string_extra(Intent.EXTRA_SUBJECT, "Read later")

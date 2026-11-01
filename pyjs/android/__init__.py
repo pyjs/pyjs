@@ -960,6 +960,13 @@ class Activity(Context):
     def onBackPressed(self) -> None:
         pass
 
+    def finish(self) -> None:
+        pass
+
+    @jvm.native("android/app/Activity", name="isFinishing", invocation="virtual")
+    def is_finishing(self) -> bool:
+        return False
+
     def setContentView(self, view: View) -> None:
         self.content = view
 
