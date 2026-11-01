@@ -451,6 +451,16 @@ def test_date_construction_and_accessors_have_cpython_fallbacks():
     assert release.toLocaleDateString()
 
 
+@pytest.mark.parametrize("value", [0, 1793539800000, "2026-11-01T01:30:00-04:00",
+                                  "2026-11-01T01:30:00-05:00"])
+def test_date_local_datetime_and_time_use_the_host_locale(value):
+    expected = (datetime.fromisoformat(value) if isinstance(value, str)
+                else datetime.fromtimestamp(value / 1000)).astimezone()
+    date = Date(value)
+    assert date.toLocaleString() == expected.strftime("%x %X")
+    assert date.toLocaleTimeString() == expected.strftime("%X")
+
+
 def test_document_create_element_works_after_direct_html_import():
     assert isinstance(document.createElement("section"), HTMLElement)
     assert document.body.style.overflow == "visible"
