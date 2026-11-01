@@ -238,9 +238,10 @@ artifacts.
 
 ### Browser and platform verification
 
-Browser tests default to isolated, headless Chrome. Its temporary profile and
-process are removed when the test daemon exits (after 120 idle seconds by
-default). Use `--pyjs-headed` to inspect that isolated window. The explicit
+Browser tests default to isolated, headless Chrome. On orderly shutdown, the
+daemon stops Chrome and attempts to remove its temporary profile (after 120
+idle seconds by default). Forced process termination can leave these behind.
+Use `--pyjs-headed` to inspect that isolated window. The explicit
 `--pyjs-browser=system` option opens your normal browser and leaves tab cleanup
 to you; do not use it for unattended tests.
 

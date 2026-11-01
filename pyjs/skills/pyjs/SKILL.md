@@ -230,7 +230,6 @@ Small applications may keep tests in the application file:
 ```bash
 python -m pytest -q app.py
 python -m pytest -q app.py --pyjs-target=web
-python -m pytest -q app.py --pyjs-target=web --pyjs-browser=managed
 ```
 
 Pass the filename explicitly because pytest's default discovery only searches
@@ -238,19 +237,11 @@ Pass the filename explicitly because pytest's default discovery only searches
 with `@js`. Larger projects may keep ordinary and browser tests in a `tests/`
 directory.
 
-At the start of a new project, ask which browser-test experience the user wants
-as the default:
-
-- `--pyjs-browser=managed` runs unattended in PyJS-managed headless Chrome and
-  does not use the user's browser.
-- `--pyjs-browser=system` runs in the live runner page opened in the user's
-  normal browser, so they can watch tests and inspect retained UI.
-
-Mention that managed Chrome can instead be visible with `--pyjs-headed`. Keep
-the chosen preference for the project and do not ask before every run. At
-natural testing checkpoints, occasionally remind the user that the preference
-can be changed. Never use or disrupt their normal browser unless they selected
-the system runner or explicitly requested it.
+Browser tests default to isolated headless Chrome. Install it with
+`sdkmgr browser install`, or set `CHROME_BIN` to an existing Chrome or Chromium
+executable. Use `--pyjs-headed` to inspect the isolated window. Only use
+`--pyjs-browser=system` when the user explicitly requests their normal browser;
+close the test tabs you open. Keep unattended tests in managed mode.
 
 Managed-browser failures automatically include a screenshot and JSON
 diagnostics. Prefer the reusable `mount`, `bubbling_click`, `press_key`, and

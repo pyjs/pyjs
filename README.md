@@ -717,6 +717,11 @@ python -m pytest -q
 python -m pytest -q --pyjs-target=web
 ```
 
+Browser tests use isolated headless Chrome by default. Install it with
+`sdkmgr browser install`, or set `CHROME_BIN` to an existing Chrome or Chromium
+executable. Use `--pyjs-headed` to see the isolated window. For interactive use,
+`--pyjs-browser=system` opens your normal browser; close its test tabs yourself.
+
 Use `pytest.mark.pyjs_web` for tests that should be compiled and run in the
 browser. Unmarked tests run only as ordinary Python tests;
 `pytest.mark.pyjs_python` can make that intent explicit. A filename such as

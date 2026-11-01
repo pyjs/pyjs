@@ -198,8 +198,10 @@ def test_newest_registered_browser_remains_active_when_older_browser_disconnects
     assert daemon.browser_ready.is_set()
 
 
-def test_active_browser_disconnect_clears_browser_readiness(tmp_path):
+@pytest.mark.parametrize("mode", ["managed", "system"])
+def test_active_browser_disconnect_clears_browser_readiness(tmp_path, mode):
     daemon = make_daemon(tmp_path)
+    daemon.browser_mode = mode
     browser = object()
 
     daemon.activate_browser(browser)
@@ -207,6 +209,9 @@ def test_active_browser_disconnect_clears_browser_readiness(tmp_path):
 
     assert daemon.active_browser is None
     assert not daemon.browser_ready.is_set()
+    assert daemon.reusable is (mode == "system")
+    if mode == "managed":
+        assert asyncio.run(asyncio.wait_for(daemon.ensure_browser_connection(), 0.1)) is None
 
 
 def test_browser_activity_refreshes_its_last_seen_time(tmp_path, monkeypatch):
@@ -438,8 +443,10 @@ def test_daemon_caches_one_compiled_suite_while_running_one_test_at_a_time(tmp_p
     ]
 
 
-def test_browser_connection_failure_reports_its_stage(tmp_path):
+@pytest.mark.parametrize("mode", ["managed", "system"])
+def test_browser_connection_failure_reports_its_stage(tmp_path, mode):
     daemon = make_daemon(tmp_path)
+    daemon.browser_mode = mode
     daemon.bundle_builder.build = Mock(return_value=BUNDLE)
     daemon.ensure_browser_connection = AsyncMock(return_value=None)
 
@@ -452,8 +459,12 @@ def test_browser_connection_failure_reports_its_stage(tmp_path):
         "error": (
             "No browser runner connected. Open http://127.0.0.1:8765/, "
             "or rerun with --pyjs-browser=managed."
+            if mode == "system" else
+            "Managed browser runner disconnected or failed to connect. "
+            "Rerun to start a new browser."
         ),
     }
+    assert daemon.reusable is (mode == "system")
 
 
 def test_runner_page_build_failure_renders_diagnostics(tmp_path, monkeypatch):
@@ -1033,3 +1044,28 @@ def test_active_browser_disconnect_fails_run_without_waiting(tmp_path):
     assert daemon.active_browser is None
     assert daemon.pending_results == {}
     assert daemon.reusable is False
+
+
+@pytest.mark.parametrize("arguments,mode", [
+    ([], "managed"),
+    (["--browser-mode", "system"], "system"),
+])
+def test_standalone_daemon_browser_default(monkeypatch, arguments, mode):
+    from pyjs.testing import daemon
+
+    run = AsyncMock()
+    monkeypatch.setattr(daemon, "async_main", run)
+    monkeypatch.setattr("sys.argv", ["pyjs.testing.daemon", *arguments])
+    assert daemon.main() == 0
+    assert run.await_args.args[5] == mode
+
+
+@pytest.mark.parametrize("exit_code", [None, -9])
+def test_health_rejects_exited_managed_browser(tmp_path, exit_code):
+    daemon = make_daemon(tmp_path)
+    daemon.managed_browser = SimpleNamespace(
+        process=SimpleNamespace(poll=lambda: exit_code), debug_port=12345,
+    )
+    health = daemon.status_payload()
+    assert health["reusable"] is (exit_code is None)
+    assert health["browser_debug_port"] == 12345
