@@ -56,6 +56,9 @@
   these guards do not establish that repeated calls are pure or stable.
   Container item promotion retains its existing behavior.
 
+- JavaScript comprehension filters use Python truth rules for collections and
+  objects with `__bool__()` or `__len__()`, including empty collections.
+
 - Direct WebAssembly compiles a larger typed subset. Fixed tuples lower to
   immutable GC structs, with constant indexing, `len()`, nested destructuring
   and tuple object fields. `T | None` lowers to a nullable GC reference for

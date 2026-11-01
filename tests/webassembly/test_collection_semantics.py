@@ -100,21 +100,34 @@ def main() -> int:
 ''')
 
 
-@pytest.mark.parametrize('name', ['missing', 'Box', 'data', 'sqrt'])
+@pytest.mark.parametrize('name', ['missing', 'Box', 'data', 'sqrt', 'anonymous'])
 @pytest.mark.parametrize('first', [True, False])
 def test_exports_require_python_functions(name, first):
     from pyjs.webassembly import transpile_webassembly
 
     exports = (name, 'main') if first else ('main', name)
-    with pytest.raises(ValueError, match=f"export '{name}' must name a Python function"):
+    with pytest.raises(ValueError, match=f"export '{name}' must name a function defined with def"):
         transpile_webassembly('''
 from math import sqrt
 class Box:
     pass
 data = 1
+anonymous = lambda: 1
 def main() -> int:
     return 1
 ''', exports=exports)
+
+
+@pytest.mark.parametrize('body', [
+    'lo: float = 0\nhi: float = 1\nreturn (lo + hi) / 2 * 3.0',
+    'value: float = 2 * 3\nreturn value * 0.25',
+    'value: float = len([1, 2, 3])\nreturn value / 2',
+    'step: float = 2\ntotal = 0.0\nfor item in range(3):\n    total += step * 0.5\nreturn total / 2',
+    'value: object = 1\nreturn 1.5',
+    'value: int | None = 5\nreturn 1.5',
+])
+def test_local_annotations_do_not_coerce_inferred_scalar_storage(tmp_path, body):
+    assert_python_result(tmp_path, 'def main() -> float:\n' + textwrap.indent(body, '    '))
 
 
 @pytest.mark.parametrize('value,expression', [

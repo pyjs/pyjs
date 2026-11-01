@@ -694,7 +694,13 @@ class WebAssemblyEmitter:
             if isinstance(target, (ast.Name, ast.arg, BlockArgument)):
                 declaration = self.local_declaration(scope, target)
                 storage_format = analyzed_numeric_format(declaration)
-                if declaration is not None:
+                # None has no physical storage of its own. Other assignments
+                # keep their inferred type; annotations do not coerce values.
+                if (
+                    declaration is not None
+                    and isinstance(value_type, Class)
+                    and value_type.generic_name == "NoneType"
+                ):
                     value_type = declaration.cls
                 name = self.target_name(target)
                 add_local(
@@ -851,7 +857,13 @@ class WebAssemblyEmitter:
                         self.numeric_storage_type(storage_format)
                         if storage_format is not None
                         else self.value_type(declaration.cls)
-                        if declaration is not None
+                        if declaration is not None and (
+                            statement.value is None
+                            or (
+                                isinstance(statement.value, ast.Constant)
+                                and statement.value.value is None
+                            )
+                        )
                         else self.value_type(analyzed_value_type(statement.value))
                         if statement.value is not None
                         else self.annotation(statement.annotation)
@@ -4132,8 +4144,8 @@ def transpile_webassembly(
         selected = []
         for name in exports:
             value = getattr(module, name, None)
-            if not inspect.isfunction(value):
-                raise ValueError(f"WebAssembly export {name!r} must name a Python function")
+            if not inspect.isfunction(value) or value.__name__ == "<lambda>":
+                raise ValueError(f"WebAssembly export {name!r} must name a function defined with def")
             selected.append(value)
         return tuple(selected[1:])
 
