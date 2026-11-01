@@ -1788,6 +1788,14 @@ class WebAssemblyEmitter:
             code.extend(struct.pack("<d", 0.0))
             code.extend((F64_EQ, I32_EQZ))
         elif isinstance(value_type, bytes):
+            reference_type = analyzed_value_type(node)
+            if not isinstance(reference_type, Class) or reference_type.generic_name == "object":
+                # An object annotation hides __bool__/__len__ from analysis;
+                # a non-null reference alone does not determine Python truth.
+                raise WebAssemblyUnsupported(
+                    "WebAssembly truth test requires a narrowed reference type",
+                    node,
+                )
             code.extend((REF_IS_NULL, I32_EQZ))
         elif value_type is None:
             code.extend((I32_CONST, 0))
@@ -1911,7 +1919,7 @@ class WebAssemblyEmitter:
             isinstance(target, Function)
             and target.name == "__len__"
             and isinstance(node.func, ast.Attribute)
-            and analyzed_value_type(node.func.value).generic_name == "list"
+            and analyzed_value_type(node.func.value) in self.list_indices
         ):
             list_type = analyzed_value_type(node.func.value)
             _array_index, list_index = self.list_indices[list_type]
@@ -1925,7 +1933,7 @@ class WebAssemblyEmitter:
             isinstance(target, Function)
             and target.name in {"__len__", "__bool__"}
             and isinstance(node.func, ast.Attribute)
-            and analyzed_value_type(node.func.value).generic_name == "tuple"
+            and analyzed_value_type(node.func.value) in self.tuple_indices
         ):
             self.expression(code, node.func.value)
             code.append(DROP)
@@ -2020,7 +2028,9 @@ class WebAssemblyEmitter:
                         "WebAssembly instance methods require a receiver",
                         node,
                     )
-                self.expression(code, node.func.value)
+                self.expression_for_storage(
+                    code, node.func.value, self.reference_type(target.cls), None,
+                )
             if len(node.args) != len(target.params):
                 raise WebAssemblyUnsupported(
                     f"WebAssembly call to {target.name} has incompatible arguments",
@@ -3951,7 +3961,7 @@ class WebAssemblyEmitter:
         ):
             return False
         receiver_type = analyzed_value_type(node.func.value)
-        return receiver_type.generic_name == "list" and receiver_type in self.list_indices
+        return receiver_type in self.list_indices
 
     def is_list_constructor(self, node: ast.Call) -> bool:
         target = analyzed_value_object(node.func)
@@ -3964,14 +3974,13 @@ class WebAssemblyEmitter:
             and analyzed_value_type(node.args[0]) == target
         )
 
-    @staticmethod
-    def is_list_concat(node: ast.Call) -> bool:
+    def is_list_concat(self, node: ast.Call) -> bool:
         target = analyzed_value_object(node.func)
         return (
             isinstance(target, Function)
             and target.name == "__add__"
             and isinstance(node.func, ast.Attribute)
-            and analyzed_value_type(node.func.value).generic_name == "list"
+            and analyzed_value_type(node.func.value) in self.list_indices
         )
 
     def is_list_set(self, node: ast.Call) -> bool:
@@ -3983,7 +3992,7 @@ class WebAssemblyEmitter:
         ):
             return False
         receiver_type = analyzed_value_type(node.func.value)
-        return receiver_type.generic_name == "list" and receiver_type in self.list_indices
+        return receiver_type in self.list_indices
 
     def value_type(self, value_type) -> ValueType:
         if isinstance(value_type, UnionType):

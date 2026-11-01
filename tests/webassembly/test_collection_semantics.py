@@ -215,3 +215,78 @@ def test_unsupported_imported_values_have_located_diagnostics(tmp_path, monkeypa
             )
     finally:
         sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize('body', [
+    'value: object = empty()\nreturn 1 if value else 2',
+    'value: object = empty()\nreturn 1 if not value else 2',
+    'value: object = empty()\nif value:\n    return 1\nreturn 2',
+    'value: object = empty()\ncount = 0\nwhile value:\n    count += 1\n    if count == 3:\n        break\nreturn count',
+    'value: object = empty()\nreturn len([i for i in [1, 2] if value])',
+    'pair = ()\nvalue: object = pair\nreturn 1 if value else 2',
+    'value: object = Falsy()\nreturn 1 if value else 2',
+    'value: object = Zero()\nreturn 1 if value else 2',
+])
+def test_object_reference_truth_requires_narrowing(body):
+    from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+
+    source = ('''
+class Falsy:
+    def __bool__(self) -> bool:
+        return False
+
+class Zero:
+    def __len__(self) -> int:
+        return 0
+
+def empty() -> list[int]:
+    return []
+
+def main() -> int:
+''' + textwrap.indent(body, '    '))
+    with pytest.raises(WebAssemblyUnsupported, match=r'truth test requires a narrowed.*at line [0-9]+'):
+        transpile_webassembly(source)
+
+
+@pytest.mark.parametrize('nullable', [False, True])
+@pytest.mark.parametrize('kind', ['A', 'B'])
+@pytest.mark.parametrize('read', ['value.get()', 'value.twice(5)', 'value + 1'])
+def test_union_method_receivers_match_physical_storage(tmp_path, nullable, kind, read):
+    from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+
+    source = '''
+class A:
+    def __init__(self, value: int):
+        self.value = value
+
+    def get(self) -> int:
+        return 1
+
+    def twice(self, number: int) -> int:
+        return number * 2
+
+    def __add__(self, number: int) -> int:
+        return self.value + number + 100
+
+class B:
+    def __init__(self, value: int):
+        self.value = value
+
+    def get(self) -> int:
+        return 2
+
+    def twice(self, number: int) -> int:
+        return number * 3
+
+    def __add__(self, number: int) -> int:
+        return self.value + number + 200
+
+'''
+    body = f'value: A | B{" | None" if nullable else ""} = {kind}(1)\n'
+    body += f'if value is not None:\n    return {read}\nreturn 0' if nullable else f'return {read}'
+    source += 'def main() -> int:\n' + textwrap.indent(body, '    ')
+    if kind == 'A':
+        assert_python_result(tmp_path, source)
+    else:
+        with pytest.raises(WebAssemblyUnsupported, match=r'storage conversion.*at line [0-9]+'):
+            transpile_webassembly(source)
