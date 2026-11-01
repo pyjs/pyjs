@@ -15,6 +15,8 @@
 - Agent UI compositions cover tool activity, public reasoning summaries, plans,
   confirmations, citations, context usage, and prompt inputs. Conversation
   Markdown renders through pinned browser parser and sanitizer packages.
+  Conversation scrollers follow the latest message when their viewport resizes,
+  including when a mobile keyboard opens, while preserving older reading positions.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because

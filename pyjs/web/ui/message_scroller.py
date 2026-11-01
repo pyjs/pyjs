@@ -206,6 +206,8 @@ class MessageScroller(Widget):
             observer.disconnect()
         observer = ResizeObserver(self.content_resized)
         observer.observe(self.content)
+        # Keyboards and panel resizing can change only the visible scroll area.
+        observer.observe(self.viewport)
         self.resize_observer = observer
 
     def disconnected(self):

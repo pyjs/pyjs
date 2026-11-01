@@ -184,3 +184,29 @@ async def test_layout_reflow_and_hidden_appends_keep_following():
     await wait_for_frames(5)
     assert scroller.mode == 'following-bottom'
     assert scroller.is_at_latest()
+
+
+@js
+async def test_viewport_resize_follows_latest_without_moving_an_older_reader():
+    scroller = MessageScroller(tall_item("First", 240), tall_item("Last", 240), auto_scroll=True)
+    constrain_scroller(scroller, 240)
+    mount(scroller)
+    await wait_for_frames(3)
+    assert scroller.is_at_latest()
+    constrain_scroller(scroller, 90)
+    await wait_for_frames(3)
+    assert scroller.is_at_latest()
+    assert scroller.mode == "following-bottom"
+    constrain_scroller(scroller, 240)
+    await wait_for_frames(3)
+    assert scroller.is_at_latest()
+
+    dispatch_wheel(scroller, -120)
+    scroller.viewport.scrollTop = 120
+    await wait_for_frames(3)
+    previous = scroller.viewport.scrollTop
+    constrain_scroller(scroller, 90)
+    await wait_for_frames(3)
+    assert scroller.mode == "free-scrolling"
+    assert abs(scroller.viewport.scrollTop - previous) < 2
+    assert scroller.scroll_button.getAttribute("data-active") == "true"
