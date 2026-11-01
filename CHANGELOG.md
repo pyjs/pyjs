@@ -28,6 +28,19 @@
   caught exception or past a suppressing context manager, still requires a
   new check.
 
+- Agent UI compositions cover tool activity, public reasoning summaries, plans,
+  confirmations, citations, context usage, and prompt inputs. Conversation
+  Markdown renders through pinned browser parser and sanitizer packages.
+  Conversation scrollers follow the latest message when their viewport resizes,
+  while preserving older reading positions. Keyboard following requires the
+  application to resize the scroller when the keyboard opens. Collapsing a
+  panel to zero height preserves its reply anchor for reopening.
+  Markdown rendering policy is written in typed Python over browser-library
+  bindings. `Element.innerHTML` is available in browser code; CPython rejects
+  it explicitly, and server-rendered conversation Markdown stays escaped text.
+  JavaScript inline methods preserve compound receivers, including
+  `(value or '').lower()` when filtering mixed-case HTTP/HTTPS links.
+
 - JavaScript source maps limit function-name labels to the function's opening
   parenthesis, so browser debuggers retain parameter and local variable names.
   Scope names also retain their correct indices across bundled Python modules.

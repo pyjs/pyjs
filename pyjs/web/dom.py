@@ -2267,6 +2267,15 @@ class Element(Node):
         _set_element_text_content(self, value)
 
     @property
+    def innerHTML(self) -> str:
+        """Browser HTML access; the CPython DOM does not parse HTML strings."""
+        raise NotImplementedError("innerHTML is only available in the browser")
+
+    @innerHTML.setter
+    def innerHTML(self, value: str):
+        raise NotImplementedError("innerHTML is only available in the browser")
+
+    @property
     def attributes(self) -> NamedNodeMap[Attr]:
         return NamedNodeMap(_AttributeItems(_parts(self), self), self)
 

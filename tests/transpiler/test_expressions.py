@@ -53,6 +53,20 @@ def test_f_string_receiver_groups_the_complete_javascript_concatenation():
 
 
 
+def test_inline_method_groups_compound_receivers():
+    assert_transpile(
+        '''
+        def main(value: str | None, suffix: str) -> str:
+            return (value or '').lower() + ('Q' + suffix).lower()
+        ''',
+        '''
+        export function main(value, suffix) {
+            return (value || '').toLowerCase() + ('Q' + suffix).toLowerCase();
+        }
+        ''',
+    )
+
+
 def test_date_now_uses_the_native_javascript_builtin():
     at(
         """

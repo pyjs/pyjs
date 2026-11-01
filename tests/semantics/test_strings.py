@@ -3,6 +3,26 @@ from pyjs.testing.helpers import at
 from .helpers import assert_semantics
 
 
+def test_inline_methods_on_compound_receivers_match_python():
+    assert_semantics(
+        '''
+        from pyjs import js
+
+        @js
+        def check(value: str | None) -> None:
+            print((value or '').lower())
+            print((value or '').startswith('abc'))
+            print((value or '').replace('A', 'a'))
+            print(('Q' + (value or 'R')).lower())
+            print((value if value is not None else 'ABC').lower())
+
+        check('ABC')
+        check('')
+        check(None)
+        '''
+    )
+
+
 def test_unicode_length_and_strip_operations_match_python():
     assert_semantics(
         """\

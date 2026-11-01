@@ -1837,7 +1837,10 @@ class Transpiler(_Unparser):
             operator_rule = self.operator_precedence(node)
             if operator_rule is None:
                 operator_precedence = None
-                self_precedence = argument_precedence = None
+                # Templates can append member access to {self}; preserve the
+                # whole receiver even when it is a boolean or binary expression.
+                self_precedence = _Precedence.ATOM
+                argument_precedence = None
             else:
                 operator_precedence, self_precedence, argument_precedence = operator_rule
             self_ = None
