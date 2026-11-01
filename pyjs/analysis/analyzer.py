@@ -13621,6 +13621,7 @@ class InferenceVisitor(ast.NodeVisitor):
             keywords=[],
             operator=node.op,
             reverse=reverse,
+            augmented=getattr(node, "augmented", False),
             dependency_objects=self.inline_dependencies(func, node),
         )
         if signature is not func:

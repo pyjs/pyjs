@@ -3611,6 +3611,7 @@ class Call(ast.Call):
         value_obj: Object | UnionType = None,
         operator: ast.operator | ast.cmpop | None = None,
         reverse: bool = False,
+        augmented: bool = False,
         inline_dependencies: dict[str, str] | None = None,
         dependency_objects: dict[str, Class | Function] | None = None,
         runtime_methods: tuple[Function, ...] = (),
@@ -3631,6 +3632,7 @@ class Call(ast.Call):
         )
         self.operator = operator
         self.reverse = reverse
+        self.augmented = augmented
         self.inline_dependencies = inline_dependencies or {}
         self.dependency_objects = dependency_objects or {}
         self.runtime_methods = runtime_methods
