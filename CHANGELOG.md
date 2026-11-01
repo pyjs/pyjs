@@ -11,9 +11,10 @@
   `list`/`dict` default factories. Construction and JSON decoding create fresh
   collections per model, including inherited fields. Nullable lists and
   reference-valued dictionaries distinguish missing fields from explicit null.
-  JSON decoding of primitive-valued dictionaries is limited to non-nullable
-  model fields with an empty default; required, nullable, and nested
-  primitive-valued dictionaries remain unsupported.
+  Model fields containing primitive-valued dictionaries, including nested
+  containers, decode when the field is non-nullable with an empty default.
+  Required fields and nullable fields or items containing those dictionaries
+  remain unsupported. Existing non-nullable API-result decoding is unchanged.
   Custom factories and non-empty collection defaults remain unsupported.
 
 - JVM lists support `extend()` from another list with matching item storage,

@@ -918,12 +918,13 @@ with `pyjs template`.
   Field access, `instance.model_dump_json()` and
   `Model.model_validate_json(text)` are supported. JSON methods use the typed
   API codec: finite scalars, string literals, nullable values, lists,
-  string-key dictionaries, and acyclic models. Decoding primitive-valued
-  dictionaries requires a non-nullable model field with an empty default;
-  required, nullable, and nested primitive-valued dictionaries remain
-  unsupported. They validate structure, not
-  Pydantic coercion or `Field` constraints. Nested fields serialize their
-  declared model shape, excluding subclass-only fields. Custom JSON method
+  string-key dictionaries, and acyclic models. A model field containing
+  primitive-valued dictionaries, including nested containers, decodes when
+  the field is non-nullable with an empty default. Required fields and nullable
+  fields or items containing those dictionaries remain unsupported. This does
+  not restrict existing non-nullable API-result decoding. JSON methods validate
+  structure, not Pydantic coercion or `Field` constraints. Nested fields serialize
+  their declared model shape, excluding subclass-only fields. Custom JSON method
   overrides and optional Pydantic method arguments are not supported.
   Constructing an unsupported-codec subclass also disables its parent's
   virtual JSON dump calls, even on an explicitly constructed parent. Static

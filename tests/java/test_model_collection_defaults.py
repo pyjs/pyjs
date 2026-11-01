@@ -16,6 +16,25 @@ def test_shared_collection_defaults_contract(tmp_path):
     assert_matches_python(MODEL_COLLECTION_DEFAULTS_CONTRACT.source, tmp_path)
 
 
+@pytest.mark.parametrize("annotation, default, payload", [
+    ("list[dict[str, int]]", "[]", '[{"count":3}]'),
+    ("dict[str, dict[str, bool]]", "{}", '{"group":{"enabled":true}}'),
+    ("dict[str, list[dict[str, float]]]", "{}", '{"group":[{"value":1.25}]}'),
+])
+def test_nested_primitive_dictionary_fields_decode_with_empty_defaults(
+    annotation, default, payload, tmp_path,
+):
+    source = f'''from pydantic import BaseModel
+class Item(BaseModel):
+    values: {annotation} = {default}
+def main() -> str:
+    value = Item.model_validate_json('{{"values":{payload}}}')
+    omitted = Item.model_validate_json('{{}}')
+    return value.model_dump_json() + "|" + omitted.model_dump_json()
+'''
+    assert_text_matches_python(source, tmp_path)
+
+
 def test_generated_constructor_marks_only_fresh_collection_defaults():
     class Item(BaseModel):
         names: list[str] = Field(default_factory=list)
