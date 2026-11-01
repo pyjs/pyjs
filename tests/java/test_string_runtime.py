@@ -6,7 +6,14 @@ import pytest
 from pyjs.android.api import AndroidAPI
 from pyjs.java import JVMUnsupported, read_jvm_class, transpile_jvm
 from tests.backend_semantics import (
+    CALL_GUARD_NARROWING_CONTRACT,
     EXITED_BRANCH_NARROWING_CONTRACT,
+    INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_ITERABLE_CONTRACT,
+    INITIALIZED_NUMERIC_KIND_CONTRACT,
+    INITIALIZED_RECEIVER_CONTRACT,
+    INITIALIZED_STRUCTURAL_CONTRACT,
+    INITIALIZED_TRUTH_GUARD_CONTRACT,
     OPTIONAL_BRANCH_CONTRACT,
     OPTIONAL_STRING_CONTRACT,
     STRING_SEARCH_CASES,
@@ -148,8 +155,9 @@ def test_string_repetition_preserves_empty_and_small_results(tmp_path, value, co
 
 @pytest.mark.parametrize(
     "contract",
-    [OPTIONAL_STRING_CONTRACT, OPTIONAL_BRANCH_CONTRACT, EXITED_BRANCH_NARROWING_CONTRACT],
-    ids=["short_circuit", "branch_merge", "exited_branch"],
+    [OPTIONAL_STRING_CONTRACT, OPTIONAL_BRANCH_CONTRACT, EXITED_BRANCH_NARROWING_CONTRACT,
+     INITIALIZED_GUARD_CONTRACT, INITIALIZED_RECEIVER_CONTRACT, CALL_GUARD_NARROWING_CONTRACT],
+    ids=["short_circuit", "branch_merge", "exited_branch", "initialized_guard", "receiver_guard", "call_guard"],
 )
 def test_optional_string_short_circuit_contract_matches_python_and_javascript(tmp_path, contract):
     expected = run_python(contract.source + "\nassert main() == 0\n")
@@ -159,6 +167,34 @@ def test_optional_string_short_circuit_contract_matches_python_and_javascript(tm
     assert javascript.stdout.strip() == "0"
     result = run_jvm(contract.source, tmp_path)
     assert result.returncode == 0, contract.failure(result.returncode) + result.stderr
+
+
+def test_initialized_guard_retains_the_optional_object_truth_boundary():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(INITIALIZED_TRUTH_GUARD_CONTRACT.source)
+    assert str(caught.value) == (
+        "JVM optional truth tests require narrowing first while compiling _pyjs_java_.truth"
+    )
+
+
+def test_numeric_kind_contract_retains_the_jvm_union_storage_boundary():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(INITIALIZED_NUMERIC_KIND_CONTRACT.source)
+    assert str(caught.value) == (
+        "JVM union has incompatible runtime types while compiling _pyjs_java_.convert"
+    )
+
+
+@pytest.mark.parametrize("contract, message", [
+    (INITIALIZED_ITERABLE_CONTRACT,
+     "unsupported JVM value type Iterable__int while compiling _pyjs_java_.compound"),
+    (INITIALIZED_STRUCTURAL_CONTRACT,
+     "JVM local value changes type while compiling _pyjs_java_.consume"),
+])
+def test_compatible_initialization_reaches_existing_jvm_boundaries(contract, message):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(contract.source)
+    assert str(caught.value) == message
 
 
 @pytest.mark.parametrize("method", ["contains", "startswith", "endswith"])

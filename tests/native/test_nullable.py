@@ -7,7 +7,14 @@ import pytest
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM, LLVMRuntimeError
 from tests.backend_semantics import (
+    CALL_GUARD_NARROWING_CONTRACT,
     EXITED_BRANCH_NARROWING_CONTRACT,
+    INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_ITERABLE_CONTRACT,
+    INITIALIZED_NUMERIC_KIND_CONTRACT,
+    INITIALIZED_RECEIVER_CONTRACT,
+    INITIALIZED_TRUTH_GUARD_CONTRACT,
+    INITIALIZED_UNPACK_CONTRACT,
     OPTIONAL_BRANCH_CONTRACT,
     OPTIONAL_FLOAT_CONTRACT,
     OPTIONAL_INTEGER_CONTRACT,
@@ -45,6 +52,17 @@ def test_shared_optional_string_contract(optimize):
 def test_shared_optional_branch_contract(optimize):
     LLVM().assert_matches_python(OPTIONAL_BRANCH_CONTRACT.source, optimize=optimize,
                                  sanitizers=("address", "undefined"))
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+@pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT,
+                                      INITIALIZED_RECEIVER_CONTRACT, INITIALIZED_NUMERIC_KIND_CONTRACT,
+                                      INITIALIZED_UNPACK_CONTRACT, INITIALIZED_ITERABLE_CONTRACT,
+                                      CALL_GUARD_NARROWING_CONTRACT])
+def test_shared_initialized_guard_contract(optimize, tmp_path, contract):
+    result = LLVM().assert_matches_python(contract.source,
+        directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+    assert result.native.returncode == 0, contract.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

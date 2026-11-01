@@ -1,7 +1,15 @@
 import pytest
 
 from tests.backend_semantics import (
+    CALL_GUARD_NARROWING_CONTRACT,
+    CLASS_RECEIVER_GUARD_CONTRACT,
     EXITED_BRANCH_NARROWING_CONTRACT,
+    INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_ITERABLE_CONTRACT,
+    INITIALIZED_RECEIVER_CONTRACT,
+    INITIALIZED_STRUCTURAL_CONTRACT,
+    INITIALIZED_TRUTH_GUARD_CONTRACT,
+    INITIALIZED_UNPACK_CONTRACT,
     OPTIONAL_OBJECT_CONTRACT,
     UNION_NONE_GUARD_CONTRACT,
     UNPACK_FIELD_CONTRACT,
@@ -9,6 +17,18 @@ from tests.backend_semantics import (
 )
 
 from .helpers import assert_semantics
+
+
+@pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT,
+                                      INITIALIZED_RECEIVER_CONTRACT,
+                                      INITIALIZED_UNPACK_CONTRACT, INITIALIZED_ITERABLE_CONTRACT,
+                                      INITIALIZED_STRUCTURAL_CONTRACT, CALL_GUARD_NARROWING_CONTRACT])
+def test_shared_compound_guard_initialization(contract):
+    assert_semantics(contract.print_source + '\nmain()\n')
+
+
+def test_shared_class_receiver_guards():
+    assert_semantics(CLASS_RECEIVER_GUARD_CONTRACT.print_source + '\nmain()\n')
 
 
 def test_nested_attribute_unpacking_checks_each_level_before_its_stores():

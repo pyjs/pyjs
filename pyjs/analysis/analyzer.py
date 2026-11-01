@@ -70,6 +70,7 @@ from .type_relations import (
     inherited_sequence_slot,
     is_builtin_class,
     is_isinstance_match,
+    is_numeric_promotion,
     is_return_type_compatible,
     is_strict_runtime_subclass,
     is_subclass,
@@ -3842,13 +3843,11 @@ class InferenceVisitor(ast.NodeVisitor):
             loop_control_exits=True,
         )
         if body_falls_through == orelse_falls_through:
-            if (
-                body_falls_through
-                and (initialized := self.initialized_optional(analyzed))
-                is not None
-            ):
-                return self.narrow(*initialized)
-            return self
+            visitor = self
+            if body_falls_through:
+                for value_node, value_type in self.initialized_conditions(analyzed):
+                    visitor = visitor.narrow_after_branch(value_node, value_type)
+            return visitor
 
         if body_falls_through:
             source_branch = source.body
@@ -3865,7 +3864,7 @@ class InferenceVisitor(ast.NodeVisitor):
             if self.branch_initializes_optional(
                 analyzed_branch, value_node, value_type, True
             ):
-                visitor = visitor.narrow(value_node, value_type)
+                visitor = visitor.narrow_after_branch(value_node, value_type)
 
         narrowing = analyzed.optional_narrowing
         if narrowing is not None:
@@ -3875,7 +3874,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 analyzed_branch, value_node, value_type,
                 body_falls_through == non_none_when_true,
             ):
-                visitor = visitor.narrow(value_node, value_type)
+                visitor = visitor.narrow_after_branch(value_node, value_type)
 
         if (
             len(source_branch) == 1
@@ -3886,28 +3885,62 @@ class InferenceVisitor(ast.NodeVisitor):
             return visitor.narrow_after_if(source_branch[0], analyzed_branch[0])
         return visitor
 
-    def initialized_optional(self, analyzed: ast.If):
-        narrowing = analyzed.optional_narrowing
-        if narrowing is None:
-            return None
-        value_node, value_type, non_none_when_true = narrowing
-        none_branch = analyzed.orelse if non_none_when_true else analyzed.body
-        present_branch = analyzed.body if non_none_when_true else analyzed.orelse
-        if (self.branch_initializes_optional(none_branch, value_node, value_type, False)
-                and self.branch_initializes_optional(present_branch, value_node, value_type, True)):
-            return value_node, value_type
-        return None
+    def narrow_after_branch(self, value_node, value_type):
+        # A compound guard can prove a.b only under its proof of a. Branch
+        # writes may invalidate that receiver proof without clearing a.b.
+        def readable(node):
+            if not isinstance(node, ast.Attribute):
+                return True
+            if not readable(node.value):
+                return False
+            analyzed = self.visit(node.value)
+            class_receiver = analyzed_value_object(analyzed)
+            if isinstance(class_receiver, Class):
+                return node.attr in self.attribute_names(class_receiver)
+            receiver = analyzed_value_type(analyzed)
+            return all(isinstance(member, Class)
+                       and node.attr in self.attribute_names(member._self)
+                       for member in get_type_members(receiver))
+
+        return self.narrow(value_node, value_type) if readable(value_node) else self
+
+    def initialized_conditions(self, analyzed: ast.If):
+        for when_true, narrowings in enumerate(analyzed.condition_narrowings):
+            present_branch = analyzed.body if when_true else analyzed.orelse
+            other_branch = analyzed.orelse if when_true else analyzed.body
+            for value_node, value_type in narrowings:
+                if (self.branch_initializes_optional(other_branch, value_node, value_type, False)
+                        and self.branch_initializes_optional(present_branch, value_node, value_type, True)):
+                    yield value_node, value_type
 
     @staticmethod
     def branch_initializes_optional(statements, target_node, expected, initialized):
-        # Both live paths must establish presence. A nested/conditional write
-        # invalidates this simple proof; a subsequent direct assignment can
-        # establish it again. Do not infer the entire join from the None arm.
+        # Every live path must establish presence. Loops and exception regions
+        # remain conservative; a subsequent direct assignment can establish
+        # the proof again. Do not infer the entire join from the None arm.
+        repeated_call = any(isinstance(node, ast.Call) for node in ast.walk(target_node))
         target_name = ast.unparse(target_node)
         for statement in statements:
+            if hasattr(statement, "flow_statements"):
+                initialized = InferenceVisitor.branch_initializes_optional(
+                    statement.flow_statements, target_node, expected, initialized
+                )
+                continue
             if isinstance(statement, UnpackAssignment):
                 initialized = InferenceVisitor.branch_initializes_optional(
                     statement.assignments, target_node, expected, initialized
+                )
+                continue
+            if isinstance(statement, ast.If):
+                if any(target_name == (name := ast.unparse(node)) or target_name.startswith(name + ".")
+                       for node in InferenceVisitor.written_targets([statement.test])):
+                    initialized = False
+                initialized = all(
+                    InferenceVisitor.branch_initializes_optional(
+                        branch, target_node, expected, initialized
+                    )
+                    for branch in (statement.body, statement.orelse)
+                    if body_can_fall_through(branch, loop_control_exits=True)
                 )
                 continue
             if isinstance(statement, ast.AnnAssign):
@@ -3925,7 +3958,18 @@ class InferenceVisitor(ast.NodeVisitor):
                         if ast.unparse(leaf) == target_name
                     )
             if assigned:
-                initialized = is_return_type_compatible(expected, assigned[-1])
+                # Structural and iterable assignments can establish presence
+                # without nominal ancestry. Numeric promotions, however, do
+                # not establish the runtime kind of a narrowed union arm.
+                # An assignment through a call does not prove that a later
+                # call returns the same receiver. Existing condition proofs
+                # with no assignment retain their ordinary narrowing rules.
+                initialized = not repeated_call and all(any(
+                    is_return_type_compatible(member, actual)
+                    and not is_numeric_promotion(actual, member)
+                    and not (is_builtin_class(actual, "bool") and is_builtin_class(member, "int"))
+                    for member in get_type_members(expected)
+                ) for actual in get_type_members(assigned[-1]))
                 # object includes None, even without an explicit union member.
                 # Neither it nor NoneType can establish a presence proof.
                 if (any(member.container.scope.is_builtins and member.name in {"NoneType", "object"}
@@ -3968,6 +4012,12 @@ class InferenceVisitor(ast.NodeVisitor):
                 statement.ctx, (ast.Store, ast.Del)
             ):
                 yield statement
+            if isinstance(statement, ast.arg):
+                yield ast.Name(id=statement.arg, ctx=ast.Store())
+            if isinstance(statement, ast.ExceptHandler) and statement.name is not None:
+                yield ast.Name(id=statement.name, ctx=ast.Store())
+            if hasattr(statement, "flow_statements"):
+                yield from InferenceVisitor.written_targets(statement.flow_statements)
             yield from InferenceVisitor.written_targets(ast.iter_child_nodes(statement))
 
     def statement_writes(self, node):

@@ -6398,6 +6398,466 @@ LIST_BOOL_CONTRACT = _contract(
 )
 
 
+_INITIALIZED_GUARD_DEFINITIONS = '''
+    from pyjs import js
+
+    @js
+    class Cached:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    def refresh(item: Cached | None, stale: bool) -> int:
+        if item is None or stale:
+            item = Cached(7)
+        return item.value
+
+    @js
+    def conditional(item: Cached | None) -> int:
+        if not (item is not None and item.value > 0):
+            item = Cached(8)
+        return item.value
+
+    @js
+    def otherwise(item: Cached | None, stale: bool) -> int:
+        if item is not None and not stale:
+            pass
+        else:
+            item = Cached(9)
+        return item.value
+
+    @js
+    def pair(left: Cached | None, right: Cached | None) -> int:
+        if left is None or right is None:
+            left = Cached(1)
+            right = Cached(2)
+        return left.value + right.value
+
+    @js
+    def truth(item: Cached | None, stale: bool) -> int:
+        if not item or stale:
+            item = Cached(11)
+        return item.value
+
+    @js
+    def typed(value: Cached | None, stale: bool) -> int:
+        if not isinstance(value, Cached) or stale:
+            value = Cached(12)
+        return value.value + 1
+
+    @js
+    def nested(item: Cached | None, mode: int) -> int:
+        if item is None:
+            if mode == 0:
+                item = Cached(14)
+            elif mode == 1:
+                item = Cached(15)
+            else:
+                return -1
+        return item.value
+
+    @js
+    class Holder:
+        def __init__(self, item: Cached | None):
+            self.item = item
+
+        def read(self, stale: bool) -> int:
+            if self.item is None or stale:
+                self.item = Cached(10)
+            return self.item.value
+    '''
+
+
+INITIALIZED_GUARD_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS,
+    "initialized_guard_result",
+    "",
+    (
+        ("absent value gets initialized", "refresh(None, False) != 7"),
+        ("present cached value survives", "refresh(Cached(3), False) != 3"),
+        ("stale cached value is replaced", "refresh(Cached(3), True) != 7"),
+        ("negated conjunction initializes absence", "conditional(None) != 8"),
+        ("compound field guard replaces invalid data", "conditional(Cached(-1)) != 8"),
+        ("compound field guard retains valid data", "conditional(Cached(4)) != 4"),
+        ("else arm initializes absence", "otherwise(None, False) != 9"),
+        ("else arm replaces stale data", "otherwise(Cached(5), True) != 9"),
+        ("conjunction retains a present value", "otherwise(Cached(5), False) != 5"),
+        ("multiple values are initialized", "pair(None, None) != 3"),
+        ("partially present pair is replaced", "pair(Cached(5), None) != 3"),
+        ("present pair is retained", "pair(Cached(5), Cached(6)) != 11"),
+        ("isinstance guard initializes absence", "typed(None, False) != 13"),
+        ("isinstance guard keeps matching member", "typed(Cached(4), False) != 5"),
+        ("optional field is initialized", "Holder(None).read(False) != 10"),
+        ("optional field is retained", "Holder(Cached(6)).read(False) != 6"),
+        ("first nested arm initializes", "nested(None, 0) != 14"),
+        ("second nested arm initializes", "nested(None, 1) != 15"),
+        ("nested rejection never reaches read", "nested(None, 2) != -1"),
+        ("present value skips nested branch", "nested(Cached(4), 2) != 4"),
+    ),
+)
+
+
+INITIALIZED_RECEIVER_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS + '''
+    @js
+    def load(present: bool) -> Holder | None:
+        return Holder(None) if present else None
+
+    @js
+    def replace_receiver(holder: Holder | None, present: bool) -> int:
+        if holder is None or holder.item is None:
+            holder = load(present)
+            if holder is None:
+                return 0
+            holder.item = Cached(7)
+        return 2
+
+    @js
+    def prior_receiver(holder: Holder | None) -> int:
+        if holder is None:
+            return 0
+        if holder.item is None:
+            holder = load(True)
+            assert holder is not None
+            holder.item = Cached(7)
+        return 2
+
+    @js
+    class Outer:
+        def __init__(self, holder: Holder):
+            self.holder = holder
+
+    @js
+    def load_outer(present: bool) -> Outer | None:
+        return Outer(Holder(None)) if present else None
+
+    @js
+    def nested_receiver(outer: Outer | None, present: bool) -> int:
+        if outer is None or outer.holder.item is None:
+            outer = load_outer(present)
+            if outer is None:
+                return 0
+            outer.holder.item = Cached(7)
+        return 2
+    ''',
+    "initialized_receiver_result",
+    "",
+    (
+        ("dependent proof may be discarded", "replace_receiver(None, True) != 2"),
+        ("absent replacement exits safely", "replace_receiver(None, False) != 0"),
+        ("existing receiver remains valid", "replace_receiver(Holder(Cached(1)), True) != 2"),
+        ("prior receiver proof may be invalidated", "prior_receiver(Holder(None)) != 2"),
+        ("nested receiver replacement remains valid", "nested_receiver(None, True) != 2"),
+        ("absent nested receiver exits", "nested_receiver(None, False) != 0"),
+        ("existing nested receiver survives", "nested_receiver(Outer(Holder(Cached(1))), False) != 2"),
+    ),
+)
+
+
+INITIALIZED_NUMERIC_KIND_CONTRACT = _contract(
+    '''
+    from pyjs import js
+    @js
+    def convert(value: int | float, stale: bool) -> int:
+        if not isinstance(value, float) or stale:
+            value = 1
+        return int(value) + 1
+    @js
+    def exited(value: int | float, stale: bool) -> int:
+        if isinstance(value, float):
+            if stale:
+                value = 1
+        else:
+            return 9
+        return int(value) + 1
+    ''',
+    "initialized_numeric_kind_result",
+    "",
+    (
+        ("integer write does not prove float storage", "convert(2, False) != 2"),
+        ("float survives unchanged", "convert(3.0, False) != 4"),
+        ("refresh replaces floating value", "convert(3.0, True) != 2"),
+        ("exited branch also retains runtime kind", "exited(3.0, True) != 2"),
+    ),
+)
+
+
+INITIALIZED_UNPACK_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS + '''
+    @js
+    def consume(value: Cached | None) -> int:
+        return 11 if value is None else value.value
+    @js
+    def clear(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value = Cached(7)
+            value, ignored = None, 2
+        return consume(value)
+    @js
+    def establish(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value, ignored = Cached(8), 2
+        return value.value
+    @js
+    def nested_clear(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value = Cached(7)
+            if stale:
+                value, ignored = None, 2
+        return consume(value)
+    ''',
+    "initialized_unpack_result",
+    "",
+    (
+        ("unpacking invalidates initialization", "clear(None, False) != 11"),
+        ("present values remain unchanged", "clear(Cached(3), False) != 3"),
+        ("unpacking can establish initialization", "establish(None, False) != 8"),
+        ("nested unpacking invalidates initialization", "nested_clear(None, True) != 11"),
+        ("untaken nested write retains value", "nested_clear(None, False) != 7"),
+    ),
+)
+
+
+INITIALIZED_ITERABLE_CONTRACT = _contract(
+    '''
+    from collections.abc import Iterable
+    from pyjs import js
+    @js
+    def direct(values: Iterable[int] | None) -> int:
+        if values is None:
+            values = [1, 2]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    @js
+    def compound(values: Iterable[int] | None, refresh: bool) -> int:
+        if values is None or refresh:
+            values = [3, 4]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    @js
+    def exited(values: Iterable[int] | None, initialize: bool) -> int:
+        if values is None:
+            if not initialize:
+                return -1
+            values = [5, 6]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    ''',
+    "initialized_iterable_result",
+    "",
+    (
+        ("list establishes iterable presence", "direct(None) != 3"),
+        ("existing iterable survives", "direct([8, 9]) != 17"),
+        ("compound guard initializes iterable", "compound(None, False) != 7"),
+        ("refresh replaces iterable", "compound([8, 9], True) != 7"),
+        ("compound guard retains existing iterable", "compound([8, 9], False) != 17"),
+        ("exited branch establishes presence", "exited(None, True) != 11"),
+        ("exited branch can decline initialization", "exited(None, False) != -1"),
+        ("exited guard retains existing iterable", "exited([8, 9], False) != 17"),
+    ),
+)
+
+
+INITIALIZED_STRUCTURAL_CONTRACT = _contract(
+    '''
+    from pyjs import js
+    @js
+    class Reader:
+        __pyjs_structural__ = True
+        def read(self) -> int:
+            return 2
+    @js
+    class Implementation:
+        def read(self) -> int:
+            return 7
+    @js
+    def consume(value: Reader | None, refresh: bool) -> int:
+        if value is None or refresh:
+            value = Implementation()
+        return value.read()
+    ''',
+    "initialized_structural_result",
+    "",
+    (
+        ("implementation method is reachable directly", "Implementation().read() != 7"),
+        ("structural implementation establishes presence", "consume(None, False) != 7"),
+        ("existing implementation survives", "consume(Reader(), False) != 2"),
+        ("refresh uses structural replacement", "consume(Reader(), True) != 7"),
+    ),
+)
+
+
+INITIALIZED_TRUTH_GUARD_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS,
+    "initialized_truth_guard_result",
+    "",
+    (
+        ("truthy guard fills absence", "truth(None, False) != 11"),
+        ("truthy guard retains present value", "truth(Cached(4), False) != 4"),
+    ),
+)
+
+
+CALL_GUARD_NARROWING_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Item:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    class Store:
+        def __init__(self, item: Item | None):
+            self.item = item
+
+        def current(self) -> Store:
+            return self
+
+        def read(self) -> int:
+            if self.current().item is None:
+                return 0
+            return self.current().item.value
+
+    @js
+    def returned(store: Store) -> int:
+        if store.current().item is None:
+            return 0
+        return store.current().item.value
+
+    @js
+    def raised(store: Store) -> int:
+        try:
+            if store.current().item is None:
+                raise ValueError("empty")
+            return store.current().item.value
+        except ValueError:
+            return -1
+
+    @js
+    def asserted(store: Store) -> int:
+        assert store.current().item is not None
+        return store.current().item.value
+
+    @js
+    def else_returned(store: Store) -> int:
+        if store.current().item is not None:
+            pass
+        else:
+            return 0
+        return store.current().item.value
+
+    @js
+    def type_guard(store: Store) -> int:
+        if not isinstance(store.current().item, Item):
+            return 0
+        return store.current().item.value
+
+    @js
+    def continued(store: Store) -> int:
+        total = 0
+        for index in range(3):
+            if store.current().item is None:
+                continue
+            total += store.current().item.value
+        return total
+
+    @js
+    def compound(first: Store, second: Store) -> int:
+        if first.current().item is None or second.current().item is None:
+            return 0
+        return first.current().item.value + second.current().item.value
+    ''',
+    "call_guard_narrowing_result",
+    "present = Store(Item(5))\nempty = Store(None)",
+    (
+        ("early return preserves call narrowing", "returned(present) != 5 or returned(empty) != 0"),
+        ("raise preserves call narrowing", "raised(present) != 5 or raised(empty) != -1"),
+        ("assert preserves call narrowing", "asserted(present) != 5"),
+        ("else return preserves call narrowing", "else_returned(present) != 5 or else_returned(empty) != 0"),
+        ("type guard preserves call narrowing", "type_guard(present) != 5 or type_guard(empty) != 0"),
+        ("continue preserves call narrowing", "continued(present) != 15 or continued(empty) != 0"),
+        ("method body preserves call narrowing", "present.read() != 5 or empty.read() != 0"),
+        ("compound guard preserves both calls", "compound(present, present) != 10"),
+        ("compound guard exits for either absence", "compound(empty, present) != 0 or compound(present, empty) != 0"),
+    ),
+)
+
+
+CLASS_RECEIVER_GUARD_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Cached:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    class Registry:
+        instance: Cached | None = Cached(5)
+
+        @classmethod
+        def current(cls) -> int:
+            if cls.instance is None:
+                return 0
+            return cls.instance.value
+
+    @js
+    class Child(Registry):
+        pass
+
+    @js
+    def direct() -> int:
+        if Registry.instance is None:
+            return 0
+        return Registry.instance.value
+
+    @js
+    def inherited() -> int:
+        if Child.instance is not None:
+            pass
+        else:
+            return 0
+        return Child.instance.value
+
+    @js
+    def compound() -> int:
+        if Registry.instance is None or Registry.instance.value < 0:
+            return 0
+        return Registry.instance.value
+    ''',
+    "class_receiver_guard_result",
+    '''
+    direct_value = direct()
+    method_value = Registry.current()
+    inherited_value = inherited()
+    compound_value = compound()
+    Registry.instance = None
+    absent_direct = direct()
+    absent_method = Registry.current()
+    absent_inherited = inherited()
+    absent_compound = compound()
+    # Import-time execution must retain the declared class default.
+    Registry.instance = Cached(5)
+    ''',
+    (
+        ("class receiver exit retains presence", "direct_value != 5"),
+        ("classmethod receiver exit retains presence", "method_value != 5"),
+        ("inherited class receiver exit retains presence", "inherited_value != 5"),
+        ("compound class guard retains presence", "compound_value != 5"),
+        ("absent class values still return early", "absent_direct or absent_method or absent_inherited or absent_compound"),
+    ),
+)
+
+
 EXITED_BRANCH_NARROWING_CONTRACT = _contract(
     '''
     from pyjs import js
