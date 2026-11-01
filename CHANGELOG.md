@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM lists support `extend()` from another list with matching item storage,
+  including self-extension, empty inputs and shallow reference preservation.
+  Other iterable shapes receive an explicit unsupported-operation diagnostic.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

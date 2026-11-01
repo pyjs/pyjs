@@ -4529,6 +4529,45 @@ LIST_POP_CONTRACT = _contract(
 )
 
 
+LIST_EXTEND_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_extend_result",
+    '''
+        values = [1, 2, 3]
+        alias = values
+        source = [4, 5]
+        result = values.extend(source)
+        values.extend(values)
+        empty: list[int] = []
+        values.extend(empty)
+        empty.extend(empty)
+        empty.extend(source)
+        source[0] = 99
+        nested = [[1]]
+        other = [[2]]
+        nested.extend(other)
+        other[0].append(3)
+        represented = [int8(127)]
+        represented.extend(represented)
+        floating = [float32(16777216)]
+        floating.extend(floating)
+        flags = [True]
+        flags.extend([False])
+        words = ["before"]
+        words.extend(["after"])
+    ''',
+    (
+        ("mutates receiver and returns None", "alias is not values or result is not None"),
+        ("self-extension snapshots original length", "len(values) != 10 or values[5] != 1 or values[9] != 5"),
+        ("source storage is independent", "values[3] != 4 or empty[0] != 4 or len(source) != 2"),
+        ("extension is shallow", "nested[1] is not other[0] or nested[1][1] != 3"),
+        ("integer representation retained", "len(represented) != 2 or int(represented[1] + 1) != -128"),
+        ("floating representation retained", "len(floating) != 2 or int(floating[1] + 1) != 16777216"),
+        ("boolean and reference storage", "flags[1] or words[1] != 'after'"),
+    ),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",
