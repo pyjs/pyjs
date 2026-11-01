@@ -92,7 +92,7 @@ class PrototypeDaemon:
         idle_seconds: int,
         project_root: Path,
         cache_dir: Path,
-        browser_mode: str = "system",
+        browser_mode: str = "managed",
         headed: bool = False,
         browser_width: int = 1440,
         browser_height: int = 1000,
@@ -115,6 +115,7 @@ class PrototypeDaemon:
         self.test_timeout = test_timeout
         self.retained_iframes = retained_iframes
         self.managed_page: BrowserPage | None = None
+        self.managed_browser: Browser | None = None
         self.bundle_builder = BrowserBundleBuilder(self.project_root, self.cache_dir)
         # Both builders change imported modules. Serialize their worker threads,
         # including when a cancelled request leaves a compilation finishing.
@@ -172,6 +173,8 @@ class PrototypeDaemon:
             status["browser_last_seen_seconds_ago"] = round(
                 time.monotonic() - self.last_browser_seen, 3
             )
+        if self.managed_browser is not None:
+            status["browser_debug_port"] = self.managed_browser.debug_port
         if self.managed_page is not None:
             status["browser_exceptions"] = self.managed_page.exceptions
             status["browser_console"] = self.managed_page.console[-10:]
@@ -187,6 +190,10 @@ class PrototypeDaemon:
             self.last_browser_seen = time.monotonic()
 
     def discard_stale_browser(self) -> None:
+        if self.managed_browser is not None:
+            process = self.managed_browser.process
+            if process is None or process.poll() is not None:
+                self.reusable = False
         if (
             self.active_browser is not None
             and self.last_browser_seen is not None
@@ -198,6 +205,8 @@ class PrototypeDaemon:
         if self.active_browser is connection:
             self.active_browser = None
             self.browser_ready.clear()
+            if self.browser_mode == "managed":
+                self.reusable = False
 
     def discard_bundle(self) -> None:
         self.current_bundle = ""
@@ -410,11 +419,18 @@ class PrototypeDaemon:
                     "bundle_build",
                     "Failed to build browser runner page:\n" + self.runner_page_error,
                 )
-            return failed_run(
-                "browser_connection",
-                "No browser runner connected. "
-                f"Open {self.runner_url}, or rerun with --pyjs-browser=managed.",
-            )
+            if self.browser_mode == "managed":
+                self.reusable = False
+                message = (
+                    "Managed browser runner disconnected or failed to connect. "
+                    "Rerun to start a new browser."
+                )
+            else:
+                message = (
+                    f"No browser runner connected. Open {self.runner_url}, "
+                    "or rerun with --pyjs-browser=managed."
+                )
+            return failed_run("browser_connection", message)
 
         try:
             await asyncio.wait_for(
@@ -626,6 +642,13 @@ class PrototypeDaemon:
 
     async def ensure_browser_connection(self) -> WebSocket | None:
         self.discard_stale_browser()
+        if self.browser_mode == "managed" and (
+            not self.reusable
+            or (self.last_browser_seen is not None and self.active_browser is None)
+        ):
+            # A successful bundle build can restore reusable after compilation
+            # errors, but cannot restore a runner lost during that compilation.
+            return None
         if self.active_browser is not None:
             return self.active_browser
 
@@ -768,6 +791,7 @@ async def async_main(
 
             if browser_mode == "managed":
                 async with Browser(headless=not headed, webgpu=True) as browser:
+                    daemon.managed_browser = browser
                     page = await browser.new_page()
                     daemon.managed_page = page
                     await page.set_viewport(browser_width, browser_height)
@@ -789,7 +813,7 @@ def main() -> int:
     parser.add_argument("--idle-seconds", type=int, default=120)
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument("--cache-dir", type=Path, default=Path.cwd() / ".pytest_cache" / "pyjs")
-    parser.add_argument("--browser-mode", choices=("system", "managed"), default="system")
+    parser.add_argument("--browser-mode", choices=("system", "managed"), default="managed")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--browser-width", type=int, default=1440)
     parser.add_argument("--browser-height", type=int, default=1000)

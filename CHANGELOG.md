@@ -17,6 +17,10 @@
   and local time zone; JavaScript uses the runtime's locale and time zone.
   Localized strings are not a portable serialization format.
 
+- Browser tests default to isolated headless Chrome, which closes with the
+  test daemon. Opening the user's normal browser requires the explicit
+  `--pyjs-browser=system` option.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

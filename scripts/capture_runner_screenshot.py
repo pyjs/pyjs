@@ -7,7 +7,14 @@ import subprocess
 from pathlib import Path
 
 from pyjs.tooling import stop_process
-from pyjs.tooling.browser import Browser, BrowserPage, free_port, wait_for_http
+from pyjs.tooling.browser import (
+    BrowserPage,
+    CDPSession,
+    free_port,
+    request,
+    request_json,
+    wait_for_http,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES_ROOT = ROOT / "examples"
@@ -19,6 +26,7 @@ CALCULATOR_PYTHONPATH = os.pathsep.join(
     for path in (
         CALCULATOR_ROOT / "tests",
         CALCULATOR_ROOT,
+        ROOT,
         os.environ.get("PYTHONPATH"),
     )
     if path
@@ -39,7 +47,10 @@ async def run_browser_pytest(
         "--pyjs-target=web",
         f"--pyjs-daemon-port={daemon_port}",
     ]
-    result = await asyncio.to_thread(subprocess.run, command, cwd=cwd, check=False)
+    result = await asyncio.to_thread(
+        subprocess.run, command, cwd=cwd, check=False,
+        env={**os.environ, "PYTHONPATH": CALCULATOR_PYTHONPATH},
+    )
     if result.returncode:
         raise RuntimeError(f"pytest exited with code {result.returncode}")
 
@@ -306,6 +317,29 @@ async def capture_narrow(page: BrowserPage) -> None:
     await page.clear_viewport()
 
 
+async def connect_runner(daemon_port: int) -> BrowserPage:
+    runner_url = f"http://127.0.0.1:{daemon_port}/"
+    deadline = asyncio.get_running_loop().time() + 120
+    while asyncio.get_running_loop().time() < deadline:
+        health = await asyncio.to_thread(request_json, runner_url + "healthz")
+        if health.get("active_browser") and health.get("browser_debug_port"):
+            targets = await asyncio.to_thread(
+                request_json,
+                f"http://127.0.0.1:{health['browser_debug_port']}/json/list",
+            )
+            target = next(target for target in targets if target["url"] == runner_url)
+            session = await CDPSession.open(target["webSocketDebuggerUrl"])
+            page = BrowserPage(session, target["id"])
+            try:
+                await page.initialize()
+            except BaseException:
+                await session.close()
+                raise
+            return page
+        await asyncio.sleep(0.1)
+    raise TimeoutError("Managed browser runner did not connect")
+
+
 async def main() -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
     daemon_port = free_port()
@@ -332,8 +366,8 @@ async def main() -> None:
     )
     try:
         await wait_for_http(f"http://127.0.0.1:{daemon_port}/healthz", timeout=10)
-        async with Browser() as browser:
-            page = await browser.new_page(f"http://127.0.0.1:{daemon_port}/")
+        page = await connect_runner(daemon_port)
+        try:
             await page.set_viewport(1440, 1100)
             await page.bring_to_front()
             await wait_for_runner(page)
@@ -371,7 +405,14 @@ async def main() -> None:
                     }
                 )
             )
+        finally:
+            await page.session.close()
     finally:
+        # Pytest may replace the daemon when switching project roots.
+        try:
+            await asyncio.to_thread(request, f"http://127.0.0.1:{daemon_port}/shutdown")
+        except OSError:
+            pass
         stop_process(daemon)
 
 
