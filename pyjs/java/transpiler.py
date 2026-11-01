@@ -1677,7 +1677,12 @@ class JVMEmitter:
                 raise JVMUnsupported("JVM bool() takes at most one positional argument", node)
             if node.args:
                 descriptor = self.expression(node.args[0])
-                if getattr(analyzed_value_type(node.args[0]), "generic_name", None) == "set":
+                value_type = analyzed_value_type(node.args[0])
+                if getattr(value_type, "generic_name", None) == "list":
+                    length = self.class_file.field_reference(self.list_class_name(value_type), "length", "I")
+                    self.code.emit(0xB4, length.to_bytes(2, "big"))
+                    self.comparison(0x9A)
+                elif getattr(value_type, "generic_name", None) == "set":
                     sets.invoke(self, "size", "()I")
                     self.comparison(0x9A)
                 else:

@@ -2427,13 +2427,13 @@ class _bool(_int):
         arg_type = _arg_types[0]
         arg_type_name = type_name(arg_type)
         if arg_type_name in {"list", "str", "tuple"}:
-            return f"{arg}.length!==0"
+            return f"(({arg}).length!==0)"
         if arg_type_name in {"dict", "set"}:
-            return f"{arg}.size!==0"
+            return f"(({arg}).size!==0)"
         if arg_type_name == "float":
-            return f"{arg}!==0"
+            return f"(({arg})!==0)"
         if inherits_type(arg_type, "typed_dict"):
-            return f"Object.keys({arg}).length!==0"
+            return f"(Object.keys({arg}).length!==0)"
         return f"Boolean({arg})"
 
     @js.inline("({self}?'True':'False')")

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- JVM `bool()` accepts lists, using their current length without testing
+  individual items or evaluating the argument more than once.
+  JavaScript truth conversions retain their grouping inside negation and
+  comparisons, including collections, strings and floating-point values.
+
 - JVM lists support shallow slicing with omitted, negative and optional
   integer bounds, positive or negative steps, and a `ValueError` for zero
   steps. Slices preserve item representations and own their list storage.
