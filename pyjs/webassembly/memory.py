@@ -1,8 +1,10 @@
 """Portable reference behavior for direct WebAssembly linear memory."""
 
+import math
 import struct
 
 PAGE_BYTES = 65_536
+MAX_PAGES = 65_536
 
 _memory = bytearray(PAGE_BYTES)
 
@@ -18,10 +20,13 @@ def memory_byte_length() -> int:
 
 def grow_memory(pages: int) -> int:
     """Grow by WebAssembly pages and return the previous page count."""
-    if pages < 0:
-        return -1
     previous = len(_memory) // PAGE_BYTES
-    _memory.extend(bytes(pages * PAGE_BYTES))
+    if pages < 0 or previous + pages > MAX_PAGES:
+        return -1
+    try:
+        _memory.extend(bytes(pages * PAGE_BYTES))
+    except MemoryError:
+        return -1
     return previous
 
 
@@ -48,7 +53,10 @@ def store_i32(offset: int, value: int) -> None:
 
 def store_f32(offset: int, value: float) -> None:
     _check_range(offset, 4)
-    struct.pack_into("<f", _memory, offset, value)
+    try:
+        struct.pack_into("<f", _memory, offset, value)
+    except OverflowError:
+        struct.pack_into("<f", _memory, offset, math.copysign(math.inf, value))
 
 
 def store_f64(offset: int, value: float) -> None:

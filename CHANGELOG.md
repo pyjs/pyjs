@@ -71,7 +71,9 @@
   overflow-safe `math.hypot()`, `math.radians()`, imported immutable scalar
   constants and short-circuiting `and`, `or` and `not` on booleans. Negative
   square roots trap. `math.sin()` and `math.cos()` become imports from the
-  `math` module, which the host must provide.
+  `math` module, which the host must provide. Transcendental results follow
+  the host math implementation rather than guaranteeing CPython bit parity;
+  `sin()` and `cos()` on infinity follow the host behavior.
 - `transpile_webassembly()` accepts an ordered `exports` tuple and emits every
   named function into one module, so calls can share state. Reached code can use
   the new `pyjs.webassembly` linear-memory API, which exports one memory and has

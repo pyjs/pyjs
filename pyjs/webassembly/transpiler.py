@@ -1,6 +1,7 @@
 """Emit a small executable WebAssembly module directly from ProgramIR."""
 
 import ast
+import inspect
 import struct
 import textwrap
 from dataclasses import dataclass
@@ -79,6 +80,7 @@ I64_EQ = 0x51
 I64_LT_S = 0x53
 I64_LT_U = 0x54
 I64_GT_S = 0x55
+I64_GT_U = 0x56
 I64_GE_S = 0x59
 I32_ADD = 0x6A
 I32_MUL = 0x6C
@@ -245,6 +247,7 @@ class _RangeIterator:
 class _EnumerateIterator:
     source: object
     index_slot: str
+    overflow_slot: str
     item_type: Class
 
 
@@ -521,7 +524,11 @@ class WebAssemblyEmitter:
             for block in function.ir.blocks:
                 for statement in getattr(block, "body", ()):
                     for node in ast.walk(statement):
-                        if isinstance(node, CollectionNew):
+                        if isinstance(node, ast.Name) and hasattr(node, "obj"):
+                            value = analyzed_value_object(node)
+                            if isinstance(value, Instance):
+                                add(value.cls)
+                        elif isinstance(node, CollectionNew):
                             add(node.value_type)
                         elif isinstance(node, IteratorCreate):
                             add(iterable_item_type(analyzed_value_type(node.iterable)))
@@ -681,9 +688,14 @@ class WebAssemblyEmitter:
             add_local(name, value_type)
             return name
 
-        def add_assignment_target(target, value_type, prefix: str) -> None:
+        def add_assignment_target(target, value_type, prefix: str, scope=function.scope) -> None:
+            if isinstance(target, CollectionNew):
+                target = target.source
             if isinstance(target, (ast.Name, ast.arg, BlockArgument)):
-                storage_format = self.local_numeric_format(function, target)
+                declaration = self.local_declaration(scope, target)
+                storage_format = analyzed_numeric_format(declaration)
+                if declaration is not None:
+                    value_type = declaration.cls
                 name = self.target_name(target)
                 add_local(
                     name,
@@ -718,7 +730,7 @@ class WebAssemblyEmitter:
             for index, (element, item_type) in enumerate(
                 zip(target.elts, item_types, strict=True)
             ):
-                add_assignment_target(element, item_type, f"{prefix}_{index}")
+                add_assignment_target(element, item_type, f"{prefix}_{index}", scope)
 
         def create_iterator(iterable: ast.expr, prefix: str):
             if self.is_builtin_call(iterable, "range"):
@@ -746,6 +758,7 @@ class WebAssemblyEmitter:
                 return _EnumerateIterator(
                     create_iterator(iterable.args[0], f"{prefix}_source"),
                     add_generated_local(f"{prefix}_index", I64),
+                    add_generated_local(f"{prefix}_overflow", I32),
                     item_type,
                 )
             if self.is_builtin_call(iterable, "zip"):
@@ -796,6 +809,7 @@ class WebAssemblyEmitter:
             target: ast.expr,
             value_type: Class,
             prefix: str,
+            scope,
         ) -> dict[str, str]:
             aliases = {}
             for leaf in ast.walk(target):
@@ -808,7 +822,7 @@ class WebAssemblyEmitter:
             previous = self.name_aliases
             self.name_aliases = aliases
             try:
-                add_assignment_target(target, value_type, prefix)
+                add_assignment_target(target, value_type, prefix, scope)
             finally:
                 self.name_aliases = previous
             return aliases
@@ -826,13 +840,13 @@ class WebAssemblyEmitter:
                     self.local_numeric_formats[argument.name] = storage_format
             for statement in self.flattened_statements(block.body):
                 if isinstance(statement, ast.AnnAssign):
-                    storage_format = self.local_numeric_format(
-                        function,
-                        statement.target,
-                    )
+                    declaration = self.local_declaration(function.scope, statement.target)
+                    storage_format = analyzed_numeric_format(declaration)
                     value_type = (
                         self.numeric_storage_type(storage_format)
                         if storage_format is not None
+                        else self.value_type(declaration.cls)
+                        if declaration is not None
                         else self.value_type(analyzed_value_type(statement.value))
                         if statement.value is not None
                         else self.annotation(statement.annotation)
@@ -1028,6 +1042,7 @@ class WebAssemblyEmitter:
                                 target,
                                 self.iterator_item_type(iterator),
                                 f"{prefix}_target_{index}",
+                                node.scope,
                             )
                             loops.append(
                                 _ComprehensionLoop(
@@ -1235,6 +1250,8 @@ class WebAssemblyEmitter:
                     return_type,
                     self.current_function.return_numeric_format,
                 )
+            elif return_type is not None:
+                self.null_reference(code, return_type, node)
             code.append(RETURN)
             return
         if isinstance(node, Jump):
@@ -1351,6 +1368,9 @@ class WebAssemblyEmitter:
         assert isinstance(iterable, ast.Call)
         if isinstance(iterator, _EnumerateIterator):
             self.iterator_create(code, iterable.args[0], iterator.source)
+            code.append(I32_CONST)
+            code.extend(_signed(0))
+            self.set_local(code, iterator.overflow_slot)
             if len(iterable.args) == 2:
                 self.expression_as(code, iterable.args[1], I64)
             elif iterable.keywords:
@@ -1407,6 +1427,8 @@ class WebAssemblyEmitter:
             assert iterator.availability_slot is not None
             self.set_local(code, iterator.availability_slot)
         for source in iterator.sources[1:]:
+            if not iterator.strict:
+                code.extend((IF, I32))
             self.iterator_has_next(code, source)
             if iterator.strict:
                 code.append(LOCAL_GET)
@@ -1415,7 +1437,7 @@ class WebAssemblyEmitter:
                 )
                 code.extend((I32_NE, IF, EMPTY, UNREACHABLE, END))
             else:
-                code.append(I32_AND)
+                code.extend((ELSE, I32_CONST, 0, END))
         if iterator.strict:
             code.append(LOCAL_GET)
             code.extend(_unsigned(self.local_indices[iterator.availability_slot]))
@@ -1457,6 +1479,11 @@ class WebAssemblyEmitter:
             code.extend(_unsigned(self.local_indices[iterator.current_slot]))
             return I64
         if isinstance(iterator, _EnumerateIterator):
+            # Advancing the previous item must not trap before its body runs.
+            # Only consuming another item needs a representable index.
+            code.append(LOCAL_GET)
+            code.extend(_unsigned(self.local_indices[iterator.overflow_slot]))
+            code.extend((IF, EMPTY, UNREACHABLE, END))
             code.append(LOCAL_GET)
             code.extend(_unsigned(self.local_indices[iterator.index_slot]))
             self.iterator_tuple_item_value(code, iterator.source, node)
@@ -1509,9 +1536,8 @@ class WebAssemblyEmitter:
             code.extend(_unsigned(self.local_indices[iterator.index_slot]))
             code.append(I64_CONST)
             code.extend(_signed(2**63 - 1))
-            code.extend((I64_EQ, IF, EMPTY))
-            self.iterator_has_next(code, iterator.source)
-            code.extend((IF, EMPTY, UNREACHABLE, END, END))
+            code.append(I64_EQ)
+            self.set_local(code, iterator.overflow_slot)
             code.append(LOCAL_GET)
             code.extend(_unsigned(self.local_indices[iterator.index_slot]))
             code.append(I64_CONST)
@@ -1595,12 +1621,20 @@ class WebAssemblyEmitter:
                     and value_obj.is_const
                     and value_obj.static_value is not None
                 ):
+                    if not isinstance(value_obj.static_value, ast.Constant):
+                        raise WebAssemblyUnsupported(
+                            f"WebAssembly constant {node.id} requires a scalar literal", node,
+                        )
                     return self.expression(code, value_obj.static_value)
             name = (
                 self.name_aliases.get(node.id, node.id)
                 if isinstance(node, ast.Name)
                 else node.name
             )
+            if name not in self.local_indices:
+                raise WebAssemblyUnsupported(
+                    f"WebAssembly global value {name} is not implemented", node,
+                )
             code.append(LOCAL_GET)
             code.extend(_unsigned(self.local_indices[name]))
             return self.widen_numeric(
@@ -1718,8 +1752,17 @@ class WebAssemblyEmitter:
 
     def condition(self, code: bytearray, node: ast.expr) -> None:
         # Shared truth tests leave a bare __len__() call for sized values.
-        if self.expression(code, node) == I64:
+        value_type = self.expression(code, node)
+        if value_type == I64:
             code.extend((I64_EQZ, I32_EQZ))
+        elif value_type == F64:
+            code.append(F64_CONST)
+            code.extend(struct.pack("<d", 0.0))
+            code.extend((F64_EQ, I32_EQZ))
+        elif isinstance(value_type, bytes):
+            code.extend((REF_IS_NULL, I32_EQZ))
+        elif value_type is None:
+            code.extend((I32_CONST, 0))
 
     def call(self, code: bytearray, node: ast.Call) -> ValueType | None:
         target = analyzed_value_object(node.func)
@@ -1850,6 +1893,21 @@ class WebAssemblyEmitter:
             code.extend(_unsigned(1))
             code.append(I64_EXTEND_I32_U)
             return I64
+        if (
+            isinstance(target, Function)
+            and target.name in {"__len__", "__bool__"}
+            and isinstance(node.func, ast.Attribute)
+            and analyzed_value_type(node.func.value).generic_name == "tuple"
+        ):
+            self.expression(code, node.func.value)
+            code.append(DROP)
+            length = len(analyzed_value_type(node.func.value).generic_types)
+            if target.name == "__bool__":
+                code.extend((I32_CONST, int(bool(length))))
+                return I32
+            code.append(I64_CONST)
+            code.extend(_signed(length))
+            return I64
         if self.is_tuple_get(node):
             return self.tuple_get(code, node)
         if self.is_list_get(node):
@@ -1865,6 +1923,8 @@ class WebAssemblyEmitter:
                 )
             collection_type = analyzed_value_type(node.args[0])
             if collection_type.generic_name == "tuple":
+                self.expression(code, node.args[0])
+                code.append(DROP)
                 code.append(I64_CONST)
                 code.extend(_signed(len(collection_type.generic_types)))
                 return I64
@@ -2379,12 +2439,24 @@ class WebAssemblyEmitter:
             array_index,
             list_index,
         )
-        code.append(LOCAL_GET)
-        code.extend(_unsigned(self.local_indices[array_slot]))
-        code.append(LOCAL_GET)
-        code.extend(_unsigned(self.local_indices[length_slot]))
-        code.extend((GC_PREFIX, STRUCT_NEW))
-        code.extend(_unsigned(list_index))
+        if getattr(node, "augmented", False):
+            for slot, field in ((array_slot, 0), (length_slot, 1)):
+                code.append(LOCAL_GET)
+                code.extend(_unsigned(self.local_indices[left_slot]))
+                code.append(LOCAL_GET)
+                code.extend(_unsigned(self.local_indices[slot]))
+                code.extend((GC_PREFIX, STRUCT_SET))
+                code.extend(_unsigned(list_index))
+                code.extend(_unsigned(field))
+            code.append(LOCAL_GET)
+            code.extend(_unsigned(self.local_indices[left_slot]))
+        else:
+            code.append(LOCAL_GET)
+            code.extend(_unsigned(self.local_indices[array_slot]))
+            code.append(LOCAL_GET)
+            code.extend(_unsigned(self.local_indices[length_slot]))
+            code.extend((GC_PREFIX, STRUCT_NEW))
+            code.extend(_unsigned(list_index))
         return self.reference_type_index(list_index)
 
     def list_length(self, code: bytearray, slot: str, list_index: int) -> None:
@@ -2458,9 +2530,9 @@ class WebAssemblyEmitter:
     ) -> None:
         loop = comprehension.loops[index]
         previous_aliases = self.name_aliases
+        self.iterator_create(code, loop.iterable, loop.iterator)
         self.name_aliases = {**previous_aliases, **loop.aliases}
         try:
-            self.iterator_create(code, loop.iterable, loop.iterator)
             code.extend((BLOCK, EMPTY, LOOP, EMPTY))
             self.iterator_has_next(code, loop.iterator)
             code.extend((I32_EQZ, BR_IF))
@@ -3496,6 +3568,8 @@ class WebAssemblyEmitter:
         target,
         actual_type: ValueType | None = None,
     ) -> None:
+        if isinstance(target, CollectionNew):
+            target = target.source
         if isinstance(target, (ast.Name, ast.arg, BlockArgument)):
             name = self.target_name(target)
             expected_type = self.local_value_types[name]
@@ -3736,7 +3810,15 @@ class WebAssemblyEmitter:
                     node,
                 )
             self.expression_as(code, node.args[0], I64)
-            code.extend((I32_WRAP_I64, MEMORY_GROW, 0x00, I64_EXTEND_I32_S))
+            code.append(LOCAL_TEE)
+            code.extend(_unsigned(self.local_indices[self.integer_scratch]))
+            code.append(I64_CONST)
+            code.extend(_signed(linear_memory.MAX_PAGES))
+            code.extend((I64_GT_U, IF, I64, I64_CONST))
+            code.extend(_signed(-1))
+            code.extend((ELSE, LOCAL_GET))
+            code.extend(_unsigned(self.local_indices[self.integer_scratch]))
+            code.extend((I32_WRAP_I64, MEMORY_GROW, 0x00, I64_EXTEND_I32_S, END))
             return I64
 
         loads = {
@@ -3752,7 +3834,8 @@ class WebAssemblyEmitter:
                 )
             operation, alignment, result_type = loads[function]
             self.expression_as(code, node.args[0], I64)
-            code.extend((I32_WRAP_I64, operation))
+            self.linear_memory_offset(code)
+            code.append(operation)
             code.extend(_unsigned(alignment))
             code.extend(_unsigned(0))
             if function is linear_memory.load_i32:
@@ -3773,8 +3856,14 @@ class WebAssemblyEmitter:
             )
         operation, alignment, value_type = stores[function]
         self.expression_as(code, node.args[0], I64)
-        code.append(I32_WRAP_I64)
         self.expression_as(code, node.args[1], value_type)
+        # Both arguments are evaluated before checking the offset. Keep the
+        # offset on the stack while a value expression uses scratch locals.
+        value_slot = self.integer_scratch_right if value_type == I64 else self.float_scratch
+        self.set_local(code, value_slot)
+        self.linear_memory_offset(code)
+        code.append(LOCAL_GET)
+        code.extend(_unsigned(self.local_indices[value_slot]))
         if function is linear_memory.store_i32:
             code.append(I32_WRAP_I64)
         elif function is linear_memory.store_f32:
@@ -3783,6 +3872,17 @@ class WebAssemblyEmitter:
         code.extend(_unsigned(alignment))
         code.extend(_unsigned(0))
         return None
+
+    def linear_memory_offset(self, code: bytearray) -> None:
+        # Wasm bounds checks see only i32; validate high bits before narrowing
+        # so negative or oversized Python offsets cannot alias valid memory.
+        code.append(LOCAL_TEE)
+        code.extend(_unsigned(self.local_indices[self.integer_scratch]))
+        code.append(I64_CONST)
+        code.extend(_signed(2**32 - 1))
+        code.extend((I64_GT_U, IF, EMPTY, UNREACHABLE, END, LOCAL_GET))
+        code.extend(_unsigned(self.local_indices[self.integer_scratch]))
+        code.append(I32_WRAP_I64)
 
     @staticmethod
     def constant_tuple_index(node: ast.expr, length: int) -> int:
@@ -3989,20 +4089,17 @@ class WebAssemblyEmitter:
         ) or self.parameter_type(function, parameter)
 
     @staticmethod
-    def local_numeric_format(
-        function: Function,
-        target,
-    ) -> NumericFormat | None:
+    def local_declaration(scope, target) -> Instance | None:
         if not isinstance(target, (ast.Name, ast.arg)):
             return None
         name = target.id if isinstance(target, ast.Name) else target.arg
         try:
-            value = function.scope.lookup(name)
+            value = scope.lookup(name)
         except NameError:
             # A loop body that always returns has no binding at the function's
             # exit join. Its analyzed target still owns the physical local.
             value = getattr(target, "obj", None)
-        return analyzed_numeric_format(value.storage_declaration) if isinstance(value, Instance) else None
+        return value.storage_declaration if isinstance(value, Instance) else None
 
 
 def transpile_webassembly(
@@ -4015,13 +4112,21 @@ def transpile_webassembly(
     """Emit a module exporting the named source functions and reached memory."""
     if not exports:
         raise ValueError("WebAssembly compilation requires at least one export")
+    if any(not isinstance(name, str) or not name for name in exports):
+        raise ValueError("WebAssembly export names must be nonempty strings")
     if len(set(exports)) != len(exports):
         raise ValueError("WebAssembly export names must be unique")
     if "memory" in exports:
         raise ValueError("WebAssembly function exports cannot be named memory")
 
     def select_additional_roots(module):
-        return tuple(getattr(module, name) for name in exports[1:])
+        selected = []
+        for name in exports:
+            value = getattr(module, name, None)
+            if not inspect.isfunction(value):
+                raise ValueError(f"WebAssembly export {name!r} must name a Python function")
+            selected.append(value)
+        return tuple(selected[1:])
 
     with analyze_source(
         textwrap.dedent(source),

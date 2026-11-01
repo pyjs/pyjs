@@ -357,10 +357,15 @@ class WebAssemblyInstantiatedSource:
 class WebAssembly:
     """ECMAScript WebAssembly namespace."""
     @staticmethod
+    @js.inline(lambda source, imports="undefined", **_: (
+        f"WebAssembly.instantiate({source}, ({imports}) ?? undefined)"
+    ))
     async def instantiate(
         source: ArrayBuffer | TypedArray,
         imports: object | None = None,
-    ) -> WebAssemblyInstantiatedSource: ...
+    ) -> WebAssemblyInstantiatedSource:
+        """Instantiate bytes; use a TypedDict for the JavaScript import object."""
+        ...
 
 
 @js.native

@@ -134,6 +134,8 @@ async def test_webassembly_bytes_instantiate_with_typed_exports():
     exports = cast(AnswerExports, instantiated.instance.exports)
 
     assert exports.main() == 42
+    explicit_none = await WebAssembly.instantiate(module, None)
+    assert cast(AnswerExports, explicit_none.instance.exports).main() == 42
 
 
 @js

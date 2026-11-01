@@ -260,10 +260,10 @@ def analyze_source(
         wrapper_name=entry_point,
     )
     module.__pyjs_original_source__ = original_source
+    additional_entry_points = () if root_selector is None else root_selector(module)
     entry = getattr(module, entry_point)
     if environment is None or environment.name == "js":
         configure_js(entry, enabled=True)
-    additional_entry_points = () if root_selector is None else root_selector(module)
     entry_point, _ = analyze_module(
         module,
         entry_point=entry,
