@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
 from . import double_to_string
 from .json import JSONReader, quote
-from .models import field_info, is_model
+from .models import field_default, field_info, is_model
 
 
 class JSONCodegen:
@@ -205,7 +205,7 @@ class JSONCodegen:
         for name, field in annotation.model_fields.items():
             value, seen = self.name(), self.name()
             field_type = self.annotation(field.annotation)
-            default = "None" if field.is_required() else repr(field.default)
+            default = "None" if field.is_required() else repr(field_default(field, name))
             self.emit(f"{value}: {field_type} | None = {default}")
             self.emit(f"{seen} = False")
             fields.append((name, field, value, seen))

@@ -67,12 +67,29 @@ def field_only_codecs(info, cls):
                 "    @classmethod\n"
                 f"    def model_validate_json(cls, json_data: str) -> {return_type}:\n"
                 "        _pyjs_no_codec()\n")},
-        imports={"_pyjs_no_codec": unsupported_json_codec, return_type: cls})
+        imports={"_pyjs_no_codec": unsupported_json_codec, return_type: cls},
+        config=info.config)
+
+
+def unwrap_annotation(annotation):
+    while get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    return annotation
+
+
+def field_annotation_source(annotation):
+    annotation = unwrap_annotation(annotation)
+    origin, arguments = get_origin(annotation), get_args(annotation)
+    if origin in (UnionType, Union):
+        return " | ".join(field_annotation_source(value) for value in arguments)
+    if origin in (list, dict):
+        return origin.__name__ + "[" + ", ".join(
+            field_annotation_source(value) for value in arguments) + "]"
+    return _annotation_source(annotation)
 
 
 def field_type(annotation):
-    if get_origin(annotation) is Annotated:
-        annotation = get_args(annotation)[0]
+    annotation = unwrap_annotation(annotation)
     if annotation in (str, bool, int, float, type(None)) or is_model(annotation):
         return True
     origin, arguments = get_origin(annotation), get_args(annotation)
@@ -84,10 +101,33 @@ def field_type(annotation):
             return False
         return all(field_type(value) for value in arguments)
     if origin is list:
-        return all(field_type(value) for value in arguments)
+        return len(arguments) == 1 and field_type(arguments[0])
     if origin is dict:
-        return arguments[0] is str and field_type(arguments[1])
+        return len(arguments) == 2 and arguments[0] is str and field_type(arguments[1])
     return False
+
+
+def field_default(field, name):
+    factory = field.default_factory
+    if factory is not None:
+        if factory is list:
+            default = []
+        elif factory is dict:
+            default = {}
+        else:
+            raise TypeError(f"JVM client model field {name!r} supports only list/dict default factories")
+    else:
+        default = field.default
+    if type(default) in (list, dict) and not default:
+        annotation = unwrap_annotation(field.annotation)
+        members = get_args(annotation) if get_origin(annotation) in (UnionType, Union) else (annotation,)
+        if not any(get_origin(unwrap_annotation(member)) is type(default) for member in members):
+            raise TypeError(f"JVM client model field {name!r} requires a matching collection default")
+    elif type(default) not in (str, bool, int, float, type(None)):
+        raise TypeError(f"JVM client model field {name!r} requires a scalar or empty collection default")
+    if isinstance(default, float) and not math.isfinite(default):
+        raise TypeError(f"JVM client model field {name!r} requires a finite default")
+    return default
 
 
 def field_info(cls):
@@ -111,27 +151,24 @@ def field_info(cls):
     if cls.model_config.get("extra") == "allow":
         raise TypeError("JVM client models do not support dynamic extra fields")
     annotations, defaults, required, parameters, body = {}, {}, [], [], []
+    fresh_defaults = []
     for name, field in cls.model_fields.items():
         if name == "self":
             raise TypeError("JVM client model fields cannot be named 'self'")
         if field.alias is not None or field.validation_alias is not None or field.serialization_alias is not None:
             raise TypeError(f"JVM client model field {name!r} does not support aliases")
-        if field.default_factory is not None:
-            raise TypeError(f"JVM client model field {name!r} does not support default factories")
         if field.frozen or field.exclude or getattr(field, "exclude_if", None) is not None:
             raise TypeError(f"JVM client model field {name!r} does not support freezing or exclusion")
         if not field_type(field.annotation):
             raise TypeError(f"JVM client model field {name!r} has an unsupported type")
         annotations[name] = field.annotation
-        parameter = f"{name}: {_annotation_source(field.annotation)}"
+        parameter = f"{name}: {field_annotation_source(field.annotation)}"
         if field.is_required():
             required.append(name)
         else:
-            default = field.default
-            if type(default) not in (str, bool, int, float, type(None)):
-                raise TypeError(f"JVM client model field {name!r} requires a scalar default")
-            if isinstance(default, float) and not math.isfinite(default):
-                raise TypeError(f"JVM client model field {name!r} requires a finite default")
+            default = field_default(field, name)
+            if type(default) in (list, dict):
+                fresh_defaults.append(name)
             defaults[name] = default
             parameter += f" = {default!r}"
         parameters.append(parameter)
@@ -139,7 +176,8 @@ def field_info(cls):
     signature = "self, *, " + ", ".join(parameters) if parameters else "self"
     initializer = f"    def __init__({signature}):\n" + "\n".join(body or ["        pass"]) + "\n"
     return LibraryClassInfo(annotations, defaults, tuple(required), opaque=True,
-                            methods={"__init__": initializer})
+                            methods={"__init__": initializer},
+                            config={"fresh_collection_defaults": tuple(fresh_defaults)})
 
 
 def _class_info(cls):
@@ -177,4 +215,5 @@ def _class_info(cls):
         return field_only_codecs(info, cls)
     return LibraryClassInfo(info.annotations, info.defaults, info.required, opaque=True,
                             methods={**info.methods, "model_dump_json": encode,
-                                     "model_validate_json": decode}, imports=generator.imports)
+                                     "model_validate_json": decode}, imports=generator.imports,
+                            config=info.config)

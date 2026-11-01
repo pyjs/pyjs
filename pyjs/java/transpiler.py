@@ -49,6 +49,12 @@ from pyjs.analysis.objects import (
     StaticCast,
     UnionType,
 )
+from pyjs.analysis.objects import (
+    Dict as AnalyzedDict,
+)
+from pyjs.analysis.objects import (
+    List as AnalyzedList,
+)
 from pyjs.analysis.source import analyze_source
 from pyjs.analysis.super_proxy import is_receiver as is_super_receiver
 from pyjs.analysis.type_relations import same_analyzer_type
@@ -718,6 +724,7 @@ class JVMEmitter:
                 for default in [*function.defaults, *function.kw_defaults]
                 if default is not None
                 if not self.is_immutable_default(default)
+                if not self.is_fresh_model_default(function, default)
             ),
             None,
         )
@@ -3823,8 +3830,31 @@ class JVMEmitter:
                 f"JVM call arguments are missing: {', '.join(required)}",
                 node,
             )
-        evaluation.extend((name, defaults[name]) for name in missing)
+        for name in missing:
+            default = defaults[name]
+            if self.is_fresh_model_default(function, default):
+                # These are model factories, not shared Python function defaults.
+                # Empty default ASTs have no item type until the field supplies it.
+                parameter = next(parameter for parameter in function.kwonlyargs if parameter.arg == name)
+                semantic = parameter.annotation.obj
+                kind = "list" if isinstance(default, ast.List) else "dict"
+                members = semantic.types if isinstance(semantic, UnionType) else [semantic]
+                value_type = next(member for member in members if member.generic_name == kind)
+                source = (AnalyzedList(value_type, elts=[], ctx=ast.Load()) if kind == "list"
+                          else AnalyzedDict(value_type, keys=[], values=[]))
+                default = ast.copy_location(CollectionNew(source), default)
+            evaluation.append((name, default))
         return evaluation, parameters
+
+    @staticmethod
+    def is_fresh_model_default(function: Function, node: ast.expr) -> bool:
+        owner = function.cls
+        info = owner.library_info if owner is not None else None
+        if function.name != "__init__" or info is None:
+            return False
+        names = info.config.get("fresh_collection_defaults", ())
+        return any(parameter.arg in names and default is node
+                   for parameter, default in zip(function.kwonlyargs, function.kw_defaults, strict=True))
 
     @staticmethod
     def is_immutable_default(node: ast.expr) -> bool:
