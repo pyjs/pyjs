@@ -132,6 +132,37 @@ def test_local_annotations_do_not_coerce_inferred_scalar_storage(tmp_path, body)
 
 
 @pytest.mark.parametrize('body', [
+    'value: object = [7]\nreturn 7 if value is not None else 0',
+    'value: object = (7, 2)\nreturn 7 if value is not None else 0',
+    'value: object = Box(7)\nreturn 7 if value is not None else 0',
+    'values: object = [1, 2]\nvalues = [3]\nreturn len(values)',
+    'values: Iterable[int] = [1, 2]\nvalues = [3]\nreturn len(values)',
+    'value: Box | Other = Box(1)\nvalue = Box(3)\nreturn value.value',
+    'kept = [1]\nalias: object = kept\nkept.append(2)\nreturn len(kept)',
+    'value: list[int] | tuple[int, int] = [1, 2]\nreturn 7',
+    'events: list[int] = []\nvalue: object = take(events)\nreturn len(events)',
+])
+def test_broad_reference_annotations_keep_inferred_storage(tmp_path, body):
+    assert_python_result(tmp_path, '''
+from typing import Iterable
+
+class Box:
+    def __init__(self, value: int):
+        self.value = value
+
+class Other:
+    def __init__(self, value: int):
+        self.value = value
+
+def take(events: list[int]) -> list[int]:
+    events.append(7)
+    return [3]
+
+def main() -> int:
+''' + textwrap.indent(body, '    '))
+
+
+@pytest.mark.parametrize('body', [
     'values: list[float] = [item for item in [1, 2]]\nreturn len(values)',
     'pair = (1, 2)\nvalues: tuple[float, float] = pair\nreturn int(values[0])',
     'rows: list[list[int] | None] = [[item] for item in [1, 2]]\nreturn len(rows)',

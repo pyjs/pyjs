@@ -869,9 +869,12 @@ class WebAssemblyEmitter:
                         else self.annotation(statement.annotation)
                     )
                     if declaration is not None and isinstance(value_type, bytes):
-                        # Reads use the declared reference layout. Storing a
-                        # different layout must fail at the initializer.
-                        value_type = self.value_type(declaration.cls)
+                        # Concrete annotations constrain reference reads. Broad
+                        # annotations have no layout; retain inferred storage.
+                        try:
+                            value_type = self.value_type(declaration.cls)
+                        except WebAssemblyUnsupported:
+                            pass
                     add_local(
                         self.target_name(statement.target),
                         value_type,
