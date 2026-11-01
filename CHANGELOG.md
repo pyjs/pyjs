@@ -22,6 +22,8 @@
   Markdown rendering policy is written in typed Python over browser-library
   bindings. `Element.innerHTML` is available in browser code; CPython rejects
   it explicitly, and server-rendered conversation Markdown stays escaped text.
+  JavaScript inline methods preserve compound receivers, including
+  `(value or '').lower()` when filtering mixed-case HTTP/HTTPS links.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because

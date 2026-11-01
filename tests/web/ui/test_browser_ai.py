@@ -83,6 +83,14 @@ def test_markdown_updates_fences_lists_and_blocks_active_content():
         assert (link.getAttribute('href') or '').startswith('https://')
         assert link.getAttribute('rel') == 'noopener noreferrer'
         assert link.getAttribute('target') == '_blank'
+    message.set_text('[inline](HTTPS://example.com) <Http://example.org>\n\n'
+                     '[reference][ref]\n\n[ref]: hTtPs://example.net\n\n'
+                     'Https://example.edu')
+    assert message.querySelectorAll('a[href]').length == 4
+    for link in message.querySelectorAll('a[href]'):
+        assert link.getAttribute('rel') == 'noopener noreferrer'
+        assert link.getAttribute('target') == '_blank'
+    assert require_element(message, 'a').getAttribute('href') == 'HTTPS://example.com'
 
 
 @js
