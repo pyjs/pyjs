@@ -3914,6 +3914,10 @@ class InferenceVisitor(ast.NodeVisitor):
         # Both live paths must establish presence. A nested/conditional write
         # invalidates this simple proof; a subsequent direct assignment can
         # establish it again. Do not infer the entire join from the None arm.
+        if any(isinstance(node, ast.Call) for node in ast.walk(target_node)):
+            # Re-evaluating a call need not return the object tested or
+            # assigned earlier in this branch.
+            return False
         target_name = ast.unparse(target_node)
         for statement in statements:
             if hasattr(statement, "flow_statements"):
@@ -3994,6 +3998,8 @@ class InferenceVisitor(ast.NodeVisitor):
                 yield statement
             if isinstance(statement, ast.arg):
                 yield ast.Name(id=statement.arg, ctx=ast.Store())
+            if isinstance(statement, ast.ExceptHandler) and statement.name is not None:
+                yield ast.Name(id=statement.name, ctx=ast.Store())
             if hasattr(statement, "flow_statements"):
                 yield from InferenceVisitor.written_targets(statement.flow_statements)
             yield from InferenceVisitor.written_targets(ast.iter_child_nodes(statement))

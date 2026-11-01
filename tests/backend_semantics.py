@@ -6471,6 +6471,24 @@ INITIALIZED_RECEIVER_CONTRACT = _contract(
             assert holder is not None
             holder.item = Cached(7)
         return 2
+
+    @js
+    class Outer:
+        def __init__(self, holder: Holder):
+            self.holder = holder
+
+    @js
+    def load_outer(present: bool) -> Outer | None:
+        return Outer(Holder(None)) if present else None
+
+    @js
+    def nested_receiver(outer: Outer | None, present: bool) -> int:
+        if outer is None or outer.holder.item is None:
+            outer = load_outer(present)
+            if outer is None:
+                return 0
+            outer.holder.item = Cached(7)
+        return 2
     ''',
     "initialized_receiver_result",
     "",
@@ -6479,6 +6497,9 @@ INITIALIZED_RECEIVER_CONTRACT = _contract(
         ("absent replacement exits safely", "replace_receiver(None, False) != 0"),
         ("existing receiver remains valid", "replace_receiver(Holder(Cached(1)), True) != 2"),
         ("prior receiver proof may be invalidated", "prior_receiver(Holder(None)) != 2"),
+        ("nested receiver replacement remains valid", "nested_receiver(None, True) != 2"),
+        ("absent nested receiver exits", "nested_receiver(None, False) != 0"),
+        ("existing nested receiver survives", "nested_receiver(Outer(Holder(Cached(1))), False) != 2"),
     ),
 )
 

@@ -40,6 +40,11 @@
   join, including `if value is None or stale: value = make_value()`. Every
   continuing path must establish the required type; conditional initialization
   or a later incompatible write still requires a new check.
+  Optional numeric initialization now requires the runtime kind promised by
+  the annotation: use `0.0`, not `0`, for `float | None`, and an integer, not
+  a Boolean, for `int | None`. Previously accepted promoted writes could
+  select incorrect numeric lowering. Call-result receivers and exception
+  target rebinding do not establish a post-branch initialization proof.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because

@@ -135,3 +135,63 @@ def test_assignment_promotion_does_not_prove_numeric_union_arm(kind, assigned):
         f"pyjs.CompilationError: Method '__str__' has incompatible client lowering on {kind} | str [PYJS2001]",
         "help: Narrow the receiver with isinstance() before calling the definition on str.",
     ), filename="guard.py")
+
+
+@pytest.mark.parametrize("kind, assigned, increment, underline", [
+    ("float", "0", "1.5", "       ^^^^^^^^^^^"),
+    ("int", "True", "1", "       ^^^^^^^^^"),
+])
+def test_optional_numeric_defaults_require_the_declared_runtime_kind(kind, assigned, increment, underline):
+    source = f'''def main(value: {kind} | None) -> {kind}:
+    if value is None:
+        value = {assigned}
+    return value + {increment}
+'''
+    ad(source, diagnostic_text(
+        "guard.py", 4, f"return value + {increment}", underline,
+        "pyjs.CompilationError: Operator '+' is not supported for every combination "
+        f"of {kind}|NoneType and {kind} [PYJS1104]",
+        "help: Narrow either operand before applying the operator.",
+    ), filename="guard.py")
+
+
+def test_exception_target_rebinding_invalidates_initialization():
+    source = '''def main(value: int | None, refresh: bool) -> int:
+    if value is None or refresh:
+        value = 1
+        try:
+            raise ValueError("no")
+        except ValueError as value:
+            pass
+    return value + 1
+'''
+    ad(source, diagnostic_text(
+        "guard.py", 8, "return value + 1", "       ^^^^^^^^^",
+        "pyjs.CompilationError: Operator '+' is not supported for every combination "
+        "of int|NoneType and int [PYJS1104]",
+        "help: Narrow either operand before applying the operator.",
+    ), filename="guard.py")
+
+
+@pytest.mark.parametrize("guard", ["load().value is None", "load().value is None or refresh"])
+def test_repeated_receiver_calls_do_not_establish_initialization(guard):
+    source = f'''from pyjs import js
+@js
+class Holder:
+    def __init__(self, value: int | None):
+        self.value = value
+@js
+def load() -> Holder:
+    return Holder(None)
+@js
+def main(refresh: bool) -> int:
+    if {guard}:
+        load().value = 1
+    return load().value + 1
+'''
+    ad(source, diagnostic_text(
+        "guard.py", 13, "return load().value + 1", "       ^^^^^^^^^^^^^^^^",
+        "pyjs.CompilationError: Operator '+' is not supported for every combination "
+        "of int|NoneType and int [PYJS1104]",
+        "help: Narrow either operand before applying the operator.",
+    ), filename="guard.py")
