@@ -2,7 +2,7 @@ from textwrap import dedent
 
 import pytest
 
-from pyjs.java import read_jvm_class, transpile_jvm
+from pyjs.java import JVMUnsupported, read_jvm_class, transpile_jvm
 from tests.backend_semantics import LIST_SLICE_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
@@ -100,3 +100,18 @@ def main() -> int:
         methods = [method.name for name, data in compilation.classes.items()
                    if "$list$" in name for method in read_jvm_class(data).methods]
         assert methods.count("slice") == expected
+
+
+@pytest.mark.parametrize("operation, message", [
+    ("values[1.5:]", "JVM list slice bounds must be integers or None"),
+    ('values[:"x"]', "JVM list slice bounds must be integers or None"),
+    ("values[::1.5]", "JVM list slice bounds must be integers or None"),
+    ("values.__slice__(1)", "JVM list slices require start, stop and step"),
+    ("values[:] = [7]", "unsupported JVM scalar operation __setslice__"),
+    ("del values[:]", "unsupported JVM scalar operation __delslice__"),
+])
+def test_unsupported_slice_shapes_have_focused_locations(operation, message):
+    source = f"def main() -> int:\n    values = [1, 2]\n    {operation}\n    return 0\n"
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(source, filename="slice_boundary.py")
+    assert str(caught.value) == message + " at line 3 while compiling slice_boundary.main"
