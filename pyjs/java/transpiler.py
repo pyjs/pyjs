@@ -61,7 +61,7 @@ from pyjs.decorators import JVMField, backend_metadata, is_declaration
 from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
-from . import sets
+from . import list_slices, sets
 from .analysis import JVM_ENVIRONMENT
 from .boxed import SCALAR_BOXES, box, emit_equality, emit_key_guard, unbox_scalar
 from .classfile import (
@@ -2219,6 +2219,9 @@ class JVMEmitter:
                 )
             if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "set":
                 return sets.call(self, node, target, semantic_receiver, leading_argument)
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "__slice__"):
+                return list_slices.call(self, node, semantic_receiver)
             if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name == "extend"):
                 if node.keywords or len(node.args) != 1:

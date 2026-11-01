@@ -1141,6 +1141,11 @@ with `pyjs template`.
   indices count from the end. Empty lists and out-of-range indices raise
   `IndexError`; vacated array slots are cleared. Removing the last element is
   constant time; removing an earlier element shifts the following items.
+- JVM list slices preserve item storage and shallow identity in an independent
+  list. Bounds accept integers, Booleans or `None`; negative bounds and steps
+  follow Python clipping rules. A zero step raises `ValueError`. Work and
+  additional storage are proportional to the number of selected items.
+  Slice assignment, deletion and first-class slice objects remain unsupported.
 - JVM `math.sqrt()` accepts integers, Booleans and floats. Negative inputs
   raise `ValueError`; negative zero, positive infinity and NaN retain their
   floating-point behavior. The implementation uses Java's native square root

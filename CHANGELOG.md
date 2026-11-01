@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- JVM lists support shallow slicing with omitted, negative and optional
+  integer bounds, positive or negative steps, and a `ValueError` for zero
+  steps. Slices preserve item representations and own their list storage.
+  Slice assignment, deletion and first-class slice objects remain unsupported.
+
 - JVM lists support `extend()` from another list with matching item storage,
   including self-extension, empty inputs and shallow reference preservation.
   Other iterable shapes receive an explicit unsupported-operation diagnostic.
