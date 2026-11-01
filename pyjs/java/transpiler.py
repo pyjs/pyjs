@@ -51,7 +51,7 @@ from pyjs.analysis.objects import (
 )
 from pyjs.analysis.source import analyze_source
 from pyjs.analysis.super_proxy import is_receiver as is_super_receiver
-from pyjs.analysis.type_relations import same_analyzer_type
+from pyjs.analysis.type_relations import is_builtin_class, same_analyzer_type
 from pyjs.analysis.value_representation import (
     analyzed_numeric_format,
     analyzed_representation,
@@ -1678,11 +1678,11 @@ class JVMEmitter:
             if node.args:
                 descriptor = self.expression(node.args[0])
                 value_type = analyzed_value_type(node.args[0])
-                if getattr(value_type, "generic_name", None) == "list":
+                if is_builtin_class(value_type, "list"):
                     length = self.class_file.field_reference(self.list_class_name(value_type), "length", "I")
                     self.code.emit(0xB4, length.to_bytes(2, "big"))
                     self.comparison(0x9A)
-                elif getattr(value_type, "generic_name", None) == "set":
+                elif is_builtin_class(value_type, "set"):
                     sets.invoke(self, "size", "()I")
                     self.comparison(0x9A)
                 else:

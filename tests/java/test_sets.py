@@ -8,10 +8,12 @@ def test_reference_set_operations_and_independent_copy(tmp_path):
     assert_text_matches_python('''def main() -> str:
     values: set[str] = set()
     assert not values
+    assert not bool(values)
     values.add("雪")
     values.add("a")
     values.add("雪")
     assert len(values) == 2
+    assert bool(values) == True
     assert "雪" in values
     assert "missing" not in values
     copied = values.copy()
@@ -21,6 +23,7 @@ def test_reference_set_operations_and_independent_copy(tmp_path):
     assert len(values) == 1
     values.clear()
     assert not values
+    assert not bool(values)
     return ",".join(sorted(copied))
 ''', tmp_path)
 

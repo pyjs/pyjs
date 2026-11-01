@@ -30,6 +30,30 @@ def main() -> bool:
     )
 
 
+@pytest.mark.parametrize("name", ["list", "set"])
+@pytest.mark.parametrize("generic", [False, True])
+@pytest.mark.parametrize("field", ["value", "length"])
+def test_collection_namesakes_keep_the_custom_bool_boundary(name, generic, field):
+    declaration = name + ("[T]" if generic else "")
+    annotation = name + ("[int]" if generic else "")
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''class {declaration}:
+    def __init__(self, value: int):
+        self.{field} = value
+    def __bool__(self) -> bool:
+        return False
+def truth(value: {annotation}) -> bool:
+    return bool(value)
+def main() -> int:
+    builtin_values = [7]
+    return int(truth({annotation}(len(builtin_values))))
+''')
+    assert str(caught.value) == (
+        "JVM bool conversion requires a numeric or string value at line 2 "
+        "while compiling _pyjs_java_.truth"
+    )
+
+
 @pytest.mark.parametrize("condition", ["if value:", "if not value:"])
 def test_list_condition_evaluates_once(tmp_path, condition):
     assert_text_matches_python(f'''
