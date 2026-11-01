@@ -4568,6 +4568,41 @@ LIST_EXTEND_CONTRACT = _contract(
 )
 
 
+LIST_SLICE_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_slice_result",
+    '''
+        values = [0, 1, 2, 3, 4]
+        copied = values[:]
+        copied[0] = 99
+        copied.append(5)
+        reverse = values[::-1]
+        stepped = values[-99:99:2]
+        backwards = values[99:-99:-2]
+        empty: list[int] = []
+        grown = empty[::-1]
+        grown.append(42)
+        nested = [[1]]
+        shallow = nested[:]
+        shallow[0].append(2)
+        represented = [int8(127)][:]
+        floating = [float32(16777216)][::-1]
+        flags = [True, False][1:]
+        words = ["é", "😀"][::-1]
+    ''',
+    (
+        ("slice owns independent storage", "copied is values or values[0] != 0 or len(values) != 5 or len(copied) != 6"),
+        ("reverse preserves order", "len(reverse) != 5 or reverse[0] != 4 or reverse[4] != 0"),
+        ("extended bounds clip", "len(stepped) != 3 or stepped[2] != 4 or backwards[0] != 4 or backwards[2] != 0"),
+        ("empty slices remain mutable", "len(empty) != 0 or grown[0] != 42"),
+        ("slice is shallow", "shallow is nested or shallow[0] is not nested[0] or len(nested[0]) != 2"),
+        ("integer representation retained", "int(represented[0] + 1) != -128"),
+        ("floating representation retained", "int(floating[0] + 1) != 16777216"),
+        ("boolean and reference storage", "flags[0] or words[0] != '😀'"),
+    ),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",
