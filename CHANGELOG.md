@@ -19,6 +19,9 @@
   while preserving older reading positions. Keyboard following requires the
   application to resize the scroller when the keyboard opens. Collapsing a
   panel to zero height preserves its reply anchor for reopening.
+  Markdown rendering policy is written in typed Python over browser-library
+  bindings. `Element.innerHTML` is available in browser code; CPython rejects
+  it explicitly, and server-rendered conversation Markdown stays escaped text.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because

@@ -41,6 +41,27 @@ def test_select_tag_uses_its_concrete_cpython_defaults():
     assert control.value == ""
 
 
+def test_cpython_inner_html_fails_without_replacing_children():
+    element = div("Kept")
+    with pytest.raises(NotImplementedError, match="only available in the browser"):
+        element.innerHTML = "<strong>New</strong>"
+    with pytest.raises(NotImplementedError, match="only available in the browser"):
+        _ = element.innerHTML
+    assert element.textContent == "Kept"
+
+
+@pytest.mark.pyjs_web
+@js
+def test_inner_html_uses_the_browser_parser_and_serializer():
+    element = div("Old")
+    element.innerHTML = "<strong>New &amp; escaped</strong>"
+    assert element.textContent == "New & escaped"
+    assert element.querySelectorAll("strong").length == 1
+    assert element.innerHTML == "<strong>New &amp; escaped</strong>"
+    element.innerHTML = ""
+    assert element.childNodes.length == 0
+
+
 @js
 def _select_changed(event: Event) -> None:
     control = cast(HTMLSelectElement, event.target)
