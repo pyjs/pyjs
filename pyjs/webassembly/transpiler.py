@@ -810,15 +810,20 @@ class WebAssemblyEmitter:
             value_type: Class,
             prefix: str,
             scope,
+            bindings: dict[str, str],
         ) -> dict[str, str]:
             aliases = {}
             for leaf in ast.walk(target):
                 if not isinstance(leaf, ast.Name):
                     continue
+                if leaf.id in bindings:
+                    aliases[leaf.id] = bindings[leaf.id]
+                    continue
                 alias = f"{prefix}_{leaf.id}"
                 while alias in self.local_indices or alias in aliases.values():
                     alias += "_"
                 aliases[leaf.id] = alias
+                bindings[leaf.id] = alias
             previous = self.name_aliases
             self.name_aliases = aliases
             try:
@@ -1028,6 +1033,9 @@ class WebAssemblyEmitter:
                             f"__pyjs_list_comp_{len(self.list_comprehensions)}"
                         )
                         loops = []
+                        # Clauses share bindings: assigning a repeated target
+                        # must remain visible when an enclosing loop resumes.
+                        bindings = {}
                         for index, generator in enumerate(node.generators):
                             target = (
                                 generator.target.source
@@ -1043,6 +1051,7 @@ class WebAssemblyEmitter:
                                 self.iterator_item_type(iterator),
                                 f"{prefix}_target_{index}",
                                 node.scope,
+                                bindings,
                             )
                             loops.append(
                                 _ComprehensionLoop(

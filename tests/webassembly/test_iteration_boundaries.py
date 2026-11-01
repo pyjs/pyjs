@@ -43,6 +43,31 @@ def test_comprehension_bindings_match_python(tmp_path, body):
     assert execute(tmp_path, source) == str(namespace['main']())
 
 
+@pytest.mark.parametrize('expression,expected', [
+    ('[value for value in [3] for other in range(2) '
+     'if value > 1 for value in [2, 1]]', 21),
+    ('[inner for value in [3] for other in range(2) '
+     'if value > 1 for inner in [2, 1]]', 41),
+    ('[value for value in [3] for other in range(2) '
+     'for value in range(value)]', 51),
+    ('[value for value in [3] for other in range(2) '
+     'if value > 1 for value, other in [(2, 7), (1, 8)]]', 21),
+    ('[value for value in [3] for other in range(2) '
+     'if value > 1 for value in [value for value in [2, 1]]]', 21),
+], ids=['filter-feedback', 'distinct-control', 'iterable-feedback',
+        'unpacked-target', 'nested-scope'])
+def test_comprehension_clauses_share_target_bindings(tmp_path, expression, expected):
+    source = f'''
+def main() -> int:
+    selected = {expression}
+    return len(selected) * 10 + selected[-1]
+'''
+    namespace = {}
+    exec(source, namespace)
+    assert namespace['main']() == expected
+    assert execute(tmp_path, source) == str(expected)
+
+
 @pytest.mark.parametrize('expression', ['pair(events)', '(take(events), 5)'])
 def test_tuple_length_evaluates_its_argument_once(tmp_path, expression):
     source = f'''
