@@ -3,9 +3,9 @@ from dataclasses import replace
 
 import pytest
 
-from pyjs.testing.helpers import aa, aat, ad, at
-from pyjs.analysis.analyzer import InferenceVisitor, JS_ENVIRONMENT
+from pyjs.analysis.analyzer import JS_ENVIRONMENT, InferenceVisitor
 from pyjs.analysis.source import analyze_source
+from pyjs.testing.helpers import aa, aat, ad, at
 
 
 def test_simple_assignment():
@@ -1669,6 +1669,22 @@ def test_augmented_assignment():
         x = x + 3;
         """
     )
+
+
+def test_lowered_list_calls_preserve_augmented_assignment_identity():
+    from pyjs.java.analysis import JVM_ENVIRONMENT
+
+    source = '''def main(values: list[int]) -> list[int]:
+    copied = values + [2]
+    values += [3]
+    return copied
+'''
+    for environment in (JS_ENVIRONMENT, JVM_ENVIRONMENT):
+        with analyze_source(source, wrap=False, environment=environment) as analysis:
+            copied, updated, _ = analysis.entry_point.body
+            assert copied.value.func.attr == updated.value.func.attr == "__add__"
+            assert copied.value.augmented is False
+            assert updated.value.augmented is True
 
 
 def test_augmented_assignment_with_undefined_value():

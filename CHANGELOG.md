@@ -20,6 +20,8 @@
 - JVM lists support `left + right` when both operands have matching item
   storage. Concatenation creates independent list storage, retains shallow
   item identity and evaluates both operands before copying either list.
+  List `+=` remains unsupported and receives a focused diagnostic; use
+  `extend()` for in-place mutation.
 
 - JVM lists support `extend()` from another list with matching item storage,
   including self-extension, empty inputs and shallow reference preservation.

@@ -1164,6 +1164,7 @@ with `pyjs template`.
   representations; other layout combinations remain unsupported.
   Empty operands need a typed list binding; untyped `[]` operands are not
   inferred at this binary-operation boundary.
+  List `+=` remains unsupported; use `extend()` for in-place mutation.
 - JVM `math.sqrt()` accepts integers, Booleans and floats. Negative inputs
   raise `ValueError`; negative zero, positive infinity and NaN retain their
   floating-point behavior. The implementation uses Java's native square root

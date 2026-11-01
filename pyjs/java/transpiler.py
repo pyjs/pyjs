@@ -2232,6 +2232,8 @@ class JVMEmitter:
             if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name in {"extend", "__add__"}):
                 operation = "list.extend" if target.name == "extend" else "list concatenation"
+                if target.name == "__add__" and getattr(node, "augmented", False):
+                    raise JVMUnsupported("JVM list += is not supported; use list.extend() for in-place mutation", node)
                 if node.keywords or len(node.args) != 1:
                     raise JVMUnsupported(f"JVM {operation} requires one positional iterable", node)
                 source_type = analyzed_value_type(node.args[0])

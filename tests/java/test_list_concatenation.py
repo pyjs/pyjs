@@ -92,3 +92,48 @@ def test_concatenation_rejects_different_item_storage():
         "JVM list concatenation requires a list with matching item storage at line 4 "
         "while compiling concatenate.main"
     )
+
+
+@pytest.mark.parametrize("target, operand", [
+    ("values", "[2]"),
+    ("values", "values"),
+    ("box.items", "[2]"),
+    ("outer[0]", "[2]"),
+    ("values", "mutate(values)"),
+])
+def test_augmented_concatenation_never_silently_rebinds_aliases(target, operand):
+    source = f'''class Box:
+    def __init__(self, items: list[int]):
+        self.items = items
+def mutate(values: list[int]) -> list[int]:
+    values.append(3)
+    return [2]
+def main() -> int:
+    values = [1]
+    alias = values
+    box = Box(values)
+    outer = [values]
+    {target} += {operand}
+    return len(alias)
+'''
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(source, filename="inplace.py")
+    assert str(caught.value) == (
+        "JVM list += is not supported; use list.extend() for in-place mutation "
+        "at line 6 while compiling inplace.main"
+    )
+
+
+def test_augmented_parameter_does_not_silently_drop_caller_mutation():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm('''def add(values: list[int]) -> None:
+    values += [2]
+def main() -> int:
+    values = [1]
+    add(values)
+    return len(values)
+''', filename="inplace.py")
+    assert str(caught.value) == (
+        "JVM list += is not supported; use list.extend() for in-place mutation "
+        "at line 2 while compiling inplace.add"
+    )
