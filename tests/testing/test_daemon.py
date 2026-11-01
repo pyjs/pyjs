@@ -1069,3 +1069,84 @@ def test_health_rejects_exited_managed_browser(tmp_path, exit_code):
     health = daemon.status_payload()
     assert health["reusable"] is (exit_code is None)
     assert health["browser_debug_port"] == 12345
+
+
+def test_managed_disconnect_during_compilation_fails_without_connection_wait(tmp_path):
+    daemon = make_daemon(tmp_path)
+    browser = object()
+    daemon.activate_browser(browser)
+    building, release = threading.Event(), threading.Event()
+
+    def build(*args):
+        building.set()
+        assert release.wait(5)
+        return BUNDLE
+
+    daemon.bundle_builder.build = build
+
+    async def scenario():
+        task = asyncio.create_task(daemon.handle_run_tests({"tests": []}))
+        try:
+            assert await asyncio.to_thread(building.wait, 2)
+            daemon.deactivate_browser(browser)
+            release.set()
+            first = await asyncio.wait_for(task, 1)
+            retry = await asyncio.wait_for(daemon.handle_run_tests({"tests": []}), 1)
+            for result in (first, retry):
+                assert result["stage"] == "browser_connection"
+                assert "Managed browser runner disconnected" in result["error"]
+            assert daemon.reusable is False
+            assert daemon.pending_results == {}
+        finally:
+            release.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_managed_startup_exposes_owned_browser_health(tmp_path, monkeypatch):
+    from urllib.request import urlopen
+
+    from pyjs.testing.daemon import async_main
+
+    def read(url):
+        with urlopen(url, timeout=2) as response:
+            return response.read()
+
+    closed = []
+    process = SimpleNamespace(poll=lambda: None)
+
+    async def navigate(url, **kwargs):
+        health = json.loads(await asyncio.to_thread(read, url + "healthz"))
+        assert health["browser_debug_port"] == 12345
+        assert health["reusable"] is True
+        process.poll = lambda: 0
+        health = json.loads(await asyncio.to_thread(read, url + "healthz"))
+        assert health["reusable"] is False
+        await asyncio.to_thread(read, url + "shutdown")
+
+    class OwnedBrowser:
+        def __init__(self, **kwargs):
+            self.process = process
+            self.debug_port = 12345
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            closed.append(True)
+
+        async def new_page(self):
+            return SimpleNamespace(
+                set_viewport=AsyncMock(), set_color_scheme=AsyncMock(),
+                navigate=navigate, exceptions=[], console=[],
+            )
+
+    monkeypatch.setattr("pyjs.testing.daemon.Browser", OwnedBrowser)
+    monkeypatch.setattr("pyjs.testing.daemon.build_runner_components", lambda: ("", ""))
+    asyncio.run(async_main(
+        "127.0.0.1", 0, 0, tmp_path, tmp_path / "cache", "managed", False,
+        1440, 1000, "system", tmp_path / "artifacts", 30, 10,
+    ))
+    assert closed == [True]

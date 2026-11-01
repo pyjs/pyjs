@@ -642,7 +642,12 @@ class PrototypeDaemon:
 
     async def ensure_browser_connection(self) -> WebSocket | None:
         self.discard_stale_browser()
-        if self.browser_mode == "managed" and not self.reusable:
+        if self.browser_mode == "managed" and (
+            not self.reusable
+            or (self.last_browser_seen is not None and self.active_browser is None)
+        ):
+            # A successful bundle build can restore reusable after compilation
+            # errors, but cannot restore a runner lost during that compilation.
             return None
         if self.active_browser is not None:
             return self.active_browser
