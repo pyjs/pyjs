@@ -6447,6 +6447,106 @@ INITIALIZED_GUARD_CONTRACT = _contract(
 )
 
 
+INITIALIZED_RECEIVER_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS + '''
+    @js
+    def load(present: bool) -> Holder | None:
+        return Holder(None) if present else None
+
+    @js
+    def replace_receiver(holder: Holder | None, present: bool) -> int:
+        if holder is None or holder.item is None:
+            holder = load(present)
+            if holder is None:
+                return 0
+            holder.item = Cached(7)
+        return 2
+
+    @js
+    def prior_receiver(holder: Holder | None) -> int:
+        if holder is None:
+            return 0
+        if holder.item is None:
+            holder = load(True)
+            assert holder is not None
+            holder.item = Cached(7)
+        return 2
+    ''',
+    "initialized_receiver_result",
+    "",
+    (
+        ("dependent proof may be discarded", "replace_receiver(None, True) != 2"),
+        ("absent replacement exits safely", "replace_receiver(None, False) != 0"),
+        ("existing receiver remains valid", "replace_receiver(Holder(Cached(1)), True) != 2"),
+        ("prior receiver proof may be invalidated", "prior_receiver(Holder(None)) != 2"),
+    ),
+)
+
+
+INITIALIZED_NUMERIC_KIND_CONTRACT = _contract(
+    '''
+    from pyjs import js
+    @js
+    def convert(value: int | float, stale: bool) -> int:
+        if not isinstance(value, float) or stale:
+            value = 1
+        return int(value) + 1
+    @js
+    def exited(value: int | float, stale: bool) -> int:
+        if isinstance(value, float):
+            if stale:
+                value = 1
+        else:
+            return 9
+        return int(value) + 1
+    ''',
+    "initialized_numeric_kind_result",
+    "",
+    (
+        ("integer write does not prove float storage", "convert(2, False) != 2"),
+        ("float survives unchanged", "convert(3.0, False) != 4"),
+        ("refresh replaces floating value", "convert(3.0, True) != 2"),
+        ("exited branch also retains runtime kind", "exited(3.0, True) != 2"),
+    ),
+)
+
+
+INITIALIZED_UNPACK_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS + '''
+    @js
+    def consume(value: Cached | None) -> int:
+        return 11 if value is None else value.value
+    @js
+    def clear(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value = Cached(7)
+            value, ignored = None, 2
+        return consume(value)
+    @js
+    def establish(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value, ignored = Cached(8), 2
+        return value.value
+    @js
+    def nested_clear(value: Cached | None, stale: bool) -> int:
+        if value is None or stale:
+            value = Cached(7)
+            if stale:
+                value, ignored = None, 2
+        return consume(value)
+    ''',
+    "initialized_unpack_result",
+    "",
+    (
+        ("unpacking invalidates initialization", "clear(None, False) != 11"),
+        ("present values remain unchanged", "clear(Cached(3), False) != 3"),
+        ("unpacking can establish initialization", "establish(None, False) != 8"),
+        ("nested unpacking invalidates initialization", "nested_clear(None, True) != 11"),
+        ("untaken nested write retains value", "nested_clear(None, False) != 7"),
+    ),
+)
+
+
 INITIALIZED_TRUTH_GUARD_CONTRACT = _contract(
     _INITIALIZED_GUARD_DEFINITIONS,
     "initialized_truth_guard_result",

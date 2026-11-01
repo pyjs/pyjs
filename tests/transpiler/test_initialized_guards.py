@@ -44,3 +44,57 @@ def test_both_live_paths_must_establish_the_postcondition(body):
         "of int|NoneType and int [PYJS1104]",
         "help: Narrow either operand before applying the operator.",
     ), filename="guard.py")
+
+
+@pytest.mark.parametrize("guard", ["value is None", "value is None or refresh"])
+@pytest.mark.parametrize("overwrite", [
+    "for value in items:\n            pass",
+    "for value, other in [(None, 1)]:\n            pass",
+    "if refresh:\n            for value in items:\n                pass",
+])
+def test_loop_targets_invalidate_initialization_proofs(guard, overwrite):
+    source = ("def main(value: int | None, refresh: bool, items: list[int | None]) -> int:\n"
+              f"    if {guard}:\n        value = 7\n        {overwrite}\n"
+              "    return value + 1\n")
+    ad(source, diagnostic_text(
+        "guard.py", len(source.splitlines()), "return value + 1", "       ^^^^^^^^^",
+        "pyjs.CompilationError: Operator '+' is not supported for every combination "
+        "of int|NoneType and int [PYJS1104]",
+        "help: Narrow either operand before applying the operator.",
+    ), filename="guard.py")
+
+
+def test_loop_target_replacing_receiver_invalidates_field_proof():
+    source = '''from pyjs import js
+@js
+class Holder:
+    def __init__(self, value: int | None):
+        self.value = value
+@js
+def main(holder: Holder, holders: list[Holder], refresh: bool) -> int:
+    if holder.value is None or refresh:
+        holder.value = 7
+        for holder in holders:
+            pass
+    return holder.value + 1
+'''
+    ad(source, diagnostic_text(
+        "guard.py", 12, "return holder.value + 1", "       ^^^^^^^^^^^^^^^^",
+        "pyjs.CompilationError: Operator '+' is not supported for every combination "
+        "of int|NoneType and int [PYJS1104]",
+        "help: Narrow either operand before applying the operator.",
+    ), filename="guard.py")
+
+
+@pytest.mark.parametrize("kind, assigned", [("float", "1"), ("int", "True")])
+def test_assignment_promotion_does_not_prove_numeric_union_arm(kind, assigned):
+    source = f'''def main(value: {kind} | str, refresh: bool) -> str:
+    if isinstance(value, str) or refresh:
+        value = {assigned}
+    return str(value)
+'''
+    ad(source, diagnostic_text(
+        "guard.py", 4, "return str(value)", "           ^^^^^",
+        f"pyjs.CompilationError: Method '__str__' has incompatible client lowering on {kind} | str [PYJS2001]",
+        "help: Narrow the receiver with isinstance() before calling the definition on str.",
+    ), filename="guard.py")

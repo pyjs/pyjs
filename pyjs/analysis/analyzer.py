@@ -3845,7 +3845,7 @@ class InferenceVisitor(ast.NodeVisitor):
             visitor = self
             if body_falls_through:
                 for value_node, value_type in self.initialized_conditions(analyzed):
-                    visitor = visitor.narrow(value_node, value_type)
+                    visitor = visitor.narrow_after_branch(value_node, value_type)
             return visitor
 
         if body_falls_through:
@@ -3863,7 +3863,7 @@ class InferenceVisitor(ast.NodeVisitor):
             if self.branch_initializes_optional(
                 analyzed_branch, value_node, value_type, True
             ):
-                visitor = visitor.narrow(value_node, value_type)
+                visitor = visitor.narrow_after_branch(value_node, value_type)
 
         narrowing = analyzed.optional_narrowing
         if narrowing is not None:
@@ -3873,7 +3873,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 analyzed_branch, value_node, value_type,
                 body_falls_through == non_none_when_true,
             ):
-                visitor = visitor.narrow(value_node, value_type)
+                visitor = visitor.narrow_after_branch(value_node, value_type)
 
         if (
             len(source_branch) == 1
@@ -3883,6 +3883,21 @@ class InferenceVisitor(ast.NodeVisitor):
         ):
             return visitor.narrow_after_if(source_branch[0], analyzed_branch[0])
         return visitor
+
+    def narrow_after_branch(self, value_node, value_type):
+        # A compound guard can prove a.b only under its proof of a. Branch
+        # writes may invalidate that receiver proof without clearing a.b.
+        def readable(node):
+            if not isinstance(node, ast.Attribute):
+                return True
+            if not readable(node.value):
+                return False
+            receiver = analyzed_value_type(self.visit(node.value))
+            return all(isinstance(member, Class)
+                       and node.attr in self.attribute_names(member._self)
+                       for member in get_type_members(receiver))
+
+        return self.narrow(value_node, value_type) if readable(value_node) else self
 
     def initialized_conditions(self, analyzed: ast.If):
         for when_true, narrowings in enumerate(analyzed.condition_narrowings):
@@ -3900,6 +3915,11 @@ class InferenceVisitor(ast.NodeVisitor):
         # establish it again. Do not infer the entire join from the None arm.
         target_name = ast.unparse(target_node)
         for statement in statements:
+            if hasattr(statement, "flow_statements"):
+                initialized = InferenceVisitor.branch_initializes_optional(
+                    statement.flow_statements, target_node, expected, initialized
+                )
+                continue
             if isinstance(statement, UnpackAssignment):
                 initialized = InferenceVisitor.branch_initializes_optional(
                     statement.assignments, target_node, expected, initialized
@@ -3920,7 +3940,13 @@ class InferenceVisitor(ast.NodeVisitor):
                         if ast.unparse(leaf) == target_name
                     )
             if assigned:
-                initialized = is_return_type_compatible(expected, assigned[-1])
+                # Assignment compatibility includes numeric promotion. A proof
+                # of a union arm must retain the actual runtime numeric kind.
+                initialized = all(any(
+                    is_isinstance_match(actual, member)
+                    and not (is_builtin_class(actual, "bool") and is_builtin_class(member, "int"))
+                    for member in get_type_members(expected)
+                ) for actual in get_type_members(assigned[-1]))
                 # object includes None, even without an explicit union member.
                 # Neither it nor NoneType can establish a presence proof.
                 if (any(member.container.scope.is_builtins and member.name in {"NoneType", "object"}
@@ -3963,6 +3989,10 @@ class InferenceVisitor(ast.NodeVisitor):
                 statement.ctx, (ast.Store, ast.Del)
             ):
                 yield statement
+            if isinstance(statement, ast.arg):
+                yield ast.Name(id=statement.arg, ctx=ast.Store())
+            if hasattr(statement, "flow_statements"):
+                yield from InferenceVisitor.written_targets(statement.flow_statements)
             yield from InferenceVisitor.written_targets(ast.iter_child_nodes(statement))
 
     def statement_writes(self, node):

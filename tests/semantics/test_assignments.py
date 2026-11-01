@@ -3,7 +3,9 @@ import pytest
 from tests.backend_semantics import (
     EXITED_BRANCH_NARROWING_CONTRACT,
     INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_RECEIVER_CONTRACT,
     INITIALIZED_TRUTH_GUARD_CONTRACT,
+    INITIALIZED_UNPACK_CONTRACT,
     OPTIONAL_OBJECT_CONTRACT,
     UNION_NONE_GUARD_CONTRACT,
     UNPACK_FIELD_CONTRACT,
@@ -13,7 +15,9 @@ from tests.backend_semantics import (
 from .helpers import assert_semantics
 
 
-@pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT])
+@pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT,
+                                      INITIALIZED_RECEIVER_CONTRACT,
+                                      INITIALIZED_UNPACK_CONTRACT])
 def test_shared_compound_guard_initialization(contract):
     assert_semantics(contract.print_source + '\nmain()\n')
 
