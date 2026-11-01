@@ -6320,6 +6320,49 @@ OPTIONAL_STRING_CONTRACT = _contract(
 )
 
 
+LIST_BOOL_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Item:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    def create(events: list[int], full: bool) -> list[int]:
+        events.append(1)
+        return [0] if full else []
+
+    @js
+    def truth(values: list[int]) -> bool:
+        return bool(values)
+    ''',
+    "list_bool_result",
+    '''
+    events: list[int] = []
+    empty: list[int] = []
+    empty_objects: list[Item] = []
+    full_objects = [Item(0)]
+    first = bool(create(events, False))
+    second = bool(create(events, True))
+    before = bool(empty)
+    empty.append(0)
+    after = bool(empty)
+    ''',
+    (
+        ("empty and populated calls", "first or not second"),
+        ("calls evaluate once", "len(events) != 2"),
+        ("mutation changes truth", "before or not after"),
+        ("false items do not make a list false", "not truth([0]) or not bool([False])"),
+        ("string elements do not determine truth", 'not bool([""])'),
+        ("reference lists use their size", "bool(empty_objects) or not bool(full_objects)"),
+        ("nested empty items still count", "not bool([empty_objects])"),
+        ("truth returns a boolean", "truth(empty) != True"),
+    ),
+)
+
+
 EXITED_BRANCH_NARROWING_CONTRACT = _contract(
     '''
     from pyjs import js

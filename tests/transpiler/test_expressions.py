@@ -1507,6 +1507,14 @@ def test_hasattr_uses_the_object_argument():
     )
 
 
+def test_negated_list_bool_preserves_expression_grouping():
+    at(
+        "def main(values: list[int]) -> bool:\n    return not bool(values)\n",
+        "def main(values: list__int) -> bool:\n    return not bool(values)\n",
+        "export function main(values) {\n    return !((values).length!==0);\n}",
+    )
+
+
 def test_bool_and_isinstance_use_python_primitive_relationships():
     at(
         """
@@ -1528,9 +1536,9 @@ def test_bool_and_isinstance_use_python_primitive_relationships():
         """
         export function main() {
             var empty = false;
-            var values = [1].length!==0;
-            var mapping = new Map([['a', 1]]).size!==0;
-            var text = 'value'.length!==0;
+            var values = (([1]).length!==0);
+            var mapping = ((new Map([['a', 1]])).size!==0);
+            var text = (('value').length!==0);
             var integer = ((value)=>typeof value==='boolean'||Number.isInteger(value))(true);
         }
         """,

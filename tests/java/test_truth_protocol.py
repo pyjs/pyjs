@@ -1,7 +1,57 @@
 import pytest
 
 from pyjs.java import JVMUnsupported, transpile_jvm
+from tests.backend_semantics import LIST_BOOL_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
+from tests.java.test_exceptions import (
+    assert_compiles_to_android_dex,
+    assert_matches_python,
+)
+
+
+def test_list_bool_matches_python(tmp_path):
+    assert_matches_python(LIST_BOOL_CONTRACT.source, tmp_path)
+
+
+def test_list_bool_android_dex(tmp_path):
+    assert_compiles_to_android_dex(LIST_BOOL_CONTRACT.source, tmp_path)
+
+
+def test_nullable_list_bool_still_requires_a_presence_guard():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm('''def truth(values: list[int] | None) -> bool:
+    return bool(values)
+def main() -> bool:
+    return truth(None)
+''')
+    assert str(caught.value) == (
+        "JVM bool conversion requires a numeric or string value at line 2 "
+        "while compiling _pyjs_java_.truth"
+    )
+
+
+@pytest.mark.parametrize("name", ["list", "set"])
+@pytest.mark.parametrize("generic", [False, True])
+@pytest.mark.parametrize("field", ["value", "length"])
+def test_collection_namesakes_keep_the_custom_bool_boundary(name, generic, field):
+    declaration = name + ("[T]" if generic else "")
+    annotation = name + ("[int]" if generic else "")
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(f'''class {declaration}:
+    def __init__(self, value: int):
+        self.{field} = value
+    def __bool__(self) -> bool:
+        return False
+def truth(value: {annotation}) -> bool:
+    return bool(value)
+def main() -> int:
+    builtin_values = [7]
+    return int(truth({annotation}(len(builtin_values))))
+''')
+    assert str(caught.value) == (
+        "JVM bool conversion requires a numeric or string value at line 2 "
+        "while compiling _pyjs_java_.truth"
+    )
 
 
 @pytest.mark.parametrize("condition", ["if value:", "if not value:"])
