@@ -868,6 +868,10 @@ class WebAssemblyEmitter:
                         if statement.value is not None
                         else self.annotation(statement.annotation)
                     )
+                    if declaration is not None and isinstance(value_type, bytes):
+                        # Reads use the declared reference layout. Storing a
+                        # different layout must fail at the initializer.
+                        value_type = self.value_type(declaration.cls)
                     add_local(
                         self.target_name(statement.target),
                         value_type,
@@ -1943,6 +1947,11 @@ class WebAssemblyEmitter:
                     node,
                 )
             collection_type = analyzed_value_type(node.args[0])
+            if isinstance(collection_type, UnionType):
+                raise WebAssemblyUnsupported(
+                    "WebAssembly len requires a narrowed list or tuple",
+                    node,
+                )
             if collection_type.generic_name == "tuple":
                 self.expression(code, node.args[0])
                 code.append(DROP)

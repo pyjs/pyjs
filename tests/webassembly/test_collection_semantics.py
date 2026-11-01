@@ -121,6 +121,7 @@ def main() -> int:
 @pytest.mark.parametrize('body', [
     'lo: float = 0\nhi: float = 1\nreturn (lo + hi) / 2 * 3.0',
     'value: float = 2 * 3\nreturn value * 0.25',
+    'value: float = 1\nvalue = 3\nreturn value * 0.5',
     'value: float = len([1, 2, 3])\nreturn value / 2',
     'step: float = 2\ntotal = 0.0\nfor item in range(3):\n    total += step * 0.5\nreturn total / 2',
     'value: object = 1\nreturn 1.5',
@@ -128,6 +129,36 @@ def main() -> int:
 ])
 def test_local_annotations_do_not_coerce_inferred_scalar_storage(tmp_path, body):
     assert_python_result(tmp_path, 'def main() -> float:\n' + textwrap.indent(body, '    '))
+
+
+@pytest.mark.parametrize('body', [
+    'values: list[float] = [item for item in [1, 2]]\nreturn len(values)',
+    'pair = (1, 2)\nvalues: tuple[float, float] = pair\nreturn int(values[0])',
+    'rows: list[list[int] | None] = [[item] for item in [1, 2]]\nreturn len(rows)',
+    'values: list[float] = list([1, 2])\nreturn len(values)',
+    'values: list[float] = [1] + [2]\nreturn len(values)',
+    'values: tuple[list[int] | None, int] = pair()\nreturn values[1]',
+])
+def test_incompatible_reference_initializers_have_located_diagnostics(body):
+    from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+
+    source = ('def pair() -> tuple[list[int], int]:\n    return ([1], 2)\n'
+              'def main() -> int:\n' + textwrap.indent(body, '    '))
+    with pytest.raises(WebAssemblyUnsupported, match=r'storage conversion.*at line [0-9]+'):
+        transpile_webassembly(source)
+
+
+@pytest.mark.parametrize('body', [
+    'value: tuple[int, list[int] | None] = (1, [2])\n'
+    'return 0 if value[1] is None else len(value[1])',
+    'value: list[int] | None = None\ncount = 0\n'
+    'value, count = [1, 2], 2\nreturn len(value) + count',
+])
+def test_unnarrowed_nullable_length_has_located_diagnostic(body):
+    from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+
+    with pytest.raises(WebAssemblyUnsupported, match=r'len requires a narrowed.*at line [0-9]+'):
+        transpile_webassembly('def main() -> int:\n' + textwrap.indent(body, '    '))
 
 
 @pytest.mark.parametrize('value,expression', [
