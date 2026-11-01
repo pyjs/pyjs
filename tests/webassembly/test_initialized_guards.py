@@ -1,7 +1,10 @@
 import pytest
 
 from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
-from tests.backend_semantics import INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT
+from tests.backend_semantics import (
+    INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_TRUTH_GUARD_CONTRACT,
+)
 
 
 @pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT])
