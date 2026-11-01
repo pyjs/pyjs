@@ -2220,6 +2220,27 @@ class JVMEmitter:
             if isinstance(semantic_receiver, Class) and semantic_receiver.generic_name == "set":
                 return sets.call(self, node, target, semantic_receiver, leading_argument)
             if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "list" and target.name == "extend"):
+                if node.keywords or len(node.args) != 1:
+                    raise JVMUnsupported("JVM list.extend requires one positional iterable", node)
+                source_type = analyzed_value_type(node.args[0])
+                item_type = self.list_item_type(semantic_receiver)
+                if (not isinstance(source_type, Class) or source_type.generic_name != "list"
+                        or self.list_item_type(source_type) != item_type):
+                    raise JVMUnsupported(
+                        "JVM list.extend requires a list with matching item storage", node)
+                owner = self.list_class(semantic_receiver)
+                descriptor = f"L{owner.name};"
+                actual = self.expression(node.args[0], expected=descriptor)
+                if actual != descriptor:
+                    raise JVMUnsupported("JVM list.extend has incompatible items", node)
+                if not any(method.name == "extend" for method in owner.methods):
+                    owner.add_method(self.list_extend_method(owner, item_type))
+                reference = self.class_file.method_reference(owner.name, "extend", f"({descriptor})V")
+                self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                self.code.emit(0x01)
+                return "N"
+            if (isinstance(semantic_receiver, Class)
                     and semantic_receiver.generic_name == "list" and target.name == "pop"):
                 if node.keywords or len(node.args) > 1:
                     raise JVMUnsupported("JVM list.pop requires at most one positional index", node)
