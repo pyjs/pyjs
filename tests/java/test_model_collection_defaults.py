@@ -33,6 +33,35 @@ def test_generated_constructor_marks_only_fresh_collection_defaults():
     )
 
 
+@pytest.mark.parametrize("annotation, default", [
+    ("List", "[]"),
+    ("List", "Field(default_factory=list)"),
+    ("Dict", "{}"),
+    ("Dict", "Field(default_factory=dict)"),
+    ("List", ""),
+    ("Dict", ""),
+    ("Annotated[List, Field(description='items')]", "[]"),
+    ("List | None", "None"),
+    ("dict[str, List]", "{}"),
+])
+def test_unspecialized_collection_fields_have_located_diagnostics(annotation, default):
+    source = f'''from typing import Annotated, Dict, List
+from pydantic import BaseModel, Field
+class Item(BaseModel):
+    values: {annotation}{" = " + default if default else ""}
+def main() -> int:
+    Item()
+    return 0
+'''
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm(source, filename="model.py")
+    diagnostic = caught.value.diagnostic
+    assert caught.value.filename == "model.py"
+    assert diagnostic.code == "PYJS2001"
+    assert caught.value.lineno == 3
+    assert diagnostic.message == "JVM client model field 'values' has an unsupported type"
+
+
 def test_collection_defaults_compile_to_android(tmp_path):
     assert_compiles_to_android_dex(MODEL_COLLECTION_DEFAULTS_CONTRACT.source, tmp_path)
 

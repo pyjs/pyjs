@@ -101,9 +101,9 @@ def field_type(annotation):
             return False
         return all(field_type(value) for value in arguments)
     if origin is list:
-        return all(field_type(value) for value in arguments)
+        return len(arguments) == 1 and field_type(arguments[0])
     if origin is dict:
-        return arguments[0] is str and field_type(arguments[1])
+        return len(arguments) == 2 and arguments[0] is str and field_type(arguments[1])
     return False
 
 
