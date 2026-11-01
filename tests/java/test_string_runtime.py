@@ -8,8 +8,10 @@ from pyjs.java import JVMUnsupported, read_jvm_class, transpile_jvm
 from tests.backend_semantics import (
     EXITED_BRANCH_NARROWING_CONTRACT,
     INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_ITERABLE_CONTRACT,
     INITIALIZED_NUMERIC_KIND_CONTRACT,
     INITIALIZED_RECEIVER_CONTRACT,
+    INITIALIZED_STRUCTURAL_CONTRACT,
     INITIALIZED_TRUTH_GUARD_CONTRACT,
     OPTIONAL_BRANCH_CONTRACT,
     OPTIONAL_STRING_CONTRACT,
@@ -180,6 +182,18 @@ def test_numeric_kind_contract_retains_the_jvm_union_storage_boundary():
     assert str(caught.value) == (
         "JVM union has incompatible runtime types while compiling _pyjs_java_.convert"
     )
+
+
+@pytest.mark.parametrize("contract, message", [
+    (INITIALIZED_ITERABLE_CONTRACT,
+     "unsupported JVM value type Iterable__int while compiling _pyjs_java_.compound"),
+    (INITIALIZED_STRUCTURAL_CONTRACT,
+     "JVM local value changes type while compiling _pyjs_java_.consume"),
+])
+def test_compatible_initialization_reaches_existing_jvm_boundaries(contract, message):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(contract.source)
+    assert str(caught.value) == message
 
 
 @pytest.mark.parametrize("method", ["contains", "startswith", "endswith"])

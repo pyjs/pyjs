@@ -6547,6 +6547,81 @@ INITIALIZED_UNPACK_CONTRACT = _contract(
 )
 
 
+INITIALIZED_ITERABLE_CONTRACT = _contract(
+    '''
+    from collections.abc import Iterable
+    from pyjs import js
+    @js
+    def direct(values: Iterable[int] | None) -> int:
+        if values is None:
+            values = [1, 2]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    @js
+    def compound(values: Iterable[int] | None, refresh: bool) -> int:
+        if values is None or refresh:
+            values = [3, 4]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    @js
+    def exited(values: Iterable[int] | None, initialize: bool) -> int:
+        if values is None:
+            if not initialize:
+                return -1
+            values = [5, 6]
+        total = 0
+        for value in values:
+            total += value
+        return total
+    ''',
+    "initialized_iterable_result",
+    "",
+    (
+        ("list establishes iterable presence", "direct(None) != 3"),
+        ("existing iterable survives", "direct([8, 9]) != 17"),
+        ("compound guard initializes iterable", "compound(None, False) != 7"),
+        ("refresh replaces iterable", "compound([8, 9], True) != 7"),
+        ("compound guard retains existing iterable", "compound([8, 9], False) != 17"),
+        ("exited branch establishes presence", "exited(None, True) != 11"),
+        ("exited branch can decline initialization", "exited(None, False) != -1"),
+        ("exited guard retains existing iterable", "exited([8, 9], False) != 17"),
+    ),
+)
+
+
+INITIALIZED_STRUCTURAL_CONTRACT = _contract(
+    '''
+    from pyjs import js
+    @js
+    class Reader:
+        __pyjs_structural__ = True
+        def read(self) -> int:
+            return 2
+    @js
+    class Implementation:
+        def read(self) -> int:
+            return 7
+    @js
+    def consume(value: Reader | None, refresh: bool) -> int:
+        if value is None or refresh:
+            value = Implementation()
+        return value.read()
+    ''',
+    "initialized_structural_result",
+    "",
+    (
+        ("implementation method is reachable directly", "Implementation().read() != 7"),
+        ("structural implementation establishes presence", "consume(None, False) != 7"),
+        ("existing implementation survives", "consume(Reader(), False) != 2"),
+        ("refresh uses structural replacement", "consume(Reader(), True) != 7"),
+    ),
+)
+
+
 INITIALIZED_TRUTH_GUARD_CONTRACT = _contract(
     _INITIALIZED_GUARD_DEFINITIONS,
     "initialized_truth_guard_result",

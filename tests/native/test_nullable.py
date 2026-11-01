@@ -9,6 +9,7 @@ from pyjs.tooling.llvm import LLVM, LLVMRuntimeError
 from tests.backend_semantics import (
     EXITED_BRANCH_NARROWING_CONTRACT,
     INITIALIZED_GUARD_CONTRACT,
+    INITIALIZED_ITERABLE_CONTRACT,
     INITIALIZED_NUMERIC_KIND_CONTRACT,
     INITIALIZED_RECEIVER_CONTRACT,
     INITIALIZED_TRUTH_GUARD_CONTRACT,
@@ -55,7 +56,7 @@ def test_shared_optional_branch_contract(optimize):
 @pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("contract", [INITIALIZED_GUARD_CONTRACT, INITIALIZED_TRUTH_GUARD_CONTRACT,
                                       INITIALIZED_RECEIVER_CONTRACT, INITIALIZED_NUMERIC_KIND_CONTRACT,
-                                      INITIALIZED_UNPACK_CONTRACT])
+                                      INITIALIZED_UNPACK_CONTRACT, INITIALIZED_ITERABLE_CONTRACT])
 def test_shared_initialized_guard_contract(optimize, tmp_path, contract):
     result = LLVM().assert_matches_python(contract.source,
         directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))

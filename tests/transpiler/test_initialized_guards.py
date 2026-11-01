@@ -28,6 +28,43 @@ def test_compound_optional_initialization_preserves_exact_analyzed_and_javascrip
     )
 
 
+def test_compatible_iterable_initialization_preserves_exact_lowering():
+    at(
+        '''
+        from collections.abc import Iterable
+
+        def main(values: Iterable[int] | None) -> int:
+            if values is None:
+                values = [1, 2]
+            total = 0
+            for value in values:
+                total += value
+            return total
+        ''',
+        '''
+        def main(values: Iterable[int] | None) -> int:
+            if values.[object]__is__!(None):
+                values = [1, 2]
+            total: int = 0
+            for value: int in values:
+                total = total.[int]__add__!(value)
+            return total
+        ''',
+        '''
+        export function main(values) {
+            if (values == null) {
+                values = [1, 2];
+            }
+            var total = 0;
+            for (var value of ((value)=>value instanceof Map?value.keys():Object.getPrototypeOf(value)===Object.prototype?Object.keys(value):value)(values)) {
+                total = total + value;
+            }
+            return total;
+        }
+        ''',
+    )
+
+
 @pytest.mark.parametrize("body", [
     "if value is None and refresh:\n        value = 7",
     "if value is None or refresh:\n        value = None",

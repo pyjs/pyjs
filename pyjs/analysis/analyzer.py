@@ -70,6 +70,7 @@ from .type_relations import (
     inherited_sequence_slot,
     is_builtin_class,
     is_isinstance_match,
+    is_numeric_promotion,
     is_return_type_compatible,
     is_strict_runtime_subclass,
     is_subclass,
@@ -3940,10 +3941,12 @@ class InferenceVisitor(ast.NodeVisitor):
                         if ast.unparse(leaf) == target_name
                     )
             if assigned:
-                # Assignment compatibility includes numeric promotion. A proof
-                # of a union arm must retain the actual runtime numeric kind.
+                # Structural and iterable assignments can establish presence
+                # without nominal ancestry. Numeric promotions, however, do
+                # not establish the runtime kind of a narrowed union arm.
                 initialized = all(any(
-                    is_isinstance_match(actual, member)
+                    is_return_type_compatible(member, actual)
+                    and not is_numeric_promotion(actual, member)
                     and not (is_builtin_class(actual, "bool") and is_builtin_class(member, "int"))
                     for member in get_type_members(expected)
                 ) for actual in get_type_members(assigned[-1]))
