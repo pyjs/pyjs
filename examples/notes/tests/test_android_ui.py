@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 from pyjs import JS, jvm
-from pyjs.android import View
+from pyjs.android import Intent, View
 from pyjs.android.recycler_testing import StaggeredGridSnapshot
 from pyjs.android.recyclerview import RecyclerView
 from pyjs.android.testing import (
@@ -12,6 +12,7 @@ from pyjs.android.testing import (
     by_id,
     by_text,
     launch,
+    launch_intent,
     recreate,
     run_on_main,
 )
@@ -81,6 +82,71 @@ LAUNCH_NOTE: JS = (
 WEEKEND_NOTE: JS = (
     "Weekend ideas\n\nWalk the river trail\nTry the new bakery\nCall Maya"
 )
+
+
+def share_intent(text: str) -> Intent:
+    return (Intent().set_class(application_context(), NotesActivity)
+            .set_action(Intent.ACTION_SEND).set_type("text/plain")
+            .put_string_extra(Intent.EXTRA_TEXT, text))
+
+
+class DeliverShare(ViewAssertion):
+    def __init__(self):
+        self.owner: NotesActivity | None = None
+
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            activity = cast(NotesActivity, view.getContext())
+            self.owner = activity
+            activity.start_activity(share_intent("Second 😀").add_flags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+
+
+class SameShareActivity(ViewAssertion):
+    def __init__(self, delivery: DeliverShare):
+        self.delivery = delivery
+
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            assert view.getContext() is self.delivery.owner
+
+
+class HiddenShare(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            assert view.getVisibility() == View.GONE
+
+
+def test_share_intent_launch_recreation_and_unsupported_payloads() -> None:
+    intent = share_intent("First 雪\nhttps://example.com/")
+    intent.put_string_extra(Intent.EXTRA_SUBJECT, "Read later")
+    launch_intent(intent)
+    by_id(i32(102)).assert_text("Read later (preview, not saved)\n\nFirst 雪\nhttps://example.com/")
+    recreate()
+    by_id(i32(102)).assert_text("Read later (preview, not saved)\n\nFirst 雪\nhttps://example.com/")
+    launch_intent(share_intent("Not an image").set_type("image/png"))
+    by_id(i32(102)).check(HiddenShare())
+    missing = share_intent("Removed")
+    missing.remove_extra(Intent.EXTRA_TEXT)
+    launch_intent(missing)
+    by_id(i32(102)).check(HiddenShare())
+    by_text(LAUNCH_NOTE).assert_displayed()
+
+
+@pytest.mark.pyjs_android_device
+def test_share_intent_is_delivered_to_existing_activity() -> None:
+    # Robolectric records startActivity but does not perform task-stack delivery.
+    launch_intent(share_intent("First"))
+    delivery = DeliverShare()
+    by_id(i32(102)).check(delivery)
+    # A main-loop idle check does not wait for the system's intent transaction.
+    assert find_text("Shared text (preview, not saved)\n\nSecond 😀").text() == (
+        "Shared text (preview, not saved)\n\nSecond 😀")
+    by_id(i32(102)).check(SameShareActivity(delivery))
+    recreate()
+    by_id(i32(102)).assert_text("Shared text (preview, not saved)\n\nSecond 😀")
 
 
 class NoteOrder(ViewAssertion):

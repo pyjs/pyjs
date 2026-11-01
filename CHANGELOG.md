@@ -9,6 +9,11 @@
   console before waiting for ADB readiness; automatic unnamed selection does
   not require console authentication.
 
+- Android exposes incoming Activity intents, new-intent callbacks, MIME types,
+  subjects and styled text extras. Android tests can launch an explicit intent
+  through `launch_intent()`; Notes demonstrates text-share previews and
+  Activity recreation without treating preview text as saved note content.
+
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
   JavaScript truth conversions retain their grouping inside negation and

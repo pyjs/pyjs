@@ -275,23 +275,18 @@ def espresso_android_class() -> tuple[str, bytes]:
     class_file.add_method(
         Method(0x0009, "close", "()V", close.render(), 1, 0)
     )
-    code = Bytecode()
-    code.emit(
-        0xB8,
-        _reference(class_file, ANDROID_CLASS_NAME, "close", "()V"),
-    )
-    code.local(0x19, 0)
-    reference = class_file.method_reference(
-        "androidx/test/core/app/ActivityScenario",
-        "launch",
-        f"(Ljava/lang/Class;){scenario}",
-    )
-    code.emit(0xB8, reference.to_bytes(2, "big"))
-    code.emit(0xB3, field.to_bytes(2, "big"))
-    code.emit(0xB1)
-    class_file.add_method(
-        Method(0x0009, "launch", "(Ljava/lang/Class;)V", code.render(), 1, 1)
-    )
+    for name, argument in (("launch", "Ljava/lang/Class;"),
+                           ("launchIntent", "Landroid/content/Intent;")):
+        code = Bytecode()
+        code.emit(0xB8, _reference(class_file, ANDROID_CLASS_NAME, "close", "()V"))
+        code.local(0x19, 0)
+        code.emit(0xB8, _reference(
+            class_file, "androidx/test/core/app/ActivityScenario", "launch",
+            f"({argument}){scenario}",
+        ))
+        code.emit(0xB3, field.to_bytes(2, "big"))
+        code.emit(0xB1)
+        class_file.add_method(Method(0x0009, name, f"({argument})V", code.render(), 1, 1))
     for name, state in (("recreate", None), ("background", "CREATED"), ("resume", "RESUMED")):
         lifecycle = Bytecode()
         lifecycle.emit(0xB2, field.to_bytes(2, "big"))

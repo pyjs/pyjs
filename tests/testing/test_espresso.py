@@ -40,6 +40,7 @@ def test_espresso_android_bridge_launches_activity_scenarios():
         "(Ljava/lang/Class;)V"
     )
     assert value.declared_methods("close")[0].descriptor == "()V"
+    assert value.declared_methods("launchIntent")[0].descriptor == "(Landroid/content/Intent;)V"
     assert value.declared_methods("pressBack")[0].descriptor == "()V"
     for operation in ("recreate", "background", "resume"):
         assert value.declared_methods(operation)[0].descriptor == "()V"

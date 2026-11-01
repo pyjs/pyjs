@@ -16,6 +16,7 @@ def build_android(output: Path | None = None) -> Path:
         "PyJS Notes",
         compile_sdk=35,
         application_class="NotesApplication",
+        manifest_overlays=(source.with_name("share.xml"),),
     )
     return AndroidJVMBuilder().build(
         application,

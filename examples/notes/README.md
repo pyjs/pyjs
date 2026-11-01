@@ -33,6 +33,13 @@ Android card content is sample data. Its process-owned session retains pending
 card order across activity recreation; successfully saved order also survives
 process restarts. No backend is required.
 
+Android accepts `text/plain` shares and shows a clearly marked preview above
+the sample board. It does not save shared text as a note. The preview accepts
+plain or styled text, preserves the received subject, and handles delivery
+to an already-open Activity. It survives Activity recreation through the
+Activity's current intent, not through the card-order file. Missing text and
+unsupported MIME types do not produce a preview. No HTML is interpreted.
+
 ## Android storage recovery
 
 `android_storage.py` saves the seven card IDs in the app-private

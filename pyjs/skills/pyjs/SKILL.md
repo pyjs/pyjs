@@ -288,6 +288,12 @@ with `--pyjs-android-runtime=device --pyjs-android-avd=NAME`; add
 `--pyjs-android-headless` for a deterministic cold boot without a window.
 Keep compiled tests self-contained and zero-argument; pytest fixtures,
 parametrization, and per-item setup or skip behavior are not yet transported.
+Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
+intent with `Intent().set_class(application_context(), YourActivity)` and add
+the action, MIME type and extras before launching. Activities receive later
+deliveries through `on_new_intent()`; call the superclass and `set_intent()`
+when future reads and recreation should use the new intent. Read shared text
+with `get_char_sequence_extra()` and `to_string()` to accept styled text too.
 Keep application Activities in modules imported by the selected test module so
 the device packager can preserve Android's target/instrumentation APK boundary.
 Add `pytest.mark.pyjs_android_dependencies("androidx")` when the target uses

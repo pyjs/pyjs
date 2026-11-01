@@ -5,6 +5,7 @@ from pyjs.android import (
     Application,
     Bundle,
     GradientDrawable,
+    Intent,
     LayoutParams,
     LinearLayout,
     LinearLayoutParams,
@@ -221,6 +222,7 @@ class NotesApplication(Application):
 
 class NotesActivity(Activity):
     storage_observer: StorageStatus
+    shared_preview: TextView
 
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
@@ -238,6 +240,13 @@ class NotesActivity(Activity):
         search.setPadding(40, 28, 40, 28)
         search.setElevation(4.0)
         root.addView(search)
+
+        self.shared_preview = TextView(self)
+        self.shared_preview.setId(102)
+        self.shared_preview.setTextSize(16.0)
+        self.shared_preview.setPadding(40, 20, 40, 20)
+        root.addView(self.shared_preview)
+        self.show_shared_preview()
 
         notes = [
             (
@@ -303,6 +312,23 @@ class NotesActivity(Activity):
         )
         root.addView(recycler)
         self.setContentView(root)
+
+    def on_new_intent(self, intent: Intent) -> None:
+        super().on_new_intent(intent)
+        self.set_intent(intent)
+        self.show_shared_preview()
+
+    def show_shared_preview(self) -> None:
+        self.shared_preview.setVisibility(View.GONE)
+        intent = self.get_intent()
+        if intent is None or intent.get_action() != Intent.ACTION_SEND or intent.get_type() != "text/plain":
+            return
+        text = intent.get_char_sequence_extra(Intent.EXTRA_TEXT)
+        if text is None:
+            return
+        subject = intent.get_string_extra(Intent.EXTRA_SUBJECT) or "Shared text"
+        self.shared_preview.setText(subject + " (preview, not saved)\n\n" + text.to_string())
+        self.shared_preview.setVisibility(View.VISIBLE)
 
     def onDestroy(self) -> None:
         session = self.storage_observer.adapter.session
