@@ -8,8 +8,9 @@
 
 - JavaScript `Date` exposes no-argument `toLocaleString()` and
   `toLocaleTimeString()`, with local date/time formatting for Python rendering.
-  Output follows each host's locale and time zone; localized strings are not
-  a portable serialization format.
+  Python uses the process's time locale (C unless the application changes it)
+  and local time zone; JavaScript uses the runtime's locale and time zone.
+  Localized strings are not a portable serialization format.
 
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
