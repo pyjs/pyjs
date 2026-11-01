@@ -3893,7 +3893,11 @@ class InferenceVisitor(ast.NodeVisitor):
                 return True
             if not readable(node.value):
                 return False
-            receiver = analyzed_value_type(self.visit(node.value))
+            analyzed = self.visit(node.value)
+            class_receiver = analyzed_value_object(analyzed)
+            if isinstance(class_receiver, Class):
+                return node.attr in self.attribute_names(class_receiver)
+            receiver = analyzed_value_type(analyzed)
             return all(isinstance(member, Class)
                        and node.attr in self.attribute_names(member._self)
                        for member in get_type_members(receiver))

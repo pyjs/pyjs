@@ -28,6 +28,42 @@ def test_compound_optional_initialization_preserves_exact_analyzed_and_javascrip
     )
 
 
+def test_class_receiver_early_exit_preserves_exact_lowering():
+    at(
+        '''
+        @js
+        class Registry:
+            current: int | None = 7
+        @js
+        def main() -> int:
+            if Registry.current is None:
+                return 0
+            return Registry.current + 1
+        ''',
+        '''
+        class Registry:
+            current: __static__ = 7
+
+        def main() -> int:
+            if Registry.current.[object]__is__!(None):
+                return 0
+            return Registry.current.[int]__add__!(1)
+        ''',
+        '''
+        export class Registry {
+            static current = 7;
+        }
+
+        export function main() {
+            if (Registry.current == null) {
+                return 0;
+            }
+            return Registry.current + 1;
+        }
+        ''',
+    )
+
+
 def test_call_receiver_early_exit_preserves_exact_lowering():
     at(
         '''

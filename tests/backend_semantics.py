@@ -6756,6 +6756,73 @@ CALL_GUARD_NARROWING_CONTRACT = _contract(
 )
 
 
+CLASS_RECEIVER_GUARD_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class Cached:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    class Registry:
+        instance: Cached | None = Cached(5)
+
+        @classmethod
+        def current(cls) -> int:
+            if cls.instance is None:
+                return 0
+            return cls.instance.value
+
+    @js
+    class Child(Registry):
+        pass
+
+    @js
+    def direct() -> int:
+        if Registry.instance is None:
+            return 0
+        return Registry.instance.value
+
+    @js
+    def inherited() -> int:
+        if Child.instance is not None:
+            pass
+        else:
+            return 0
+        return Child.instance.value
+
+    @js
+    def compound() -> int:
+        if Registry.instance is None or Registry.instance.value < 0:
+            return 0
+        return Registry.instance.value
+    ''',
+    "class_receiver_guard_result",
+    '''
+    direct_value = direct()
+    method_value = Registry.current()
+    inherited_value = inherited()
+    compound_value = compound()
+    Registry.instance = None
+    absent_direct = direct()
+    absent_method = Registry.current()
+    absent_inherited = inherited()
+    absent_compound = compound()
+    # Import-time execution must retain the declared class default.
+    Registry.instance = Cached(5)
+    ''',
+    (
+        ("class receiver exit retains presence", "direct_value != 5"),
+        ("classmethod receiver exit retains presence", "method_value != 5"),
+        ("inherited class receiver exit retains presence", "inherited_value != 5"),
+        ("compound class guard retains presence", "compound_value != 5"),
+        ("absent class values still return early", "absent_direct or absent_method or absent_inherited or absent_compound"),
+    ),
+)
+
+
 EXITED_BRANCH_NARROWING_CONTRACT = _contract(
     '''
     from pyjs import js
