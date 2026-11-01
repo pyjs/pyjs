@@ -3842,13 +3842,11 @@ class InferenceVisitor(ast.NodeVisitor):
             loop_control_exits=True,
         )
         if body_falls_through == orelse_falls_through:
-            if (
-                body_falls_through
-                and (initialized := self.initialized_optional(analyzed))
-                is not None
-            ):
-                return self.narrow(*initialized)
-            return self
+            visitor = self
+            if body_falls_through:
+                for value_node, value_type in self.initialized_conditions(analyzed):
+                    visitor = visitor.narrow(value_node, value_type)
+            return visitor
 
         if body_falls_through:
             source_branch = source.body
@@ -3886,17 +3884,14 @@ class InferenceVisitor(ast.NodeVisitor):
             return visitor.narrow_after_if(source_branch[0], analyzed_branch[0])
         return visitor
 
-    def initialized_optional(self, analyzed: ast.If):
-        narrowing = analyzed.optional_narrowing
-        if narrowing is None:
-            return None
-        value_node, value_type, non_none_when_true = narrowing
-        none_branch = analyzed.orelse if non_none_when_true else analyzed.body
-        present_branch = analyzed.body if non_none_when_true else analyzed.orelse
-        if (self.branch_initializes_optional(none_branch, value_node, value_type, False)
-                and self.branch_initializes_optional(present_branch, value_node, value_type, True)):
-            return value_node, value_type
-        return None
+    def initialized_conditions(self, analyzed: ast.If):
+        for when_true, narrowings in enumerate(analyzed.condition_narrowings):
+            present_branch = analyzed.body if when_true else analyzed.orelse
+            other_branch = analyzed.orelse if when_true else analyzed.body
+            for value_node, value_type in narrowings:
+                if (self.branch_initializes_optional(other_branch, value_node, value_type, False)
+                        and self.branch_initializes_optional(present_branch, value_node, value_type, True)):
+                    yield value_node, value_type
 
     @staticmethod
     def branch_initializes_optional(statements, target_node, expected, initialized):

@@ -36,6 +36,11 @@
   test daemon. Opening the user's normal browser requires the explicit
   `--pyjs-browser=system` option.
 
+- Values initialized under compound guards remain narrowed after the branches
+  join, including `if value is None or stale: value = make_value()`. Every
+  continuing path must establish the required type; conditional initialization
+  or a later incompatible write still requires a new check.
+
 - A narrowed value now stays narrowed after an `if` branch that reassigns it
   and then leaves through `return`, `raise`, `break` or `continue`, because
   that write cannot reach the next statement. A write that can reach a later

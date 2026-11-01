@@ -6363,6 +6363,101 @@ LIST_BOOL_CONTRACT = _contract(
 )
 
 
+_INITIALIZED_GUARD_DEFINITIONS = '''
+    from pyjs import js
+
+    @js
+    class Cached:
+        def __init__(self, value: int):
+            self.value = value
+
+    @js
+    def refresh(item: Cached | None, stale: bool) -> int:
+        if item is None or stale:
+            item = Cached(7)
+        return item.value
+
+    @js
+    def conditional(item: Cached | None) -> int:
+        if not (item is not None and item.value > 0):
+            item = Cached(8)
+        return item.value
+
+    @js
+    def otherwise(item: Cached | None, stale: bool) -> int:
+        if item is not None and not stale:
+            pass
+        else:
+            item = Cached(9)
+        return item.value
+
+    @js
+    def pair(left: Cached | None, right: Cached | None) -> int:
+        if left is None or right is None:
+            left = Cached(1)
+            right = Cached(2)
+        return left.value + right.value
+
+    @js
+    def truth(item: Cached | None, stale: bool) -> int:
+        if not item or stale:
+            item = Cached(11)
+        return item.value
+
+    @js
+    def typed(value: Cached | None, stale: bool) -> int:
+        if not isinstance(value, Cached) or stale:
+            value = Cached(12)
+        return value.value + 1
+
+    @js
+    class Holder:
+        def __init__(self, item: Cached | None):
+            self.item = item
+
+        def read(self, stale: bool) -> int:
+            if self.item is None or stale:
+                self.item = Cached(10)
+            return self.item.value
+    '''
+
+
+INITIALIZED_GUARD_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS,
+    "initialized_guard_result",
+    "",
+    (
+        ("absent value gets initialized", "refresh(None, False) != 7"),
+        ("present cached value survives", "refresh(Cached(3), False) != 3"),
+        ("stale cached value is replaced", "refresh(Cached(3), True) != 7"),
+        ("negated conjunction initializes absence", "conditional(None) != 8"),
+        ("compound field guard replaces invalid data", "conditional(Cached(-1)) != 8"),
+        ("compound field guard retains valid data", "conditional(Cached(4)) != 4"),
+        ("else arm initializes absence", "otherwise(None, False) != 9"),
+        ("else arm replaces stale data", "otherwise(Cached(5), True) != 9"),
+        ("conjunction retains a present value", "otherwise(Cached(5), False) != 5"),
+        ("multiple values are initialized", "pair(None, None) != 3"),
+        ("partially present pair is replaced", "pair(Cached(5), None) != 3"),
+        ("present pair is retained", "pair(Cached(5), Cached(6)) != 11"),
+        ("isinstance guard initializes absence", "typed(None, False) != 13"),
+        ("isinstance guard keeps matching member", "typed(Cached(4), False) != 5"),
+        ("optional field is initialized", "Holder(None).read(False) != 10"),
+        ("optional field is retained", "Holder(Cached(6)).read(False) != 6"),
+    ),
+)
+
+
+INITIALIZED_TRUTH_GUARD_CONTRACT = _contract(
+    _INITIALIZED_GUARD_DEFINITIONS,
+    "initialized_truth_guard_result",
+    "",
+    (
+        ("truthy guard fills absence", "truth(None, False) != 11"),
+        ("truthy guard retains present value", "truth(Cached(4), False) != 4"),
+    ),
+)
+
+
 EXITED_BRANCH_NARROWING_CONTRACT = _contract(
     '''
     from pyjs import js
