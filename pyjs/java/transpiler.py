@@ -2230,24 +2230,38 @@ class JVMEmitter:
                     and semantic_receiver.generic_name == "list" and target.name == "__slice__"):
                 return list_slices.call(self, node, semantic_receiver)
             if (isinstance(semantic_receiver, Class)
-                    and semantic_receiver.generic_name == "list" and target.name == "extend"):
+                    and semantic_receiver.generic_name == "list" and target.name in {"extend", "__add__"}):
+                operation = "list.extend" if target.name == "extend" else "list concatenation"
                 if node.keywords or len(node.args) != 1:
-                    raise JVMUnsupported("JVM list.extend requires one positional iterable", node)
+                    raise JVMUnsupported(f"JVM {operation} requires one positional iterable", node)
                 source_type = analyzed_value_type(node.args[0])
                 item_type = self.list_item_type(semantic_receiver)
                 if (not isinstance(source_type, Class) or source_type.generic_name != "list"
                         or self.list_item_type(source_type) != item_type):
                     raise JVMUnsupported(
-                        "JVM list.extend requires a list with matching item storage", node)
+                        f"JVM {operation} requires a list with matching item storage", node)
                 owner = self.list_class(semantic_receiver)
                 descriptor = f"L{owner.name};"
                 actual = self.expression(node.args[0], expected=descriptor)
                 if actual != descriptor:
-                    raise JVMUnsupported("JVM list.extend has incompatible items", node)
+                    raise JVMUnsupported(f"JVM {operation} has incompatible items", node)
                 if not any(method.name == "extend" for method in owner.methods):
                     owner.add_method(self.list_extend_method(owner, item_type))
+                if target.name == "__add__":
+                    # Evaluate both operands before copying: the right operand
+                    # can mutate the left list or raise an exception.
+                    source = self.allocate_temporary(descriptor, "list.concat.source")
+                    self.store(source, descriptor)
+                    if not any(method.name == "copy" for method in owner.methods):
+                        owner.add_method(self.list_copy_method(owner, item_type))
+                    copy = self.class_file.method_reference(owner.name, "copy", f"(){descriptor}")
+                    self.code.emit(0xB6, copy.to_bytes(2, "big"))
+                    self.code.emit(0x59)
+                    self.load(source)
                 reference = self.class_file.method_reference(owner.name, "extend", f"({descriptor})V")
                 self.code.emit(0xB6, reference.to_bytes(2, "big"))
+                if target.name == "__add__":
+                    return descriptor
                 self.code.emit(0x01)
                 return "N"
             if (isinstance(semantic_receiver, Class)

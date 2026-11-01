@@ -1159,6 +1159,11 @@ with `pyjs template`.
   follow Python clipping rules. A zero step raises `ValueError`. Work and
   additional storage are proportional to the number of selected items.
   Slice assignment, deletion and first-class slice objects remain unsupported.
+- JVM list concatenation creates independent list storage while retaining
+  shallow item identity. Both operands must have matching item storage and
+  representations; other layout combinations remain unsupported.
+  Empty operands need a typed list binding; untyped `[]` operands are not
+  inferred at this binary-operation boundary.
 - JVM `math.sqrt()` accepts integers, Booleans and floats. Negative inputs
   raise `ValueError`; negative zero, positive infinity and NaN retain their
   floating-point behavior. The implementation uses Java's native square root

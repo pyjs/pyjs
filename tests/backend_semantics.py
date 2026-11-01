@@ -4648,6 +4648,41 @@ LIST_SLICE_CONTRACT = _contract(
 )
 
 
+LIST_CONCAT_CONTRACT = _contract(
+    "from pyjs import js, int8, float32",
+    "list_concat_result",
+    '''
+        left = [1, 2]
+        right = [3]
+        combined = left + right
+        doubled = left + left
+        left[0] = 9
+        right.append(4)
+        combined.append(5)
+        empty: list[int] = []
+        grown = empty + empty
+        grown.append(42)
+        nested = [[1]]
+        shallow = nested + nested
+        shallow[0].append(2)
+        integers = [int8(127)] + [int8(3)]
+        floats = [float32(16777216)] + [float32(1)]
+        flags = [True] + [False]
+        words = ["é"] + ["😀"]
+    ''',
+    (
+        ("independent result storage", "combined is left or combined is right or combined[0] != 1 or len(combined) != 4"),
+        ("operands remain independently mutable", "len(left) != 2 or len(right) != 2 or combined[2] != 3"),
+        ("self-concatenation copies twice", "len(doubled) != 4 or doubled[2] != 1"),
+        ("empty results can grow", "len(empty) != 0 or grown[0] != 42"),
+        ("concatenation is shallow", "shallow[0] is not nested[0] or shallow[1][1] != 2"),
+        ("integer representation retained", "int(integers[0] + 1) != -128"),
+        ("floating representation retained", "int(floats[0] + 1) != 16777216"),
+        ("boolean and reference storage", "flags[1] or words[1] != '😀'"),
+    ),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",

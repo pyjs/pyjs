@@ -240,6 +240,17 @@ def test_list_slice_keeps_the_wasm_operation_boundary():
     )
 
 
+def test_list_concatenation_keeps_the_wasm_operation_boundary():
+    with pytest.raises(WebAssemblyUnsupported) as caught:
+        transpile_webassembly('''def main() -> int:
+    values = [1, 2]
+    return len(values + values)
+''')
+    assert str(caught.value) == (
+        "WebAssembly call target __add__ is not implemented at line 3"
+    )
+
+
 def test_range_loops_keep_the_wasm_iteration_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly iteration currently requires a list$"):
         transpile_webassembly(RANGE_LOOP_CONTRACT.source)
