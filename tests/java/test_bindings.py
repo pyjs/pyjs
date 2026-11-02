@@ -501,6 +501,7 @@ def test_android_app_widget_bindings_match_api_35_and_import():
     assert "def request_pin_app_widget(" in source
     assert "extras: Bundle | None" in source
     assert "class RemoteViewsFactory(Object):" in source
+    assert "def apply(self, context: Context, parent: ViewGroup | None) -> View:" in source
 
 
 def test_android_editor_controls_match_api_35_and_import():

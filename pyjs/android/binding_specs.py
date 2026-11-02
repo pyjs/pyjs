@@ -156,6 +156,8 @@ ANDROID_CONTROL_BINDINGS = (
 )
 
 APP_WIDGET_EXTERNALS = (
+    JVMExternalClass("android/view/View", "pyjs.android", "View"),
+    JVMExternalClass("android/view/ViewGroup", "pyjs.android", "ViewGroup"),
     JVMExternalClass(
         "android/content/BroadcastReceiver",
         "pyjs.android",
@@ -207,6 +209,8 @@ APP_WIDGET_BINDINGS = (
                 "(Ljava/lang/String;I)V",
                 ("package_name", "layout_id"),
             ),
+            _method("apply", "(Landroid/content/Context;Landroid/view/ViewGroup;)Landroid/view/View;",
+                    parameter_names=("context", "parent"), nullable_parameters=(1,)),
             _method("setViewVisibility", "(II)V"),
             _method("setTextViewText", "(ILjava/lang/CharSequence;)V"),
             _method("setImageViewResource", "(II)V"),

@@ -60,6 +60,10 @@
   including self-extension, empty inputs and shallow reference preservation.
   Other iterable shapes receive an explicit unsupported-operation diagnostic.
 
+- Android resources support name lookup with `Resources.get_identifier()`.
+  `RemoteViews.apply()` can inflate a widget layout for native previews and
+  rendering tests, including layouts from the platform resource package.
+
 - JavaScript `Date` exposes no-argument `toLocaleString()` and
   `toLocaleTimeString()`, with local date/time formatting for Python rendering.
   Python uses the process's time locale (C unless the application changes it)
