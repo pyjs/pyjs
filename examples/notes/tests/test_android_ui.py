@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 from pyjs import JS, jvm
-from pyjs.android import Intent, View
+from pyjs.android import Intent, TextView, View
 from pyjs.android.recycler_testing import StaggeredGridSnapshot
 from pyjs.android.recyclerview import RecyclerView
 from pyjs.android.testing import (
@@ -20,7 +20,7 @@ from pyjs.android.uiautomator import find_text
 from pyjs.java import format_exception, i32
 from pyjs.java.concurrent import Runnable, Thread
 from pyjs.java.io import File, RandomAccessFile
-from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication
+from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication, StorageStatus
 from pyjs_examples.notes.android_saves import BackgroundSaveDriver
 from pyjs_examples.notes.android_storage import Closing, OrderFile, OrderSession, StorageError
 
@@ -148,11 +148,13 @@ def test_share_intent_launch_recreation_and_unsupported_payloads() -> None:
     intent = share_intent("First 雪\nhttps://example.com/")
     intent.put_string_extra(Intent.EXTRA_SUBJECT, "Read later")
     launch_intent(intent)
-    by_id(i32(102)).assert_text("Read later (preview, not saved)\n\nFirst 雪\nhttps://example.com/")
+    by_id(i32(103)).assert_text("Shared text preview (not saved; may be shortened)")
+    by_id(i32(102)).assert_text("Read later\n\nFirst 雪\nhttps://example.com/")
     recreate()
-    by_id(i32(102)).assert_text("Read later (preview, not saved)\n\nFirst 雪\nhttps://example.com/")
+    by_id(i32(102)).assert_text("Read later\n\nFirst 雪\nhttps://example.com/")
     launch_intent(share_intent("Not an image").set_type("image/png"))
     by_id(i32(102)).check(HiddenShare())
+    by_id(i32(103)).check(HiddenShare())
     missing = share_intent("Removed")
     missing.remove_extra(Intent.EXTRA_TEXT)
     launch_intent(missing)
@@ -163,7 +165,9 @@ def test_share_intent_launch_recreation_and_unsupported_payloads() -> None:
 def test_long_shared_preview_keeps_the_board_visible_and_the_original_intent() -> None:
     body = "Long shared paragraph " * 400
     launch_intent(share_intent(body))
-    by_id(102).assert_text("Shared text (shortened preview, not saved)\n\n" + body[:500])
+    by_id(103).assert_text("Shared text preview (not saved; may be shortened)")
+    by_id(103).assert_displayed()
+    by_id(102).assert_text("Shared text\n\n" + body[:500])
     by_id(100).assert_displayed()
     by_text(LAUNCH_NOTE).assert_displayed()
     by_id(102).check(OriginalSharedText(body))
@@ -182,6 +186,33 @@ class OriginalSharedText(ViewAssertion):
             assert text is not None and text.to_string() == self.expected
 
 
+class LargePreviewFonts(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        activity = cast(NotesActivity, view.getContext())
+        activity.shared_status.setTextSize(28.0)
+        activity.shared_preview.setTextSize(32.0)
+
+
+class PreviewLabelAboveContent(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        activity = cast(NotesActivity, view.getContext())
+        assert activity.shared_status.getBottom() <= activity.shared_preview.getTop()
+
+
+def test_preview_label_stays_separate_from_multiline_subject_and_clipped_body() -> None:
+    body = "one\ntwo\nthree\nfour\nfive\nsix"
+    launch_intent(share_intent(body).put_string_extra(Intent.EXTRA_SUBJECT, "S\n\n\n\n\nX"))
+    by_id(102).assert_text("S     X\n\n" + body)
+    by_id(103).check(LargePreviewFonts())
+    by_id(103).assert_displayed()
+    by_id(103).assert_text("Shared text preview (not saved; may be shortened)")
+    by_id(103).check(PreviewLabelAboveContent())
+    by_id(100).assert_displayed()
+    by_id(102).check(OriginalSharedText(body))
+
+
 @pytest.mark.pyjs_android_device
 def test_share_intent_is_delivered_to_existing_activity() -> None:
     # Robolectric records startActivity but does not perform task-stack delivery.
@@ -189,11 +220,10 @@ def test_share_intent_is_delivered_to_existing_activity() -> None:
     delivery = DeliverShare()
     by_id(i32(102)).check(delivery)
     # A main-loop idle check does not wait for the system's intent transaction.
-    assert find_text("Shared text (preview, not saved)\n\nSecond 😀").text() == (
-        "Shared text (preview, not saved)\n\nSecond 😀")
+    assert find_text("Shared text\n\nSecond 😀").text() == "Shared text\n\nSecond 😀"
     by_id(i32(102)).check(SameShareActivity(delivery))
     recreate()
-    by_id(i32(102)).assert_text("Shared text (preview, not saved)\n\nSecond 😀")
+    by_id(i32(102)).assert_text("Shared text\n\nSecond 😀")
 
 
 class NoteOrder(ViewAssertion):
@@ -273,6 +303,42 @@ class MoveAndSave(ViewAssertion):
             session.store = FailOnce(session.store.path)
         adapter.move(0, 1)
         adapter.save_order()
+
+
+class ResumedBoards(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        first = cast(NotesAdapter, cast(RecyclerView, view).get_adapter())
+        session = first.session
+        assert session is not None and first.status is not None
+        other_status = TextView(view.getContext())
+        second = NotesAdapter(list(first.notes), list(first.colors), list(first.note_ids),
+                              session, other_status)
+        observer = StorageStatus(second)
+        session.attach(observer)
+        try:
+            session.store = FailOnce(session.store.path)
+            first.move(0, 1)
+            assert second.note_ids[0] == 1002 and second.note_ids[1] == 1001
+            first.save_order()
+            assert first.status.getText().to_string() == "Order not saved. Tap to retry. Injected write failure"
+            assert other_status.getText().to_string() == first.status.getText().to_string()
+            first.move(1, 2)
+            second.save_order()
+            assert first.status.getText().to_string() == ""
+            assert other_status.getText().to_string() == ""
+            restored = session.store.read(first.note_ids)
+            assert restored[0] == 1002 and restored[1] == 1003 and restored[2] == 1001
+            assert second.note_ids[1] == 1003 and second.note_ids[2] == 1001
+        finally:
+            session.detach(observer)
+
+
+def test_multiple_resumed_boards_share_order_and_retry_without_stale_overwrite() -> None:
+    reset_order()
+    launch(NotesActivity)
+    by_id(100).check(ResumedBoards())
+    reset_order()
 
 
 class UnsavedSession(ViewAssertion):
@@ -383,14 +449,12 @@ def test_returning_from_another_share_task_restores_order_and_save_notifications
         launch_intent(share_intent("Original task"))
         delivery = OpenOtherTask()
         by_id(102).check(delivery)
-        assert find_text("Shared text (preview, not saved)\n\nOther task").text() == (
-            "Shared text (preview, not saved)\n\nOther task")
+        assert find_text("Shared text\n\nOther task").text() == "Shared text\n\nOther task"
         by_id(100).check(MoveAndSave(False))
         finish_background_write(store)
         by_id(101).assert_text("")
         by_id(102).check(FinishShare())
-        assert find_text("Shared text (preview, not saved)\n\nOriginal task").text() == (
-            "Shared text (preview, not saved)\n\nOriginal task")
+        assert find_text("Shared text\n\nOriginal task").text() == "Shared text\n\nOriginal task"
         by_id(102).check(SameShareActivity(delivery))
         by_id(100).check(NoteOrder(
             [1002, 1001, 1003, 1004, 1005, 1006, 1007], "after returning from another task"))

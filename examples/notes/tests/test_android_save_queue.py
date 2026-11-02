@@ -1,5 +1,6 @@
 import pytest
 from pyjs.java.errors import SecurityException
+from pyjs_examples.notes.android import NotesAdapter, StorageStatus
 from pyjs_examples.notes.android_storage import (
     OrderFile,
     OrderObserver,
@@ -172,7 +173,53 @@ def test_recreation_reuses_queue_and_detaching_old_observer_keeps_new_one(queue)
     assert len(old.messages) == old_count
     assert current.messages == ["Saving…", ""]
     session.detach(current)
-    assert session.observer is None
+    assert session.observers == []
+
+
+class Status:
+    def __init__(self):
+        self.text = ""
+
+    def setText(self, text):
+        self.text = text
+
+    def setVisibility(self, visibility):
+        pass
+
+
+def test_resumed_boards_observe_order_failures_and_retry_the_current_order(queue):
+    session, store, driver = queue
+    first_status, second_status = Status(), Status()
+    first = NotesAdapter(["one", "two", "three"], ["red", "blue", "green"],
+                         [1, 2, 3], session, first_status)
+    second = NotesAdapter(list(first.notes), list(first.colors), list(first.note_ids),
+                          session, second_status)
+    first_observer, second_observer = StorageStatus(first), StorageStatus(second)
+    session.attach(first_observer)
+    session.attach(second_observer)
+    session.attach(second_observer)
+    assert len(session.observers) == 2
+    first.move(0, 1)
+    assert second.note_ids == [2, 1, 3]
+    assert second.notes == ["two", "one", "three"]
+    assert second.colors == ["blue", "red", "green"]
+    first.save_order()
+    assert first_status.text == second_status.text == "Saving…"
+    store.fail = True
+    driver.finish()
+    assert first_status.text == second_status.text == "Order not saved. Tap to retry. write failed"
+    first.move(1, 2)
+    store.fail = False
+    second.save_order()
+    driver.finish()
+    assert store.saved == first.note_ids == second.note_ids == [2, 3, 1]
+    assert first_status.text == second_status.text == ""
+    session.detach(second_observer)
+    first.move(2, 0)
+    assert second.note_ids == [2, 3, 1]
+    second.save_order()
+    driver.finish()
+    assert store.saved == [1, 2, 3], "Even a detached stale retry must refresh first"
 
 
 def test_clean_and_blocked_sessions_never_start_a_worker(queue):

@@ -36,10 +36,13 @@ process restarts. No backend is required.
 Android accepts `text/plain` shares and shows a clearly marked preview above
 the sample board. It does not save shared text as a note. The preview accepts
 plain or styled text and handles delivery to an already-open Activity. It
-displays up to 100 subject characters and 500 body characters in at most five
-lines; longer content is explicitly marked as a shortened preview. The
-original intent is unchanged. Missing text and unsupported MIME types do not
-produce a preview. No HTML is interpreted.
+includes up to 100 subject characters and 500 body characters in at most five
+rendered lines, sharing the remaining window height with the sample board.
+Narrow windows, large fonts and newlines can hide content even
+inside those character limits. A separate visible label always identifies the
+preview as unsaved and potentially shortened. Subject newlines become spaces;
+the original intent is unchanged. Missing text and unsupported MIME types do
+not produce a preview. No HTML is interpreted.
 
 The latest preview survives configuration changes through the Activity's
 current intent, not through the card-order file. `set_intent()` does not
@@ -63,13 +66,14 @@ exception as its cause/context, and its message in `.args`.
 of the short status message. Successful load/save clears that report.
 
 A failed save keeps the on-screen order and displays a tap-to-retry message.
-`NotesApplication` owns the session and one status observer. Only the most
-recently resumed Activity receives automatic status updates. Resuming a board
-refreshes its order from the session and reattaches its observer, including
-after a share opened another task. Stopping or destroying an Activity detaches
-only its own observer. Activity recreation or relaunch in that same
-process restores pending order, dirty state, and the failure report without
-reloading the old file. Only a new
+`NotesApplication` owns the session. Resumed boards observe both order changes
+and save status, including when multiple windows remain resumed together.
+Retry reads the current shared order instead of submitting a stale view's
+copy. Resuming a board refreshes its order and reattaches its observer,
+including after a share opened another task. Stopping or destroying an
+Activity detaches only its own observer. Activity recreation or relaunch in
+that same process restores pending order, dirty state, and the failure report
+without reloading the old file. Only a new
 process loads the saved snapshot, or initial samples if no snapshot exists.
 Unsaved edits are not durable across process termination.
 

@@ -125,12 +125,14 @@ class NotesAdapter(RecyclerViewAdapter):
             for target in range(len(order)):
                 for source in range(target, len(self.note_ids)):
                     if self.note_ids[source] == order[target]:
-                        self.move(source, target, False)
+                        if source != target:
+                            self.move(source, target, False)
                         break
         self.show_storage_status()
 
     def save_order(self) -> None:
         if self.session is not None:
+            self.restore_order()
             self.session.save(self.note_ids)
         self.show_storage_status()
 
@@ -153,7 +155,7 @@ class StorageStatus(OrderObserver):
         self.adapter = adapter
 
     def storage_changed(self) -> None:
-        self.adapter.show_storage_status()
+        self.adapter.restore_order()
 
 
 class NotesTouch(ItemTouchCallback):
@@ -223,6 +225,7 @@ class NotesApplication(Application):
 class NotesActivity(Activity):
     storage_observer: StorageStatus
     shared_preview: TextView
+    shared_status: TextView
 
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
@@ -241,11 +244,19 @@ class NotesActivity(Activity):
         search.setElevation(4.0)
         root.addView(search)
 
+        self.shared_status = TextView(self)
+        self.shared_status.setId(103)
+        self.shared_status.setText("Shared text preview (not saved; may be shortened)")
+        self.shared_status.setTextSize(14.0)
+        self.shared_status.setPadding(40, 20, 40, 0)
+        root.addView(self.shared_status)
         self.shared_preview = TextView(self)
         self.shared_preview.setId(102)
         self.shared_preview.setTextSize(16.0)
         self.shared_preview.setMaxLines(5)
         self.shared_preview.setPadding(40, 20, 40, 20)
+        self.shared_preview.setLayoutParams(
+            LinearLayoutParams(LayoutParams.MATCH_PARENT, 0, 0.6))
         root.addView(self.shared_preview)
         self.show_shared_preview()
 
@@ -319,6 +330,7 @@ class NotesActivity(Activity):
         self.show_shared_preview()
 
     def show_shared_preview(self) -> None:
+        self.shared_status.setVisibility(View.GONE)
         self.shared_preview.setVisibility(View.GONE)
         intent = self.get_intent()
         if intent is None or intent.get_action() != Intent.ACTION_SEND or intent.get_type() != "text/plain":
@@ -328,10 +340,9 @@ class NotesActivity(Activity):
             return
         subject = intent.get_string_extra(Intent.EXTRA_SUBJECT) or "Shared text"
         body = text.to_string()
-        label = " (preview, not saved)"
-        if len(subject) > 100 or len(body) > 500:
-            label = " (shortened preview, not saved)"
-        self.shared_preview.setText(subject[:100] + label + "\n\n" + body[:500])
+        subject = subject[:100].replace("\r", " ").replace("\n", " ")
+        self.shared_preview.setText(subject + "\n\n" + body[:500])
+        self.shared_status.setVisibility(View.VISIBLE)
         self.shared_preview.setVisibility(View.VISIBLE)
 
     def onResume(self) -> None:

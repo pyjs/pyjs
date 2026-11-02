@@ -15,6 +15,9 @@
   configuration changes without treating preview text as saved note content.
   `finish()` and `is_finishing()` support explicit Activity completion;
   the application remains responsible for waiting for durable storage.
+  Resumed Notes windows share order and save status, including safe retries
+  from an older view. A separate unsaved-preview label stays above clipped
+  share content without hiding the board.
 
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
