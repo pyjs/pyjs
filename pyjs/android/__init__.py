@@ -5,7 +5,7 @@ from typing import Annotated, ClassVar
 from pyjs import jvm
 from pyjs.java import JVMArray, f32, i32
 from pyjs.java.concurrent import Runnable
-from pyjs.java.io import File, OutputStream
+from pyjs.java.io import File, InputStream, OutputStream
 from pyjs.java.primitives import Reference
 
 from .api import AndroidAPI, AndroidAvailability, AndroidNullability
@@ -333,8 +333,17 @@ class Uri:
         return ""
 
 
+@jvm.native("android/net/Uri", name="parse")
+def parse_uri(value: str) -> Uri: ...
+
+
 @jvm.native("android/content/ContentResolver")
 class ContentResolver:
+    @jvm.native(
+        "android/content/ContentResolver", name="openInputStream", invocation="virtual",
+    )
+    def open_input_stream(self, uri: Uri) -> InputStream | None: ...
+
     @jvm.native(
         "android/content/ContentResolver", name="openOutputStream", invocation="virtual",
     )

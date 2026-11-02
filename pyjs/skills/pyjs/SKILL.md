@@ -290,6 +290,20 @@ pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
 offsets and returns the same mutable buffer; it is different from replacing
 the field with `setText()`.
 
+For Android images, read a selected document with
+`context.get_content_resolver().open_input_stream(uri)` and close the stream
+in `finally`. It may return `None` or raise a native I/O or permission error.
+Bound the bytes before accumulating them; `ByteArrayOutputStream.toByteArray()`
+returns a copy, so account for that extra allocation. Use `BitmapOptions` and
+`decode_bitmap` from `pyjs.android.graphics`: first set `inJustDecodeBounds`
+to inspect `outWidth`, `outHeight`, and `outMimeType` without allocating pixels.
+That call returns `None`, as does invalid data. Then disable bounds-only mode
+and choose `inSampleSize` for a smaller preview. Input limits, pixel limits,
+background decoding, and bitmap lifetime remain application responsibilities.
+Use `ImageView.set_image_bitmap()` to display the result and
+`set_image_drawable(None)` to detach it before recycling an unshared bitmap.
+Passing `None` to `set_image_bitmap()` may retain an empty native drawable.
+
 Resolve Android resources for configurable application package names with
 `context.get_resources().get_identifier(name, kind, package)`. Missing names
 return zero; check before constructing views. Prefer generated `R` bindings

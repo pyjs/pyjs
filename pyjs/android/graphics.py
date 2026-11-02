@@ -1,8 +1,41 @@
 """Android's native 2D drawing primitives for custom Views."""
 from typing import Annotated, ClassVar
 
-from pyjs import jvm
-from pyjs.java import f32, i32
+from pyjs import int8, jvm
+from pyjs.java import JVMArray, f32, i32
+
+
+@jvm.native("android/graphics/Bitmap")
+class Bitmap:
+    def getWidth(self) -> i32: ...
+    def getHeight(self) -> i32: ...
+    def getByteCount(self) -> i32: ...
+    def recycle(self) -> None: ...
+    def isRecycled(self) -> bool: ...
+
+
+@jvm.native("android/graphics/BitmapFactory$Options")
+class BitmapOptions:
+    inJustDecodeBounds: Annotated[bool, jvm.field()]
+    inSampleSize: Annotated[i32, jvm.field()]
+    outWidth: Annotated[i32, jvm.field(writable=False)]
+    outHeight: Annotated[i32, jvm.field(writable=False)]
+    outMimeType: Annotated[str | None, jvm.field(writable=False)]
+
+    def __init__(self) -> None: ...
+
+
+@jvm.native("android/graphics/BitmapFactory", name="decodeByteArray")
+def decode_bitmap(
+    data: JVMArray[int8], offset: i32, length: i32, options: BitmapOptions | None,
+) -> Bitmap | None:
+    """Decode a byte range, or inspect its dimensions without allocating pixels.
+
+    Set options.inJustDecodeBounds for inspection; that call returns None.
+    Set options.inSampleSize for a subsampled preview. Invalid data also
+    returns None. The caller owns input limits and bitmap lifetime.
+    """
+    ...
 
 
 @jvm.native("android/graphics/Paint$Style")
