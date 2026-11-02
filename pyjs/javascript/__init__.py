@@ -3,6 +3,7 @@
 import json
 import random
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Self, TypedDict
 from urllib.parse import quote
@@ -209,6 +210,11 @@ class TypedArray:
     @js.inline("{self}.length")
     def __len__(self) -> int:
         return self.length
+
+    @js.inline("{self}[Symbol.iterator]()")
+    def __iter__(self) -> Iterator[int | float]:
+        for index in range(self.length):
+            yield read_typed_array_item(self, index)
 
     def set(self, values: object, offset: int = 0) -> None:
         items = typed_array_values(values)
