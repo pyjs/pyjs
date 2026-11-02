@@ -159,9 +159,9 @@ def sha256(text: str | Uint8Array) -> str:
     """Hash UTF-8 text or the exact bytes of a view, returning lowercase hex."""
     ...
 
-@js.inline("Buffer.from({source}, 'base64')")
+@js.inline("new Uint8Array(Buffer.from({source}, 'base64'))")
 def decode_base64(source: str) -> Uint8Array:
-    """Decode using Node's permissive Buffer rules, not canonical validation."""
+    """Return owned bytes using Node's permissive, non-canonical decoding rules."""
     ...
 
 @js.inline("(data => Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64'))({data})")
