@@ -279,6 +279,11 @@ Android examples use native JVM APIs. Run Calculator or Notes with
 and a JDK. Host-driven ADB tests use `pytest.mark.pyjs_android` and
 `AndroidTestSession` with an explicit activity; preserve failure artifacts
 with `session.artifacts_on_failure(...)`.
+`wait_for_element(description="Note text", focused=True)` waits for an
+accessibility label and focus together, retrying transient UI-tree failures.
+Selectors are exact and combined; `focused=None` leaves focus unrestricted.
+For launcher or system flows that can precede the target process, explicitly
+pass `require_running=False`. Ordinary waits retain early app-exit reporting.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.

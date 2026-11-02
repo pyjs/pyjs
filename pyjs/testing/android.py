@@ -269,6 +269,8 @@ class AndroidTestSession:
         text: str | None = None,
         test_id: str | None = None,
         resource_id: str | None = None,
+        description: str | None = None,
+        focused: bool | None = None,
     ) -> AndroidElement | None:
         for element in self.elements():
             if text is not None and element.text != text:
@@ -276,6 +278,10 @@ class AndroidTestSession:
             if test_id is not None and element.test_id != test_id:
                 continue
             if resource_id is not None and element.resource_id != resource_id:
+                continue
+            if description is not None and element.description != description:
+                continue
+            if focused is not None and element.focused != focused:
                 continue
             return element
         return None
@@ -286,20 +292,31 @@ class AndroidTestSession:
         text: str | None = None,
         test_id: str | None = None,
         resource_id: str | None = None,
+        description: str | None = None,
+        focused: bool | None = None,
+        require_running: bool = True,
         timeout: float = 15,
         interval: float = 0.25,
     ) -> AndroidElement:
+        """Retry transient UI inspection failures until a matching view appears.
+
+        Set require_running=False only for system or cross-app flows where the
+        target process may legitimately be absent, such as launcher widgets.
+        """
         deadline = time.monotonic() + timeout
         last_error = None
         while time.monotonic() < deadline:
             try:
-                element = self.find_element(text=text, test_id=test_id, resource_id=resource_id)
+                element = self.find_element(
+                    text=text, test_id=test_id, resource_id=resource_id,
+                    description=description, focused=focused,
+                )
             except Exception as exc:
                 last_error = exc
             else:
                 if element is not None:
                     return element
-            if not self.is_running():
+            if require_running and not self.is_running():
                 message = (
                     f"Android application {self.app_id!r} stopped while waiting for UI."
                 )
@@ -308,8 +325,10 @@ class AndroidTestSession:
                     message += f"\n{errors}"
                 raise RuntimeError(message)
             time.sleep(interval)
-        selector = {"text": text, "test_id": test_id, "resource_id": resource_id}
-        details = ", ".join(f"{key}={value!r}" for key, value in selector.items() if value)
+        selector = {"text": text, "test_id": test_id, "resource_id": resource_id,
+                    "description": description, "focused": focused}
+        details = ", ".join(f"{key}={value!r}" for key, value in selector.items()
+                            if value is not None)
         message = f"Timed out waiting for Android element with {details}."
         if last_error is not None:
             message += f" Last UI inspection failed: {last_error}"

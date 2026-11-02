@@ -354,9 +354,11 @@ def test_android_error_extraction_retains_a_complete_runtime_crash():
     assert extract_android_errors(source) == "\n".join(source.splitlines()[:5])
 
 
-def test_android_element_wait_reports_an_early_runtime_exit():
+@pytest.mark.parametrize("inspection_failure", [False, True])
+def test_android_element_wait_reports_an_early_runtime_exit(inspection_failure):
     session = session_with_runner(Mock())
-    session.find_element = Mock(return_value=None)
+    session.find_element = Mock(return_value=None, side_effect=(
+        RuntimeError("null root node") if inspection_failure else None))
     session.is_running = Mock(return_value=False)
     session.log_errors = Mock(return_value="FATAL EXCEPTION: main")
 
@@ -367,6 +369,66 @@ def test_android_element_wait_reports_an_early_runtime_exit():
         "Android application 'org.pyjs.counter' stopped while waiting for UI.\n"
         "FATAL EXCEPTION: main"
     )
+
+
+@pytest.mark.parametrize("selector, expected", [
+    ({"description": "Increase count"}, 1),
+    ({"description": ""}, 0),
+    ({"focused": True}, 1),
+    ({"focused": False}, 0),
+    ({"description": "Increase count", "focused": True, "text": "Increment",
+      "test_id": "increment-button", "resource_id": "increment-button"}, 1),
+    ({"description": "Increase count", "focused": False}, None),
+    ({"description": "Increase count", "text": "0"}, None),
+])
+def test_android_element_selectors_are_combined(selector, expected):
+    session = session_with_runner(Mock())
+    elements = parse_ui_tree(UI_TREE)
+    session.elements = Mock(return_value=elements)
+    assert session.find_element(**selector) == (None if expected is None else elements[expected])
+
+
+def test_android_field_wait_retries_null_tree_and_focus_transition(monkeypatch):
+    session = session_with_runner(Mock())
+    session.ui_tree = Mock(side_effect=[
+        RuntimeError("ERROR: null root node returned by UiTestAutomationBridge"),
+        UI_TREE.replace('focused="true"', 'focused="false"'),
+        UI_TREE,
+    ])
+    session.is_running = Mock(return_value=True)
+    sleep = Mock()
+    monkeypatch.setattr("pyjs.testing.android.time.sleep", sleep)
+    monkeypatch.setattr("pyjs.testing.android.time.monotonic", Mock(side_effect=range(4)))
+    element = session.wait_for_element(description="Increase count", focused=True)
+    assert element == parse_ui_tree(UI_TREE)[1]
+    assert sleep.call_count == session.is_running.call_count == 2
+    assert session.ui_tree.call_count == 3
+
+
+def test_android_cross_app_wait_does_not_require_a_running_target(monkeypatch):
+    session = session_with_runner(Mock())
+    session.ui_tree = Mock(side_effect=[RuntimeError("null root node"), UI_TREE])
+    session.is_running = Mock(return_value=False)
+    monkeypatch.setattr("pyjs.testing.android.time.sleep", Mock())
+    monkeypatch.setattr("pyjs.testing.android.time.monotonic", Mock(side_effect=range(3)))
+    assert session.wait_for_element(description="Increase count", require_running=False).focused
+    session.is_running.assert_not_called()
+
+
+def test_android_cross_app_wait_timeout_keeps_selector_and_last_error(monkeypatch):
+    session = session_with_runner(Mock())
+    session.ui_tree = Mock(side_effect=RuntimeError("null root node"))
+    session.is_running = Mock(return_value=False)
+    monkeypatch.setattr("pyjs.testing.android.time.sleep", Mock())
+    monkeypatch.setattr("pyjs.testing.android.time.monotonic", Mock(side_effect=[0, 0, 2]))
+    with pytest.raises(TimeoutError) as caught:
+        session.wait_for_element(text="", description="Note text", focused=False,
+                                 require_running=False, timeout=1)
+    assert str(caught.value) == (
+        "Timed out waiting for Android element with text='', description='Note text', "
+        "focused=False. Last UI inspection failed: null root node"
+    )
+    session.is_running.assert_not_called()
 
 
 def test_android_session_retains_python_lines_in_unstructured_jvm_stacks():
