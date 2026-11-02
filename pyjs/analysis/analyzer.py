@@ -13582,7 +13582,10 @@ class InferenceVisitor(ast.NodeVisitor):
     def visit_BinOp(self, node: ast.BinOp):
         left = self.visit(node.left)
         right = self.visit(node.right)
-        return self.analyze_binary_operation(node, left, right)
+        result = self.analyze_binary_operation(node, left, right)
+        if getattr(node, "augmented", False):
+            result.augmented = True
+        return result
 
     def analyze_binary_operation(self, node, left, right):
         """Resolve an operator after evaluating its operands' types once."""
@@ -14843,7 +14846,7 @@ class InferenceVisitor(ast.NodeVisitor):
             target = visitor.visit(generator_node.target)
             conditions = []
             for condition in generator_node.ifs:
-                conditions.append(visitor.visit(condition))
+                conditions.append(visitor.truth_test(condition, visitor.visit(condition)))
                 # Later filters, inner sources and the result execute only
                 # after this filter passed. Keep their ordinary flow proofs.
                 visitor = visitor.narrow_for_condition(condition, True)

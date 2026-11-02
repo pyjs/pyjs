@@ -1217,6 +1217,24 @@ def comp_accept(events: list[int8], value: int8) -> bool:
 class CompRow:
     def __init__(self, label: str | None):
         self.label = label
+
+@js
+class CompFlag:
+    def __init__(self, value: int, events: list[int]):
+        self.value = value
+        self.events = events
+
+    def __bool__(self) -> bool:
+        self.events.append(self.value)
+        return self.value > 0
+
+@js
+class CompCount:
+    def __init__(self, value: int):
+        self.value = value
+
+    def __len__(self) -> int:
+        return self.value
 ''',
     "comprehension_contract",
     '''
@@ -1237,6 +1255,13 @@ class CompRow:
     shadowed = [value for value in nullable if value is not None for value in [None, value]]
     labels = [row.label.upper() for row in [CompRow("ready")] if row.label is not None
               for row in [CompRow(None), CompRow(row.label)] if row.label is not None]
+    nonempty = [row for row in [[1], [], [2, 3]] if row]
+    dictionaries = [row for row in [{1: 2}, {}, {3: 4}] if row]
+    optional_rows: list[list[int] | None] = [None, [], [1]]
+    optional_truth = [1 for row in optional_rows if row]
+    truth_events: list[int] = []
+    bool_truth = [row.value for row in [CompFlag(0, truth_events), CompFlag(2, truth_events)] if row]
+    len_truth = [row.value for row in [CompCount(0), CompCount(3)] if row]
     ''',
     (
         ("loop variables remain private", "left != 100"),
@@ -1250,6 +1275,10 @@ class CompRow:
         ("filters narrow inner iterable sources", "narrowed_nested != [int8(-128)]"),
         ("inner targets replace prior narrowing", "shadowed != [None, int8(127), None, int8(0), None, int8(-128)]"),
         ("rebound receiver fields need fresh proofs", 'labels != ["READY"]'),
+        ("collection truth filters", "len(nonempty) != 2 or len(dictionaries) != 2"),
+        ("nullable collection truth filters", "len(optional_truth) != 1"),
+        ("custom bool filter evaluated once", "bool_truth != [2] or truth_events != [0, 2]"),
+        ("custom length filter", "len_truth != [3]"),
     ),
 )
 
