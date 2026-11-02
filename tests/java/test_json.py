@@ -1,14 +1,18 @@
 import json
+import subprocess
 
 import pytest
 
+from pyjs.java import transpile_jvm
 from pyjs.java.json import JSONReader, quote
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import assert_compiles_to_android_dex, run_jvm
+from tests.java.test_jvm import java
 
 STRINGS = [
     "", "plain text", 'quote: " and slash: \\ /', "\b\f\n\r\t\0\x1f\x7f",
     "é雪😀", "a😀b😀c", "\ud800", "\udfff", "\ud800\ud801\udc00",
+    "".join(chr(code) for code in range(128)), "ascii\uffffascii\U0010ffffend",
 ]
 STRING_TOKENS = [json.dumps(value) for value in STRINGS] + [
     json.dumps("é雪😀", ensure_ascii=False), '"\\/"', '"\\u00aF"',
@@ -169,6 +173,23 @@ def main() -> str:
     return "matched"
 '''
     result = run_jvm(source, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "matched"
+
+
+def test_non_ascii_encoding_does_not_retain_per_character_fragments(tmp_path):
+    source = '''
+from pyjs.java.json import quote
+def main() -> str:
+    result = quote("雪😀" * 200000)
+    assert result == '"' + "\\\\u96ea\\\\ud83d\\\\ude00" * 200000 + '"'
+    return "matched"
+'''
+    transpile_jvm(source).write(tmp_path)
+    result = subprocess.run(
+        [java(), "-Xmx32m", "-Xverify:all", "-cp", str(tmp_path), "PyjsProgram"],
+        capture_output=True, text=True, timeout=30,
+    )
     assert result.returncode == 0, result.stderr
     assert result.stdout == "matched"
 

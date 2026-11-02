@@ -1,7 +1,7 @@
 """Strict JSON tokens for schema-directed JVM and Android decoding."""
 
 from pyjs import jvm, uint16
-from pyjs.java import i32, parse_double
+from pyjs.java import StringBuilder, i32, parse_double
 
 
 @jvm.native("java/lang/String")
@@ -24,24 +24,29 @@ class _UTF16:
         return self.data[int(start) * 2:int(end) * 2].decode("utf-16-le", "surrogatepass")
 
 
-def _hex4(value: int) -> str:
-    digits = "0123456789abcdef"
-    return (digits[value // 4096] + digits[value // 256 % 16]
-            + digits[value // 16 % 16] + digits[value % 16])
+def _hex_digit(digits: _UTF16, index: int) -> str:
+    return digits.slice(i32(index), i32(index + 1))
 
 
 def quote(value: str) -> str:
     """Encode a JSON string using ASCII escapes, preserving surrogate values."""
-    parts = ['"']
+    output = StringBuilder()
+    output.append('"')
+    digits = _UTF16("0123456789abcdef")
     start = 0
     text = _UTF16(value)
     length = int(text.length())
     for index in range(length):
         code = int(text.unit(i32(index)))
-        character = chr(code)
+        if 32 <= code < 127 and code != 34 and code != 92:
+            continue
+        if start < index:
+            output.append(text.slice(i32(start), i32(index)))
         escaped = ""
-        if character == '"' or character == "\\":
-            escaped = "\\" + character
+        if code == 34:
+            escaped = '\\"'
+        elif code == 92:
+            escaped = "\\\\"
         elif code == 8:
             escaped = "\\b"
         elif code == 9:
@@ -52,15 +57,19 @@ def quote(value: str) -> str:
             escaped = "\\f"
         elif code == 13:
             escaped = "\\r"
-        elif code < 32 or code >= 127:
-            escaped = "\\u" + _hex4(code)
-        if escaped != "":
-            parts.append(text.slice(i32(start), i32(index)))
-            parts.append(escaped)
-            start = index + 1
-    parts.append(text.slice(i32(start), i32(length)))
-    parts.append('"')
-    return "".join(parts)
+        else:
+            output.append("\\u")
+            output.append(_hex_digit(digits, code >> 12))
+            output.append(_hex_digit(digits, (code >> 8) & 15))
+            output.append(_hex_digit(digits, (code >> 4) & 15))
+            output.append(_hex_digit(digits, code & 15))
+        if escaped:
+            output.append(escaped)
+        start = index + 1
+    if start < length:
+        output.append(text.slice(i32(start), i32(length)))
+    output.append('"')
+    return output.to_string()
 
 
 class JSONReader:
