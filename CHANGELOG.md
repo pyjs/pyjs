@@ -14,6 +14,10 @@
   non-ASCII values use less temporary memory while preserving ASCII escapes,
   supplementary characters and lone surrogates.
 
+- JVM and Android JSON string decoding uses a native output buffer and scans
+  UTF-16 units directly, reducing temporary memory and work on large escaped
+  values without changing validation or decoded content.
+
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
   JavaScript truth conversions retain their grouping inside negation and

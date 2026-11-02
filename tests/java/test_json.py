@@ -185,6 +185,22 @@ def main() -> str:
     assert result == '"' + "\\\\u96ea\\\\ud83d\\\\ude00" * 200000 + '"'
     return "matched"
 '''
+    assert_bounded_string_memory(source, tmp_path)
+
+
+def test_escaped_string_decoding_does_not_retain_per_character_fragments(tmp_path):
+    source = '''
+from pyjs.java.json import JSONReader
+def main() -> str:
+    reader = JSONReader('"' + "\\\\u96ea\\\\ud83d\\\\ude00" * 300000 + '"')
+    assert reader.string() == "雪😀" * 300000
+    reader.finish()
+    return "matched"
+'''
+    assert_bounded_string_memory(source, tmp_path)
+
+
+def assert_bounded_string_memory(source, tmp_path):
     transpile_jvm(source).write(tmp_path)
     result = subprocess.run(
         [java(), "-Xmx32m", "-Xverify:all", "-cp", str(tmp_path), "PyjsProgram"],
