@@ -26,12 +26,17 @@ async def _finish(awaitable, retain=None):
     cancelled = None
     while not task.done():
         try:
-            await asyncio.shield(task)
+            # wait() leaves the owned task running without shield()'s abandoned
+            # future error logger. We always retrieve its outcome below.
+            await asyncio.wait((task,))
         except asyncio.CancelledError as error:
-            if task.cancelled():
-                raise
             cancelled = error
-    result = task.result()
+    try:
+        result = task.result()
+    except BaseException as error:
+        if cancelled is not None:
+            raise cancelled from error
+        raise
     if retain is not None:
         retain(result)
     if cancelled is not None:
@@ -185,7 +190,8 @@ class AndroidBrowser:
             try:
                 await _finish(self._failed_page(page, target['id'], error))
             except asyncio.CancelledError:
-                pass  # Cleanup finished; preserve the original failure below.
+                if not isinstance(error, asyncio.CancelledError):
+                    raise
             raise
         await page.bring_to_front()
         await page.wait_for(
