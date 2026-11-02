@@ -11,6 +11,46 @@ from pyjs.web.html import HTMLSelectElement
 
 
 @js
+def hidden_attribute_contract():
+    element = div()
+    assert element.hidden is False
+    element.hidden = True
+    assert element.getAttribute("hidden") == ""
+    element.hidden = False
+    assert element.getAttribute("hidden") is None
+    element.hidden = "UNTIL-FOUND"
+    assert element.hidden == "until-found"
+    assert element.getAttribute("hidden") == "until-found"
+    element.setAttribute("hidden", "invalid")
+    assert element.hidden is True
+    element.hidden = ""
+    assert element.hidden is False
+    element.hidden = 1.0
+    assert element.hidden is True
+    element.hidden = 0.0
+    assert element.hidden is False
+    element.hidden = None
+    assert element.getAttribute("hidden") is None
+
+
+def test_hidden_attribute_server_reflection():
+    from pyjs.web.ssr import render_html
+
+    hidden_attribute_contract()
+    element = div("hidden content")
+    element.hidden = True
+    assert 'hidden=""' in render_html(element)
+    element.hidden = float("nan")
+    assert element.hidden is False
+
+
+@pytest.mark.pyjs_web
+@js
+def test_hidden_attribute_browser_reflection():
+    hidden_attribute_contract()
+
+
+@js
 class ForwardedBox(ProxyElement):
     def __init__(self):
         self.element = div("proxy child")
