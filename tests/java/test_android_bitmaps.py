@@ -10,11 +10,84 @@ from pyjs.java.concurrent import Runnable
 from pyjs.java.io import (
     ByteArrayOutputStream,
     IOException,
+    OutputStream,
     OutputStreamWriter,
     create_temp_file,
 )
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+def write_range(stream: OutputStream, data: JVMArray[int8], offset: i32, length: i32) -> None:
+    stream.write(data, offset, length)
+
+
+def test_output_stream_byte_ranges_dispatch_to_the_concrete_stream() -> None:
+    stream = ByteArrayOutputStream()
+    data = JVMArray[int8](4)
+    data[0] = int8(127)
+    data[1] = int8(-128)
+    data[2] = int8(-1)
+    write_range(stream, data, 1, 2)
+    write_range(stream, data, 3, 1)
+    write_range(stream, data, 4, 0)
+    for offset in [-1, 4]:
+        rejected = False
+        try:
+            write_range(stream, data, i32(offset), 1)
+        except Exception:
+            rejected = True
+        assert rejected
+    rejected = False
+    try:
+        write_range(stream, data, 0, -1)
+    except Exception:
+        rejected = True
+    assert rejected
+    result = stream.toByteArray()
+    assert len(result) == 3
+    assert result[0] == -128 and result[1] == -1 and result[2] == 0
+    stream.close()
+
+
+def test_uri_output_stream_writes_raw_bytes_and_propagates_closed_errors() -> None:
+    context = application_context()
+    resolver = context.get_content_resolver()
+    file = create_temp_file("binary-output", ".bin", context.getFilesDir())
+    uri = parse_uri("file://" + file.getPath())
+    data = JVMArray[int8](3)
+    data[0] = int8(-128)
+    data[1] = int8(-1)
+    try:
+        output = resolver.open_output_stream(uri, "wt")
+        assert output is not None
+        try:
+            write_range(output, data, 0, 3)
+        finally:
+            output.close()
+        rejected = False
+        try:
+            write_range(output, data, 0, 3)
+        except IOException:
+            rejected = True
+        assert rejected
+        source = resolver.open_input_stream(uri)
+        assert source is not None
+        try:
+            destination = ByteArrayOutputStream()
+            buffer = JVMArray[int8](2)
+            count = source.read(buffer)
+            while count != -1:
+                destination.write(buffer, 0, count)
+                count = source.read(buffer)
+            result = destination.toByteArray()
+            assert len(result) == 3
+            for index in range(3):
+                assert result[index] == data[index]
+        finally:
+            source.close()
+    finally:
+        assert file.delete()
 
 
 def png_bytes() -> JVMArray[int8]:

@@ -303,6 +303,11 @@ background decoding, and bitmap lifetime remain application responsibilities.
 Use `ImageView.set_image_bitmap()` to display the result and
 `set_image_drawable(None)` to detach it before recycling an unshared bitmap.
 Passing `None` to `set_image_bitmap()` may retain an empty native drawable.
+For binary exports, `OutputStream.write(buffer, offset, length)` writes native
+byte-array ranges without text conversion. It dispatches to the concrete
+stream, including document-provider streams. Close owned outputs in `finally`;
+range/I/O failures propagate and can leave partial output. A successful write
+is not an atomic publication or a disk-synchronization guarantee.
 
 Resolve Android resources for configurable application package names with
 `context.get_resources().get_identifier(name, kind, package)`. Missing names

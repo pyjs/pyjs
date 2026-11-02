@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Native Java `OutputStream.write(buffer, offset, length)` supports binary
+  range writes, including Android document-provider streams. Buffer streams
+  inherit the same operation; native range and I/O errors propagate unchanged.
+
 - Android exposes bounds-only and sampled bitmap decoding, bitmap dimensions
   and lifetime, and ImageView bitmap assignment. URI input streams and Java
   byte-buffer extraction support importing binary documents without text

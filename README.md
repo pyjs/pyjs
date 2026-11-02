@@ -1109,6 +1109,21 @@ with `pyjs template`.
   the platform's `UUID.fromString` rules, which can differ across Java and
   Android releases; it is not a strict canonical-text validator. Catch native
   parse errors with `pyjs.java.errors.IllegalArgumentException`.
+- `pyjs.java.io.OutputStream.write(buffer, offset, length)` writes a range of
+  native `JVMArray[int8]` bytes, including through Android document-provider
+  streams. `ByteArrayOutputStream` inherits this operation. Native bounds
+  and I/O errors propagate; close owned streams in `finally` and do not report
+  a completed export before close succeeds. A failed write can leave partial
+  output; this API does not provide atomic replacement or disk synchronization.
+- `pyjs.java.base64` provides `base64_encoder()` and `base64_decoder()` for
+  native byte arrays. Encoding uses the basic alphabet and padding; decoding
+  follows Java's rules, including omitted final padding, rather than enforcing
+  canonical input. Catch invalid input with
+  `pyjs.java.errors.IllegalArgumentException`. Base64 requires Android API 26+.
+  `pyjs.java.security.message_digest(name)` uses installed platform providers;
+  unsupported names raise its native `NoSuchAlgorithmException`.
+  `update(bytes)` accumulates input, `digest()` returns bytes and resets the
+  instance, and `reset()` discards pending input without producing a digest.
 - `pyjs.java.concurrent` provides native `Runnable` and `Thread`;
   `pyjs.android.dispatch` provides `Handler` and `main_looper()`.
   `Handler.post()` reports queue acceptance, not completed or durable work.
