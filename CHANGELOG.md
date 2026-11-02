@@ -9,6 +9,11 @@
   console before waiting for ADB readiness; automatic unnamed selection does
   not require console authentication.
 
+- Android text controls expose horizontal wrapping, the current text layout's
+  width and widening operation, and in-place `Editable.replace()` with native
+  UTF-16 offsets. These APIs preserve the field's text and use existing
+  Android framework operations.
+
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
   JavaScript truth conversions retain their grouping inside negation and
