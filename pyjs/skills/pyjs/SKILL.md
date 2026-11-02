@@ -156,6 +156,14 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`
+  with snapshot models and `DiagramEditor` from `pyjs.ui.diagram`. Configure a
+  graph, then read committed content on `diagram-change`. Programmatic edits
+  call `state.commit(graph)` followed by `changed()`; selection and viewport
+  changes only need `draw()`. Do not mutate published snapshots. Use
+  `tree_layout()` from `pyjs.ui.diagram_layout` explicitly for directed forests;
+  it rejects cycles and multiple parents. See Components' `/diagrams` example
+  for toolbars, history, controls and current routing limitations.
 - For atomic IndexedDB writes, import `transaction_result` and `request_result`
   from `pyjs.web.indexeddb`. Call `transaction_result(transaction, operation)`
   immediately after creating the transaction. The async operation may await

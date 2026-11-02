@@ -52,6 +52,40 @@ def test_components_preserves_its_shell_during_partial_navigation():
                 ) == "page"
                 assert await page.evaluate("location.pathname") == "/workspace"
                 assert page.exceptions == []
+
+                await page.click('a[href="/diagrams"]')
+                await page.wait_for("document.querySelector('diagram-canvas')?._initialized === true",
+                                    "the diagram surface to hydrate")
+                assert page.exceptions == []
+                assert await page.evaluate(
+                    "document.querySelector('[aria-label=\"Node label\"]').hidden") is True
+                node = '[data-node-id="question"]'
+                original = await page.attribute(node, "transform")
+                box = await page.selector_clip(node)
+                x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+                for phase, dx, dy in [("mousePressed", 0, 0), ("mouseMoved", 20, 15),
+                                      ("mouseMoved", 40, 30), ("mouseReleased", 40, 30)]:
+                    await page.session.send("Input.dispatchMouseEvent", {
+                        "type": phase, "x": x + dx, "y": y + dy,
+                        "button": "left", "buttons": 0 if phase == "mouseReleased" else 1,
+                        "clickCount": 1,
+                    })
+                assert await page.attribute(node, "transform") != original
+                await page.click('[data-diagram-action="undo"]')
+                assert page.exceptions == []
+                assert await page.attribute(node, "transform") == original
+                assert await page.evaluate(
+                    "document.querySelector('components-app') === window.__componentsShell") is True
+                assert page.exceptions == []
+
+                await page.session.send("Emulation.setDeviceMetricsOverride", {
+                    "width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": False,
+                })
+                await page.click('[data-diagram-action="fit"]')
+                await page.wait_for_frames()
+                assert await page.evaluate(
+                    "document.documentElement.scrollWidth <= innerWidth") is True
+                assert page.exceptions == []
         finally:
             stop_process(server)
 

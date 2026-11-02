@@ -13,6 +13,8 @@ from pyjs.docs.diagrams import (
     Node,
     Phase,
     Span,
+    _arrow,
+    _boundary,
     parse_diagram,
     render_diagram,
 )
@@ -20,6 +22,21 @@ from pyjs.docs.markdown import render_markdown
 
 pytestmark = pytest.mark.pyjs_python
 SVG = "{http://www.w3.org/2000/svg}"
+
+
+@pytest.mark.parametrize("direction,expected", [
+    ((10, 0), (104, 0)), ((-10, 0), (-104, 0)),
+    ((0, 10), (0, 54)), ((0, -10), (0, -54)),
+    ((10, 10), (54, 54)), ((0, 0), (0, 0)),
+])
+def test_shared_boundary_keeps_documentation_stroke_padding(direction, expected):
+    assert _boundary((0, 0, 200, 100), *direction) == expected
+
+
+def test_coincident_documentation_arrow_has_no_direction_or_invalid_coordinates():
+    svg = ET.fromstring(_arrow((10, 20), (10, 20), Edge("a", "b", "", False), "edge"))
+    assert len(svg.findall("path")) == 1
+    assert "nan" not in ET.tostring(svg).decode()
 
 SEQUENCE = '''sequence "Snapshot, then updates"
 describe "Read the snapshot before following its cursor."

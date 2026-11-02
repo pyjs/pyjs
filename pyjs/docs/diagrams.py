@@ -29,6 +29,8 @@ import textwrap
 from dataclasses import dataclass, replace
 from html import escape
 
+from pyjs.ui.diagram_geometry import Point, arrow_points, boundary_point
+
 
 class DiagramError(ValueError):
     def __init__(self, line: int, message: str):
@@ -390,29 +392,24 @@ def _box(node: Node, x: float, y: float, height: float, width: float = 200) -> s
 
 
 def _arrow(start, end, edge: Edge, key: str) -> str:
-    x, y = end
-    angle = math.atan2(y - start[1], x - start[0])
-    wings = [
-        (x - 9 * math.cos(angle + turn), y - 9 * math.sin(angle + turn))
-        for turn in (-0.45, 0.45)
-    ]
+    head = arrow_points([Point(*start), Point(*end)],
+                        9 * math.cos(0.45), 9 * math.sin(0.45))
+    tip = (f'<path d="{_stroke([(p.x, p.y) for p in head], key + ":tip")}"/>'
+           if head else "")
     dash = ' stroke-dasharray="5 5"' if edge.dashed else ""
     return (
         '<g fill="none" stroke="var(--accent, #5b5bd6)" stroke-width="1.7" '
         'stroke-linecap="round" stroke-linejoin="round">'
         f'<path d="{_stroke([start, end], key)}"{dash}/>'
-        f'<path d="{_stroke([wings[0], end, wings[1]], key + ":tip")}"/>'
+        f'{tip}'
         '</g>'
     )
 
 
 def _boundary(box, dx, dy):
     x, y, width, height = box
-    scale = min(
-        (width / 2 + 4) / abs(dx) if dx else math.inf,
-        (height / 2 + 4) / abs(dy) if dy else math.inf,
-    )
-    return x + dx * scale, y + dy * scale
+    point = boundary_point(Point(x, y), width + 8, height + 8, Point(x + dx, y + dy))
+    return point.x, point.y
 
 
 def _flow(diagram: Diagram) -> tuple[int, int, str]:
