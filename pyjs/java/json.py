@@ -122,14 +122,15 @@ class JSONReader:
     def _hex(self) -> int:
         result = 0
         for _ in range(4):
-            value = self._peek()
             digit = -1
-            if "0" <= value <= "9":
-                digit = ord(value) - 48
-            elif "a" <= value <= "f":
-                digit = ord(value) - 87
-            elif "A" <= value <= "F":
-                digit = ord(value) - 55
+            if self.position < self.length:
+                code = int(self.source.unit(i32(self.position)))
+                if 48 <= code <= 57:
+                    digit = code - 48
+                elif 97 <= code <= 102:
+                    digit = code - 87
+                elif 65 <= code <= 70:
+                    digit = code - 55
             if digit < 0:
                 raise ValueError("Invalid JSON Unicode escape at " + str(self.position))
             result = result * 16 + digit
@@ -138,35 +139,37 @@ class JSONReader:
 
     def string(self) -> str:
         self.expect('"')
-        parts: list[str] = []
+        output = StringBuilder()
         start = self.position
         while self.position < self.length:
-            value = self._peek()
-            if value == '"':
-                parts.append(self.source.slice(i32(start), i32(self.position)))
+            code = int(self.source.unit(i32(self.position)))
+            if code == 34:
+                if start < self.position:
+                    output.append(self.source.slice(i32(start), i32(self.position)))
                 self.position += 1
-                return "".join(parts)
-            if ord(value) < 32:
+                return output.to_string()
+            if code < 32:
                 raise ValueError("Unescaped JSON control character at " + str(self.position))
-            if value != "\\":
+            if code != 92:
                 self.position += 1
                 continue
-            parts.append(self.source.slice(i32(start), i32(self.position)))
+            if start < self.position:
+                output.append(self.source.slice(i32(start), i32(self.position)))
             self.position += 1
             escaped = self._peek()
             self.position += 1
             if escaped == '"' or escaped == "\\" or escaped == "/":
-                parts.append(escaped)
+                output.append(escaped)
             elif escaped == "b":
-                parts.append("\b")
+                output.append("\b")
             elif escaped == "f":
-                parts.append("\f")
+                output.append("\f")
             elif escaped == "n":
-                parts.append("\n")
+                output.append("\n")
             elif escaped == "r":
-                parts.append("\r")
+                output.append("\r")
             elif escaped == "t":
-                parts.append("\t")
+                output.append("\t")
             elif escaped == "u":
                 code = self._hex()
                 if 55296 <= code <= 56319:
@@ -178,7 +181,7 @@ class JSONReader:
                             code = 65536 + (code - 55296) * 1024 + low - 56320
                         else:
                             self.position = saved
-                parts.append(chr(code))
+                output.append(chr(code))
             else:
                 raise ValueError("Invalid JSON escape at " + str(self.position - 1))
             start = self.position
