@@ -184,7 +184,8 @@ class DiagramView(CustomElement):
     Node width/height define its content box, hit bounds and edge attachments.
     The initial graph renders during construction. If the hook needs subclass
     fields, call super().__init__() without a graph, initialize those fields,
-    then configure(graph).
+    then configure(graph). Fields used after hydration must be DOM-backed
+    state or restored from serialized data before super().initialize().
     """
 
     def __init__(self, graph: Diagram | None = None):

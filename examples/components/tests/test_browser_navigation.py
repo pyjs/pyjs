@@ -112,6 +112,7 @@ def test_components_preserves_its_shell_during_partial_navigation():
                 await page.click('a[href="/diagram-view"]')
                 await page.wait_for("document.querySelector('review-diagram')?._initialized === true",
                                     "the read-only diagram to hydrate")
+                assert await page.evaluate("document.querySelector('review-diagram').owner") == "Publishing team"
                 assert page.exceptions == []
                 box = await page.selector_clip('[data-node-activate="draft"]')
                 for phase in ("mousePressed", "mouseReleased"):
@@ -168,6 +169,20 @@ def test_components_preserves_its_shell_during_partial_navigation():
                         }
                     })(""" + ("true" if atomic_moves else "false") + ")")
                     assert result == {"disconnected": 0}
+                assert page.exceptions == []
+                await page.navigate(url + "diagram-view")
+                await page.wait_for("document.querySelector('review-diagram')?._initialized === true",
+                                    "the directly loaded custom diagram to hydrate")
+                assert await page.evaluate("document.querySelector('review-diagram').owner") == "Publishing team"
+                owners = await page.evaluate("""(() => {
+                    const viewer = document.querySelector('review-diagram');
+                    const graph = viewer.get_graph();
+                    const data = JSON.parse(viewer.getAttribute('data-diagram'));
+                    data.nodes.push({...data.nodes[0], id: 'extra', label: 'New task', y: 260});
+                    viewer.configure(graph.constructor.model_validate_json(JSON.stringify(data)));
+                    return [...viewer.querySelectorAll('review-card p')].map(node => node.textContent);
+                })()""")
+                assert owners == ["Owner: Publishing team"] * 3
                 assert page.exceptions == []
         finally:
             stop_process(server)

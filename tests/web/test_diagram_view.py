@@ -89,7 +89,7 @@ def editor(): return DiagramCanvas()
 
 def test_custom_node_can_be_updated_before_server_rendering():
     graph = review_flow()
-    viewer = ReviewDiagram(graph)
+    viewer = ReviewDiagram(graph, owner="Server-selected team")
     first = graph.nodes[0]
     replacement = Node(id=first.id, label="Updated server label", x=first.x, y=first.y,
                        width=first.width, height=first.height)
@@ -97,4 +97,5 @@ def test_custom_node_can_be_updated_before_server_rendering():
     html = render_html(viewer)
     assert "Updated server label" in html
     assert html.count("<input ") == 2
-    assert html.count("Owner: Editorial team") == 2
+    assert html.count("Owner: Server-selected team") == 2
+    assert 'owner="Server-selected team"' in html

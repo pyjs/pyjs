@@ -172,6 +172,9 @@ available for every released version.
   The base constructor renders a supplied graph immediately. If your hook
   needs subclass fields, initialize without a graph, set the fields, then
   call `configure(graph)`; this also works for server-rendered content.
+  Fields needed after hydration must use DOM-backed `state()` or be restored
+  from serialized data before `super().initialize()`; plain constructor
+  assignments are not automatically replayed.
   Set geometry through `Node.width`/`height`; do not rely on DOM measurement.
   The Components `/diagram-view` example demonstrates this extension.
 - For atomic IndexedDB writes, import `transaction_result` and `request_result`

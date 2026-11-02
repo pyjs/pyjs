@@ -110,6 +110,11 @@ Passing a graph to the base constructor renders it immediately. When your
 hook uses subclass fields, initialize an empty view first, set those fields,
 then call `configure(graph)`, as `ReviewDiagram` does. This also prepares the
 custom content for server rendering before the component is mounted.
+Fields needed after hydration must use DOM-backed `state()` or be restored
+from serialized data in `initialize()` before calling the base initializer.
+Plain constructor assignments are not automatically replayed on hydration.
+`ReviewDiagram.owner` uses `state()` so server-selected values also apply to
+nodes created later in the browser.
 
 Reordering uses atomic DOM moves where supported. `CustomElement.moved()`
 handles those moves without running disconnect/reconnect cleanup. In older

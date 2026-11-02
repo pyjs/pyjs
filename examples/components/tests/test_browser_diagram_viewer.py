@@ -25,7 +25,7 @@ class ReviewEditor(DiagramCanvas):
         if isinstance(previous, ReviewCard):
             previous.update_node(node)
             return previous
-        return ReviewCard(node)
+        return ReviewCard(node, "Editorial team")
 
 
 @js

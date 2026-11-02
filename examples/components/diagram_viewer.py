@@ -1,4 +1,4 @@
-from pyjs import js
+from pyjs import js, state
 from pyjs.ui.diagram import Diagram, Edge, Node
 from pyjs.web.dom import Element
 from pyjs.web.domx import a, input, ref, tag, tw
@@ -17,7 +17,7 @@ def review_flow() -> Diagram:
 
 @js
 class ReviewCard(Widget):
-    def __init__(self, node: Node, owner: str = "Editorial team"):
+    def __init__(self, node: Node, owner: str):
         super().__init__()
         self.add({"style": "box-sizing:border-box;display:block;width:100%;height:100%;"
                           "padding:16px;font:14px system-ui;color:#1e293b"},
@@ -35,9 +35,11 @@ class ReviewCard(Widget):
 
 @js
 class ReviewDiagram(DiagramView):
-    def __init__(self, graph: Diagram | None = None):
+    owner = state("Editorial team")
+
+    def __init__(self, graph: Diagram | None = None, owner: str = "Editorial team"):
         super().__init__()
-        self.owner = "Editorial team"
+        self.owner = owner
         if graph is not None:
             self.configure(graph)
 
@@ -52,7 +54,7 @@ class ReviewDiagram(DiagramView):
 class DiagramViewerApp(Widget):
     def __init__(self):
         super().__init__()
-        self.viewer = ref(ReviewDiagram(review_flow()))
+        self.viewer = ref(ReviewDiagram(review_flow(), owner="Publishing team"))
         self.status = ref(tag("p", {"role": "status"},
                               "Activate a node with a click, Enter or Space."))
         self.add(tw("mx-auto block max-w-5xl space-y-4 p-6"),
