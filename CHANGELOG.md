@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android exposes bounds-only and sampled bitmap decoding, bitmap dimensions
+  and lifetime, and ImageView bitmap assignment. URI input streams and Java
+  byte-buffer extraction support importing binary documents without text
+  conversion. Callers retain responsibility for size limits and stream cleanup.
+
 - JavaScript typed arrays support Python iteration, including empty arrays,
   shared-buffer views and changes to elements during iteration.
 

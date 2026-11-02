@@ -525,6 +525,8 @@ def test_android_editor_controls_match_api_35_and_import():
     assert "class OnCheckedChangeListener(Object):" in source
     assert "class ScrollView(FrameLayout):" in source
     assert "TYPE_TEXT_FLAG_MULTI_LINE" in source
+    assert "def set_image_bitmap(self, bitmap: Bitmap | None) -> None:" in source
+    assert "def get_drawable(self) -> Drawable | None:" in source
 
 
 def test_recycler_view_bindings_compile_callbacks_and_masonry_layout():

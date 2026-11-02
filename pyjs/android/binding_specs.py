@@ -23,6 +23,7 @@ ANDROID_FRAMEWORK_EXTERNALS = (
 )
 
 ANDROID_CONTROL_EXTERNALS = (
+    JVMExternalClass("android/graphics/Bitmap", "pyjs.android.graphics", "Bitmap"),
     JVMExternalClass("android/widget/Button", "pyjs.android", "Button"),
     JVMExternalClass("android/content/Context", "pyjs.android", "Context"),
     JVMExternalClass(
@@ -102,6 +103,15 @@ ANDROID_CONTROL_BINDINGS = (
                 nullable_parameters=(0,),
             ),
             _method("setImageAlpha", "(I)V"),
+            _method(
+                "setImageBitmap", "(Landroid/graphics/Bitmap;)V",
+                parameter_names=("bitmap",),
+                nullable_parameters=(0,),
+            ),
+            _method(
+                "getDrawable", "()Landroid/graphics/drawable/Drawable;",
+                nullable_return=True,
+            ),
         ),
     ),
     JVMClassBinding(

@@ -4,6 +4,7 @@ from typing import Annotated, ClassVar
 
 from pyjs import jvm
 from pyjs.android import Button, Context, Drawable, Editable, TextView, View, ViewGroup
+from pyjs.android.graphics import Bitmap
 from pyjs.java import i32
 
 
@@ -210,6 +211,22 @@ class ImageView(View):
         invocation="virtual",
     )
     def set_image_alpha(self, alpha: i32) -> None:
+        pass
+
+    @jvm.native(
+        "android/widget/ImageView",
+        name="setImageBitmap",
+        invocation="virtual",
+    )
+    def set_image_bitmap(self, bitmap: Bitmap | None) -> None:
+        pass
+
+    @jvm.native(
+        "android/widget/ImageView",
+        name="getDrawable",
+        invocation="virtual",
+    )
+    def get_drawable(self) -> Drawable | None:
         pass
 
 
