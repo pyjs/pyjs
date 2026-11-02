@@ -1,6 +1,7 @@
 """Run compiled descriptor operations against real host files."""
 # Native Node errors are inspected by code; they are not Python OSError types.
 # ruff: noqa: BLE001
+import hashlib
 import os
 import subprocess
 
@@ -11,10 +12,13 @@ from pyjs.javascript import Uint8Array
 from pyjs.node import (
     arguments,
     close_descriptor,
+    decode_base64,
+    encode_base64,
     error_code,
     join,
     open_exclusive,
     read_text_sync,
+    sha256,
     write_descriptor,
 )
 from pyjs.node.files import (
@@ -204,3 +208,100 @@ def keyword_order_contract():
 def test_keyword_flags_are_evaluated_once_in_source_order(tmp_path):
     (tmp_path / "plain").write_text("unchanged")
     execute(keyword_order_contract, tmp_path)
+
+
+@js
+def selected_view(events: list[str]) -> Uint8Array:
+    events.append("view")
+    return Uint8Array(Uint8Array([42, 0, 127, 128, 255, 43]).buffer, 1, 4)
+
+
+@js
+def selected_base64(events: list[str]) -> str:
+    events.append("decode")
+    return "AH+A/w=="
+
+
+@js
+def decoded_array_contract() -> Uint8Array:
+    events: list[str] = []
+    data = decode_base64(selected_base64(events))
+    assert events == ["decode"]
+    assert data.byteOffset == 0
+    assert data.buffer.byteLength == data.byteLength == 4
+    copied = data.slice(1, 3)
+    copied[0] = 42
+    assert data[1] == 127
+    shared = data.subarray(1, 3)
+    shared[0] = 43
+    assert data[1] == 43
+    data[1] = 127
+    for size in [0, 1, 131072]:
+        restored = decode_base64(encode_base64(Uint8Array(size)))
+        assert restored.byteOffset == 0
+        assert restored.byteLength == restored.buffer.byteLength == size
+    return data
+
+
+def test_decoded_base64_owns_a_plain_array_with_copying_slices(tmp_path):
+    execute(decoded_array_contract, tmp_path, """
+const assert = require('node:assert/strict');
+const data = require(process.argv[1]).main();
+assert.equal(Object.getPrototypeOf(data), Uint8Array.prototype);
+const cloned = structuredClone(data);
+assert.equal(cloned.byteOffset, 0);
+assert.equal(cloned.buffer.byteLength, 4);
+assert.deepEqual([...cloned], [0, 127, 128, 255]);
+cloned[0] = 99;
+assert.equal(data[0], 0);
+""")
+
+
+@js
+def binary_descriptor_contract():
+    data = Uint8Array([42, 0, 127, 128, 255, 43])
+    view = Uint8Array(data.buffer, 1, 4)
+    assert sha256(view) == "89273d2f70b93285bb7ddb4bcee86a5347ca7159352e3cbdd20c23e9d1e507d3"
+    assert sha256(Uint8Array(0)) == sha256("")
+    assert encode_base64(view) == "AH+A/w=="
+    assert encode_base64(decode_base64("AH+A/w==")) == "AH+A/w=="
+    assert encode_base64(decode_base64("AH-A_w")) == "AH+A/w=="
+    assert encode_base64(decode_base64(" YQ==\n")) == "YQ=="
+    assert encode_base64(decode_base64("")) == ""
+    events: list[str] = []
+    assert encode_base64(selected_view(events)) == "AH+A/w=="
+    assert events == ["view"]
+    path = join(arguments()[-1], "binary")
+    fd = open_exclusive(path)
+    try:
+        write_descriptor(fd, "start")
+        write_descriptor(fd, view)
+        write_descriptor(fd, Uint8Array(0))
+        write_descriptor(fd, "🌱")
+        fsync(fd)
+    finally:
+        close_descriptor(fd)
+    fd = open_readonly(path)
+    try:
+        observed = Uint8Array(32)
+        count = read_into(fd, observed, 0, 32)
+        assert count == 13
+        print(sha256(Uint8Array(observed.buffer, 0, count)))
+        rejected = False
+        try:
+            write_descriptor(fd, view)
+        except Exception:
+            rejected = True
+        assert rejected
+    finally:
+        close_descriptor(fd)
+
+
+def test_binary_views_preserve_offsets_bytes_and_descriptor_position(tmp_path):
+    program = build_node(binary_descriptor_contract, tmp_path / "binary.cjs")
+    result = subprocess.run([str(Node().executable), str(program), str(tmp_path)],
+                            capture_output=True, text=True, timeout=10, check=False)
+    assert result.returncode == 0, result.stderr
+    expected = b"start\x00\x7f\x80\xff" + "🌱".encode()
+    assert (tmp_path / "binary").read_bytes() == expected
+    assert result.stdout.strip() == hashlib.sha256(expected).hexdigest()

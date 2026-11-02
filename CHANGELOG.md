@@ -301,6 +301,11 @@
   existing destination. Incremental directory handles avoid materializing a
   whole directory. Unsupported requested open flags fail explicitly.
 
+- Node descriptor writes and SHA-256 hashing accept `Uint8Array` alongside
+  text. Byte views retain their offset and length without UTF-8 conversion;
+  existing string inputs continue to use UTF-8. Base64 helpers expose Node's
+  permissive Buffer decoding and padded encoding for byte views.
+
 - Python Electron hosts can use partitioned Chromium sessions, protocol
   handlers, cookie-aware fetch, request/navigation guards, controlled popup
   handling, and native menus. Window preferences default to sandboxing and
