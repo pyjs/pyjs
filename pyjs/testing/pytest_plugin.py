@@ -198,7 +198,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--pyjs-android-avd",
         default=None,
-        help="Android virtual device to start when no emulator is already running.",
+        help="Android virtual device to reuse or start; other running AVDs are not selected.",
     )
     group.addoption(
         "--pyjs-android-headless",

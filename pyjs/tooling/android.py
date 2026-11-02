@@ -164,7 +164,19 @@ class AndroidSDK:
             detached=True,
         )
 
-    def wait_for_emulator(self, timeout: float = 180, *, identifier: str | None = None) -> AndroidDevice:
+    def emulator_name(self, device: AndroidDevice, *, timeout: float = 5) -> str:
+        result = self.runner.run(
+            [self.adb, "-s", device.identifier, "emu", "avd", "name"],
+            environment=self.environment(), capture_output=True, timeout=timeout,
+        )
+        lines = result.stdout.strip().splitlines()
+        if not lines or lines[0] == "OK" or lines[0].startswith("KO:"):
+            raise ValueError(f"Emulator {device.identifier} did not report its AVD name")
+        return lines[0]
+
+    def wait_for_emulator(
+        self, timeout: float = 180, *, identifier: str | None = None, name: str | None = None,
+    ) -> AndroidDevice:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
@@ -182,13 +194,19 @@ class AndroidSDK:
                 if remaining <= 0:
                     break
                 try:
+                    if name is not None:
+                        if self.emulator_name(device, timeout=min(5, remaining)) != name:
+                            continue
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
                     result = self.runner.run(
                         [self.adb, "-s", device.identifier, "shell", "getprop", "sys.boot_completed"],
                         environment=self.environment(),
                         capture_output=True,
                         timeout=min(5, remaining),
                     )
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
                     continue
                 if result.stdout.strip() == "1":
                     return device
@@ -201,14 +219,34 @@ class AndroidSDK:
         *,
         headless: bool = False,
     ) -> AndroidDevice:
+        if name == "":
+            raise ValueError("Android virtual device name must not be empty")
+        unknown = []
         for device in self.devices():
-            if device.state == "device" and device.identifier.startswith("emulator-"):
-                return self.wait_for_emulator(identifier=device.identifier)
+            if not device.identifier.startswith("emulator-"):
+                continue
+            if name is None:
+                if device.state == "device":
+                    return self.wait_for_emulator(identifier=device.identifier)
+                continue
+            try:
+                current_name = self.emulator_name(device)
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
+                unknown.append(device.identifier)
+                continue
+            if current_name == name:
+                return self.wait_for_emulator(identifier=device.identifier, name=name)
+        if unknown:
+            raise RuntimeError(
+                "Could not identify running emulator(s): " + ", ".join(unknown)
+                + ". Check their emulator console authentication and ADB connections "
+                "before starting another AVD."
+            )
         avd = name or next(iter(self.avds()), None)
         if avd is None:
             raise RuntimeError("No Android virtual devices are configured.")
         self.start_emulator(avd, headless=headless)
-        return self.wait_for_emulator()
+        return self.wait_for_emulator(name=name)
 
     def install(self, device: AndroidDevice, package: Path) -> None:
         self.runner.run(
