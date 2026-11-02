@@ -282,10 +282,13 @@ with `session.artifacts_on_failure(...)`.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
-`getLayout()` returns `TextLayout` or `None` before layout; its `getWidth()` and
-`increaseWidthTo()` use pixel widths, and shrinking raises Android's argument
-error. `Editable.replace(start, end, text)` uses UTF-16 offsets and returns the
-same mutable buffer; it is different from replacing the field with `setText()`.
+`getLayout()` returns `TextLayout` or `None`, including between a wrapping
+change and the next layout pass. Its `getWidth()` and `increaseWidthTo()` use
+pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
+`except Exception`, not Python's `RuntimeError` or `ValueError`, nor Java's
+`IllegalArgumentException`. `Editable.replace(start, end, text)` uses UTF-16
+offsets and returns the same mutable buffer; it is different from replacing
+the field with `setText()`.
 
 For direct-JVM Android UI tests, mark module-level functions with
 `pytest.mark.pyjs_android_jvm` and use `pyjs.android.testing`. Run the fast

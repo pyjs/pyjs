@@ -1027,6 +1027,7 @@ __all__ = [
     "Runnable",
     "SharedPreferences",
     "SharedPreferencesEditor",
+    "TextLayout",
     "TextView",
     "TextWatcher",
     "Uri",
