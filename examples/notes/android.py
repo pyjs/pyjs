@@ -244,6 +244,7 @@ class NotesActivity(Activity):
         self.shared_preview = TextView(self)
         self.shared_preview.setId(102)
         self.shared_preview.setTextSize(16.0)
+        self.shared_preview.setMaxLines(5)
         self.shared_preview.setPadding(40, 20, 40, 20)
         root.addView(self.shared_preview)
         self.show_shared_preview()
@@ -302,7 +303,6 @@ class NotesActivity(Activity):
         adapter = NotesAdapter(notes, colors, note_ids, session, status)
         adapter.restore_order()
         self.storage_observer = StorageStatus(adapter)
-        session.attach(self.storage_observer)
         status.setOnClickListener(RetrySave(adapter))
         root.addView(status)
         recycler.set_adapter(adapter)
@@ -327,8 +327,25 @@ class NotesActivity(Activity):
         if text is None:
             return
         subject = intent.get_string_extra(Intent.EXTRA_SUBJECT) or "Shared text"
-        self.shared_preview.setText(subject + " (preview, not saved)\n\n" + text.to_string())
+        body = text.to_string()
+        label = " (preview, not saved)"
+        if len(subject) > 100 or len(body) > 500:
+            label = " (shortened preview, not saved)"
+        self.shared_preview.setText(subject[:100] + label + "\n\n" + body[:500])
         self.shared_preview.setVisibility(View.VISIBLE)
+
+    def onResume(self) -> None:
+        super().onResume()
+        adapter = self.storage_observer.adapter
+        adapter.restore_order()
+        if adapter.session is not None:
+            adapter.session.attach(self.storage_observer)
+
+    def onStop(self) -> None:
+        session = self.storage_observer.adapter.session
+        if session is not None:
+            session.detach(self.storage_observer)
+        super().onStop()
 
     def onDestroy(self) -> None:
         session = self.storage_observer.adapter.session

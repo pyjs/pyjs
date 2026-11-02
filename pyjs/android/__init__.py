@@ -367,6 +367,9 @@ class Intent:
     FLAG_ACTIVITY_NEW_TASK: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
         268435456
     )
+    FLAG_ACTIVITY_MULTIPLE_TASK: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
+        134217728
+    )
     FLAG_GRANT_PERSISTABLE_URI_PERMISSION: ClassVar[
         Annotated[i32, jvm.field(writable=False)]
     ] = 64

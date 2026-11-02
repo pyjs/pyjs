@@ -15,6 +15,8 @@ def test_text_share_extras_preserve_plain_and_styled_content() -> None:
     intent = Intent().set_action(Intent.ACTION_SEND).set_type("text/plain")
     assert intent.get_action() == Intent.ACTION_SEND
     assert intent.get_type() == "text/plain"
+    intent.add_flags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+    assert intent.get_flags() == Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
     assert intent.get_char_sequence_extra(Intent.EXTRA_TEXT) is None
     assert intent.get_string_extra(Intent.EXTRA_SUBJECT) is None
     intent.put_string_extra(Intent.EXTRA_SUBJECT, "A subject 😀")

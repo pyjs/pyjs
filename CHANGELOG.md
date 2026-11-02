@@ -12,7 +12,9 @@
 - Android exposes incoming Activity intents, new-intent callbacks, MIME types,
   subjects and styled text extras. Android tests can launch an explicit intent
   through `launch_intent()`; Notes demonstrates text-share previews and
-  Activity recreation without treating preview text as saved note content.
+  configuration changes without treating preview text as saved note content.
+  `finish()` and `is_finishing()` support explicit Activity completion;
+  the application remains responsible for waiting for durable storage.
 
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.

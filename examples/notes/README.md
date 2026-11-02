@@ -35,10 +35,18 @@ process restarts. No backend is required.
 
 Android accepts `text/plain` shares and shows a clearly marked preview above
 the sample board. It does not save shared text as a note. The preview accepts
-plain or styled text, preserves the received subject, and handles delivery
-to an already-open Activity. It survives Activity recreation through the
-Activity's current intent, not through the card-order file. Missing text and
-unsupported MIME types do not produce a preview. No HTML is interpreted.
+plain or styled text and handles delivery to an already-open Activity. It
+displays up to 100 subject characters and 500 body characters in at most five
+lines; longer content is explicitly marked as a shortened preview. The
+original intent is unchanged. Missing text and unsupported MIME types do not
+produce a preview. No HTML is interpreted.
+
+The latest preview survives configuration changes through the Activity's
+current intent, not through the card-order file. `set_intent()` does not
+update the system's launch record: after process death, Android can deliver
+the original launch intent again. Applications that save incoming content
+must persist its identity and contents separately and prevent duplicate
+processing; this preview is not a durable capture workflow.
 
 ## Android storage recovery
 
@@ -56,9 +64,10 @@ of the short status message. Successful load/save clears that report.
 
 A failed save keeps the on-screen order and displays a tap-to-retry message.
 `NotesApplication` owns the session and one status observer. Only the most
-recently attached Activity receives automatic status updates; another live
-Activity can retain an older status. Destruction detaches its observer without
-removing a newer subscriber. Activity recreation or relaunch in that same
+recently resumed Activity receives automatic status updates. Resuming a board
+refreshes its order from the session and reattaches its observer, including
+after a share opened another task. Stopping or destroying an Activity detaches
+only its own observer. Activity recreation or relaunch in that same
 process restores pending order, dirty state, and the failure report without
 reloading the old file. Only a new
 process loads the saved snapshot, or initial samples if no snapshot exists.

@@ -112,6 +112,16 @@ class SameShareActivity(ViewAssertion):
             assert view.getContext() is self.delivery.owner
 
 
+class OpenOtherTask(DeliverShare):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            activity = cast(NotesActivity, view.getContext())
+            self.owner = activity
+            activity.start_activity(share_intent("Other task").add_flags(
+                Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK))
+
+
 class HiddenShare(ViewAssertion):
     def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
         assert error is None and view is not None
@@ -148,6 +158,28 @@ def test_share_intent_launch_recreation_and_unsupported_payloads() -> None:
     launch_intent(missing)
     by_id(i32(102)).check(HiddenShare())
     by_text(LAUNCH_NOTE).assert_displayed()
+
+
+def test_long_shared_preview_keeps_the_board_visible_and_the_original_intent() -> None:
+    body = "Long shared paragraph " * 400
+    launch_intent(share_intent(body))
+    by_id(102).assert_text("Shared text (shortened preview, not saved)\n\n" + body[:500])
+    by_id(100).assert_displayed()
+    by_text(LAUNCH_NOTE).assert_displayed()
+    by_id(102).check(OriginalSharedText(body))
+
+
+class OriginalSharedText(ViewAssertion):
+    def __init__(self, expected: str):
+        self.expected = expected
+
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        if view is not None:
+            intent = cast(NotesActivity, view.getContext()).get_intent()
+            assert intent is not None
+            text = intent.get_char_sequence_extra(Intent.EXTRA_TEXT)
+            assert text is not None and text.to_string() == self.expected
 
 
 @pytest.mark.pyjs_android_device
@@ -340,6 +372,52 @@ def test_background_write_completes_after_activity_recreation() -> None:
 
 def test_background_write_failure_retries_after_activity_recreation() -> None:
     check_background_recreation(True)
+
+
+@pytest.mark.pyjs_android_device
+def test_returning_from_another_share_task_restores_order_and_save_notifications() -> None:
+    reset_order()
+    store = GatedOrderFile(order_path(), False)
+    try:
+        run_on_main(InstallBackgroundSession(store))
+        launch_intent(share_intent("Original task"))
+        delivery = OpenOtherTask()
+        by_id(102).check(delivery)
+        assert find_text("Shared text (preview, not saved)\n\nOther task").text() == (
+            "Shared text (preview, not saved)\n\nOther task")
+        by_id(100).check(MoveAndSave(False))
+        finish_background_write(store)
+        by_id(101).assert_text("")
+        by_id(102).check(FinishShare())
+        assert find_text("Shared text (preview, not saved)\n\nOriginal task").text() == (
+            "Shared text (preview, not saved)\n\nOriginal task")
+        by_id(102).check(SameShareActivity(delivery))
+        by_id(100).check(NoteOrder(
+            [1002, 1001, 1003, 1004, 1005, 1006, 1007], "after returning from another task"))
+        store.fail = True
+        store.started = Latch(1)
+        store.release = Latch(1)
+        by_id(100).check(MoveAndSave(False))
+        by_id(101).assert_text("Saving…")
+        finish_background_write(store)
+        by_id(101).assert_text("Order not saved. Tap to retry. Injected write failure")
+        store.fail = False
+        store.started = Latch(1)
+        store.release = Latch(1)
+        by_id(101).click()
+        finish_background_write(store)
+        by_id(101).assert_text("")
+        run_on_main(NewProcessSession())
+        launch(NotesActivity)
+        by_id(100).check(NoteOrder(
+            [1001, 1002, 1003, 1004, 1005, 1006, 1007], "both task edits persisted"))
+    finally:
+        store.release.countDown()
+        worker = store.worker
+        if worker is not None:
+            worker.join()
+        run_on_main(PollBackgroundSession())
+        reset_order()
 
 
 def test_grid_displays_sample_cards_in_adapter_order() -> None:
