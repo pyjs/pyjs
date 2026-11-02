@@ -9,6 +9,11 @@
   integer bounds, negative offsets and Unicode character indices. Empty
   substrings and out-of-range bounds follow Python semantics.
 
+- JVM and Android expose native byte-array Base64 encoding/decoding and
+  incremental message digests, including digest reset/reuse and catchable
+  platform failures. Base64 requires Android API 26 or newer and follows
+  Java's decoding rules, not strict canonical-format validation.
+
 - Android testing honors `--pyjs-android-avd` even when another emulator is
   running. A newly started AVD is selected by name rather than accepting an
   unrelated ready device. An unidentifiable running emulator prevents an
