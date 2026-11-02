@@ -3,7 +3,7 @@ import pytest
 from pyjs import js
 from pyjs.testing.web import mount, wait_for_frames
 from pyjs.web.dom import document
-from pyjs.web.domx import CustomElement
+from pyjs.web.domx import CustomElement, div
 
 pytestmark = pytest.mark.pyjs_web
 
@@ -15,6 +15,7 @@ class LifecycleProbe(CustomElement):
         self.initialize_count = 0
         self.reconnect_count = 0
         self.disconnect_count = 0
+        self.move_count = 0
 
     def initialize(self):
         self.initialize_count += 1
@@ -25,11 +26,41 @@ class LifecycleProbe(CustomElement):
     def disconnected(self):
         self.disconnect_count += 1
 
+    def moved(self):
+        self.move_count += 1
+
 
 @js
 class HydrationProbe(CustomElement):
     def initialize(self):
         self.set_data("initialized", "true")
+
+
+@js
+def test_atomic_move_preserves_nested_custom_element_lifecycle():
+    probe = LifecycleProbe()
+    group = div(probe)
+    other = div()
+    parent = div(group, other)
+    mount(parent)
+    parent.moveBefore(group, None)
+    assert parent.children[1] is group
+    assert probe.move_count == 1
+    assert probe.initialize_count == 1
+    assert probe.disconnect_count == 0 and probe.reconnect_count == 0
+    group.remove()
+    assert probe.disconnect_count == 1
+
+
+@js
+async def test_atomic_move_before_hydration_still_initializes():
+    probe = HydrationProbe()
+    probe.set_data("self-id", "moving-hydration-probe")
+    parent = div(probe, div())
+    mount(parent)
+    parent.moveBefore(probe, None)
+    await wait_for_frames()
+    assert probe.get_data("initialized") == "true"
 
 
 @js

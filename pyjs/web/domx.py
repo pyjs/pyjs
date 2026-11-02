@@ -180,6 +180,7 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     __pyjs_external_methods__ = (
         "connectedCallback",
         "disconnectedCallback",
+        "connectedMoveCallback",
         "adoptedCallback",
         "attributeChangedCallback",
     )
@@ -239,6 +240,12 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
     def disconnectedCallback(self):
         if self._initialized:
             self.disconnected()
+
+    def connectedMoveCallback(self):
+        if self._initialized:
+            self.moved()
+        else:
+            self.connectedCallback()
 
     def _finish_hydration(self):
         if self._initialized or not self.isConnected:
@@ -300,6 +307,10 @@ class CustomElement(HTMLElement, metaclass=CustomElementMetaclass):
         pass
 
     def disconnected(self):
+        pass
+
+    def moved(self):
+        """Handle an atomic DOM move without disconnecting component state."""
         pass
 
 

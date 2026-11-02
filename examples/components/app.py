@@ -5,6 +5,8 @@ from pyjs.web.domx import a, div, span, tag, tw
 from pyjs.web.navigation import NavigationLayout
 
 from .catalog import CatalogApp
+from .diagram_viewer import DiagramViewerApp
+from .diagrams import DiagramsApp
 from .workspace import WorkspaceApp
 
 
@@ -38,8 +40,8 @@ class ComponentsApp(NavigationLayout):
                 ),
                 div(
                     tw(
-                        "mx-auto flex h-16 max-w-7xl items-center gap-5 px-5 "
-                        "lg:px-8"
+                        "mx-auto flex min-h-16 max-w-7xl flex-wrap items-center "
+                        "gap-x-5 gap-y-2 px-5 py-3 lg:px-8"
                     ),
                     a(
                         tw("flex items-center gap-2 font-semibold tracking-tight"),
@@ -55,10 +57,11 @@ class ComponentsApp(NavigationLayout):
                     ),
                     tag(
                         "nav",
-                        tw("ml-auto flex items-center gap-1"),
+                        tw("ml-auto flex flex-wrap items-center gap-1"),
                         {"aria-label": "Component example pages"},
                         navigation_link("/", "Catalog"),
                         navigation_link("/workspace", "Workspace block"),
+                        navigation_link("/diagrams", "Diagrams"),
                     ),
                 ),
             ),
@@ -74,6 +77,26 @@ def catalog_view() -> Element:
 @js
 def workspace_view() -> Element:
     return WorkspaceApp()
+
+
+@js
+def diagrams_view() -> Element:
+    return DiagramsApp()
+
+
+@nojs
+def diagrams_page(request):
+    return NavigationPage(diagrams_view(), "Diagrams · Components · PyJS")
+
+
+@js
+def diagram_viewer_view() -> Element:
+    return DiagramViewerApp()
+
+
+@nojs
+def diagram_viewer_page(request):
+    return NavigationPage(diagram_viewer_view(), "Diagram viewer · Components · PyJS")
 
 
 @nojs

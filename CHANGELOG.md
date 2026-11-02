@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Web diagram editing provides rectangle and diamond nodes, labeled edges,
+  boundary ports, selection, drag/pan/zoom and bounded undo/redo. Portable
+  snapshot models and explicit tree layout are independent of persistence.
+  Components includes a decision-tree editor; static documentation shares
+  boundary and arrowhead geometry while retaining its DSL and sketch styling.
+  Orthogonal routing uses midpoint elbows, not obstacle avoidance.
+  A separate read-only viewer excludes editing code and supports accessible
+  node activation; static SVG needs no client script. Views and editors can
+  render custom HTML node content, including ordinary widget subclasses,
+  while retaining shared geometry and preserving content across redraws.
+  Graph updates retain native input focus; keyboard deletion keeps undo
+  reachable. Custom elements can handle atomic DOM moves with `moved()`
+  without disconnect/reconnect cleanup.
+
+- Server-rendered `HTMLElement.hidden` reflects the HTML attribute, including
+  `until-found`, so hidden controls stay hidden before browser hydration.
+
 - Native Java `OutputStream.write(buffer, offset, length)` supports binary
   range writes, including Android document-provider streams. Buffer streams
   inherit the same operation; native range and I/O errors propagate unchanged.

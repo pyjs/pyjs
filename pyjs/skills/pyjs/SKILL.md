@@ -156,6 +156,27 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`
+  with snapshot models and `DiagramEditor` from `pyjs.ui.diagram`. Configure a
+  graph, then read committed content on `diagram-change`. Programmatic edits
+  call `state.commit(graph)` followed by `changed()`; selection and viewport
+  changes only need `draw()`. Do not mutate published snapshots. Use
+  `tree_layout()` from `pyjs.ui.diagram_layout` explicitly for directed forests;
+  it rejects cycles and multiple parents. See Components' `/diagrams` example
+  for toolbars, history, controls and current routing limitations.
+- Use `DiagramView` from `pyjs.web.ui.diagram_view` for read-only diagrams
+  without editor code in their bundles, or `diagram_svg()` for script-free
+  server rendering. Subclass the view or editor and override
+  `render_node(node, previous)` for HTML node content; ordinary `Widget`
+  subclasses work here. Reuse previous content to preserve input state.
+  The base constructor renders a supplied graph immediately. If your hook
+  needs subclass fields, initialize without a graph, set the fields, then
+  call `configure(graph)`; this also works for server-rendered content.
+  Fields needed after hydration must use DOM-backed `state()` or be restored
+  from serialized data before `super().initialize()`; plain constructor
+  assignments are not automatically replayed.
+  Set geometry through `Node.width`/`height`; do not rely on DOM measurement.
+  The Components `/diagram-view` example demonstrates this extension.
 - For atomic IndexedDB writes, import `transaction_result` and `request_result`
   from `pyjs.web.indexeddb`. Call `transaction_result(transaction, operation)`
   immediately after creating the transaction. The async operation may await

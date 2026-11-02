@@ -871,6 +871,22 @@ class HTMLElement(Element, metaclass=HTMLElementMetaclass):
         """Discard the eager WebIDL default while retaining the sparse view."""
         pass
 
+    @property
+    def hidden(self) -> bool | float | str | None:
+        value = self.getAttribute("hidden")
+        if value is None:
+            return False
+        return "until-found" if value.lower() == "until-found" else True
+
+    @hidden.setter
+    def hidden(self, value: bool | float | str | None):
+        if isinstance(value, str) and value.lower() == "until-found":
+            self.setAttribute("hidden", "until-found")
+        elif value and (not (isinstance(value, float) and value != value)):
+            self.setAttribute("hidden", "")
+        else:
+            self.removeAttribute("hidden")
+
     @nojs
     def __getattr__(self, name):
         try:
