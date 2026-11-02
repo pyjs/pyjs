@@ -229,9 +229,6 @@ class AndroidSDK:
                 if device.state == "device":
                     return self.wait_for_emulator(identifier=device.identifier)
                 continue
-            if device.state != "device":
-                unknown.append(device.identifier)
-                continue
             try:
                 current_name = self.emulator_name(device)
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
@@ -242,13 +239,14 @@ class AndroidSDK:
         if unknown:
             raise RuntimeError(
                 "Could not identify running emulator(s): " + ", ".join(unknown)
-                + ". Wait for their ADB connections before starting another AVD."
+                + ". Check their emulator console authentication and ADB connections "
+                "before starting another AVD."
             )
         avd = name or next(iter(self.avds()), None)
         if avd is None:
             raise RuntimeError("No Android virtual devices are configured.")
         self.start_emulator(avd, headless=headless)
-        return self.wait_for_emulator(name=avd)
+        return self.wait_for_emulator(name=name)
 
     def install(self, device: AndroidDevice, package: Path) -> None:
         self.runner.run(
