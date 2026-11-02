@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android testing honors `--pyjs-android-avd` even when another emulator is
+  running. A newly started AVD is selected by name rather than accepting an
+  unrelated ready device. An unidentifiable running emulator prevents an
+  uncertain duplicate launch.
+
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
   JavaScript truth conversions retain their grouping inside negation and

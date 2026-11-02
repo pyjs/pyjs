@@ -258,6 +258,11 @@ public testing model, markers, render assertions, and artifact behavior.
 Android tests are opt-in. Use compiled Robolectric tests for host-side UI
 checks, then a configured emulator for gestures and system UI. Run the
 relevant tier when Android APIs, tooling, or shared test artifacts change.
+Use a uniquely named AVD and pass `--pyjs-android-avd=NAME` for concurrent
+development; PyJS reuses or starts that AVD without selecting another named
+device. Omitting the option retains automatic selection of a running emulator.
+This is selection, not exclusive ownership: two callers requesting the same
+name still share it. Device operations use the selected ADB serial thereafter.
 
 ## Compiler changes
 

@@ -270,6 +270,99 @@ def test_hung_adb_expires_at_boot_deadline(emulator_clock, operation):
     assert emulator_clock[0] == 2
 
 
+def test_requested_avd_is_selected_instead_of_another_ready_emulator(emulator_clock):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    other = AndroidDevice("emulator-5554", "device")
+    wanted = AndroidDevice("emulator-5556", "device")
+    sdk.devices = Mock(return_value=[other, wanted])
+
+    def respond(command, **options):
+        if command[3:] == ["emu", "avd", "name"]:
+            name = "Selected_Test" if command[2] == wanted.identifier else "Other_Test"
+            return subprocess.CompletedProcess(command, 0, stdout=name + "\nOK\n")
+        assert command[2] == wanted.identifier
+        assert command[3:] == ["shell", "getprop", "sys.boot_completed"]
+        return subprocess.CompletedProcess(command, 0, stdout="1\n")
+
+    sdk.runner.run.side_effect = respond
+    assert sdk.ensure_emulator("Selected_Test") == wanted
+    sdk.runner.start.assert_not_called()
+
+
+def test_new_avd_wait_does_not_return_an_unrelated_running_emulator(emulator_clock):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    other = AndroidDevice("emulator-5554", "device")
+    wanted = AndroidDevice("emulator-5556", "device")
+    sdk.devices = Mock(side_effect=[[other], [other], [other, wanted]])
+    sdk.start_emulator = Mock()
+
+    def respond(command, **options):
+        if command[3:] == ["emu", "avd", "name"]:
+            name = "Selected_Test" if command[2] == wanted.identifier else "Other_Test"
+            return subprocess.CompletedProcess(command, 0, stdout=name + "\nOK\n")
+        assert command[2] == wanted.identifier
+        return subprocess.CompletedProcess(command, 0, stdout="1\n")
+
+    sdk.runner.run.side_effect = respond
+    assert sdk.ensure_emulator("Selected_Test", headless=True) == wanted
+    sdk.start_emulator.assert_called_once_with("Selected_Test", headless=True)
+
+
+@pytest.mark.parametrize("response", ["", "OK\n", "KO: unknown emulator\n"])
+def test_unknown_avd_name_does_not_start_a_potential_duplicate(response):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("emulator-5554", "device")])
+    sdk.runner.run.return_value = subprocess.CompletedProcess([], 0, stdout=response)
+    with pytest.raises(RuntimeError, match="Could not identify running emulator"):
+        sdk.ensure_emulator("Selected_Test")
+    sdk.runner.start.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["offline", "unauthorized"])
+def test_unavailable_emulator_prevents_uncertain_duplicate_start(state):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("emulator-5554", state)])
+    with pytest.raises(RuntimeError, match="Could not identify running emulator"):
+        sdk.ensure_emulator("Selected_Test")
+    sdk.runner.run.assert_not_called()
+    sdk.runner.start.assert_not_called()
+
+
+def test_named_avd_wait_retries_transient_name_lookup_failures(emulator_clock):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    wanted = AndroidDevice("emulator-5554", "device")
+    sdk.devices = Mock(return_value=[wanted])
+    sdk.runner.run.side_effect = [
+        subprocess.TimeoutExpired("adb", 5),
+        subprocess.CompletedProcess([], 0, stdout="Selected_Test\nOK\n"),
+        subprocess.CompletedProcess([], 0, stdout="1\n"),
+    ]
+    assert sdk.wait_for_emulator(timeout=10, name="Selected_Test") == wanted
+
+
+def test_named_avd_wait_rechecks_its_deadline_after_identity_lookup(emulator_clock):
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    sdk.devices = Mock(return_value=[AndroidDevice("emulator-5554", "device")])
+
+    def respond(command, **options):
+        assert command[3:] == ["emu", "avd", "name"]
+        assert options["timeout"] == 2
+        emulator_clock[0] += options["timeout"]
+        return subprocess.CompletedProcess(command, 0, stdout="Selected_Test\nOK\n")
+
+    sdk.runner.run.side_effect = respond
+    with pytest.raises(TimeoutError, match="did not finish booting"):
+        sdk.wait_for_emulator(timeout=2, name="Selected_Test")
+    assert sdk.runner.run.call_count == 1
+
+
+def test_empty_avd_name_is_not_automatic_device_selection():
+    sdk = AndroidSDK(Path("/android"), Path("/java"), Mock())
+    with pytest.raises(ValueError, match="must not be empty"):
+        sdk.ensure_emulator("")
+    sdk.runner.run.assert_not_called()
+
+
 def test_android_jvm_application_derives_package_qualified_names():
     application = AndroidJVMApplication(
         Path("calculator.py"),
