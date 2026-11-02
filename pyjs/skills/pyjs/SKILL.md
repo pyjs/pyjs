@@ -169,6 +169,9 @@ available for every released version.
   server rendering. Subclass the view or editor and override
   `render_node(node, previous)` for HTML node content; ordinary `Widget`
   subclasses work here. Reuse previous content to preserve input state.
+  The base constructor renders a supplied graph immediately. If your hook
+  needs subclass fields, initialize without a graph, set the fields, then
+  call `configure(graph)`; this also works for server-rendered content.
   Set geometry through `Node.width`/`height`; do not rely on DOM measurement.
   The Components `/diagram-view` example demonstrates this extension.
 - For atomic IndexedDB writes, import `transaction_result` and `request_result`

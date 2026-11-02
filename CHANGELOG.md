@@ -12,6 +12,9 @@
   node activation; static SVG needs no client script. Views and editors can
   render custom HTML node content, including ordinary widget subclasses,
   while retaining shared geometry and preserving content across redraws.
+  Graph updates retain native input focus; keyboard deletion keeps undo
+  reachable. Custom elements can handle atomic DOM moves with `moved()`
+  without disconnect/reconnect cleanup.
 
 - Server-rendered `HTMLElement.hidden` reflects the HTML attribute, including
   `until-found`, so hidden controls stay hidden before browser hydration.

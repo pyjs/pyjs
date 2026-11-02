@@ -126,14 +126,32 @@ def draw_diagram(layer: Element, graph: Diagram, nodes: list[str], edges: list[s
             container.replaceChildren(content)
         group.children[2].textContent = node.label
         ordered.append(group)
+    # Remove stale groups first: shifting live widgets around a deleted edge
+    # would disconnect them unnecessarily and interrupt native input editing.
+    edge_ids = {edge.id for edge in graph.edges}
+    for id in existing_edges:
+        if id not in edge_ids:
+            existing_edges[id].remove()
+    for id in existing_nodes:
+        if id not in index.nodes:
+            existing_nodes[id].remove()
     for i in range(len(ordered)):
         child = ordered[i]
         if i >= len(layer.children):
             layer.append(child)
         elif layer.children[i] is not child:
-            layer.insertBefore(child, layer.children[i])
-    while len(layer.children) > len(ordered):
-        layer.children[len(ordered)].remove()
+            if layer.isConnected and child.parentNode is layer and hasattr(layer, "moveBefore"):
+                layer.moveBefore(child, layer.children[i])
+            else:
+                focused = document.activeElement
+                if focused is not None and child.contains(focused):
+                    # Older browsers cannot move atomically. Move siblings
+                    # around the focused group instead, preserving selection
+                    # and composition without a blur/refocus cycle.
+                    while layer.children[i] is not child:
+                        layer.insertBefore(layer.children[i], child.nextSibling)
+                else:
+                    layer.insertBefore(child, layer.children[i])
 
 
 @js
@@ -164,6 +182,9 @@ class DiagramView(CustomElement):
     Override render_node(node, previous) to compose HTML with ordinary PyJS
     primitives. Reuse previous content on redraws to preserve focus and state.
     Node width/height define its content box, hit bounds and edge attachments.
+    The initial graph renders during construction. If the hook needs subclass
+    fields, call super().__init__() without a graph, initialize those fields,
+    then configure(graph).
     """
 
     def __init__(self, graph: Diagram | None = None):

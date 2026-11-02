@@ -17,12 +17,12 @@ def review_flow() -> Diagram:
 
 @js
 class ReviewCard(Widget):
-    def __init__(self, node: Node):
+    def __init__(self, node: Node, owner: str = "Editorial team"):
         super().__init__()
         self.add({"style": "box-sizing:border-box;display:block;width:100%;height:100%;"
                           "padding:16px;font:14px system-ui;color:#1e293b"},
                  tag("h2", tw("font-semibold"), {"data-node-title": ""}, node.label),
-                 tag("p", tw("my-2 text-slate-600"), "Owner: Editorial team"),
+                 tag("p", tw("my-2 text-slate-600"), "Owner: " + owner),
                  a(tw("text-blue-700 underline"), {"href": "#diagram-details"}, "Open details"),
                  input(tw("mt-2 w-full rounded border px-2 py-1"),
                        {"aria-label": "Comment for " + node.id, "placeholder": "Local comment"}))
@@ -35,11 +35,17 @@ class ReviewCard(Widget):
 
 @js
 class ReviewDiagram(DiagramView):
+    def __init__(self, graph: Diagram | None = None):
+        super().__init__()
+        self.owner = "Editorial team"
+        if graph is not None:
+            self.configure(graph)
+
     def render_node(self, node: Node, previous: Element | None) -> Element:
         if isinstance(previous, ReviewCard):
             previous.update_node(node)
             return previous
-        return ReviewCard(node)
+        return ReviewCard(node, self.owner)
 
 
 @js

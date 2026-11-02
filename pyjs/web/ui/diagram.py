@@ -205,6 +205,8 @@ class DiagramCanvas(DiagramView):
             if id is not None:
                 self.state.select_node(id)
             self.state.delete_selected()
+            if self.state.graph is not before:
+                self.focus(preventScroll=True)
         elif (event.ctrlKey or event.metaKey) and event.key.lower() == "z":
             event.preventDefault()
             self.cancel_interaction()

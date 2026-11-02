@@ -106,6 +106,16 @@ the existing content on redraw; update and return it to preserve input values,
 focus and component state. Returning a different element replaces that node's
 content. Constructors and updates should follow ordinary PyJS hydration rules.
 
+Passing a graph to the base constructor renders it immediately. When your
+hook uses subclass fields, initialize an empty view first, set those fields,
+then call `configure(graph)`, as `ReviewDiagram` does. This also prepares the
+custom content for server rendering before the component is mounted.
+
+Reordering uses atomic DOM moves where supported. `CustomElement.moved()`
+handles those moves without running disconnect/reconnect cleanup. In older
+browsers, reconciliation keeps the focused node attached and moves siblings
+around it; other moved nodes still receive normal reconnect callbacks.
+
 Set `Node.width` and `Node.height` explicitly: they define the SVG content box,
 hit bounds and edge attachments. No DOM measurement or automatic resizing is
 performed. Default labels wrap to that box without character-count truncation.

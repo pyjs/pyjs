@@ -3,13 +3,18 @@ from typing import cast
 import pytest
 from pyjs import js
 from pyjs.testing.web import bubbling_click, mount, wait_for_frames
-from pyjs.ui.diagram import Node
+from pyjs.ui.diagram import Diagram, Node
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import require_element
 from pyjs.web.events import KeyboardEvent, PointerEvent
-from pyjs.web.html import HTMLInputElement
+from pyjs.web.html import HTMLElement, HTMLInputElement
 from pyjs.web.ui.diagram import DiagramCanvas
-from pyjs_examples.components.diagram_viewer import DiagramViewerApp, ReviewCard, review_flow
+from pyjs_examples.components.diagram_viewer import (
+    DiagramViewerApp,
+    ReviewCard,
+    ReviewDiagram,
+    review_flow,
+)
 
 pytestmark = pytest.mark.pyjs_web
 
@@ -21,6 +26,50 @@ class ReviewEditor(DiagramCanvas):
             previous.update_node(node)
             return previous
         return ReviewCard(node)
+
+
+@js
+async def test_graph_reconciliation_preserves_custom_input_focus_and_selection():
+    graph = review_flow()
+    viewer = ReviewDiagram(graph)
+    mount(viewer)
+    await wait_for_frames()
+    field = cast(HTMLInputElement, require_element(viewer, '[aria-label="Comment for publish"]'))
+    field.value = "Keep this draft"
+    field.focus()
+    field.setSelectionRange(2, 7, "backward")
+    for replacement in [
+        Diagram(nodes=graph.nodes, edges=[]),
+        Diagram(nodes=[graph.nodes[1], graph.nodes[0]], edges=[]),
+        Diagram(nodes=graph.nodes, edges=graph.edges),
+        Diagram(nodes=[graph.nodes[1]], edges=[]),
+    ]:
+        viewer.configure(replacement)
+        assert document.activeElement is field
+        assert field.value == "Keep this draft"
+        assert field.selectionStart == 2 and field.selectionEnd == 7
+        assert field.selectionDirection == "backward"
+        groups = viewer.querySelectorAll("[data-node-id]")
+        assert len(groups) == len(replacement.nodes)
+        for i in range(len(groups)):
+            assert groups[i].getAttribute("data-node-id") == replacement.nodes[i].id
+
+
+@js
+async def test_keyboard_delete_keeps_focus_for_undo():
+    editor = ReviewEditor(review_flow())
+    mount(editor)
+    await wait_for_frames()
+    target = require_element(editor, '[data-node-activate="draft"]')
+    # Dispatch through the real active element so lost focus cannot be hidden
+    # by sending the undo directly to the editor.
+    cast(HTMLElement, target).focus()
+    target.dispatchEvent(KeyboardEvent("keydown", key="Delete", bubbles=True))
+    assert len(editor.get_graph().nodes) == 1
+    active = document.activeElement
+    assert active is editor
+    cast(Element, active).dispatchEvent(KeyboardEvent("keydown", key="z", ctrlKey=True, bubbles=True))
+    assert len(editor.get_graph().nodes) == 2
 
 
 @js
