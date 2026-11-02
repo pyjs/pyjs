@@ -74,15 +74,22 @@ class AndroidSDK:
         except SDKError as error:
             raise RuntimeError(str(error)) from error
 
+    def _command_tool(self, name: str) -> Path:
+        tools = self._installation().tools
+        if tools is None:
+            raise RuntimeError(
+                "Android command-line tools not found. Run sdkmgr android install "
+                "after accepting the SDK license."
+            )
+        return tools / "bin" / (name + ".bat" if os.name == "nt" else name)
+
     @property
     def avdmanager(self) -> Path:
-        name = "avdmanager.bat" if os.name == "nt" else "avdmanager"
-        return self.root / "cmdline-tools" / "latest" / "bin" / name
+        return self._command_tool("avdmanager")
 
     @property
     def sdkmanager(self) -> Path:
-        name = "sdkmanager.bat" if os.name == "nt" else "sdkmanager"
-        return self.root / "cmdline-tools" / "latest" / "bin" / name
+        return self._command_tool("sdkmanager")
 
     def build_tool(self, name: str) -> Path:
         from sdkmgr import SDKError
