@@ -7,6 +7,11 @@
   byte-buffer extraction support importing binary documents without text
   conversion. Callers retain responsibility for size limits and stream cleanup.
 
+- Android host tests can wait for accessibility descriptions and focus
+  together while retrying transient UI-tree failures. Cross-app waits may
+  explicitly disable the target-process check; ordinary waits still report
+  early application exits. Timeout messages retain empty and false selectors.
+
 - JavaScript typed arrays support Python iteration, including empty arrays,
   shared-buffer views and changes to elements during iteration.
 
