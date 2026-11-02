@@ -1259,6 +1259,30 @@ def test_self_parameter_annotations_require_the_concrete_receiver_type():
     )
 
 
+def test_native_typed_array_iteration():
+    at(
+        """
+        from pyjs.javascript import Uint8Array
+
+        def main(values: Uint8Array) -> None:
+            for value in values:
+                print(value)
+        """,
+        """
+        def main(values: Uint8Array) -> None:
+            for value: int | float in values:
+                print(value)
+        """,
+        """
+        export function main(values) {
+            for (var value of values) {
+                console.log(value);
+            }
+        }
+        """,
+    )
+
+
 def test_self_return_keeps_concrete_typed_array_views():
     at(
         """

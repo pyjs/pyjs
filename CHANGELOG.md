@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- JavaScript typed arrays support Python iteration, including empty arrays,
+  shared-buffer views and changes to elements during iteration.
+
 - JVM and Android support `str.find()` and `str.rfind()` with positional
   integer bounds, negative offsets and Unicode character indices. Empty
   substrings and out-of-range bounds follow Python semantics.

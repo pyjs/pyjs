@@ -70,6 +70,11 @@ async def test_text_encoding_and_sha256_digest_use_native_browser_apis():
                 43, 189, 181, 193, 53, 76, 216, 145, 161, 77, 117, 166, 39, 223, 154, 219]
     for index, value in enumerate(expected):
         assert digest[index] == value
+    position = 0
+    for value in digest:
+        assert value == expected[position]
+        position += 1
+    assert position == len(expected)
 
 
 @js
