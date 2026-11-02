@@ -250,7 +250,10 @@ def main() -> int:
 
 @pytest.mark.parametrize('nullable', [False, True])
 @pytest.mark.parametrize('kind', ['A', 'B'])
-@pytest.mark.parametrize('read', ['value.get()', 'value.twice(5)', 'value + 1'])
+@pytest.mark.parametrize('read', [
+    'value.get()', 'value.twice(5)', 'value + 1',
+    'value.__len__()', 'int(value.__bool__())',
+])
 def test_union_method_receivers_match_physical_storage(tmp_path, nullable, kind, read):
     from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
 
@@ -261,6 +264,12 @@ class A:
 
     def get(self) -> int:
         return 1
+
+    def __len__(self) -> int:
+        return self.value
+
+    def __bool__(self) -> bool:
+        return self.value > 0
 
     def twice(self, number: int) -> int:
         return number * 2
@@ -274,6 +283,12 @@ class B:
 
     def get(self) -> int:
         return 2
+
+    def __len__(self) -> int:
+        return self.value * 2
+
+    def __bool__(self) -> bool:
+        return self.value == 0
 
     def twice(self, number: int) -> int:
         return number * 3
@@ -290,3 +305,20 @@ class B:
     else:
         with pytest.raises(WebAssemblyUnsupported, match=r'storage conversion.*at line [0-9]+'):
             transpile_webassembly(source)
+
+
+@pytest.mark.parametrize('body', [
+    'values: list[int] | tuple[int, int] = (1, 2)\n'
+    'count = 0\nfor item in values:\n    count += item\nreturn count',
+    'values: tuple[int, int] | list[int] = (1, 2)\n'
+    'return len([item for item in values])',
+    'values: list[int] | list[float] = [1, 2]\n'
+    'count = 0\nfor item in values:\n    count += 1\nreturn count',
+    'values: list[int] | list[float] = [1, 2]\nreturn len(list(values))',
+    'values: list[int] | list[float] = [1, 2]\nvalues.append(3)\nreturn 1',
+])
+def test_union_collections_have_located_diagnostics(body):
+    from pyjs.webassembly import WebAssemblyUnsupported, transpile_webassembly
+
+    with pytest.raises(WebAssemblyUnsupported, match=r'at line [0-9]+'):
+        transpile_webassembly('def main() -> int:\n' + textwrap.indent(body, '    '))

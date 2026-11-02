@@ -795,7 +795,7 @@ class WebAssemblyEmitter:
                     else None,
                 )
             list_type = analyzed_value_type(iterable)
-            if list_type.generic_name != "list":
+            if list_type not in self.list_indices:
                 raise WebAssemblyUnsupported(
                     "WebAssembly iteration currently requires a list or range",
                     iterable,
@@ -943,6 +943,11 @@ class WebAssemblyEmitter:
                         self.object_result_slots[node] = result
                     elif isinstance(node, ListAppend):
                         list_type = analyzed_value_type(node.call.func.value)
+                        if list_type not in self.list_indices:
+                            raise WebAssemblyUnsupported(
+                                "WebAssembly append requires a narrowed list",
+                                node.call,
+                            )
                         array_index, list_index = self.list_indices[list_type]
                         prefix = f"__pyjs_list_append_{len(self.list_append_slots)}"
                         self.list_append_slots[node] = (
@@ -1969,7 +1974,7 @@ class WebAssemblyEmitter:
                 code.append(I64_CONST)
                 code.extend(_signed(len(collection_type.generic_types)))
                 return I64
-            if collection_type.generic_name != "list":
+            if collection_type not in self.list_indices:
                 raise WebAssemblyUnsupported(
                     "WebAssembly len currently requires a list or tuple",
                     node,
