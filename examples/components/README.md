@@ -97,7 +97,7 @@ def render_node(self, node: Node, previous: Element | None) -> Element:
     if isinstance(previous, ReviewCard):
         previous.update_node(node)
         return previous
-    return ReviewCard(node)
+    return ReviewCard(node, self.owner)
 ```
 
 The same hook is available on `DiagramCanvas`. A renderer may return any HTML
