@@ -118,6 +118,13 @@ class DisplayMetrics:
 @jvm.native("android/content/res/Resources")
 class Resources:
     @jvm.native(
+        "android/content/res/Resources", name="getIdentifier", invocation="virtual",
+    )
+    def get_identifier(self, name: str, default_type: str | None, default_package: str | None) -> i32:
+        """Resolve a resource name, returning zero when it does not exist."""
+        return i32(0)
+
+    @jvm.native(
         "android/content/res/Resources",
         name="getDisplayMetrics",
         invocation="virtual",

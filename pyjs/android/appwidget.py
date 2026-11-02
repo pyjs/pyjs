@@ -3,7 +3,15 @@
 from typing import Annotated, ClassVar
 
 from pyjs import jvm
-from pyjs.android import BroadcastReceiver, Bundle, ComponentName, Context, Intent
+from pyjs.android import (
+    BroadcastReceiver,
+    Bundle,
+    ComponentName,
+    Context,
+    Intent,
+    View,
+    ViewGroup,
+)
 from pyjs.java import JVMArray, i32
 from pyjs.java.primitives import Reference
 
@@ -215,6 +223,9 @@ class AppWidgetProvider(BroadcastReceiver):
 @jvm.native("android/widget/RemoteViews")
 class RemoteViews(Object):
     def __init__(self, package_name: str, layout_id: i32) -> None:
+        pass
+
+    def apply(self, context: Context, parent: ViewGroup | None) -> View:
         pass
 
     @jvm.native(

@@ -290,6 +290,13 @@ pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
 offsets and returns the same mutable buffer; it is different from replacing
 the field with `setText()`.
 
+Resolve Android resources for configurable application package names with
+`context.get_resources().get_identifier(name, kind, package)`. Missing names
+return zero; check before constructing views. Prefer generated `R` bindings
+when the package is fixed. `RemoteViews.apply(context, parent)` inflates the
+widget layout and applies its actions for a local preview; `parent` may be
+`None`. Publishing to a launcher still uses `AppWidgetManager`.
+
 For direct-JVM Android UI tests, mark module-level functions with
 `pytest.mark.pyjs_android_jvm` and use `pyjs.android.testing`. Run the fast
 AndroidJUnit4, Robolectric, and Espresso tier with
