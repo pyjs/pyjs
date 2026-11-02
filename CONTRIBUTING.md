@@ -366,16 +366,19 @@ async def check_chat(server_port, artifacts):
 ```
 
 `tap` dispatches touch, not DOM `.click()`. `wait_for_keyboard` checks Android
-IME state; separately wait for the layout change your application requires.
+IME inset visibility in WindowManager, waiting through inconsistent reports;
+separately wait for the layout change your application requires.
 `dismiss_keyboard` blurs the owned page without risking a Back navigation.
 CDP text insertion does not test autocorrection or composition. Installed PWA
 and physical-device checks remain separate from Chrome-on-emulator acceptance.
 
-The session leases the named AVD, waits for boot, creates owned tabs and
+The session leases the named AVD per user, independently of SDK and temporary
+directories, waits for boot, creates owned tabs and
 allocates ADB forward/reverse ports. It restores changed rotation and keyboard
 settings. A borrowed emulator remains running; a session-started emulator is
 stopped. Do not share this AVD with unrelated automation. After a hard kill,
-inspect the PID in the reported lease before removing it.
+inspect the PID in the reported lease before removing it. Cancellation waits
+for in-flight allocations and cleanup before releasing the lease.
 
 Failure artifacts include full-device screenshots, browser DOM/console data,
 window and IME state, UI XML and bounded logcat. Partial capture errors appear
