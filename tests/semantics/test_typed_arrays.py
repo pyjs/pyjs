@@ -53,6 +53,35 @@ def test_fractional_and_negative_typed_array_values_are_not_coerced():
     """)
 
 
+def test_explicit_typed_array_iterators_read_live_values_and_keep_independent_cursors():
+    assert_semantics("""
+        from pyjs import js
+        from pyjs.javascript import Uint8Array
+
+        @js
+        def main() -> None:
+            values = Uint8Array([1, 2, 3, 4])
+            view = values.subarray(1, 3)
+            first = iter(view)
+            second = iter(view)
+            values[1] = 7
+            assert next(first) == 7
+            values[1] = 8
+            assert next(second) == 8
+            values[2] = 9
+            assert next(first) == 9 and next(second) == 9
+            assert next(first, -1) == -1
+            values[2] = 10
+            assert next(first, -1) == -1
+            assert next(iter(view)) == 8
+            assert any(Uint8Array([0, 2]))
+            assert not any(Uint8Array(0))
+            print("live independent iterators")
+
+        main()
+    """)
+
+
 @pytest.mark.parametrize("array_type", ["BigInt64Array", "BigUint64Array"])
 def test_bigint_typed_array_iteration_matches_indexed_values(array_type):
     assert_semantics(f"""
