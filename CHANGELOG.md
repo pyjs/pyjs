@@ -9,6 +9,11 @@
   console before waiting for ADB readiness; automatic unnamed selection does
   not require console authentication.
 
+- JVM and Android JSON encoding streams escaped strings into a native buffer
+  instead of retaining a fragment list for every escaped code unit. Large
+  non-ASCII values use less temporary memory while preserving ASCII escapes,
+  supplementary characters and lone surrogates.
+
 - JVM `bool()` accepts lists, using their current length without testing
   individual items or evaluating the argument more than once.
   JavaScript truth conversions retain their grouping inside negation and
