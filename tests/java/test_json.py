@@ -15,7 +15,7 @@ STRINGS = [
     "".join(chr(code) for code in range(128)), "ascii\uffffascii\U0010ffffend",
 ]
 STRING_TOKENS = [json.dumps(value) for value in STRINGS] + [
-    json.dumps("é雪😀", ensure_ascii=False), '"\\/"', '"\\u00aF"',
+    json.dumps("é雪😀", ensure_ascii=False), '"\\/"', '"\\u00aF"', '"\\u09Af"',
     '"\\uD83D\\uDE00"', '"\\ud800x"', '"\\ud800\\u0061"',
 ]
 NUMBERS = ["0", "-0", "10", "-123", "0.1", "1e10", "-0.25E-2", "1E+3",
@@ -31,6 +31,8 @@ INVALID = [
     '{"a":1 "b":2}', '{1:2}', "[1}", '{"a":1]',
     '"unterminated', '"raw\nline"', '"\\"', '"\\q"', '"\\u123"',
     '"\\uXX00"', '"\\ud800\\uXX00"', '"\0"', '\ufeff{}', '\xa0null',
+    '"\x1f"', '"\\u00/0"', '"\\u00:0"', '"\\u00@0"', '"\\u00G0"',
+    '"\\u00`0"', '"\\u00g0"', '"\\u', '"\\u1', '"\\u12', '"\\u123',
 ]
 
 
