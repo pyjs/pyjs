@@ -270,7 +270,14 @@ class JavaCharSequence:
 
 @jvm.native("android/text/Editable", interface=True)
 class Editable(JavaCharSequence):
-    pass
+    def replace(self, start: i32, end: i32, text: CharSequence) -> Editable: ...
+
+
+@jvm.native("android/text/Layout")
+class TextLayout:
+    def getWidth(self) -> i32: ...
+
+    def increaseWidthTo(self, width: i32) -> None: ...
 
 
 @jvm.native("android/text/TextWatcher", interface=True)
@@ -726,6 +733,12 @@ class TextView(View):
     def setSingleLine(self, single_line: bool) -> None:
         pass
 
+    def setHorizontallyScrolling(self, enabled: bool) -> None:
+        pass
+
+    def getLayout(self) -> TextLayout | None:
+        return None
+
     def setInputType(self, input_type: i32) -> None:
         pass
 
@@ -1014,6 +1027,7 @@ __all__ = [
     "Runnable",
     "SharedPreferences",
     "SharedPreferencesEditor",
+    "TextLayout",
     "TextView",
     "TextWatcher",
     "Uri",

@@ -19,6 +19,12 @@
   steps. Slices preserve item representations and own their list storage.
   Slice assignment, deletion and first-class slice objects remain unsupported.
 
+- Android text controls expose horizontal wrapping, the current text layout's
+  width and widening operation, and in-place `Editable.replace()` with native
+  UTF-16 offsets. Wrapping and layout changes preserve the field's contents;
+  replacement edits its existing buffer. These use Android framework
+  operations, including native exceptions for invalid widths or offsets.
+
 - JVM Pydantic models support empty list/dictionary defaults and the built-in
   `list`/`dict` default factories. Construction and JSON decoding create fresh
   collections per model, including inherited fields. Nullable lists and
