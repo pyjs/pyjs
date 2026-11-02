@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from pyjs import jvm
-from pyjs.android import Activity, Bundle, Context, Runnable, View
+from pyjs.android import Activity, Bundle, Context, Intent, Runnable, View
 from pyjs.java import i32
 from pyjs.java.primitives import Reference
 
@@ -102,6 +102,12 @@ def launch(activity: ActivityClass) -> None:
     instance.onCreate(Bundle())
 
 
+@jvm.native("org/pyjs/testing/PyjsAndroid", name="launchIntent")
+def launch_intent(intent: Intent) -> None:
+    """Launch an explicit intent through ActivityScenario, retaining its extras."""
+    raise RuntimeError("Intent launch requires an Android test runtime")
+
+
 @jvm.native("org/pyjs/testing/PyjsAndroid", name="pressBack")
 def press_back() -> None:
     pass
@@ -142,6 +148,7 @@ __all__ = [
     "by_id",
     "by_text",
     "launch",
+    "launch_intent",
     "press_back",
     "recreate",
     "resume",

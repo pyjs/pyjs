@@ -40,6 +40,16 @@
   remain unsupported. Existing non-nullable API-result decoding is unchanged.
   Custom factories and non-empty collection defaults remain unsupported.
 
+- Android exposes incoming Activity intents, new-intent callbacks, MIME types,
+  subjects and styled text extras. Android tests can launch an explicit intent
+  through `launch_intent()`; Notes demonstrates text-share previews and
+  configuration changes without treating preview text as saved note content.
+  `finish()` and `is_finishing()` support explicit Activity completion;
+  the application remains responsible for waiting for durable storage.
+  Resumed Notes windows share order and save status, including safe retries
+  from an older view. A separate unsaved-preview label stays above clipped
+  share content without hiding the board.
+
 - JVM lists support `left + right` when both operands have matching item
   storage. Concatenation creates independent list storage, retains shallow
   item identity and evaluates both operands before copying either list.

@@ -365,8 +365,17 @@ class Intent:
     EXTRA_TEXT: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
         "android.intent.extra.TEXT"
     )
+    EXTRA_SUBJECT: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
+        "android.intent.extra.SUBJECT"
+    )
+    FLAG_ACTIVITY_SINGLE_TOP: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
+        536870912
+    )
     FLAG_ACTIVITY_NEW_TASK: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
         268435456
+    )
+    FLAG_ACTIVITY_MULTIPLE_TASK: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
+        134217728
     )
     FLAG_GRANT_PERSISTABLE_URI_PERMISSION: ClassVar[
         Annotated[i32, jvm.field(writable=False)]
@@ -389,6 +398,11 @@ class Intent:
     def set_class_name(self, package_name: str, class_name: str) -> Intent:
         return self
 
+    @jvm.native("android/content/Intent", name="setClass", invocation="virtual")
+    def set_class(self, context: Context,
+                  activity: Annotated[type[Activity], Reference("java/lang/Class")]) -> Intent:
+        return self
+
     @jvm.native("android/content/Intent", name="setData", invocation="virtual")
     def set_data(self, data: Uri | None) -> Intent:
         return self
@@ -407,6 +421,10 @@ class Intent:
 
     @jvm.native("android/content/Intent", name="getAction", invocation="virtual")
     def get_action(self) -> str | None:
+        return None
+
+    @jvm.native("android/content/Intent", name="getType", invocation="virtual")
+    def get_type(self) -> str | None:
         return None
 
     @jvm.native("android/content/Intent", name="getData", invocation="virtual")
@@ -432,6 +450,18 @@ class Intent:
     @jvm.native("android/content/Intent", name="getStringExtra", invocation="virtual")
     def get_string_extra(self, name: str) -> str | None:
         return None
+
+    @jvm.native("android/content/Intent", name="getCharSequenceExtra", invocation="virtual")
+    def get_char_sequence_extra(self, name: str) -> JavaCharSequence | None:
+        return None
+
+    @jvm.native("android/content/Intent", name="removeExtra", invocation="virtual")
+    def remove_extra(self, name: str) -> None:
+        pass
+
+    @jvm.native("android/content/Intent", name="putExtra", invocation="virtual")
+    def put_char_sequence_extra(self, name: str, value: JavaCharSequence | None) -> Intent:
+        return self
 
     @jvm.native("android/content/Intent", name="putExtra", invocation="virtual")
     def put_int_extra(self, name: str, value: i32) -> Intent:
@@ -946,10 +976,29 @@ class Activity(Context):
     def onBackPressed(self) -> None:
         pass
 
+    def finish(self) -> None:
+        pass
+
+    @jvm.native("android/app/Activity", name="isFinishing", invocation="virtual")
+    def is_finishing(self) -> bool:
+        return False
+
     def setContentView(self, view: View) -> None:
         self.content = view
 
     def setTitle(self, title: CharSequence) -> None:
+        pass
+
+    @jvm.native("android/app/Activity", name="getIntent", invocation="virtual")
+    def get_intent(self) -> Intent | None:
+        return None
+
+    @jvm.native("android/app/Activity", name="setIntent", invocation="virtual")
+    def set_intent(self, intent: Intent) -> None:
+        pass
+
+    @jvm.native("android/app/Activity", name="onNewIntent", invocation="virtual")
+    def on_new_intent(self, intent: Intent) -> None:
         pass
 
     @jvm.native(

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from examples.homescreen_widget.android_build import build_android_widget
+from examples.notes.android_build import build_android as build_android_notes
 from pyjs.android.api import AndroidAPI
 from pyjs.java import read_jvm_class, transpile_jvm
 from pyjs.java.classfile import Bytecode, ClassFile, Field, Method
@@ -540,6 +541,23 @@ def test_android_widget_packages_resources_manifest_and_generated_r(tmp_path):
     assert "Lorg/pyjs/widgets/R$layout;.notes_widget:I" in bytecode
     assert "Lorg/pyjs/widgets/R$id;.widget_list:I" in bytecode
     assert "Lorg/pyjs/widgets/R$id;.widget_item:I" in bytecode
+
+
+def test_android_notes_packages_its_text_share_receiver(tmp_path):
+    if not (Path.home() / ".android" / "debug.keystore").is_file():
+        pytest.skip("an Android debug keystore is required")
+    _, build_tool = android_sdk()
+    package = build_android_notes(tmp_path)
+    manifest = subprocess.run(
+        [str(build_tool.with_name("aapt2")), "dump", "xmltree", str(package),
+         "--file", "AndroidManifest.xml"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    assert 'org.pyjs.notes.jvm.PyjsAndroid$NotesActivity' in manifest
+    assert 'android.intent.action.SEND' in manifest
+    assert 'android.intent.category.DEFAULT' in manifest
+    assert '"text/plain"' in manifest
+    assert 'launchMode(0x0101001d)=1' in manifest
 
 
 def test_android_calculator_builds_a_signed_installable_apk(tmp_path):

@@ -137,20 +137,25 @@ class OrderSession:
         self.requested_revision = 0
         self.requested_order: list[int] = []
         self.in_flight: OrderWrite | None = None
-        self.observer: OrderObserver | None = None
+        self.observers: list[OrderObserver] = []
 
     def attach(self, observer: OrderObserver) -> None:
-        self.observer = observer
+        for attached in self.observers:
+            if attached is observer:
+                return
+        self.observers.append(observer)
         self.driver.poll(self)
         self.notify()
 
     def detach(self, observer: OrderObserver) -> None:
-        if self.observer is observer:
-            self.observer = None
+        remaining: list[OrderObserver] = []
+        for attached in self.observers:
+            if attached is not observer:
+                remaining.append(attached)
+        self.observers = remaining
 
     def notify(self) -> None:
-        observer = self.observer
-        if observer is not None:
+        for observer in list(self.observers):
             observer.storage_changed()
 
     def restore(self, expected: list[int]) -> list[int]:
@@ -165,6 +170,7 @@ class OrderSession:
         self.pending_order = list(order)
         self.revision += 1
         self.dirty = True
+        self.notify()
 
     def load(self, expected: list[int]) -> list[int]:
         self.can_save = False

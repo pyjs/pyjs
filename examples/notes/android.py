@@ -5,6 +5,7 @@ from pyjs.android import (
     Application,
     Bundle,
     GradientDrawable,
+    Intent,
     LayoutParams,
     LinearLayout,
     LinearLayoutParams,
@@ -124,12 +125,14 @@ class NotesAdapter(RecyclerViewAdapter):
             for target in range(len(order)):
                 for source in range(target, len(self.note_ids)):
                     if self.note_ids[source] == order[target]:
-                        self.move(source, target, False)
+                        if source != target:
+                            self.move(source, target, False)
                         break
         self.show_storage_status()
 
     def save_order(self) -> None:
         if self.session is not None:
+            self.restore_order()
             self.session.save(self.note_ids)
         self.show_storage_status()
 
@@ -152,7 +155,7 @@ class StorageStatus(OrderObserver):
         self.adapter = adapter
 
     def storage_changed(self) -> None:
-        self.adapter.show_storage_status()
+        self.adapter.restore_order()
 
 
 class NotesTouch(ItemTouchCallback):
@@ -221,6 +224,8 @@ class NotesApplication(Application):
 
 class NotesActivity(Activity):
     storage_observer: StorageStatus
+    shared_preview: TextView
+    shared_status: TextView
 
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
@@ -238,6 +243,22 @@ class NotesActivity(Activity):
         search.setPadding(40, 28, 40, 28)
         search.setElevation(4.0)
         root.addView(search)
+
+        self.shared_status = TextView(self)
+        self.shared_status.setId(103)
+        self.shared_status.setText("Shared text preview (not saved; may be shortened)")
+        self.shared_status.setTextSize(14.0)
+        self.shared_status.setPadding(40, 20, 40, 0)
+        root.addView(self.shared_status)
+        self.shared_preview = TextView(self)
+        self.shared_preview.setId(102)
+        self.shared_preview.setTextSize(16.0)
+        self.shared_preview.setMaxLines(5)
+        self.shared_preview.setPadding(40, 20, 40, 20)
+        self.shared_preview.setLayoutParams(
+            LinearLayoutParams(LayoutParams.MATCH_PARENT, 0, 0.6))
+        root.addView(self.shared_preview)
+        self.show_shared_preview()
 
         notes = [
             (
@@ -293,7 +314,6 @@ class NotesActivity(Activity):
         adapter = NotesAdapter(notes, colors, note_ids, session, status)
         adapter.restore_order()
         self.storage_observer = StorageStatus(adapter)
-        session.attach(self.storage_observer)
         status.setOnClickListener(RetrySave(adapter))
         root.addView(status)
         recycler.set_adapter(adapter)
@@ -303,6 +323,40 @@ class NotesActivity(Activity):
         )
         root.addView(recycler)
         self.setContentView(root)
+
+    def on_new_intent(self, intent: Intent) -> None:
+        super().on_new_intent(intent)
+        self.set_intent(intent)
+        self.show_shared_preview()
+
+    def show_shared_preview(self) -> None:
+        self.shared_status.setVisibility(View.GONE)
+        self.shared_preview.setVisibility(View.GONE)
+        intent = self.get_intent()
+        if intent is None or intent.get_action() != Intent.ACTION_SEND or intent.get_type() != "text/plain":
+            return
+        text = intent.get_char_sequence_extra(Intent.EXTRA_TEXT)
+        if text is None:
+            return
+        subject = intent.get_string_extra(Intent.EXTRA_SUBJECT) or "Shared text"
+        body = text.to_string()
+        subject = subject[:100].replace("\r", " ").replace("\n", " ")
+        self.shared_preview.setText(subject + "\n\n" + body[:500])
+        self.shared_status.setVisibility(View.VISIBLE)
+        self.shared_preview.setVisibility(View.VISIBLE)
+
+    def onResume(self) -> None:
+        super().onResume()
+        adapter = self.storage_observer.adapter
+        adapter.restore_order()
+        if adapter.session is not None:
+            adapter.session.attach(self.storage_observer)
+
+    def onStop(self) -> None:
+        session = self.storage_observer.adapter.session
+        if session is not None:
+            session.detach(self.storage_observer)
+        super().onStop()
 
     def onDestroy(self) -> None:
         session = self.storage_observer.adapter.session

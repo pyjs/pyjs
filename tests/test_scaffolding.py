@@ -341,6 +341,9 @@ def test_examples_distribution_maps_its_source_root_to_pyjs_examples():
     assert config["tool"]["setuptools"]["package-data"][
         "pyjs_examples.homescreen_widget"
     ] == ["README.md", "res/**/*.xml"]
+    assert "share.xml" in config["tool"]["setuptools"]["package-data"][
+        "pyjs_examples.notes"
+    ]
     assert core["project"]["entry-points"]["pytest11"] == {"pyjs": "pyjs.testing.pytest_plugin"}
     assert core["project"]["scripts"] == {"pyjs": "pyjs.cli:main"}
     assert core["project"]["optional-dependencies"]["examples"] == [

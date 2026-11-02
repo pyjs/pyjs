@@ -110,9 +110,32 @@ def main() -> int:
     session.attach(current)
     session.detach(old)
     driver.finish(session)
-    assert old.count == 2 and current.count == 2
+    assert old.count == 3 and current.count == 2
     session.detach(current)
-    assert session.observer is None
+    assert len(session.observers) == 0
+    ''',
+    '''
+    first = Observer()
+    second = Observer()
+    session.attach(first)
+    session.attach(second)
+    session.attach(first)
+    assert len(session.observers) == 2
+    first.count = 0
+    second.count = 0
+    session.changed([2, 1, 3])
+    assert first.count == 1 and second.count == 1
+    session.save(session.pending_order)
+    assert first.count == 2 and second.count == 2
+    store.fail = True
+    driver.finish(session)
+    assert first.count == 3 and second.count == 3
+    session.detach(first)
+    store.fail = False
+    session.save(session.pending_order)
+    driver.finish(session)
+    assert first.count == 3 and second.count == 5
+    assert not session.dirty and store.saved[0] == 2
     ''',
 ])
 def test_save_queue_matches_python(tmp_path, body):
