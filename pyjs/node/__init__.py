@@ -2,6 +2,7 @@
 from collections.abc import Awaitable, Callable
 
 from pyjs import js
+from pyjs.javascript import Uint8Array
 
 
 @js.native
@@ -110,7 +111,12 @@ def unlink_sync(path: str) -> None: ...
 def open_exclusive(path: str) -> int: ...
 
 @js.inline("require('node:fs').writeFileSync({fd}, {text})")
-def write_descriptor(fd: int, text: str) -> None: ...
+def write_descriptor(fd: int, text: str | Uint8Array) -> None:
+    """Write UTF-8 text or the exact byte view at the current descriptor offset.
+
+    The caller owns descriptor lifetime and any durability flush.
+    """
+    ...
 
 @js.inline("require('node:fs').closeSync({fd})")
 def close_descriptor(fd: int) -> None: ...
@@ -149,7 +155,19 @@ async def symlink(source: str, target: str) -> None: ...
 async def remove_tree(path: str) -> None: ...
 
 @js.inline("require('node:crypto').createHash('sha256').update({text}).digest('hex')")
-def sha256(text: str) -> str: ...
+def sha256(text: str | Uint8Array) -> str:
+    """Hash UTF-8 text or the exact bytes of a view, returning lowercase hex."""
+    ...
+
+@js.inline("Buffer.from({source}, 'base64')")
+def decode_base64(source: str) -> Uint8Array:
+    """Decode using Node's permissive Buffer rules, not canonical validation."""
+    ...
+
+@js.inline("(data => Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64'))({data})")
+def encode_base64(data: Uint8Array) -> str:
+    """Encode the view's bytes with the basic alphabet and padding."""
+    ...
 
 @js.inline("Buffer.byteLength({text})")
 def byte_length(text: str) -> int: ...
