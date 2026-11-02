@@ -2348,6 +2348,31 @@ class JVMEmitter:
                     and semantic_receiver.generic_name == "list" and target.name == "remove"
                     and (node.keywords or len(node.args) != 1)):
                 raise JVMUnsupported("JVM list.remove requires one positional argument", node)
+            if (isinstance(semantic_receiver, Class)
+                    and semantic_receiver.generic_name == "str" and target.name in {"find", "rfind"}):
+                if node.keywords or not 1 <= len(node.args) <= 3:
+                    raise JVMUnsupported("JVM string search requires a substring and optional positional bounds", node)
+                if self.expression(node.args[0]) != "Ljava/lang/String;":
+                    raise JVMUnsupported("JVM string search requires a string substring", node)
+                for index, default in ((1, 0), (2, 9223372036854775807)):
+                    if index >= len(node.args):
+                        self.long_constant(default)
+                        continue
+                    actual = self.expression(node.args[index])
+                    if actual == "N":
+                        self.code.emit(0x57)
+                        self.long_constant(default)
+                    elif actual == "Z":
+                        self.code.emit(0x85)
+                    elif actual != "J":
+                        raise JVMUnsupported("JVM string search bounds must be integers or None", node)
+                self.string_helpers.add(target.name)
+                reference = self.class_file.method_reference(
+                    self.main_class_name, f"pyjs_string_{target.name}",
+                    "(Ljava/lang/String;Ljava/lang/String;JJ)J",
+                )
+                self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                return "J"
             argument_types = (
                 [self.load(leading_argument)] if leading_argument is not None
                 else [self.expression(argument) for argument in node.args]

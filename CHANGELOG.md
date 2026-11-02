@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM and Android support `str.find()` and `str.rfind()` with positional
+  integer bounds, negative offsets and Unicode character indices. Empty
+  substrings and out-of-range bounds follow Python semantics.
+
 - Android testing honors `--pyjs-android-avd` even when another emulator is
   running. A newly started AVD is selected by name rather than accepting an
   unrelated ready device. An unidentifiable running emulator prevents an
