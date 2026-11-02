@@ -5,6 +5,7 @@ from pyjs.web.domx import a, div, span, tag, tw
 from pyjs.web.navigation import NavigationLayout
 
 from .catalog import CatalogApp
+from .diagram_viewer import DiagramViewerApp
 from .diagrams import DiagramsApp
 from .workspace import WorkspaceApp
 
@@ -86,6 +87,16 @@ def diagrams_view() -> Element:
 @nojs
 def diagrams_page(request):
     return NavigationPage(diagrams_view(), "Diagrams · Components · PyJS")
+
+
+@js
+def diagram_viewer_view() -> Element:
+    return DiagramViewerApp()
+
+
+@nojs
+def diagram_viewer_page(request):
+    return NavigationPage(diagram_viewer_view(), "Diagram viewer · Components · PyJS")
 
 
 @nojs

@@ -1,121 +1,21 @@
-"""SVG diagram rendering and a keyboard/pointer editing surface."""
+"""Interactive diagram editing built on the read-only rendering component."""
 from pyjs import js
-from pyjs.ui.diagram import (
-    Diagram,
-    DiagramEditor,
-    DiagramIndex,
-    Node,
-    Point,
-    arrow_points,
-    node_at,
-    route_edge,
-)
-from pyjs.web.dom import Element, document
-from pyjs.web.domx import CustomElement, input, ref, tw
+from pyjs.ui.diagram import Diagram, DiagramEditor, Node, node_at
+from pyjs.web.dom import Element
+from pyjs.web.domx import input, ref, tw
 from pyjs.web.events import Event, KeyboardEvent, MouseEvent, PointerEvent, WheelEvent
+from pyjs.web.ui.diagram_view import (
+    DiagramView,
+    draw_diagram,
+    interactive_target,
+    svg_element,
+)
+
+__all__ = ["DiagramCanvas", "draw_diagram", "svg_element"]
 
 
 @js
-def svg_attributes(element: Element, attributes: dict[str, str]) -> None:
-    for key in attributes:
-        element.setAttribute(key, attributes[key])
-
-
-@js
-def svg_element(name: str, attributes: dict[str, str]) -> Element:
-    element = document.createElementNS("http://www.w3.org/2000/svg", name)
-    svg_attributes(element, attributes)
-    return element
-
-
-@js
-def path_data(points: list[Point]) -> str:
-    result = ""
-    for point in points:
-        result += ("M" if not result else " L") + str(point.x) + " " + str(point.y)
-    return result
-
-
-@js
-def draw_diagram(layer: Element, graph: Diagram, nodes: list[str], edges: list[str]) -> None:
-    # Keep pointer targets alive across redraws so native click/double-click
-    # synthesis survives pointer-up commits and selection changes.
-    existing_nodes: dict[str, Element] = {}
-    existing_edges: dict[str, Element] = {}
-    for child in layer.children:
-        node_id, edge_id = child.getAttribute("data-node-id"), child.getAttribute("data-edge-id")
-        if node_id is not None:
-            existing_nodes[node_id] = child
-        elif edge_id is not None:
-            existing_edges[edge_id] = child
-    ordered: list[Element] = []
-    index = DiagramIndex(graph)
-    for edge in graph.edges:
-        group = existing_edges.get(edge.id)
-        if group is None:
-            group = svg_element("g", {"data-edge-id": edge.id, "fill": "none", "stroke-width": "2"})
-            group.append(svg_element("path", {}), svg_element("path", {}),
-                         svg_element("text", {"fill": "#475569", "stroke": "none",
-                                              "font-size": "13", "text-anchor": "middle"}))
-        group.setAttribute("stroke", "#d97706" if edge.id in edges else "#94a3b8")
-        points = route_edge(index, edge)
-        group.children[0].setAttribute("d", path_data(points))
-        group.children[1].setAttribute("d", path_data(arrow_points(points)) if edge.directed else "")
-        middle = len(points) // 2
-        a, b = points[middle - 1], points[middle]
-        vertical = a.x == b.x and a.y != b.y
-        svg_attributes(group.children[2], {
-            "x": str((a.x + b.x) / 2.0 + (8.0 if vertical else 0.0)),
-            "y": str((a.y + b.y) / 2.0 - (0.0 if vertical else 8.0)),
-            "text-anchor": "start" if vertical else "middle",
-        })
-        group.children[2].textContent = edge.label
-        ordered.append(group)
-    for node in graph.nodes:
-        group = existing_nodes.get(node.id)
-        if group is None:
-            group = svg_element("g", {"data-node-id": node.id, "role": "button", "tabindex": "0"})
-            group.append(svg_element("path", {}), svg_element("text", {
-                "fill": "#1e293b", "font-size": "14", "text-anchor": "middle",
-                "pointer-events": "none"}), svg_element("title", {}))
-        group.setAttribute("transform", f"translate({node.x} {node.y})")
-        group.setAttribute("aria-label", node.label)
-        group.setAttribute("aria-pressed", "true" if node.id in nodes else "false")
-        w, h = node.width, node.height
-        if node.shape == "diamond":
-            outline = f"M{w / 2.0} 0 L{w} {h / 2.0} L{w / 2.0} {h} L0 {h / 2.0} Z"
-        else:
-            radius = min(12.0, w / 2.0, h / 2.0)
-            outline = (f"M{radius} 0 H{w - radius} Q{w} 0 {w} {radius} V{h - radius} "
-                       f"Q{w} {h} {w - radius} {h} H{radius} Q0 {h} 0 {h - radius} "
-                       f"V{radius} Q0 0 {radius} 0 Z")
-        svg_attributes(group.children[0], {
-            "d": outline, "fill": "#fffbeb" if node.id in nodes else "#f8fafc",
-            "stroke": "#d97706" if node.id in nodes else "#64748b", "stroke-width": "2",
-        })
-        svg_attributes(group.children[1], {"x": str(w / 2.0), "y": str(h / 2.0 + 5.0)})
-        group.children[1].textContent = node.label[:17] + "…" if len(node.label) > 20 else node.label
-        group.children[2].textContent = node.label
-        ordered.append(group)
-    for i in range(len(ordered)):
-        child = ordered[i]
-        if i >= len(layer.children):
-            layer.append(child)
-        elif layer.children[i] is not child:
-            layer.insertBefore(child, layer.children[i])
-    while len(layer.children) > len(ordered):
-        layer.children[len(ordered)].remove()
-
-
-@js
-def _diagram_layer(graph: Diagram) -> Element:
-    layer = svg_element("g", {})
-    draw_diagram(layer, graph, [], [])
-    return layer
-
-
-@js
-class DiagramCanvas(CustomElement):
+class DiagramCanvas(DiagramView):
     """Editable diagram surface; emits bubbling ``diagram-change`` on commits.
 
     ``state`` exposes portable commands. After a programmatic commit call
@@ -124,24 +24,22 @@ class DiagramCanvas(CustomElement):
     """
 
     def __init__(self, graph: Diagram | None = None):
-        super().__init__()
-        self.state = DiagramEditor(graph if graph is not None else Diagram(nodes=[], edges=[]))
-        self.set_data("diagram", self.state.graph.model_dump_json())
+        super().__init__(graph)
+        self.state = DiagramEditor(self._graph)
+        self.viewport = self.state.viewport
         self.pointer = -1
         self.editing = ""
         self.setAttribute("tabindex", "0")
         self.setAttribute("aria-label", "Diagram editor")
-        self.svg = ref(svg_element("svg", {"width": "100%", "height": "420",
-                                           "role": "group", "aria-label": "Diagram canvas"}))
         self.svg.setAttribute("style", "touch-action:none;user-select:none;display:block")
-        self.layer = ref(_diagram_layer(self.state.graph))
-        self.svg.append(self.layer)
         self.label = ref(input(tw("w-full rounded border border-slate-400 px-3 py-2"),
                                {"aria-label": "Node label"}))
         self.label.hidden = True
         self.label.addEventListener("keydown", self.label_key)
         self.label.addEventListener("change", self.label_changed)
-        self.append(self.label, self.svg)
+        self.insertBefore(self.label, self.svg)
+
+    def bind_events(self) -> None:
         self.svg.addEventListener("pointerdown", self.pointer_down)
         self.svg.addEventListener("pointermove", self.pointer_move)
         self.svg.addEventListener("pointerup", self.pointer_up)
@@ -150,6 +48,9 @@ class DiagramCanvas(CustomElement):
         self.svg.addEventListener("dblclick", self.double_click)
         self.svg.addEventListener("wheel", self.wheel)
         self.addEventListener("keydown", self.key)
+
+    def get_graph(self) -> Diagram:
+        return self.state.graph
 
     def configure(self, graph: Diagram) -> None:
         self.state.replace_graph(graph)
@@ -160,23 +61,17 @@ class DiagramCanvas(CustomElement):
         self.draw()
 
     def initialize(self) -> None:
+        self.restore()
         if self.get_data("self-id") is not None:
-            source = self.get_data("diagram")
-            self.state = DiagramEditor(Diagram.model_validate_json(source) if source
-                                       else Diagram(nodes=[], edges=[]))
+            self.state = DiagramEditor(self._graph)
             self.pointer = -1
             self.editing = ""
-        rect = self.svg.getBoundingClientRect()
-        self.state.viewport.fit(self.state.graph, rect.width, rect.height)
-        self.draw()
-
-    def reconnected(self) -> None:
-        self.draw()
+        self.viewport = self.state.viewport
+        self.fit()
+        self.bind_events()
 
     def draw(self) -> None:
-        view = self.state.viewport
-        self.layer.setAttribute("transform", f"translate({view.x} {view.y}) scale({view.scale})")
-        draw_diagram(self.layer, self.state.preview, self.state.selected_nodes, self.state.selected_edges)
+        self.paint(self.state.preview, self.state.selected_nodes, self.state.selected_edges)
 
     def changed(self) -> None:
         self.set_data("diagram", self.state.graph.model_dump_json())
@@ -196,7 +91,7 @@ class DiagramCanvas(CustomElement):
                 self.cancel_interaction()
                 self.draw()
             return
-        if event.button != 0:
+        if event.button != 0 or interactive_target(event.target):
             return
         self.commit_label()
         self.focus(preventScroll=True)
@@ -231,6 +126,8 @@ class DiagramCanvas(CustomElement):
             self.draw()
 
     def wheel(self, event: WheelEvent) -> None:
+        if interactive_target(event.target):
+            return
         event.preventDefault()
         if not self.state.active and event.deltaY != 0.0:
             rect = self.svg.getBoundingClientRect()
@@ -239,6 +136,8 @@ class DiagramCanvas(CustomElement):
             self.draw()
 
     def double_click(self, event: MouseEvent) -> None:
+        if interactive_target(event.target):
+            return
         rect = self.svg.getBoundingClientRect()
         view = self.state.viewport
         self.start_label(node_at(self.state.graph, view.world_x(event.clientX - rect.left),
@@ -289,7 +188,10 @@ class DiagramCanvas(CustomElement):
 
     def key(self, event: KeyboardEvent) -> None:
         target = event.target
-        id = target.getAttribute("data-node-id") if isinstance(target, Element) else None
+        if interactive_target(target):
+            return
+        group = target.closest("[data-node-id]") if isinstance(target, Element) else None
+        id = group.getAttribute("data-node-id") if group is not None else None
         if id is not None and (event.key == "Enter" or event.key == " "):
             event.preventDefault()
             self.start_label(id)

@@ -77,6 +77,43 @@ overlap. Applications own persistence, domain rules and richer controls.
 Static documentation keeps its specialized DSL and renderer, sharing boundary
 and arrowhead geometry through `pyjs.ui.diagram_geometry`.
 
+### Read-only diagrams and custom nodes
+
+Use `DiagramView` from `pyjs.web.ui.diagram_view` for a permanently read-only
+diagram. Its generated bundle excludes editor commands, history, label fields
+and mutation gestures. Nodes can still be activated with a click, Enter or
+Space: listen for `diagram-node-activate`, whose event detail is the node ID.
+Use `configure(graph)`, `get_graph()`, `fit()` and `draw()` to control the view.
+For static server output, `diagram_svg(graph)` returns ordinary SVG/HTML,
+without a custom element, focusable actions, event handlers or JavaScript.
+The documentation fence renderer already has this script-free behavior.
+
+Open `/diagram-view` for a read-only example with `ReviewCard`, a normal
+`Widget` subclass containing a title, details, link and input. Its host view
+subclasses `DiagramView` and overrides this hook:
+
+```python
+def render_node(self, node: Node, previous: Element | None) -> Element:
+    if isinstance(previous, ReviewCard):
+        previous.update_node(node)
+        return previous
+    return ReviewCard(node)
+```
+
+The same hook is available on `DiagramCanvas`. A renderer may return any HTML
+element, including ordinary `Widget`/`CustomElement` subclasses. It receives
+the existing content on redraw; update and return it to preserve input values,
+focus and component state. Returning a different element replaces that node's
+content. Constructors and updates should follow ordinary PyJS hydration rules.
+
+Set `Node.width` and `Node.height` explicitly: they define the SVG content box,
+hit bounds and edge attachments. No DOM measurement or automatic resizing is
+performed. Default labels wrap to that box without character-count truncation.
+Custom content uses HTML inside SVG `foreignObject`; the portable data model
+remains independent of browser components. Native links and form controls keep
+their input behavior rather than initiating diagram actions; use
+`data-diagram-interactive` on another custom interaction area to opt out too.
+
 ## Run the tests
 
 ```console

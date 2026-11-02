@@ -3,7 +3,7 @@ from pyjs.ui.diagram import Diagram, Edge, Node
 from pyjs.ui.diagram_layout import tree_layout
 from pyjs.web.crypto import crypto
 from pyjs.web.dom import Element
-from pyjs.web.domx import div, ref, tag, tw
+from pyjs.web.domx import a, div, ref, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
 from pyjs.web.ui.button import Button
@@ -46,7 +46,9 @@ class DiagramsApp(Widget):
                  tag("h1", tw("text-2xl font-semibold"), "Decision tree"),
                  tag("p", tw("text-slate-600"), "Drag steps, label decisions and undo changes. "
                      "The model and geometry are shared by Python and the browser."),
-                 self.toolbar, self.canvas, self.status)
+                 self.toolbar, self.canvas, self.status,
+                 a(tw("text-blue-700 underline"), {"href": "/diagram-view",
+                   "data-pyjs-navigation-link": ""}, "Read-only custom nodes"))
         self.canvas.addEventListener("diagram-change", self.updated)
 
     def updated(self, event: Event) -> None:

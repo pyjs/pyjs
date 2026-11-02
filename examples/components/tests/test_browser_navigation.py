@@ -86,6 +86,28 @@ def test_components_preserves_its_shell_during_partial_navigation():
                 assert await page.evaluate(
                     "document.documentElement.scrollWidth <= innerWidth") is True
                 assert page.exceptions == []
+
+                await page.click('a[href="/diagram-view"]')
+                await page.wait_for("document.querySelector('review-diagram')?._initialized === true",
+                                    "the read-only diagram to hydrate")
+                assert page.exceptions == []
+                box = await page.selector_clip('[data-node-activate="draft"]')
+                for phase in ("mousePressed", "mouseReleased"):
+                    await page.session.send("Input.dispatchMouseEvent", {
+                        "type": phase, "x": box["x"] + 8, "y": box["y"] + 8,
+                        "button": "left", "buttons": 0 if phase == "mouseReleased" else 1,
+                        "clickCount": 1,
+                    })
+                await page.wait_for_text('[role="status"]', "Activated: draft")
+                await page.evaluate("document.querySelector('[data-node-activate=publish]').focus()")
+                await page.session.send("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Enter"})
+                await page.session.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter"})
+                await page.wait_for_text('[role="status"]', "Activated: publish")
+                await page.fill('[aria-label="Comment for draft"]', "Persistent local draft")
+                await page.evaluate("document.querySelector('review-diagram').draw()")
+                assert await page.evaluate(
+                    "document.querySelector('[aria-label=\"Comment for draft\"]').value") == "Persistent local draft"
+                assert page.exceptions == []
         finally:
             stop_process(server)
 

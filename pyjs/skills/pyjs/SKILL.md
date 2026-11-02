@@ -164,6 +164,13 @@ available for every released version.
   `tree_layout()` from `pyjs.ui.diagram_layout` explicitly for directed forests;
   it rejects cycles and multiple parents. See Components' `/diagrams` example
   for toolbars, history, controls and current routing limitations.
+- Use `DiagramView` from `pyjs.web.ui.diagram_view` for read-only diagrams
+  without editor code in their bundles, or `diagram_svg()` for script-free
+  server rendering. Subclass the view or editor and override
+  `render_node(node, previous)` for HTML node content; ordinary `Widget`
+  subclasses work here. Reuse previous content to preserve input state.
+  Set geometry through `Node.width`/`height`; do not rely on DOM measurement.
+  The Components `/diagram-view` example demonstrates this extension.
 - For atomic IndexedDB writes, import `transaction_result` and `request_result`
   from `pyjs.web.indexeddb`. Call `transaction_result(transaction, operation)`
   immediately after creating the transaction. The async operation may await
