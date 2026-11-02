@@ -201,6 +201,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Android virtual device to reuse or start; other running AVDs are not selected.",
     )
     group.addoption(
+        "--pyjs-android-browser-avd",
+        default=None,
+        help="Dedicated Chrome AVD for opt-in browser acceptance, separate from native tests.",
+    )
+    group.addoption(
         "--pyjs-android-headless",
         action="store_true",
         help="Start a managed Android emulator without a window or audio.",
@@ -427,6 +432,14 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
         pytest.skip("web-only test")
     if target == "web" and not is_web_test(item):
         pytest.skip("not a web test")
+
+
+@pytest.fixture
+def pyjs_android_browser_avd(request: pytest.FixtureRequest) -> str:
+    name = request.config.getoption("--pyjs-android-browser-avd")
+    if not name:
+        pytest.skip("Pass --pyjs-android-browser-avd with a dedicated Chrome AVD")
+    return name
 
 
 @pytest.fixture
