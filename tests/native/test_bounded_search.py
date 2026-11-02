@@ -17,6 +17,14 @@ def test_shared_bounded_text_search_contract(optimize):
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_string_find_contract(optimize):
+    from tests.backend_semantics import STRING_FIND_CONTRACT
+    result = LLVM().assert_matches_python(STRING_FIND_CONTRACT.source,
+                                         optimize=optimize, sanitizers=("address", "undefined"))
+    assert not result.native.stderr
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("binary", [False, True], ids=["unicode", "bytes"])
 def test_search_bounds_and_tuple_affixes_match_python(optimize, binary):
     values = ["", "aé\0界😀é", "éé"]

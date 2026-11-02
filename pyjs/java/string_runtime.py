@@ -9,7 +9,7 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
     required = required | ({"length"} if "getitem" in required else set())
     if "repr" in required:
         required = required | {"printable"}
-    if required & {"contains", "startswith", "endswith", "replace"}:
+    if required & {"contains", "startswith", "endswith", "replace", "find", "rfind"}:
         required = required | {"boundary"}
     for name, factory in (
         ("length", string_length_method),
@@ -21,6 +21,8 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("repr", string_repr_method),
         ("boundary", string_boundary_method),
         ("contains", string_contains_method),
+        ("find", partial(string_search_method, reverse=False)),
+        ("rfind", partial(string_search_method, reverse=True)),
         ("startswith", partial(string_affix_method, suffix=False)),
         ("endswith", partial(string_affix_method, suffix=True)),
         ("replace", string_replace_method),
@@ -778,6 +780,104 @@ def string_boundary_method(class_file: ClassFile) -> Method:
     return Method(
         0x0009, "pyjs_string_boundary", "(Ljava/lang/String;I)Z",
         code.render(), 3, 2,
+    )
+
+
+def string_search_method(class_file: ClassFile, *, reverse: bool) -> Method:
+    code = Bytecode()
+    def call(name, descriptor):
+        code.emit(0xB6, class_file.method_reference("java/lang/String", name, descriptor).to_bytes(2, "big"))
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.local(0x19, 0)
+    call("length", "()I")
+    call("codePointCount", "(II)I")
+    code.emit(0x85)
+    code.local(0x37, 6)
+    for slot in (2, 4):
+        code.local(0x16, slot)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9C, f"search.{slot}.upper")
+        code.local(0x16, slot)
+        code.local(0x16, 6)
+        code.emit(0x61)
+        code.local(0x37, slot)
+        code.local(0x16, slot)
+        code.emit(0x09)
+        code.emit(0x94)
+        code.branch(0x9C, f"search.{slot}.upper")
+        code.emit(0x09)
+        code.local(0x37, slot)
+        code.mark(f"search.{slot}.upper")
+        code.local(0x16, slot)
+        code.local(0x16, 6)
+        code.emit(0x94)
+        if slot == 2:
+            # Unlike slicing, a start beyond the end rejects even an empty needle.
+            code.branch(0x9D, "search.missing")
+        else:
+            code.branch(0x9E, "search.bounds")
+            code.local(0x16, 6)
+            code.local(0x37, slot)
+    code.mark("search.bounds")
+    code.local(0x16, 2)
+    code.local(0x16, 4)
+    code.emit(0x94)
+    code.branch(0x9D, "search.missing")
+    for slot, destination in ((2, 8), (4, 9)):
+        code.local(0x19, 0)
+        code.emit(0x03)
+        code.local(0x16, slot)
+        code.emit(0x88)
+        call("offsetByCodePoints", "(II)I")
+        code.local(0x36, destination)
+    code.local(0x19, 1)
+    call("length", "()I")
+    code.local(0x36, 10)
+    code.local(0x15, 9 if reverse else 8)
+    if reverse:
+        code.local(0x15, 10)
+        code.emit(0x64)
+    code.local(0x36, 11)
+    code.mark("search.next")
+    code.local(0x19, 0)
+    code.local(0x19, 1)
+    code.local(0x15, 11)
+    call("lastIndexOf" if reverse else "indexOf", "(Ljava/lang/String;I)I")
+    code.local(0x36, 11)
+    code.local(0x15, 11)
+    code.local(0x15, 8)
+    code.branch(0xA1, "search.missing")
+    code.local(0x15, 11)
+    code.local(0x15, 10)
+    code.emit(0x60)
+    code.local(0x15, 9)
+    code.branch(0xA3, "search.missing")
+    boundary = class_file.method_reference(class_file.name, "pyjs_string_boundary", "(Ljava/lang/String;I)Z")
+    for end in (False, True):
+        code.local(0x19, 0)
+        code.local(0x15, 11)
+        if end:
+            code.local(0x15, 10)
+            code.emit(0x60)
+        code.emit(0xB8, boundary.to_bytes(2, "big"))
+        code.branch(0x99, "search.advance")
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.local(0x15, 11)
+    call("codePointCount", "(II)I")
+    code.emit(0x85)
+    code.emit(0xAD)
+    code.mark("search.advance")
+    code.emit(0x84, bytes((11, 255 if reverse else 1)))
+    code.branch(0xA7, "search.next")
+    code.mark("search.missing")
+    code.emit(0x14, class_file.constants.long(-1).to_bytes(2, "big"))
+    code.emit(0xAD)
+    return Method(
+        0x0009, "pyjs_string_rfind" if reverse else "pyjs_string_find",
+        "(Ljava/lang/String;Ljava/lang/String;JJ)J", code.render(), 6, 12,
     )
 
 

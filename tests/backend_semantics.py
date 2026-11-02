@@ -720,6 +720,22 @@ BYTES_CONSTRUCTION_CONTRACT = _contract(
 )
 
 
+STRING_FIND_CONTRACT = _contract(
+    'from pyjs import js',
+    "string_find",
+    'value = "aé😀é"',
+    (("forward character position", 'value.find("é", 2) != 3'),
+     ("reverse bounded position", 'value.rfind("é", 0, -1) != 1'),
+     ("empty at end", 'value.find("", 4) != 4 or value.rfind("") != 4'),
+     ("oversized empty start", 'value.find("", 5) != -1 or value.rfind("", 5) != -1'),
+     ("inverted range", 'value.find("", 3, 2) != -1'),
+     ("clipped negative range", 'value.rfind("é", -99, -1) != 1'),
+     ("whole substring must fit", 'value.find("😀é", 0, 3) != -1'),
+     ("missing substring", 'value.find("z") != -1 or value.rfind("z") != -1'),
+     ("overlapping matches", '"aaa".find("aa") != 0 or "aaa".rfind("aa") != 1')),
+)
+
+
 BOUNDED_TEXT_SEARCH_CONTRACT = _contract(
     'from pyjs import js',
     "bounded_text_search",

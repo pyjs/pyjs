@@ -301,6 +301,12 @@ def test_bounded_text_search_keeps_a_focused_wasm_boundary():
         transpile_webassembly(BOUNDED_TEXT_SEARCH_CONTRACT.source)
 
 
+def test_string_find_keeps_a_focused_wasm_boundary():
+    from tests.backend_semantics import STRING_FIND_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
+        transpile_webassembly(STRING_FIND_CONTRACT.source)
+
+
 def test_bytes_construction_keeps_the_wasm_binary_boundary():
     from tests.backend_semantics import BYTES_CONSTRUCTION_CONTRACT
     with pytest.raises(CompilationError, match="bytes literals are not supported"):
