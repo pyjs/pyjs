@@ -466,3 +466,90 @@ def test_cancellation_during_teardown_finishes_all_cleanup(tmp_path, monkeypatch
             await browser.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('cancel_count', [0, 1, 3])
+def test_allocation_error_does_not_discard_pending_cancellation(cancel_count):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        reported = []
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda loop, context: reported.append(context))
+        failure = RuntimeError('command failed after cancellation')
+
+        async def allocate():
+            started.set()
+            await release.wait()
+            raise failure
+
+        retain = Mock()
+        task = asyncio.create_task(module._finish(allocate(), retain))
+        await started.wait()
+        for _ in range(cancel_count):
+            task.cancel()
+            await asyncio.sleep(0)
+        release.set()
+        expected = asyncio.CancelledError if cancel_count else RuntimeError
+        with pytest.raises(expected) as caught:
+            await task
+        if cancel_count:
+            assert caught.value.__cause__ is failure
+            assert task.cancelled()
+        else:
+            assert caught.value is failure
+        retain.assert_not_called()
+        await asyncio.sleep(0)
+        assert not reported
+
+    asyncio.run(scenario())
+
+
+def test_cancellation_during_failed_page_cleanup_is_propagated(tmp_path, monkeypatch):
+    sdk, settings, forwards, _ = sdk_at(tmp_path)
+    original = settings.copy()
+    targets = set()
+
+    def request_json(url, *args):
+        if '/json/new?' in url:
+            targets.add('owned')
+            return {'id': 'owned', 'webSocketDebuggerUrl': 'ws://test'}
+        return {'Browser': 'test'}
+
+    monkeypatch.setattr(module, 'request_json', request_json)
+    monkeypatch.setattr(module, 'request', lambda url: targets.remove(url.rsplit('/', 1)[-1]))
+    monkeypatch.setattr(module.BrowserPage, 'initialize', AsyncMock(side_effect=ValueError('bad page')))
+
+    async def scenario():
+        closing, release = asyncio.Event(), asyncio.Event()
+        browser = AndroidBrowser('web-tests', sdk=sdk)
+
+        async def close():
+            closing.set()
+            await release.wait()
+
+        session = SimpleNamespace(close=close, listen=Mock())
+        monkeypatch.setattr(module.CDPSession, 'open', AsyncMock(return_value=session))
+
+        async def operate():
+            async with browser:
+                try:
+                    await browser.new_page()
+                except ValueError:
+                    pytest.fail('page error swallowed cancellation')
+
+        task = asyncio.create_task(operate())
+        try:
+            await asyncio.wait_for(closing.wait(), 2)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert browser.lease.exists()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert not targets and not forwards and not browser.lease.exists()
+            assert settings == original
+        finally:
+            release.set()
+            await browser.close()
+
+    asyncio.run(scenario())
