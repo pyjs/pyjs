@@ -36,13 +36,17 @@ def _render_html(parser: Parser, text: str, images: list[str]) -> str:
     # The existing text rule escapes the label without creating an image.
     parser.renderer.rules.image = parser.renderer.rules.text
     tokens = parser.parse(text)
+    # The parser can discard over-nested blocks, but not inline emphasis.
+    # Check only block-level tokens before traversing their inline children.
+    if any(token.level >= 19 for token in tokens):
+        raise ValueError("Markdown complexity limit")
     # Include nested image descriptions in the same traversal and budget.
     pending = list(reversed(tokens))
     size = 0
     while pending:
         token = pending.pop()
         size += 1
-        if token.level >= 19 or size > token_limit:
+        if size > token_limit:
             raise ValueError("Markdown complexity limit")
         if token.type == 'image':
             source = token.attrGet('src')

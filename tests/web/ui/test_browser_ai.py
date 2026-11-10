@@ -398,3 +398,16 @@ def test_markdown_image_callback_failure_keeps_readable_source_and_recovers():
     assert message.querySelector('strong,img') is None
     message.set_text('**Recovered**')
     assert require_element(message, 'strong').textContent == 'Recovered'
+
+
+@js
+def test_markdown_inline_nesting_does_not_trigger_the_block_depth_guard():
+    for depth in [18, 19, 20, 21]:
+        source = 'text'
+        for level in range(depth):
+            delimiter = '*' if level % 2 == 0 else '_'
+            source = delimiter + 'a ' + source + ' a' + delimiter
+        message = Markdown(source)
+        mount(message)
+        assert message.querySelectorAll('em').length == depth
+        assert message.body.className == ''
