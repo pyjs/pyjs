@@ -33,8 +33,11 @@ class SanitizeOptions:
 class Token:
     def __init__(self):
         self.content = ""
+        self.type = ""
         self.level = 0
         self.children: list[Token] | None = None
+
+    def attrGet(self, name: str) -> str | None: ...
 
 
 @js.native

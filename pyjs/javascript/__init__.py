@@ -6,7 +6,7 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Self, TypedDict
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from pyjs import js
 from pyjs.decorators import configure_js
@@ -38,6 +38,7 @@ __all__ = [
     "WebAssemblyMemory",
     "WebAssemblyModule",
     "encodeURIComponent",
+    "decodeURIComponent",
 ]
 
 
@@ -616,3 +617,15 @@ configure_js(JSON.stringify, analysis=_analyze_stringify)
 @js.native
 def encodeURIComponent(value: str) -> str:
     return quote(value, safe="-_.!~*'()")
+
+
+@js.inline("""((value) => {{
+    try {{ return decodeURIComponent(value); }}
+    catch (error) {{ throw new RangeError('Malformed URI component', {{cause: error}}); }}
+}})({value})""")
+def decodeURIComponent(value: str) -> str:
+    """Decode UTF-8 URI escapes, raising ValueError for malformed input."""
+    for part in value.split('%')[1:]:
+        if len(part) < 2 or any(c not in '0123456789abcdefABCDEF' for c in part[:2]):
+            raise ValueError('Malformed URI component')
+    return unquote(value, errors='strict')

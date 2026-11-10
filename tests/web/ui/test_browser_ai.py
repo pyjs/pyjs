@@ -1,6 +1,7 @@
 import pytest
 
 from pyjs import js
+from pyjs.javascript import decodeURIComponent, encodeURIComponent
 from pyjs.tooling.npm import NpmImport, NpmPackage
 from pyjs.web.dom import Element, window
 from pyjs.web.domx import require_element, tag
@@ -283,3 +284,130 @@ def test_markdown_bounds_padded_tables_without_discarding_the_source():
     assert message.querySelector('table') is None
     message.set_text('**Recovered**')
     assert require_element(message, 'strong').textContent == 'Recovered'
+
+
+@js
+class RoutedMarkdown(Markdown):
+    def resolve_link(self, href: str) -> str:
+        if href == 'guide.md':
+            return '/docs/guide?source=chat'
+        if href == 'unsafe':
+            return 'javascript:alert(1)'
+        if href == 'network':
+            return '//outside.invalid/path'
+        if href == 'backslash':
+            return '/\\outside.invalid/path'
+        if href == 'control':
+            return '/\noutside.invalid/path'
+        return super().resolve_link(href)
+
+
+@js
+def test_markdown_application_links_require_explicit_safe_resolution():
+    message = RoutedMarkdown('[Guide](guide.md) [External](https://example.com) '
+        '[Unsafe](unsafe) [Network](network) [Backslash](backslash) '
+        '[Control](control) [Unmapped](/other)')
+    mount(message)
+    links = message.querySelectorAll('a')
+    assert links[0].getAttribute('href') == '/docs/guide?source=chat'
+    assert not links[0].hasAttribute('target')
+    assert links[1].getAttribute('target') == '_blank'
+    assert links[1].getAttribute('rel') == 'noopener noreferrer'
+    for index in range(2, 7):
+        assert not links[index].hasAttribute('href')
+    message.set_text('[Guide](guide.md)')
+    assert require_element(message, 'a').getAttribute('href') == '/docs/guide?source=chat'
+    default = Markdown('[Guide](guide.md) [Local](/docs/guide)')
+    mount(default)
+    for link in default.querySelectorAll('a'):
+        assert not link.hasAttribute('href')
+
+
+@js
+class ObservedImages(Markdown):
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.images: list[str] = []
+
+    def image_reference(self, source: str) -> None:
+        self.images.append(source)
+
+
+@js
+def test_markdown_reports_image_references_without_creating_media():
+    message = ObservedImages('![Preview](design.png) ![Remote](https://example.com/pixel.png) '
+        '\n\n![Reference][picture]\n\n[picture]: other.png\n\n'
+        '```md\n![Code](ignored.png)\n```')
+    mount(message)
+    assert message.images == ['design.png', 'https://example.com/pixel.png', 'other.png']
+    assert message.querySelector('img') is None
+    assert 'Preview' in message.textContent
+    message.images = []
+    message.set_text('![Unfinished](incomplete')
+    assert not message.images
+    source = '![outer ![inner](inner.png)](outer.png) ![Space](<a b.png>) ![Unicode](café.png)'
+    message.set_text(source)
+    assert message.images == ['outer.png', 'inner.png', 'a%20b.png', 'caf%C3%A9.png']
+    message.set_text(source)
+    assert len(message.images) == 8
+    assert message.querySelector('img') is None
+
+
+@js
+class FailedLinkMarkdown(ObservedImages):
+    def resolve_link(self, href: str) -> str:
+        raise ValueError('Cannot resolve link')
+
+
+@js
+def test_markdown_does_not_report_images_when_link_resolution_fails():
+    source = '![Preview](design.png) [Link](guide.md)'
+    message = FailedLinkMarkdown(source)
+    mount(message)
+    assert message.body.textContent == source
+    assert message.querySelector('a') is None
+    assert not message.images
+
+
+@js
+def test_decode_uri_component_errors_are_catchable_value_errors():
+    for value in ['a/b c+?', 'café/🛳.png', '%20']:
+        assert decodeURIComponent(encodeURIComponent(value)) == value
+    assert decodeURIComponent('a+b') == 'a+b'
+    for value in ['%', '%2', '%XZ', '%ff', '%C3']:
+        caught = False
+        try:
+            decodeURIComponent(value)
+        except ValueError:
+            caught = True
+        assert caught
+
+
+@js
+class FailedImageMarkdown(Markdown):
+    def image_reference(self, source: str) -> None:
+        raise ValueError('Cannot process image')
+
+
+@js
+def test_markdown_image_callback_failure_keeps_readable_source_and_recovers():
+    source = '![Preview](design.png) **Message**'
+    message = FailedImageMarkdown(source)
+    mount(message)
+    assert message.body.textContent == source
+    assert message.querySelector('strong,img') is None
+    message.set_text('**Recovered**')
+    assert require_element(message, 'strong').textContent == 'Recovered'
+
+
+@js
+def test_markdown_inline_nesting_does_not_trigger_the_block_depth_guard():
+    for depth in [18, 19, 20, 21]:
+        source = 'text'
+        for level in range(depth):
+            delimiter = '*' if level % 2 == 0 else '_'
+            source = delimiter + 'a ' + source + ' a' + delimiter
+        message = Markdown(source)
+        mount(message)
+        assert message.querySelectorAll('em').length == depth
+        assert message.body.className == ''
