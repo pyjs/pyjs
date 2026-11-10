@@ -537,4 +537,4 @@ def test_android_command_tools_use_discovered_versioned_directory(tmp_path, monk
     assert sdk.sdkmanager == tools / "bin" / ("sdkmanager" + suffix)
     installation.tools = None
     with pytest.raises(RuntimeError, match="command-line tools not found"):
-        sdk.avdmanager
+        _ = sdk.avdmanager
