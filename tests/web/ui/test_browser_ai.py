@@ -283,3 +283,64 @@ def test_markdown_bounds_padded_tables_without_discarding_the_source():
     assert message.querySelector('table') is None
     message.set_text('**Recovered**')
     assert require_element(message, 'strong').textContent == 'Recovered'
+
+
+@js
+class RoutedMarkdown(Markdown):
+    def resolve_link(self, href: str) -> str:
+        if href == 'guide.md':
+            return '/docs/guide?source=chat'
+        if href == 'unsafe':
+            return 'javascript:alert(1)'
+        if href == 'network':
+            return '//outside.invalid/path'
+        if href == 'backslash':
+            return '/\\outside.invalid/path'
+        if href == 'control':
+            return '/\noutside.invalid/path'
+        return super().resolve_link(href)
+
+
+@js
+def test_markdown_application_links_require_explicit_safe_resolution():
+    message = RoutedMarkdown('[Guide](guide.md) [External](https://example.com) '
+        '[Unsafe](unsafe) [Network](network) [Backslash](backslash) '
+        '[Control](control) [Unmapped](/other)')
+    mount(message)
+    links = message.querySelectorAll('a')
+    assert links[0].getAttribute('href') == '/docs/guide?source=chat'
+    assert not links[0].hasAttribute('target')
+    assert links[1].getAttribute('target') == '_blank'
+    assert links[1].getAttribute('rel') == 'noopener noreferrer'
+    for index in range(2, 7):
+        assert not links[index].hasAttribute('href')
+    message.set_text('[Guide](guide.md)')
+    assert require_element(message, 'a').getAttribute('href') == '/docs/guide?source=chat'
+    default = Markdown('[Guide](guide.md) [Local](/docs/guide)')
+    mount(default)
+    for link in default.querySelectorAll('a'):
+        assert not link.hasAttribute('href')
+
+
+@js
+class ObservedImages(Markdown):
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.images: list[str] = []
+
+    def image_reference(self, source: str) -> None:
+        self.images.append(source)
+
+
+@js
+def test_markdown_reports_image_references_without_creating_media():
+    message = ObservedImages('![Preview](design.png) ![Remote](https://example.com/pixel.png) '
+        '\n\n![Reference][picture]\n\n[picture]: other.png\n\n'
+        '```md\n![Code](ignored.png)\n```')
+    mount(message)
+    assert message.images == ['design.png', 'https://example.com/pixel.png', 'other.png']
+    assert message.querySelector('img') is None
+    assert 'Preview' in message.textContent
+    message.images = []
+    message.set_text('![Unfinished](incomplete')
+    assert not message.images
