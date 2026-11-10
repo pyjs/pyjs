@@ -1,6 +1,7 @@
 import pytest
 
 from pyjs import js
+from pyjs.javascript import decodeURIComponent, encodeURIComponent
 from pyjs.tooling.npm import NpmImport, NpmPackage
 from pyjs.web.dom import Element, window
 from pyjs.web.domx import require_element, tag
@@ -344,3 +345,56 @@ def test_markdown_reports_image_references_without_creating_media():
     message.images = []
     message.set_text('![Unfinished](incomplete')
     assert not message.images
+    source = '![outer ![inner](inner.png)](outer.png) ![Space](<a b.png>) ![Unicode](café.png)'
+    message.set_text(source)
+    assert message.images == ['outer.png', 'inner.png', 'a%20b.png', 'caf%C3%A9.png']
+    message.set_text(source)
+    assert len(message.images) == 8
+    assert message.querySelector('img') is None
+
+
+@js
+class FailedLinkMarkdown(ObservedImages):
+    def resolve_link(self, href: str) -> str:
+        raise ValueError('Cannot resolve link')
+
+
+@js
+def test_markdown_does_not_report_images_when_link_resolution_fails():
+    source = '![Preview](design.png) [Link](guide.md)'
+    message = FailedLinkMarkdown(source)
+    mount(message)
+    assert message.body.textContent == source
+    assert message.querySelector('a') is None
+    assert not message.images
+
+
+@js
+def test_decode_uri_component_errors_are_catchable_value_errors():
+    for value in ['a/b c+?', 'café/🛳.png', '%20']:
+        assert decodeURIComponent(encodeURIComponent(value)) == value
+    assert decodeURIComponent('a+b') == 'a+b'
+    for value in ['%', '%2', '%XZ', '%ff', '%C3']:
+        caught = False
+        try:
+            decodeURIComponent(value)
+        except ValueError:
+            caught = True
+        assert caught
+
+
+@js
+class FailedImageMarkdown(Markdown):
+    def image_reference(self, source: str) -> None:
+        raise ValueError('Cannot process image')
+
+
+@js
+def test_markdown_image_callback_failure_keeps_readable_source_and_recovers():
+    source = '![Preview](design.png) **Message**'
+    message = FailedImageMarkdown(source)
+    mount(message)
+    assert message.body.textContent == source
+    assert message.querySelector('strong,img') is None
+    message.set_text('**Recovered**')
+    assert require_element(message, 'strong').textContent == 'Recovered'

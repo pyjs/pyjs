@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Markdown supports application-defined link routing and image-reference
+  observers for authorized galleries, while keeping local links and media
+  disabled by default. `decodeURIComponent` decodes UTF-8 URI components with
+  catchable `ValueError` failures in Python and JavaScript.
+
 - Web diagram editing provides rectangle and diamond nodes, labeled edges,
   boundary ports, selection, drag/pan/zoom and bounded undo/redo. Portable
   snapshot models and explicit tree layout are independent of persistence.

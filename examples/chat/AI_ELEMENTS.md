@@ -67,15 +67,26 @@ pyjs npm sync your_app:main
 ```
 
 The renderer uses pinned markdown-it and DOMPurify packages. It allows
-formatting, code, lists, tables, and absolute HTTP(S) links. It excludes images, embedded
-media, styles, scripts, forms, application-relative links, and automatic
-external resource fetching. Links open in a separate tab without an opener.
+formatting, code, lists, tables, and absolute HTTP(S) links. By default it
+excludes images, embedded media, styles, scripts, forms, application-relative
+links, and automatic external resource fetching. External links open in a
+separate tab without an opener.
 Raw HTML and image descriptions remain literal text. Bare HTTP(S) URLs become
 links; hostnames without a scheme remain text. Parsing limits nesting and token
 creation before rendering, including tables that pad sparse rows. Replies
 that reach either limit, or encounter a parser or sanitizer failure, remain
 visible as complete plain text. Citations also accept only HTTP(S) URLs.
 `CodeBlock` displays literal text; it does not execute or syntax-highlight code.
+
+Override `Markdown.resolve_link(href)` to route application-owned files. Return
+an HTTP(S) URL, an absolute local path, or an empty string to disable the link.
+Override `image_reference(source)` to collect sources for a separately
+authorized gallery. It runs after successful browser rendering and reports
+all references again on every `set_text`, including nested image descriptions.
+Both hooks receive parser-normalized URLs with percent encoding. Decode them
+with `pyjs.javascript.decodeURIComponent` when comparing local paths, catch
+`ValueError` for malformed input, and authorize file reads in the application.
+The widget itself never fetches images; SSR remains escaped text.
 
 Do not pass private model reasoning to a `Reasoning` control. It is intended
 for the public summaries an agent explicitly makes available to the user.

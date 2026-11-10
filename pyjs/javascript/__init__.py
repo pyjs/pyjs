@@ -619,8 +619,12 @@ def encodeURIComponent(value: str) -> str:
     return quote(value, safe="-_.!~*'()")
 
 
-@js.native
+@js.inline("""((value) => {{
+    try {{ return decodeURIComponent(value); }}
+    catch (error) {{ throw new RangeError('Malformed URI component', {{cause: error}}); }}
+}})({value})""")
 def decodeURIComponent(value: str) -> str:
+    """Decode UTF-8 URI escapes, raising ValueError for malformed input."""
     for part in value.split('%')[1:]:
         if len(part) < 2 or any(c not in '0123456789abcdefABCDEF' for c in part[:2]):
             raise ValueError('Malformed URI component')
