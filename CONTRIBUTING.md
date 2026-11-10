@@ -332,3 +332,69 @@ examples are welcome when they make a compiler improvement or removed
 workaround clear.
 
 Keep framework usage instructions with the public documentation and examples.
+
+## Android browser acceptance
+
+`pyjs.testing.android_browser.AndroidBrowser` drives real Android Chrome via
+ADB and CDP. Its pages use the same `BrowserPage` API as desktop tests.
+Native Android tests still use `AndroidTestSession` and native view selectors;
+Robolectric, ART and browser viewport emulation do not exercise Chrome's IME.
+
+Use a dedicated AVD with Chrome installed. Select an explicit AVD name and
+complete all Chrome first-run prompts without signing into a personal account.
+Use a Chrome-enabled SDK image, such as
+`system-images;android-36.1;google_apis_playstore;x86_64`. Provision the image
+with sdkmgr after accepting Google's licenses. Locate `avdmanager` through
+`AndroidSDK().avdmanager`; create the AVD with that image and open it headed
+once to finish Chrome setup. Tests never install packages or
+clear browser profiles automatically.
+
+```python
+from pyjs.testing.android_browser import AndroidBrowser
+
+async def check_chat(server_port, artifacts):
+    async with AndroidBrowser("browser-tests", artifacts=artifacts) as browser:
+        origin = await browser.reverse(server_port)
+        page = await browser.new_page(origin)
+        height = await page.evaluate("visualViewport.height")
+        await browser.tap(page, "textarea")
+        await browser.wait_for_keyboard()
+        await page.wait_for(
+            f"visualViewport.height < {height - 100}", "IME resize",
+        )
+        await browser.dismiss_keyboard(page)
+```
+
+`tap` dispatches touch, not DOM `.click()`. `wait_for_keyboard` checks Android
+IME inset visibility in WindowManager, waiting through inconsistent reports;
+separately wait for the layout change your application requires.
+`dismiss_keyboard` blurs the owned page without risking a Back navigation.
+CDP text insertion does not test autocorrection or composition. Installed PWA
+and physical-device checks remain separate from Chrome-on-emulator acceptance.
+
+The session leases the named AVD per user, independently of SDK and temporary
+directories, waits for boot, creates owned tabs and
+allocates ADB forward/reverse ports. It restores changed rotation and keyboard
+settings. A borrowed emulator remains running; a session-started emulator is
+stopped. Do not share this AVD with unrelated automation. After a hard kill,
+inspect the PID in the reported lease before removing it. Cancellation waits
+for in-flight allocations and cleanup before releasing the lease.
+
+Failure artifacts include full-device screenshots, browser DOM/console data,
+window and IME state, UI XML and bounded logcat. Partial capture errors appear
+in the manifest without replacing the test failure. These may contain page
+content and must not be published from private accounts. Capture full
+artifacts on failure or completion: Android UI Automator can disturb Chrome
+input.
+
+The real-device smoke is opt-in; host failure/cleanup tests run normally:
+
+```sh
+uv run pytest -q tests/tooling/test_android_browser.py \
+  --pyjs-android-browser-avd=browser-tests
+```
+
+Consumer tests can request the `pyjs_android_browser_avd` fixture and pass it
+to `AndroidBrowser`. Without the option those tests skip before setup; with it,
+missing prerequisites fail. This option does not change `--pyjs-target` or
+route web tests through the native Android test runner.

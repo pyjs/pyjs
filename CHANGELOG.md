@@ -24,6 +24,11 @@
 - Server-rendered `HTMLElement.hidden` reflects the HTML attribute, including
   `until-found`, so hidden controls stay hidden before browser hydration.
 
+- Android browser acceptance can use a dedicated Chrome AVD with owned tabs,
+  automatic emulator cleanup, touch, real IME checks and failure artifacts.
+  Browser pages reuse desktop CDP tooling; native Android tests remain
+  separate. Android command tools follow sdkmgr's discovered directory.
+
 - Native Java `OutputStream.write(buffer, offset, length)` supports binary
   range writes, including Android document-provider streams. Buffer streams
   inherit the same operation; native range and I/O errors propagate unchanged.

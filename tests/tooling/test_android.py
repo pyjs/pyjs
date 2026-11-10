@@ -525,3 +525,16 @@ def test_android_jvm_builder_orders_stable_and_preview_build_tools():
     assert AndroidSDK._build_tools_version(stable) > (
         AndroidSDK._build_tools_version(preview)
     )
+
+
+def test_android_command_tools_use_discovered_versioned_directory(tmp_path, monkeypatch):
+    sdk = AndroidSDK(tmp_path / "android", tmp_path / "java")
+    tools = sdk.root / "cmdline-tools" / "sdkmgr-version"
+    installation = Mock(tools=tools)
+    monkeypatch.setattr(sdk, "_installation", lambda: installation)
+    suffix = ".bat" if os.name == "nt" else ""
+    assert sdk.avdmanager == tools / "bin" / ("avdmanager" + suffix)
+    assert sdk.sdkmanager == tools / "bin" / ("sdkmanager" + suffix)
+    installation.tools = None
+    with pytest.raises(RuntimeError, match="command-line tools not found"):
+        _ = sdk.avdmanager
