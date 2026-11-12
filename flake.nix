@@ -86,6 +86,13 @@
             shellHook = ''
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
+              if [[ $- == *i* ]]; then
+                user_shell=$(python -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_shell)')
+                if [[ -x "$user_shell" ]]; then
+                  export SHELL="$user_shell"
+                  exec "$user_shell"
+                fi
+              fi
             '';
           };
         }
