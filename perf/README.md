@@ -18,6 +18,13 @@ and a JDK first. Nothing is provisioned by the benchmark runner. Missing tools
 remain visible as unavailable configurations; any unsuccessful configuration
 makes the command exit nonzero, but the JSON results are still saved.
 
+The Nix performance shell provides those toolchains and the locked Python
+workspace:
+
+```sh
+nix develop .#perf
+```
+
 Select exact executables explicitly:
 
 ```sh

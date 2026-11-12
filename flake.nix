@@ -71,9 +71,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           pythonSet = pythonSets.${system}.overrideScope editableOverlay;
           virtualenv = pythonSet.mkVirtualEnv "pyjs-dev" workspace.deps.all;
-        in
-        {
-          default = pkgs.mkShell {
+          commonShell = {
             packages = [
               virtualenv
               pkgs.uv
@@ -95,6 +93,20 @@
               fi
             '';
           };
+        in
+        {
+          default = pkgs.mkShell commonShell;
+          perf = pkgs.mkShell (
+            commonShell
+            // {
+              packages = commonShell.packages ++ [
+                pkgs.nodejs_26
+                pkgs.llvmPackages_21.clang
+                pkgs.rustc
+                pkgs.zulu27
+              ];
+            }
+          );
         }
       );
     };
