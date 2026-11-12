@@ -436,7 +436,7 @@ def run(args):
         save(output / "results.json", result)
     result["complete"] = True
     save(output / "results.json", result)
-    print(f"Results: {output / 'results.json'}\nView: uv run pyjs serve perf.app:create_app --open /perf/", flush=True)
+    print(f"Results: {output / 'results.json'}\nView: pyjs serve perf.app:create_app --open /perf/", flush=True)
     return 0 if all(row["status"] == "ok" for row in result["rows"]) else 1
 
 
