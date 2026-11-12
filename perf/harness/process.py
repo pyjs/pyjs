@@ -1,4 +1,4 @@
-"""Bounded owned-process execution. Linux/POSIX benchmark host only."""
+"""Bounded owned-process execution for POSIX benchmark hosts."""
 import os
 import signal
 import subprocess

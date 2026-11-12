@@ -189,6 +189,21 @@ def summarize(values):
             "mad": statistics.median(abs(x - median) for x in values)}
 
 
+def rss_command(command, output, host):
+    if host == "darwin":
+        return ["/usr/bin/time", "-l", "-o", output, *command]
+    return ["/usr/bin/time", "-f", "%M", "-o", output, *command]
+
+
+def parse_peak_rss(output, host):
+    if host == "darwin":
+        match = re.search(r"^\s*(\d+)\s+maximum resident set size$", output, re.MULTILINE)
+        if not match:
+            raise ValueError("missing maximum resident set size")
+        return int(match.group(1)) // 1024
+    return int(output.strip())
+
+
 def failure(error):
     if isinstance(error, subprocess.TimeoutExpired):
         return "timeout"
@@ -230,8 +245,8 @@ def warmup_drift(forks):
 
 
 def run(args):
-    if not sys.platform.startswith("linux"):
-        raise SystemExit("The initial measurement host is Linux; other hosts are not validated.")
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        raise SystemExit("Performance measurements require Linux or macOS.")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     tools = {name: tool(getattr(args, name), version_flag="-version" if name == "javap" else "--version")
@@ -383,14 +398,14 @@ def run(args):
         if Path("/usr/bin/time").exists():
             memory = output / "build" / row["case"] / row["target"] / f'{row["size"]}-rss.txt'
             try:
-                measured = execute(["/usr/bin/time", "-f", "%M", "-o", memory,
-                                    *row["command"], str(row["size"]), str(row["loops"]),
-                                    str(args.warmups), str(args.samples)], timeout=args.timeout)
+                command = [*row["command"], str(row["size"]), str(row["loops"]),
+                           str(args.warmups), str(args.samples)]
+                measured = execute(rss_command(command, memory, sys.platform), timeout=args.timeout)
                 if measured.returncode:
                     raise RuntimeError(measured.stderr)
                 parse_samples(measured.stdout, expected(row["case"], row["size"], row["loops"]),
                               args.warmups, args.samples)
-                row["peak_rss_kib"] = int(memory.read_text().strip())
+                row["peak_rss_kib"] = parse_peak_rss(memory.read_text(), sys.platform)
             except Exception as error:
                 row["warnings"].append("Separate RSS pass unavailable: " + str(error))
         if args.jvm_diagnostics and row["target"] in {"pyjs-jvm", "java"}:
@@ -421,7 +436,7 @@ def run(args):
         save(output / "results.json", result)
     result["complete"] = True
     save(output / "results.json", result)
-    print(f"Results: {output / 'results.json'}\nView: uv run pyjs serve perf.app:create_app --open /perf/", flush=True)
+    print(f"Results: {output / 'results.json'}\nView: pyjs serve perf.app:create_app --open /perf/", flush=True)
     return 0 if all(row["status"] == "ok" for row in result["rows"]) else 1
 
 

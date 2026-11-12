@@ -24,6 +24,10 @@ uv creates and maintains `.venv`; activation is optional. Python versions,
 dependencies, pytest discovery, and Ruff rules are defined in
 `.python-version`, `pyproject.toml`, and `uv.lock`.
 
+With Nix, enter the locked development environment with `nix develop`, then run
+`pytest -q` and `ruff check .` directly. Build the installable PyJS package with
+`nix build`.
+
 The repository contains the complete product suite and example tests:
 
 ```bash
