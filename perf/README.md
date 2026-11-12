@@ -13,8 +13,8 @@ From the repository root, with the development environment synced:
 python -m perf.run --output perf/runs/first --small
 ```
 
-The initial measurement host is **Linux**. Install CPython, Node, Clang, Rust
-and a JDK first. Nothing is provisioned by the benchmark runner. Missing tools
+Supported measurement hosts are **Linux and macOS**. Install CPython, Node,
+Clang, Rust and a JDK first. Nothing is provisioned by the benchmark runner. Missing tools
 remain visible as unavailable configurations; any unsuccessful configuration
 makes the command exit nonzero, but the JSON results are still saved.
 
@@ -257,7 +257,7 @@ before interpreting a speedup.
 
 A dedicated publication machine, automated latest-stable refresh, checked
 publication snapshots/history, more
-workloads, and non-Linux measurement hosts remain follow-ups. The per-snapshot
+workloads, and Windows measurement hosts remain follow-ups. The per-snapshot
 lock records the tools actually used; it is not an automatic installer or
 latest-version guarantee. No performance threshold is added to normal CI.
 
