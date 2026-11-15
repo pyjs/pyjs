@@ -114,6 +114,28 @@ async def test_hydrated_input_group_addon_focuses_the_control():
 
 
 @js
+async def test_start_addons_render_before_the_control_without_changing_dom_order():
+    for align in ['inline-start', 'block-start']:
+        control = InputGroupInput()
+        addon = InputGroupAddon('Prefix', align=align)
+        group = InputGroup(control, addon)
+        group.setAttribute('style', 'width:320px')
+        mount(group)
+        await wait_for_frames()
+
+        assert group.firstElementChild is control
+        prefix = addon.getBoundingClientRect()
+        field = control.getBoundingClientRect()
+        assert prefix.width > 0 and prefix.height > 0
+        if align == 'block-start':
+            assert prefix.bottom <= field.top
+        else:
+            assert prefix.right <= field.left
+        bubbling_click(addon)
+        assert document.activeElement is control
+
+
+@js
 def test_combobox_multi_select_click_toggles_once():
     python_item = ComboboxItem("Python", "Python")
     rust_item = ComboboxItem("Rust", "Rust")

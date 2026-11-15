@@ -46,7 +46,8 @@ def InputGroupAddon(*children, align: str = "inline-start"):
     return div(
         tw(
             "flex h-full shrink-0 items-center gap-2 px-3 text-sm text-slate-500 "
-            "data-[align=inline-end]:order-last data-[align=block-start]:w-full "
+            "data-[align=inline-start]:order-first data-[align=inline-end]:order-last "
+            "data-[align=block-start]:order-first data-[align=block-start]:w-full "
             "data-[align=block-end]:order-last data-[align=block-end]:w-full"
         ),
         {"data-align": align, "data-slot": "input-group-addon"},
