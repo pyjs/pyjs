@@ -16,9 +16,17 @@ from pyjs.web.domx import div, ref, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.ssr import render_html
 from pyjs.web.ui import Widget
-from pyjs.web.ui.chat import ChatBody, ChatFooter, ChatHeading, ChatHistory, ChatPanel, ChatView
+from pyjs.web.ui.chat import (
+    ChatBody,
+    ChatFooter,
+    ChatHeading,
+    ChatHistory,
+    ChatPanel,
+    ChatView,
+)
 from pyjs.web.ui.input_group import InputGroupButton, InputGroupTextarea
 from pyjs.web.ui.prompt_input import PromptInput
+from pyjs.web.ui.styles import Stylesheet
 
 
 @js
@@ -62,6 +70,36 @@ def fixture_page():
         ChatPanel(div('Assistant'), ChatBody(ChatHistory(tag('p', 'Hello')), ChatFooter(ComposerFixture()))))
 
 
+@js
+def styled_marker():
+    css = '[data-marker="</STYLE>"] { color: rgb(7, 8, 9); }'
+    return div(Stylesheet(css), tag('p', {'data-marker': '</STYLE>'}, 'Case-sensitive selector'))
+
+
+@js
+class PanelStateFixture(Widget):
+    def __init__(self):
+        super().__init__()
+        for state in (True, False):
+            panel = ChatPanel(div('Heading'), div('Content'))
+            panel.setAttribute('id', 'saved-closed' if state else 'saved-open')
+            panel.set_collapsed(state)
+            self.add(panel)
+        self.add(div({'id': 'server-marker'}, styled_marker()))
+
+    def initialize(self):
+        panel = ChatPanel(div('Heading'), div('Content'))
+        panel.setAttribute('id', 'client-closed')
+        panel.set_collapsed(True)
+        self.add(panel, div({'id': 'client-marker'}, styled_marker()))
+        self.setAttribute('data-ready', '')
+
+
+@js
+def state_page():
+    return PanelStateFixture()
+
+
 @pytest.fixture(scope='module')
 def chat_origin(tmp_path_factory):
     path = tmp_path_factory.mktemp('chat-layout')
@@ -72,6 +110,12 @@ def chat_origin(tmp_path_factory):
         'content="width=device-width,initial-scale=1,interactive-widget=resizes-content">'
         '<link rel="stylesheet" href="app.css">' + render_html(fixture_page()) +
         '<script type="module" src="app.js"></script>')
+    (path / 'ssr.html').write_text((path / 'index.html').read_text().split('<script')[0])
+    state_source, state_css = bundle(state_page, include_main=True, call_main=False)
+    (path / 'state.js').write_text(state_source)
+    (path / 'state.css').write_text(state_css)
+    (path / 'state.html').write_text('<!doctype html><link rel="stylesheet" href="state.css">' +
+        render_html(PanelStateFixture()) + '<script type="module" src="state.js"></script>')
     handler = functools.partial(SimpleHTTPRequestHandler, directory=str(path))
     server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -112,7 +156,7 @@ def test_hydrated_chat_layout_focus_and_actions(chat_origin):
                 try:
                     await page.wait_for_selector('[data-ready]')
                 except TimeoutError:
-                    raise AssertionError(page.exceptions)
+                    raise AssertionError(page.exceptions) from None
                 for root in ('[data-slot=chat-view]', '[data-slot=chat-panel]'):
                     if root.endswith('panel]'):
                         if await page.evaluate("document.querySelector('[data-slot=chat-panel-toggle]').getAttribute('aria-expanded') === 'false'"):
@@ -128,6 +172,34 @@ def test_hydrated_chat_layout_focus_and_actions(chat_origin):
                     assert await page.evaluate(f'document.querySelector({json.dumps(root + " [data-sent]")}).getAttribute("data-sent")') == 'Line of a long draft\n' * 20
                     if root.endswith('panel]') and height >= 240:
                         await page.click('[data-slot=chat-panel-toggle]')
+                assert not page.exceptions, page.exceptions
+    asyncio.run(scenario())
+
+
+def test_chat_styles_and_panel_state_before_and_after_hydration(chat_origin):
+    async def scenario():
+        async with Browser() as browser:
+            page = await browser.new_page(chat_origin + '/ssr.html')
+            for width, padding, collapsed in ((360, 4, True), (1280, 12, False)):
+                await page.set_viewport(width, 640)
+                await page.navigate(chat_origin + '/ssr.html')
+                assert await page.evaluate("""(() => {
+                    const panel = document.querySelector('[data-slot=chat-panel]');
+                    const content = document.querySelector('[data-slot=message-scroller-content]');
+                    return [panel.getBoundingClientRect().height < 100,
+                            parseFloat(getComputedStyle(content).paddingLeft)];
+                })()""") == [collapsed, padding]
+                await page.navigate(chat_origin + '/state.html')
+                await page.wait_for_selector('[data-ready]')
+                await page.wait_for_selector('#client-closed [aria-expanded=false]')
+                assert await page.evaluate("""['saved-closed', 'saved-open', 'client-closed'].map(id => {
+                    const panel = document.getElementById(id);
+                    return [panel.dataset.collapsed,
+                            panel.querySelector('[data-slot=chat-panel-content]').hidden];
+                })""") == [['true', True], ['false', False], ['true', True]]
+                assert await page.evaluate("""['server-marker', 'client-marker'].map(id =>
+                    getComputedStyle(document.querySelector('#' + id + ' p')).color)
+                """) == ['rgb(7, 8, 9)', 'rgb(7, 8, 9)']
                 assert not page.exceptions, page.exceptions
     asyncio.run(scenario())
 

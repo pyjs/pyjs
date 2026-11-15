@@ -12,7 +12,7 @@ def Stylesheet(css: str):
     """Embed trusted CSS; this does not sanitize untrusted stylesheets."""
     # Style is a raw-text HTML element: escaping `>` would break selectors.
     # Escape its closing delimiter so CSS string content cannot end the element.
-    text = re.sub(r'</style', lambda match: r'\3c /style', css, flags=re.IGNORECASE)
+    text = re.sub(r'</style', lambda match: r'\3c ' + match.group()[1:], css, flags=re.IGNORECASE)
     return tag('style', raw_html(text))
 
 

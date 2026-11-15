@@ -4,7 +4,7 @@ from typing import Final
 
 from pyjs import JS, js
 from pyjs.web.dom import Element, window
-from pyjs.web.domx import button, div, ref, tag, tw
+from pyjs.web.domx import button, div, ref, span, tag, tw
 from pyjs.web.events import Event
 from pyjs.web.ui import Widget
 from pyjs.web.ui.message_scroller import MessageScroller
@@ -19,7 +19,19 @@ CHAT_CSS: Final[JS] = '''
 [data-slot="chat-history"] [data-slot="message-footer"] { padding-inline: 0; flex-wrap: wrap; }
 [data-slot="chat-history"] { overflow-wrap: anywhere; }
 [data-slot="chat-history"] [data-slot="message"] pre { overflow-wrap: normal; }
+/* The automatic state must work before hydration knows the viewport width. */
+[data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-open-label"] { display: none; }
 @media (width < 1024px) {
+  [data-slot="chat-panel"][data-collapsed="auto"] {
+    height: auto; width: auto; border: 0; background: transparent; box-shadow: none;
+  }
+  [data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-header"] {
+    border: 0; padding: 6px;
+  }
+  [data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-heading"],
+  [data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-content"],
+  [data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-close-label"] { display: none; }
+  [data-slot="chat-panel"][data-collapsed="auto"] [data-slot="chat-panel-open-label"] { display: inline; }
   [data-slot="chat-history"] [data-slot="bubble"] { max-width: 92%; }
 }
 @media (width < 1024px) and (height < 450px) {
@@ -83,7 +95,7 @@ class ChatHistory(MessageScroller):
         self.viewport.removeAttribute('data-scroll-fade')
         self.viewport.style.setProperty('scrollbar-gutter', 'auto')
         self.viewport.style.setProperty('overflow-anchor', 'none')
-        self.content.setAttribute('class', 'flex h-max min-h-full flex-col gap-0 p-3 max-lg:px-1')
+        self.content.setAttribute('class', tw('flex h-max min-h-full flex-col gap-0 p-3 max-lg:px-1')['class'])
         self.add(Stylesheet(CHAT_CSS))
 
 
@@ -92,27 +104,31 @@ class ChatPanel(Widget):
     """Persistent side conversation, full-width on mobile, with a compact toggle.
 
     Emits ``chat-panel-change`` after collapse/expansion. Application transport
-    remains mounted while hidden. Mobile panels start collapsed.
+    remains mounted while hidden. Mobile panels start collapsed, including before
+    hydration; an explicit set_collapsed() choice takes precedence.
     """
     def __init__(self, heading: Element, content: Element, label: str = 'Assistant'):
         super().__init__()
         self.set_data('label', label)
-        self.heading = ref(div(tw('min-w-0 flex-1'), heading))
-        self.content = ref(div(tw('flex min-h-0 flex-1 flex-col'), content))
-        self.toggle = ref(button({'type': 'button', 'data-slot': 'chat-panel-toggle', 'aria-expanded': 'true', 'aria-label': 'Close ' + label},
-            tw('min-h-11 rounded-lg border bg-[var(--pyjs-surface,white)] px-3 py-2 text-sm'), 'Close'))
+        self.heading = ref(div({'data-slot': 'chat-panel-heading'}, tw('min-w-0 flex-1'), heading))
+        self.content = ref(div({'data-slot': 'chat-panel-content'}, tw('flex min-h-0 flex-1 flex-col'), content))
+        self.toggle = ref(button({'type': 'button', 'data-slot': 'chat-panel-toggle', 'aria-label': 'Toggle ' + label},
+            tw('min-h-11 rounded-lg border bg-[var(--pyjs-surface,white)] px-3 py-2 text-sm'),
+            span({'data-slot': 'chat-panel-open-label'}, label),
+            span({'data-slot': 'chat-panel-close-label'}, 'Close')))
         self.add(tw('group/chat-panel sticky top-0 z-40 flex h-dvh w-[360px] min-w-0 max-w-full shrink-0 flex-col '
                     'border-l bg-[var(--pyjs-surface,white)] max-lg:fixed max-lg:right-0 max-lg:w-full '
                     'max-lg:border-l-0 max-lg:shadow-xl data-[collapsed=true]:h-auto data-[collapsed=true]:w-auto '
                     'data-[collapsed=true]:border-0 data-[collapsed=true]:bg-transparent data-[collapsed=true]:shadow-none'),
-            {'data-slot': 'chat-panel', 'data-collapsed': 'false'}, Stylesheet(CHAT_CSS),
-            div(tw('flex shrink-0 items-center justify-between gap-2 border-b p-3 '
+            {'data-slot': 'chat-panel', 'data-collapsed': 'auto'}, Stylesheet(CHAT_CSS),
+            div({'data-slot': 'chat-panel-header'}, tw('flex shrink-0 items-center justify-between gap-2 border-b p-3 '
                    'group-data-[collapsed=true]/chat-panel:border-0 group-data-[collapsed=true]/chat-panel:p-1.5'),
                 self.heading, self.toggle), self.content)
 
     def initialize(self):
         self.toggle.addEventListener('click', self.toggle_panel)
-        self.set_collapsed(window.innerWidth < 1024)
+        state = self.getAttribute('data-collapsed')
+        self.set_collapsed(window.innerWidth < 1024 if state == 'auto' else state == 'true')
 
     def toggle_panel(self, event: Event):
         self.set_collapsed(self.getAttribute('data-collapsed') != 'true')

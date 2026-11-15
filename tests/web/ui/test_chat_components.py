@@ -174,7 +174,7 @@ def test_stylesheet_preserves_selectors_and_contains_closing_delimiters():
     html = render_html(Stylesheet('.a::after { content: "</StYlE><img src=x>"; }'))
     assert html.count('</style>') == 1
     assert '</StYlE>' not in html
-    assert r'\3c /style' in html
+    assert r'\3c /StYlE' in html
 
 
 
