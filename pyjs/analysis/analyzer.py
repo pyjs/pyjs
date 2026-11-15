@@ -5508,7 +5508,9 @@ class InferenceVisitor(ast.NodeVisitor):
                             prefix, captured = self.capture_assignment_value(self.visit(bound))
                             prefixes.append(prefix)
                             setattr(write_target.slice, part, captured)
-                else:
+                elif not isinstance(write_target.slice, ast.Constant):
+                    # Literal keys have no side effects and must stay literal
+                    # for TypedDict/JSONObject field lookup after lowering.
                     prefix, write_target.slice = self.capture_assignment_value(
                         self.visit(node.target.slice),
                     )

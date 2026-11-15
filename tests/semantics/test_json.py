@@ -6,6 +6,40 @@ from pyjs.analysis.source import analyze_source
 from .helpers import assert_semantics
 
 
+@pytest.mark.parametrize("base", ["TypedDict", "JSONObject"])
+def test_augmented_literal_field_preserves_key_and_evaluation_order(base):
+    assert_semantics(f'''
+        from typing import TypedDict
+        from pyjs import js
+        from pyjs.javascript import JSONObject
+
+        class Record({base}):
+            label: str
+            count: int
+
+        @js
+        def receiver(rows: list[Record], events: list[str]) -> Record:
+            events.append("receiver")
+            return rows[0]
+
+        @js
+        def suffix(rows: list[Record], events: list[str]) -> str:
+            events.append("rhs")
+            rows[0]["label"] = "changed"
+            return " appended"
+
+        def main():
+            rows = [Record(label="original", count=1)]
+            events: list[str] = []
+            receiver(rows, events)["label"] += suffix(rows, events)
+            rows[0]["count"] += 2
+            print(rows[0]["label"], rows[0]["count"])
+            print("|".join(events))
+
+        main()
+    ''')
+
+
 @pytest.mark.parametrize("value", [
     '""', '"quotes \\\" and newline \\n"', "True", "False", "None",
     "0", "-42", "2.5", '["", "first", "second"]',
