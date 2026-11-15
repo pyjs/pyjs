@@ -163,3 +163,34 @@ def test_questionnaire_multiple_choices_use_checkbox_semantics():
     assert controls[0].getAttribute("type") == "checkbox"
     assert controls[1].getAttribute("type") == "checkbox"
     assert controls[0].getAttribute("name") == "features"
+
+
+def test_stylesheet_preserves_selectors_and_contains_closing_delimiters():
+    from pyjs.web.ssr import render_html
+    from pyjs.web.ui.styles import Stylesheet
+
+    css = '@media (width < 500px) { .a > .b { color: red; } }'
+    assert render_html(Stylesheet(css)) == '<style>' + css + '</style>'
+    html = render_html(Stylesheet('.a::after { content: "</StYlE><img src=x>"; }'))
+    assert html.count('</style>') == 1
+    assert '</StYlE>' not in html
+    assert r'\3c /style' in html
+
+
+
+def test_prompt_slots_preserve_server_rendered_controls_and_order():
+    from pyjs.web.domx import button
+    from pyjs.web.ssr import render_html
+    from pyjs.web.ui.input_group import InputGroupTextarea
+    from pyjs.web.ui.prompt_input import PromptInput
+
+    prompt = PromptInput(InputGroupTextarea('Message'), compact=True)
+    prompt.append_action(button('Send'))
+    prompt.prepend_action(button('Attach'))
+    prompt.set_attachments(button('Remove image'))
+    prompt.show_attachments(True)
+    html = render_html(prompt)
+    assert '<textarea' in html
+    assert html.index('Attach</button>') < html.index('Send</button>')
+    assert 'Remove image</button>' in html
+    assert 'hidden' not in prompt.attachments.getAttributeNames()
