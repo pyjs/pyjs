@@ -6,6 +6,7 @@ from pyjs.web.domx import ProxyElement, button, div, input, ref, span, tw
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
+from pyjs.web.ui.collection import ListNavigation, filter_items
 from pyjs.web.ui.floating import FloatingPanel
 
 
@@ -22,18 +23,6 @@ class ComboboxItem(ProxyElement):
             "role": "option",
             "tabindex": "-1",
         }
-        shown = label
-        if len(children) > 0:
-            self.element = div(
-                tw(
-                    "flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm "
-                    "outline-none hover:bg-slate-100 aria-selected:bg-slate-100 "
-                    "data-[highlighted]:bg-slate-100 aria-disabled:opacity-50"
-                ),
-                attributes,
-                *children,
-            )
-            return
         self.element = div(
             tw(
                 "flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm "
@@ -41,8 +30,10 @@ class ComboboxItem(ProxyElement):
                 "data-[highlighted]:bg-slate-100 aria-disabled:opacity-50"
             ),
             attributes,
-            shown,
+            *children,
         )
+        if not children:
+            self.element.textContent = label
 
 
 @js
@@ -101,11 +92,10 @@ class Combobox(Widget):
         self.multiple = multiple
         self.selected_value = ""
         self.selected_values: list[str] = []
-        self.selected = 0
         self.is_open = False
-        self.items: list[HTMLElement] = []
+        self.navigation = ListNavigation([])
         for item in items:
-            self.items.append(cast(HTMLElement, item.element))
+            self.navigation.items.append(cast(HTMLElement, item.element))
         self.input = ref(
             input(
                 tw("h-9 min-w-0 flex-1 border-0 bg-transparent px-3 text-sm outline-none"),
@@ -188,10 +178,10 @@ class Combobox(Widget):
         )
 
     def initialize(self):
-        self.items = []
+        self.navigation = ListNavigation([])
         for item in self.querySelectorAll("[data-slot=combobox-item]"):
             if isinstance(item, HTMLElement):
-                self.items.append(item)
+                self.navigation.items.append(item)
         self.selected_value = self.get_data("value") or ""
         self.selected_values = []
         stored = self.get_data("values") or ""
@@ -200,13 +190,13 @@ class Combobox(Widget):
             for part in parts:
                 if part != "":
                     self.selected_values.append(part)
-        self.selected = 0
         self.is_open = False
         self.multiple = self.getAttribute("data-multiple") == "true"
         self.click_listener = ComboboxClickListener(self)
         self.input.addEventListener("input", self.on_input)
         self.input.addEventListener("keydown", self.keydown)
         self.input.addEventListener("focus", self.open)
+        self.input.addEventListener("click", self.open)
         self.trigger.addEventListener("click", self.toggle)
         self.clear.addEventListener("click", self.clear_clicked)
         self.list.addEventListener("click", self.item_clicked)
@@ -218,42 +208,21 @@ class Combobox(Widget):
         self.close()
 
     def visible_items(self) -> list[HTMLElement]:
-        found: list[HTMLElement] = []
-        for item in self.items:
-            if item.getAttribute("hidden") is not None:
-                continue
-            if item.getAttribute("aria-disabled") == "true":
-                continue
-            found.append(item)
-        return found
+        return self.navigation.available()
 
     def highlight(self, index: int) -> None:
-        visible = self.visible_items()
-        if len(visible) == 0:
-            self.selected = 0
-            return
-        if index < 0:
-            index = len(visible) - 1
-        if index >= len(visible):
-            index = 0
-        self.selected = index
-        for item in self.items:
-            item.removeAttribute("data-highlighted")
-        visible[index].setAttribute("data-highlighted", "true")
+        self.navigation.highlight(index)
         self._sync_aria_selected()
 
     def highlighted_item(self) -> HTMLElement | None:
-        visible = self.visible_items()
-        if self.selected < 0 or self.selected >= len(visible):
-            return None
-        return visible[self.selected]
+        return self.navigation.current()
 
     def open(self, event: Event | None = None) -> None:
         if self.is_open:
             return
         self.is_open = True
         self.input.setAttribute("aria-expanded", "true")
-        self.panel.open(self.input, side="bottom", align="start")
+        self.panel.open(self.input, on_close=self.close)
         document.addEventListener("click", self.click_listener)
         self.filter_items()
         self.highlight(0)
@@ -262,8 +231,8 @@ class Combobox(Widget):
         if not self.is_open:
             return
         document.removeEventListener("click", self.click_listener)
-        self.panel.close()
         self.is_open = False
+        self.panel.close()
         self.input.setAttribute("aria-expanded", "false")
 
     def toggle(self, event: Event) -> None:
@@ -286,16 +255,7 @@ class Combobox(Widget):
             self.selected_value
         ).lower():
             query = ""
-        visible_count = 0
-        for item in self.items:
-            value = item.getAttribute("data-value") or ""
-            label = item.getAttribute("data-label") or value
-            visible = query == "" or query in label.lower() or query in value.lower()
-            if visible:
-                item.removeAttribute("hidden")
-                visible_count = visible_count + 1
-            else:
-                item.setAttribute("hidden", "")
+        visible_count = filter_items(self.navigation.items, query, ["data-label", "data-value"])
         if visible_count == 0:
             self.empty.removeAttribute("hidden")
         else:
@@ -311,13 +271,13 @@ class Combobox(Widget):
             event.preventDefault()
             if not self.is_open:
                 self.open()
-            self.highlight(self.selected + 1)
+            self.highlight(self.navigation.index + 1)
             return
         if event.key == "ArrowUp":
             event.preventDefault()
             if not self.is_open:
                 self.open()
-            self.highlight(self.selected - 1)
+            self.highlight(self.navigation.index - 1)
             return
         if event.key == "Enter":
             event.preventDefault()
@@ -355,7 +315,7 @@ class Combobox(Widget):
         self.set_data("value", value)
         label = self._label_for(value)
         self.input.value = label
-        for item in self.items:
+        for item in self.navigation.items:
             selected = item.getAttribute("data-value") == value
             item.setAttribute("aria-selected", "true" if selected else "false")
         self._sync_clear()
@@ -382,7 +342,7 @@ class Combobox(Widget):
         self._sync_aria_selected()
 
     def _sync_aria_selected(self) -> None:
-        for item in self.items:
+        for item in self.navigation.items:
             value = item.getAttribute("data-value") or ""
             selected = False
             if self.multiple:
@@ -394,7 +354,7 @@ class Combobox(Widget):
             item.setAttribute("aria-selected", "true" if selected else "false")
 
     def _label_for(self, value: str) -> str:
-        for item in self.items:
+        for item in self.navigation.items:
             if item.getAttribute("data-value") == value:
                 return item.getAttribute("data-label") or value
         return value

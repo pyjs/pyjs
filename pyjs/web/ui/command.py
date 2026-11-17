@@ -6,6 +6,7 @@ from pyjs.web.domx import ProxyElement, div, input, ref, span, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
+from pyjs.web.ui.collection import ListNavigation, filter_items
 from pyjs.web.ui.dialog import (
     DialogCloseRequest,
     DialogContent,
@@ -93,11 +94,10 @@ class Command(Widget):
         enter_selects: bool = True,
     ):
         super().__init__()
-        self.items: list[HTMLElement] = []
-        self.selected = 0
+        self.navigation = ListNavigation([], attribute="aria-selected")
         self.enter_selects = enter_selects
         for item in items:
-            self.items.append(cast(HTMLElement, item.element))
+            self.navigation.items.append(cast(HTMLElement, item.element))
         self.input = ref(
             input(
                 tw("h-11 w-full border-b border-slate-200 px-3 text-sm outline-none"),
@@ -136,54 +136,33 @@ class Command(Widget):
         )
 
     def initialize(self):
-        self.items = []
-        self.selected = 0
+        self.navigation = ListNavigation([], attribute="aria-selected")
         self.enter_selects = self.getAttribute("data-enter-selects") != "false"
         for item in self.querySelectorAll("[data-slot=command-item]"):
-            self.items.append(command_item_element(item))
+            self.navigation.items.append(command_item_element(item))
         self.input.addEventListener("input", self.search)
         self.input.addEventListener("keydown", self.keydown)
         self.addEventListener("click", self.item_clicked)
         self.highlight(0)
 
     def visible_items(self) -> list[HTMLElement]:
-        found: list[HTMLElement] = []
-        for item in self.items:
-            if item.getAttribute("hidden") is not None:
-                continue
-            if item.getAttribute("aria-disabled") == "true":
-                continue
-            found.append(item)
-        return found
+        return self.navigation.available()
 
     def highlight(self, index: int) -> None:
-        visible = self.visible_items()
-        if len(visible) == 0:
-            self.selected = 0
-            return
-        if index < 0:
-            index = len(visible) - 1
-        if index >= len(visible):
-            index = 0
-        self.selected = index
-        for item in self.items:
-            item.removeAttribute("aria-selected")
-        visible[index].setAttribute("aria-selected", "true")
-        visible[index].scrollIntoView(block="end")
+        item = self.navigation.highlight(index)
+        if item is not None:
+            item.scrollIntoView(block="nearest")
 
     def highlighted_item(self) -> HTMLElement | None:
-        visible = self.visible_items()
-        if self.selected < 0 or self.selected >= len(visible):
-            return None
-        return visible[self.selected]
+        return self.navigation.current()
 
     def replace_items(self, *items: CommandItem) -> None:
-        self.items = []
+        self.navigation = ListNavigation([], attribute="aria-selected")
         nodes: list[Element] = []
         nodes.append(self.empty)
         for item in items:
             nodes.append(item.element)
-            self.items.append(cast(HTMLElement, item.element))
+            self.navigation.items.append(cast(HTMLElement, item.element))
         self.list.replaceChildren(*nodes)
         self.search(Event("input"))
 
@@ -194,18 +173,8 @@ class Command(Widget):
         self.dispatchEvent(Event("command-select", bubbles=True))
 
     def search(self, event: Event):
-        query = self.input.value.lower()
-        visible_count = 0
-        for item in self.items:
-            value = item.getAttribute("data-value") or ""
-            keywords = item.getAttribute("data-keywords") or ""
-            haystack = value.lower() + " " + keywords.lower()
-            visible = query == "" or query in haystack
-            if visible:
-                item.removeAttribute("hidden")
-                visible_count = visible_count + 1
-            else:
-                item.setAttribute("hidden", "")
+        query = self.input.value
+        visible_count = filter_items(self.navigation.items, query, ["data-value", "data-keywords"])
         if visible_count == 0:
             self.empty.removeAttribute("hidden")
         else:
@@ -224,11 +193,11 @@ class Command(Widget):
     def keydown(self, event: KeyboardEvent):
         if event.key == "ArrowDown":
             event.preventDefault()
-            self.highlight(self.selected + 1)
+            self.highlight(self.navigation.index + 1)
             return
         if event.key == "ArrowUp":
             event.preventDefault()
-            self.highlight(self.selected - 1)
+            self.highlight(self.navigation.index - 1)
             return
         if event.key == "Enter":
             event.preventDefault()

@@ -1,12 +1,13 @@
 from typing import cast
 
 from pyjs import js
+from pyjs.ui.floating import FloatingPosition
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
-from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
+from pyjs.web.ui.floating import FloatingPanel
 
 
 @js
@@ -147,29 +148,7 @@ class Popover(Widget):
         self.key_listener = PopoverKeyListener(self)
 
     def open(self) -> FloatingPosition:
-        side = self.getAttribute("data-side")
-        align = self.getAttribute("data-align")
-        side_offset = self.getAttribute("data-side-offset")
-        align_offset = self.getAttribute("data-align-offset")
-        resolved_side = "bottom"
-        resolved_align = "center"
-        resolved_side_offset = 4
-        resolved_align_offset = 0
-        if side is not None:
-            resolved_side = side
-        if align is not None:
-            resolved_align = align
-        if side_offset is not None:
-            resolved_side_offset = int(side_offset)
-        if align_offset is not None:
-            resolved_align_offset = int(align_offset)
-        position = self.content.open(
-            self.trigger.element,
-            side=resolved_side,
-            align=resolved_align,
-            side_offset=resolved_side_offset,
-            align_offset=resolved_align_offset,
-        )
+        position = self.content.open_from(self, self.trigger.element, on_close=self.close)
         self.is_open = True
         self.setAttribute("data-state", "open")
         self.trigger.set_expanded(True)
@@ -182,8 +161,8 @@ class Popover(Widget):
             return
         document.removeEventListener("click", self.click_listener)
         document.removeEventListener("keydown", self.key_listener)
-        self.content.close()
         self.is_open = False
+        self.content.close()
         self.setAttribute("data-state", "closed")
         self.trigger.set_expanded(False)
         if restore_focus:

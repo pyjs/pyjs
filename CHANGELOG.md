@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Command and Combobox share reusable `ListNavigation` and attribute filtering.
+  Navigation state lives at `.navigation` instead of `.items` and `.selected`;
+  highlighting stays separate from the Combobox's selected values.
+- Floating panels share portable `place_floating` geometry, flip and constrain
+  to the visible viewport, follow scrolling and resizing, and stay interactive
+  inside native modal dialogs. Open-time observers and listeners are released
+  on removal or closing the dialog. `place_floating` replaces
+  `calculate_floating_position`; reusable geometry lives in `pyjs.ui.floating`.
+
 - `FilePasteController` offers clipboard files to existing controls through
   a cancelable `files-paste` event. Unaccepted files and ordinary text retain
   native paste behavior; nested accepting controls own their paste operation.

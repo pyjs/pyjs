@@ -1,12 +1,13 @@
 from typing import cast
 
 from pyjs import js
+from pyjs.ui.floating import FloatingPosition
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, button, ref, span, tag, tw
 from pyjs.web.events import Event, KeyboardEvent
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
-from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
+from pyjs.web.ui.floating import FloatingPanel
 
 
 @js.inline("{element}")
@@ -196,12 +197,15 @@ class DropdownMenuSub(Widget):
             for sub in owner._submenus():
                 if sub is not self and sub.is_sub_open() and sub._containing_panel() is panel:
                     sub.close_sub()
-        self.panel.open(self.trigger.element, side="right", align="start")
+        self.panel.open(self.trigger.element, side="right", align="start",
+                        on_close=self.close_sub)
         self.setAttribute("data-state", "open")
 
     def close_sub(self) -> None:
-        self.panel.close()
+        if not self.is_sub_open():
+            return
         self.setAttribute("data-state", "closed")
+        self.panel.close()
 
     def is_sub_open(self) -> bool:
         return self.getAttribute("data-state") == "open"
@@ -410,17 +414,7 @@ class DropdownMenu(Widget):
             self.select(value)
 
     def open(self) -> FloatingPosition:
-        side = self.get_data("side") or "bottom"
-        align = self.get_data("align") or "start"
-        side_offset = int(self.get_data("side-offset") or "4")
-        align_offset = int(self.get_data("align-offset") or "0")
-        position = self.content.open(
-            self.trigger.element,
-            side=side,
-            align=align,
-            side_offset=side_offset,
-            align_offset=align_offset,
-        )
+        position = self.content.open_from(self, self.trigger.element, on_close=self.close)
         self.is_open = True
         self.trigger.set_expanded(True)
         document.addEventListener("click", self.click_listener)
@@ -428,12 +422,14 @@ class DropdownMenu(Widget):
         return position
 
     def close(self):
+        if not self.is_open:
+            return
         document.removeEventListener("click", self.click_listener)
         document.removeEventListener("keydown", self.key_listener)
         for sub in self._submenus():
             sub.close_sub()
-        self.content.close()
         self.is_open = False
+        self.content.close()
         self.focused_index = -1
         self.trigger.set_expanded(False)
 

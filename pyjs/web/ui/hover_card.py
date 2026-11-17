@@ -1,11 +1,12 @@
 from typing import cast
 
 from pyjs import js
+from pyjs.ui.floating import FloatingPosition
 from pyjs.web.dom import Element, document
 from pyjs.web.domx import ProxyElement, ref, tag, tw
 from pyjs.web.events import Event, KeyboardEvent, MouseEvent
 from pyjs.web.ui import Widget
-from pyjs.web.ui.floating import FloatingPanel, FloatingPosition
+from pyjs.web.ui.floating import FloatingPanel
 
 
 @js
@@ -85,24 +86,7 @@ class HoverCard(Widget):
         self.key_listener = HoverCardKeyListener(self)
 
     def open(self) -> FloatingPosition:
-        side = self.getAttribute("data-side")
-        align = self.getAttribute("data-align")
-        side_offset = self.getAttribute("data-side-offset")
-        resolved_side = "bottom"
-        resolved_align = "center"
-        resolved_side_offset = 4
-        if side is not None:
-            resolved_side = side
-        if align is not None:
-            resolved_align = align
-        if side_offset is not None:
-            resolved_side_offset = int(side_offset)
-        position = self.content.open(
-            self.trigger.element,
-            side=resolved_side,
-            align=resolved_align,
-            side_offset=resolved_side_offset,
-        )
+        position = self.content.open_from(self, self.trigger.element, on_close=self.close)
         self.is_open = True
         self.setAttribute("data-state", "open")
         document.addEventListener("keydown", self.key_listener)
@@ -112,8 +96,8 @@ class HoverCard(Widget):
         if not self.is_open:
             return
         document.removeEventListener("keydown", self.key_listener)
-        self.content.close()
         self.is_open = False
+        self.content.close()
         self.setAttribute("data-state", "closed")
 
     def show(self, event: Event):
