@@ -285,11 +285,26 @@ class ScrollView(FrameLayout):
         pass
 
 
+@jvm.native("android/widget/HorizontalScrollView")
+class HorizontalScrollView(FrameLayout):
+    def __init__(self, context: Context) -> None:
+        pass
+
+    @jvm.native("android/widget/HorizontalScrollView", name="setFillViewport", invocation="virtual")
+    def set_fill_viewport(self, fill_viewport: bool) -> None:
+        pass
+
+    @jvm.native("android/widget/HorizontalScrollView", name="scrollTo", invocation="virtual")
+    def scroll_to(self, x: i32, y: i32) -> None:
+        pass
+
+
 __all__ = [
     "CheckBox",
     "CompoundButton",
     "EditText",
     "FrameLayout",
+    "HorizontalScrollView",
     "ImageButton",
     "ImageView",
     "InputType",

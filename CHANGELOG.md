@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android exposes `HorizontalScrollView` for native horizontal overflow,
+  including viewport filling and bounded scrolling. `View.getScrollX()`
+  reports the horizontal offset.
+
 - `FilePasteController` offers clipboard files to existing controls through
   a cancelable `files-paste` event. Unaccepted files and ordinary text retain
   native paste behavior; nested accepting controls own their paste operation.

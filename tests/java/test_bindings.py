@@ -524,6 +524,7 @@ def test_android_editor_controls_match_api_35_and_import():
     assert "class CheckBox(CompoundButton):" in source
     assert "class OnCheckedChangeListener(Object):" in source
     assert "class ScrollView(FrameLayout):" in source
+    assert "class HorizontalScrollView(FrameLayout):" in source
     assert "TYPE_TEXT_FLAG_MULTI_LINE" in source
     assert "def set_image_bitmap(self, bitmap: Bitmap | None) -> None:" in source
     assert "def get_drawable(self) -> Drawable | None:" in source
