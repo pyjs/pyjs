@@ -52,8 +52,25 @@ def Field(*children, orientation: str = "vertical"):
 def FieldContent(*children):
     return tag(
         "div",
-        tw("flex flex-1 flex-col gap-1 leading-snug"),
+        tw("flex min-w-0 flex-1 flex-col gap-1 leading-snug"),
         {"data-slot": "field-content"},
+        *children,
+    )
+
+
+@js
+def FieldAccessory(*children):
+    """Controls beside an input or the first line of a growing textarea.
+
+    Place beside ``FieldContent`` inside a horizontal ``Field``. The slot
+    centers its children in a minimum 36px row, grows for taller controls,
+    and does not stretch as the neighboring text grows. It does not forward
+    clicks or focus; each child retains its own native interaction.
+    """
+    return tag(
+        "div",
+        tw("flex min-h-9 shrink-0 items-center gap-2"),
+        {"data-slot": "field-accessory"},
         *children,
     )
 

@@ -83,6 +83,7 @@ from pyjs.web.ui.empty import (
 )
 from pyjs.web.ui.field import (
     Field,
+    FieldAccessory,
     FieldContent,
     FieldDescription,
     FieldError,
@@ -819,6 +820,29 @@ def remaining_component_showcases():
 
 
 @js
+class GrowingFieldExample(Widget):
+    def __init__(self):
+        super().__init__()
+        complete = Checkbox("task-complete")
+        complete.element.setAttribute("aria-label", "Complete task")
+        self.task = ref(Textarea("Task", auto_size=True))
+        self.task.element.setAttribute("aria-label", "Task")
+        self.task.element.textContent = (
+            "Review the project notes and write down the next steps before the meeting.")
+        self.clear = ref(Button("Clear", variant="ghost"))
+        self.clear.on_click(self.clear_task)
+        self.add(Field(
+            FieldAccessory(complete),
+            FieldContent(self.task),
+            FieldAccessory(self.clear),
+            orientation="horizontal",
+        ))
+
+    def clear_task(self, event: Event):
+        self.task.set_value("")
+
+
+@js
 class CatalogForm(Widget):
     def __init__(self):
         super().__init__()
@@ -1408,6 +1432,7 @@ class CatalogApp(Widget):
                     "Forms",
                     "Collects and validates user input using native, accessible form controls.",
                     CatalogForm(),
+                    GrowingFieldExample(),
                     source_module="field",
                 ),
                 component_showcase(

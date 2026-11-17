@@ -2,20 +2,104 @@ from typing import cast
 
 import pytest
 
-from examples.components.catalog import CatalogForm
+from examples.components.catalog import CatalogForm, GrowingFieldExample
 from pyjs import js
-from pyjs.testing.web import wait_for_frames
-from pyjs.web.dom import document
-from pyjs.web.domx import div, tw
+from pyjs.testing.web import assert_render, wait_for_frames
+from pyjs.web.dom import document, window
+from pyjs.web.domx import button, div, tw
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLElement, HTMLTextAreaElement
 from pyjs.web.ui.checkbox import Checkbox
+from pyjs.web.ui.field import Field, FieldAccessory, FieldContent
 from pyjs.web.ui.input import Input
 from pyjs.web.ui.switch import Switch
 from pyjs.web.ui.textarea import Textarea
 from tests.web.ui.browser import mount
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+async def test_horizontal_field_accessories_stay_at_first_line_during_reflow():
+    checkbox = Checkbox("complete")
+    checkbox.element.setAttribute("aria-label", "Complete")
+    control = Textarea("Task", auto_size=True)
+    field = cast(HTMLTextAreaElement, control.element)
+    action = button(tw("h-9 px-2"), {"type": "button"}, "Remove")
+    leading = FieldAccessory(checkbox)
+    trailing = FieldAccessory(action)
+    row = Field(leading, FieldContent(control), trailing, orientation="horizontal")
+    host = div(tw("w-80 bg-white p-2"), row)
+    host.style.setProperty("font-family", "Arial, sans-serif")
+    mount(host)
+    control.set_value("A task with words that wrap. " * 8)
+    field.focus()
+    field.setSelectionRange(2, 9)
+    for direction in ("ltr", "rtl"):
+        row.setAttribute("dir", direction)
+        for width in (320, 200):
+            host.style.width = str(width) + "px"
+            await wait_for_frames(2)
+            bounds = field.getBoundingClientRect()
+            check_bounds = checkbox.element.getBoundingClientRect()
+            action_bounds = action.getBoundingClientRect()
+            assert bounds.height > 60
+            # Native text uses 8px padding, a 1px border and a 20px line box.
+            assert abs(check_bounds.top + check_bounds.height / 2 - bounds.top - 19) <= 1
+            assert abs(action_bounds.top + action_bounds.height / 2 - bounds.top - 19) <= 1
+            assert leading.getBoundingClientRect().height == 36
+            assert trailing.getBoundingClientRect().height == 36
+            assert row.scrollWidth <= row.clientWidth
+            assert field.scrollWidth <= field.clientWidth + 1
+            assert field.scrollHeight <= field.clientHeight + 1
+            if direction == "ltr":
+                assert check_bounds.right < bounds.left and bounds.right < action_bounds.left
+            else:
+                assert action_bounds.right < bounds.left and bounds.right < check_bounds.left
+            assert document.activeElement is field
+            assert field.selectionStart == 2 and field.selectionEnd == 9
+    row.setAttribute("dir", "ltr")
+    host.style.width = "320px"
+    control.set_value("path/" * 100)
+    await wait_for_frames(2)
+    assert row.scrollWidth <= row.clientWidth
+    assert field.scrollWidth <= field.clientWidth + 1
+    control.set_value("Short")
+    await wait_for_frames(2)
+    assert field.getBoundingClientRect().height == 44
+    cast(HTMLElement, checkbox.element).click()
+    assert checkbox.is_checked()
+    action.focus()
+    action.click()
+    assert document.activeElement is action
+    assert control.get_value() == "Short" and checkbox.is_checked()
+    action.style.height = "48px"
+    await wait_for_frames(2)
+    assert trailing.getBoundingClientRect().height == 48
+    action.style.removeProperty("height")
+    control.set_value("A task with words that wrap. " * 8)
+    await wait_for_frames(2)
+    # Native text rasterization differs even with identical font metrics.
+    platform = "linux"
+    if window.navigator.platform.startswith("Mac"):
+        platform = "macos"
+    elif window.navigator.platform.startswith("Win"):
+        platform = "windows"
+    assert_render(host, "field-growing-textarea-accessories-" + platform)
+
+
+@js
+def test_catalog_growing_field_clear_action_keeps_checkbox_state():
+    row = GrowingFieldExample()
+    mount(row)
+    field = cast(HTMLTextAreaElement, row.querySelector("textarea"))
+    checkbox = cast(HTMLElement, row.querySelector("input"))
+    action = cast(HTMLElement, row.querySelector("button"))
+    checkbox.click()
+    assert field.value != ""
+    action.click()
+    assert field.value == ""
+    assert checkbox.matches(":checked")
 
 
 @js
