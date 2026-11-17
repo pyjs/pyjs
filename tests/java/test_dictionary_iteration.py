@@ -197,3 +197,34 @@ def main() -> int:
     copied = list[tuple[object, object]](mapping.items())
     return len(copied)
 ''')
+
+
+@pytest.mark.parametrize("kind,value", [
+    ("str", '"key"'), ("int", "42"),
+    ("int8", "int8(127)"), ("int64", "int64(9007199254740993)"),
+])
+@pytest.mark.parametrize("expression", ["mapping", "mapping.keys()"])
+def test_explicit_dictionary_key_list_can_widen_to_nullable(tmp_path, kind, value, expression):
+    assert_matches_python(f'''
+from pyjs import int8, int64
+def main() -> int:
+    mapping: dict[{kind}, str] = {{{value}: "item"}}
+    copied = list[{kind} | None]({expression})
+    copied.append(None)
+    assert len(copied) == 2
+    assert copied[0] == {value}
+    assert copied[1] is None
+    return 42
+''', tmp_path)
+
+
+@pytest.mark.parametrize("expression", ["mapping", "mapping.keys()"])
+def test_key_list_conversion_keeps_existing_nullable_keys(tmp_path, expression):
+    assert_matches_python(f'''
+def main() -> int:
+    mapping: dict[str | None, int] = {{None: 1, "key": 2}}
+    copied = list({expression})
+    assert copied[0] is None
+    assert copied[1] == "key"
+    return len(copied)
+''', tmp_path)

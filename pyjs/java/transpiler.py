@@ -3539,9 +3539,15 @@ class JVMEmitter:
         collection = "items" if source.generic_name == "ItemsView" else "keys"
         item = (JVM_ENVIRONMENT.builtins.search("tuple")(*source.generic_types.values())
                 if collection == "items" else next(iter(source.generic_types.values())))
-        if not same_analyzer_type(item, result.generic_types["V"]):
+        target = result.generic_types["V"]
+        members = target.types if isinstance(target, UnionType) else (target,)
+        if not (same_analyzer_type(item, target)
+                or any(same_analyzer_type(item, member) for member in members)):
             raise JVMUnsupported("JVM dictionary view copying requires matching item storage", node)
         item_type = self.value_type(item)
+        target_type = self.list_item_type(result)
+        if not self.compatible(item_type, target_type):
+            raise JVMUnsupported("JVM dictionary view copying requires matching item storage", node)
         self.expression(node.args[0])
         if source.generic_name == "dict":
             self.invoke_interface_noargs("java/util/Map", "keySet", "()Ljava/util/Set;")
@@ -3569,7 +3575,8 @@ class JVMEmitter:
         self.code.branch(0x99, done)
         self.load(output)
         self.dictionary_iterator_value(iterator, item_type, item, collection)
-        append = self.class_file.method_reference(owner.name, "append", f"({item_type})V")
+        self.convert_native_argument(item_type, target_type, node)
+        append = self.class_file.method_reference(owner.name, "append", f"({target_type})V")
         self.code.emit(0xB6, append.to_bytes(2, "big"))
         self.code.branch(0xA7, loop)
         self.code.mark(done)
