@@ -69,6 +69,11 @@ def test_task_description_previews_pasted_files_without_uploading():
     assert app.task_description.element.dispatchEvent(
         ClipboardEvent("paste", clipboardData=data, cancelable=True))
     assert app.pasted_files.textContent == ""
+    data.clearData()
+    data.setData("text/html", '<img src="about:blank">')
+    assert not app.task_description.element.dispatchEvent(
+        ClipboardEvent("paste", clipboardData=data, cancelable=True))
+    assert app.pasted_files.textContent == "Clipboard files (preview only): screenshot.png"
 
 
 @js

@@ -19,8 +19,12 @@ class PastedFiles:
         self.types = types
 
     @property
-    def has_text(self) -> bool:
-        return "text/plain" in self.types or "text/html" in self.types
+    def has_plain_text(self) -> bool:
+        return "text/plain" in self.types
+
+    @property
+    def has_html(self) -> bool:
+        return "text/html" in self.types
 
 
 @js

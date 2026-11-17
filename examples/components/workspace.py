@@ -733,7 +733,7 @@ class WorkspaceApp(Widget):
 
     def files_pasted(self, event: CustomEvent):
         pasted = cast(PastedFiles, event.detail)
-        if pasted.has_text:
+        if pasted.has_plain_text:
             return
         event.preventDefault()
         self.pasted_files.textContent = "Clipboard files (preview only): " + ", ".join(

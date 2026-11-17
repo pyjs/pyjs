@@ -22,12 +22,14 @@ class Receiver:
         self.files: list[File] = []
         self.types: list[str] = []
         self.prefer_text = False
+        self.prefer_html = False
         self.listener: callable = self.accept
 
     def accept(self, event: CustomEvent):
         pasted = cast(PastedFiles, event.detail)
         self.types = pasted.types
-        if self.prefer_text and pasted.has_text:
+        if ((self.prefer_text and pasted.has_plain_text)
+                or (self.prefer_html and pasted.has_html)):
             return
         self.owners.append(self.name)
         self.files.extend(pasted.files)
@@ -78,7 +80,7 @@ async def test_file_paste_retains_files_but_leaves_text_and_unaccepted_files_alo
 
 
 @js
-def test_file_paste_consumer_can_preserve_mixed_text_or_html_paste():
+def test_file_paste_consumer_can_choose_plain_text_or_rich_html_policy():
     host = textarea()
     mount(host)
     controller = FilePasteController(host)
@@ -90,7 +92,11 @@ def test_file_paste_consumer_can_preserve_mixed_text_or_html_paste():
     assert host.dispatchEvent(clipboard([file], "spreadsheet cells"))
     data = DataTransfer()
     data.items.add(file)
-    data.setData("text/html", "<table><tr><td>cells</td></tr></table>")
+    data.setData("text/html", '<img src="about:blank">')
+    assert not host.dispatchEvent(ClipboardEvent("paste", cancelable=True, clipboardData=data))
+    assert len(receiver.files) == 1
+    receiver.files.clear()
+    receiver.prefer_html = True
     assert host.dispatchEvent(ClipboardEvent("paste", cancelable=True, clipboardData=data))
     assert not receiver.files
     data.clearData()

@@ -57,6 +57,7 @@ def test_components_preserves_its_shell_during_partial_navigation():
                     app.new_task_dialog.open();
                     const data = new DataTransfer();
                     data.items.add(new File(['preview'], 'clipboard.png', {type: 'image/png'}));
+                    data.setData('text/html', '<img src="about:blank">');
                     app.task_description.element.dispatchEvent(new ClipboardEvent('paste', {
                         clipboardData: data, cancelable: true,
                     }));

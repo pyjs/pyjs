@@ -161,9 +161,11 @@ available for every released version.
   and disconnect it on removal. Listen on its host for `files-paste`, cast
   `event.detail` to `PastedFiles` from the same module, and accept with
   `event.preventDefault()` before awaiting storage or uploads. The snapshot
-  exposes `files`, clipboard MIME `types`, and `has_text` (plain text or HTML).
-  Decline offers with `has_text` to prefer native text over image previews
-  included by rich-content producers. Acceptance replaces the entire native
+  exposes `files`, clipboard MIME `types`, `has_plain_text`, and `has_html`.
+  Plain-text controls can decline `has_plain_text` offers to prefer native
+  text. Rich editors that support native HTML paste may also decline
+  `has_html`. HTML does not imply plain text: a copied image may carry HTML
+  markup without any text a textarea can insert. Acceptance replaces native
   paste, including any text. The consumer owns validation and pending saves;
   accepting a paste does not mean its files were persisted. Components'
   Workspace task description demonstrates a preview-only consumer.
