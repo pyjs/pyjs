@@ -2,39 +2,14 @@ from typing import cast
 
 import pytest
 
-from pyjs.android import (
-    Activity,
-    Bundle,
-    LayoutParams,
-    LinearLayout,
-    LinearLayoutParams,
-    TextView,
-    View,
-)
+from pyjs.android import View
 from pyjs.android.controls import HorizontalScrollView
 from pyjs.android.testing import NoMatchingViewException, ViewAssertion, by_id, launch
 from pyjs.java import i32
 
+from .android_robolectric_app import HorizontalActivity
+
 pytestmark = pytest.mark.pyjs_android_jvm
-
-
-class HorizontalActivity(Activity):
-    def onCreate(self, state: Bundle | None) -> None:
-        super().onCreate(state)
-        root = LinearLayout(self)
-        root.setOrientation(LinearLayout.VERTICAL)
-        for index in range(2):
-            scroll = HorizontalScrollView(self)
-            scroll.setId(i32(1001 + index))
-            scroll.setLayoutParams(LinearLayoutParams(160, 60, 0.0))
-            scroll.set_fill_viewport(True)
-            child = TextView(self)
-            child.setText("X")
-            child.setMinimumWidth(i32(600 if index == 0 else 40))
-            child.setLayoutParams(LayoutParams(LayoutParams.WRAP_CONTENT, 48))
-            scroll.addView(child)
-            root.addView(scroll)
-        self.setContentView(root)
 
 
 class HorizontalBounds(ViewAssertion):
