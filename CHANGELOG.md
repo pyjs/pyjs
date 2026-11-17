@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Shared chat page/panel layouts and compact `PromptInput` composition own
+  responsive sizing and preserve actions during keyboard focus changes.
+  Public attachment/action slots support SSR and hydration. `Stylesheet`
+  preserves CSS selectors when embedding trusted component styles in SSR.
+
+- Input group start addons render before the control without requiring callers
+  to put them first in DOM order.
+
 - Markdown supports application-defined link routing and image-reference
   observers for authorized galleries, while keeping local links and media
   disabled by default. `decodeURIComponent` decodes UTF-8 URI components with

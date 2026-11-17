@@ -2,7 +2,7 @@ from typing import cast
 
 from pyjs import js
 from pyjs.web.dom import Element
-from pyjs.web.domx import button, div, input, span, tag, tw
+from pyjs.web.domx import button, div, input, span, textarea, tw
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
@@ -46,7 +46,8 @@ def InputGroupAddon(*children, align: str = "inline-start"):
     return div(
         tw(
             "flex h-full shrink-0 items-center gap-2 px-3 text-sm text-slate-500 "
-            "data-[align=inline-end]:order-last data-[align=block-start]:w-full "
+            "data-[align=inline-start]:order-first data-[align=inline-end]:order-last "
+            "data-[align=block-start]:order-first data-[align=block-start]:w-full "
             "data-[align=block-end]:order-last data-[align=block-end]:w-full"
         ),
         {"data-align": align, "data-slot": "input-group-addon"},
@@ -100,8 +101,7 @@ def InputGroupInput(
 
 @js
 def InputGroupTextarea(placeholder: str = "", name: str = ""):
-    return tag(
-        "textarea",
+    return textarea(
         tw(
             "min-h-20 min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 "
             "text-sm outline-none placeholder:text-slate-400"
