@@ -29,6 +29,15 @@ uv run python -m pyjs_examples.components
 Open the printed URL. Move between **Catalog** and **Workspace block** to see
 the persistent shell and partial navigation.
 
+In **Workspace block**, open **New task** and paste a file into Description.
+The example displays its name without uploading or storing it. The reusable
+`FilePasteController` accepts files only when the consumer synchronously
+cancels its `files-paste` event. Its `PastedFiles` detail contains files and
+clipboard types. This textarea declines offers with `has_plain_text` so copied
+text keeps native paste behavior even when an image preview accompanies it.
+An image with HTML markup but no plain text is still accepted. Rich editors
+can separately use `has_html` when their native paste supports HTML.
+
 ## Diagram editor
 
 Open **Diagrams** (`/diagrams`) for a decision-tree editor. Click nodes to

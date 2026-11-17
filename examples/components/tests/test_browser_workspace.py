@@ -3,7 +3,10 @@ from typing import cast
 import pytest
 from pyjs import js
 from pyjs.testing.web import bubbling_click, mount
+from pyjs.web.clipboard import ClipboardEvent
 from pyjs.web.domx import require_element
+from pyjs.web.dragdrop import DataTransfer
+from pyjs.web.files import File
 from pyjs.web.html import HTMLButtonElement
 from pyjs_examples.components.workspace import WorkspaceApp
 
@@ -48,6 +51,29 @@ def test_new_task_dialog_validates_and_adds_a_task():
     assert app.task_count_label.textContent == "6 tasks"
     assert "Prepare support handoff" in app.task_table_body.children[5].textContent
     assert len(app.toaster.querySelectorAll("[data-slot=toast]")) == 2
+
+
+@js
+def test_task_description_previews_pasted_files_without_uploading():
+    app = mounted_workspace()
+    app.new_task_dialog.open()
+    app.task_description.set_value("Keep this description")
+    data = DataTransfer()
+    data.items.add(File(["example"], "screenshot.png", type="image/png"))
+    event = ClipboardEvent("paste", clipboardData=data, cancelable=True)
+    assert not app.task_description.element.dispatchEvent(event)
+    assert app.pasted_files.textContent == "Clipboard files (preview only): screenshot.png"
+    assert app.task_description.get_value() == "Keep this description"
+    app.pasted_files.textContent = ""
+    data.setData("text/plain", "Copied cells")
+    assert app.task_description.element.dispatchEvent(
+        ClipboardEvent("paste", clipboardData=data, cancelable=True))
+    assert app.pasted_files.textContent == ""
+    data.clearData()
+    data.setData("text/html", '<img src="about:blank">')
+    assert not app.task_description.element.dispatchEvent(
+        ClipboardEvent("paste", clipboardData=data, cancelable=True))
+    assert app.pasted_files.textContent == "Clipboard files (preview only): screenshot.png"
 
 
 @js

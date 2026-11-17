@@ -1,6 +1,8 @@
+from typing import cast
+
 from pyjs import effect, js, state
 from pyjs.web.domx import div, h1, h3, p, ref, span, tag, tw
-from pyjs.web.events import Event
+from pyjs.web.events import CustomEvent, Event
 from pyjs.web.ui import Widget
 from pyjs.web.ui.accordion import AccordionGroup, AccordionItem
 from pyjs.web.ui.alert import Alert, AlertDescription, AlertTitle
@@ -58,6 +60,7 @@ from pyjs.web.ui.dropdown_menu import (
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 )
+from pyjs.web.ui.file_paste import FilePasteController, PastedFiles
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
 from pyjs.web.ui.input import Input
 from pyjs.web.ui.item import Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle
@@ -199,6 +202,8 @@ class WorkspaceApp(Widget):
         self.task_description = ref(
             Textarea(placeholder="Add context, acceptance criteria, or links.", name="description")
         )
+        self.task_description.element.addEventListener("files-paste", self.files_pasted)
+        self.pasted_files = ref(p({"role": "status", "data-testid": "pasted-files"}))
         self.task_priority = ref(
             Select(
                 SelectTrigger("Choose priority"),
@@ -250,6 +255,7 @@ class WorkspaceApp(Widget):
                         tw("grid gap-4"),
                         form_field("Title", self.task_title, "Keep it short and action oriented."),
                         form_field("Description", self.task_description),
+                        self.pasted_files,
                         div(
                             tw("grid gap-4 sm:grid-cols-2"),
                             form_field("Priority", self.task_priority),
@@ -714,6 +720,24 @@ class WorkspaceApp(Widget):
                 CardContent(updates),
             ),
         )
+
+    def initialize(self):
+        self.file_paste = FilePasteController(self.task_description.element)
+        self.file_paste.connect()
+
+    def reconnected(self):
+        self.file_paste.connect()
+
+    def disconnected(self):
+        self.file_paste.disconnect()
+
+    def files_pasted(self, event: CustomEvent):
+        pasted = cast(PastedFiles, event.detail)
+        if pasted.has_plain_text:
+            return
+        event.preventDefault()
+        self.pasted_files.textContent = "Clipboard files (preview only): " + ", ".join(
+            file.name for file in pasted.files)
 
     @effect(task_count)
     def render_task_count(self):

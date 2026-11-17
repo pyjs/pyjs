@@ -56,8 +56,16 @@ class ClipboardEvent(Event):
 
     Browser support: Chrome 41, Safari 10.1"""
 
-    def __init__(self, type: str, *, clipboardData: DataTransfer | None = None):
-        super().__init__()
+    def __init__(
+        self,
+        type: str,
+        *,
+        clipboardData: DataTransfer | None = None,
+        bubbles: bool = False,
+        cancelable: bool = False,
+        composed: bool = False,
+    ):
+        super().__init__(type, bubbles=bubbles, cancelable=cancelable, composed=composed)
         self.clipboardData: DataTransfer | None = clipboardData
 
 

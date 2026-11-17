@@ -16,7 +16,7 @@ class Toaster(Widget):
         self.last_action_toast_id = ""
         self.add(
             tw(
-                "fixed z-[100] flex w-full max-w-sm flex-col gap-2 p-4 "
+                "pointer-events-none fixed z-[100] flex w-full max-w-sm flex-col gap-2 p-4 "
                 "data-[position=bottom-right]:bottom-0 data-[position=bottom-right]:right-0 "
                 "data-[position=top-right]:right-0 data-[position=top-right]:top-0 "
                 "data-[position=bottom-left]:bottom-0 data-[position=bottom-left]:left-0 "
@@ -66,7 +66,7 @@ class Toaster(Widget):
             "role": "status",
         }
         classes = tw(
-            "relative grid gap-1 rounded-lg border border-slate-200 bg-white p-4 pr-10 "
+            "pointer-events-auto relative grid gap-1 rounded-lg border border-slate-200 bg-white p-4 pr-10 "
             "text-sm shadow-lg data-[variant=destructive]:border-red-300 "
             "data-[variant=error]:border-red-300 data-[variant=success]:border-emerald-300 "
             "data-[variant=warning]:border-amber-300 data-[variant=loading]:border-slate-300"
