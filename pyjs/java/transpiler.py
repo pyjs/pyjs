@@ -940,7 +940,7 @@ class JVMEmitter:
                     else:
                         add(f"{statement.name}.source", descriptor[2])
                         add(f"{statement.name}.index", "J")
-                        if descriptor[0] in {"keys", "set"}:
+                        if descriptor[0] in {"keys", "items", "set"}:
                             add(f"{statement.name}.view", "Ljava/util/Set;")
                 elif isinstance(statement, IteratorNext):
                     descriptor = self.iterators[statement.iterator]
@@ -3070,9 +3070,9 @@ class JVMEmitter:
             constructor = self.class_file.method_reference(owner, "<init>", "(Ljava/util/Map;)V")
             self.code.emit(0xB7, constructor.to_bytes(2, "big"))
             return receiver_type
-        if target.name == "keys" and not node.args and not node.keywords:
+        if target.name in {"keys", "items"} and not node.args and not node.keywords:
             reference = self.class_file.method_reference(
-                "java/util/HashMap", "keySet", "()Ljava/util/Set;",
+                "java/util/HashMap", "keySet" if target.name == "keys" else "entrySet", "()Ljava/util/Set;",
             )
             self.code.emit(0xB6, reference.to_bytes(2, "big"))
             return "Ljava/util/Set;"
@@ -3389,6 +3389,9 @@ class JVMEmitter:
         if list_type.generic_name == "KeysView":
             item = next(iter(list_type.generic_types.values()))
             return ("keys", self.value_type(item), "Ljava/util/Iterator;", item)
+        if list_type.generic_name == "ItemsView":
+            item = JVM_ENVIRONMENT.builtins.search("tuple")(*list_type.generic_types.values())
+            return ("items", self.value_type(item), "Ljava/util/Iterator;", item)
         if list_type.generic_name == "set":
             item = next(iter(list_type.generic_types.values()))
             return ("set", sets.item_type(self, list_type, node), "Ljava/util/Iterator;", item)
@@ -3430,9 +3433,9 @@ class JVMEmitter:
 
     def iterator_create(self, node: IteratorCreate) -> None:
         kind, _item_type, source_type, _semantic_item = self.iterators[node.name]
-        if kind in {"keys", "set"}:
+        if kind in {"keys", "items", "set"}:
             if self.expression(node.iterable) != "Ljava/util/Set;":
-                raise JVMUnsupported("JVM hash iterator requires a set or dictionary key view", node)
+                raise JVMUnsupported("JVM hash iterator requires a set or dictionary view", node)
             self.code.emit(0x59)
             self.store(f"{node.name}.view", "Ljava/util/Set;")
             self.invoke_interface_noargs("java/util/Set", "size", "()I")
@@ -3483,7 +3486,7 @@ class JVMEmitter:
             self.range_iterator_next(node)
         elif kind == "str":
             self.string_iterator_next(node)
-        elif kind in {"keys", "set"}:
+        elif kind in {"keys", "items", "set"}:
             self.dictionary_iterator_next(node, item_type, semantic_item, collection=kind)
         else:
             self.list_iterator_next(node, item_type, source_type, semantic_item)
@@ -3511,9 +3514,33 @@ class JVMEmitter:
         name, descriptor = emit_iterator_next(owner, self.throw_python, collection=collection)
         reference = self.class_file.method_reference(owner.name, name, descriptor)
         self.code.emit(0xB8, reference.to_bytes(2, "big"))
-        self.dictionary_value_cast(item_type)
+        if collection == "items":
+            self.dictionary_entry_tuple(semantic_item)
+        else:
+            self.dictionary_value_cast(item_type)
         self.assign_iterator_target(node, item_type, semantic_item)
         self.code.branch(0xA7, self.block_label(node.body))
+
+    def dictionary_entry_tuple(self, item):
+        self.checkcast("Ljava/util/Map$Entry;")
+        entry = self.allocate_temporary("Ljava/util/Map$Entry;", "dict.entry")
+        self.store(entry, "Ljava/util/Map$Entry;")
+        owner = self.tuple_class(item)
+        self.code.emit(0xBB, self.class_file.constants.class_(owner.name).to_bytes(2, "big"))
+        self.code.emit(0x59)
+        constructor = self.class_file.method_reference(owner.name, "<init>", "()V")
+        self.code.emit(0xB7, constructor.to_bytes(2, "big"))
+        # Python yields detached tuples; exposing Map.Entry would let later
+        # dictionary value updates change an already-yielded item.
+        for index, semantic in enumerate(item.generic_types.values()):
+            descriptor = self.value_type(semantic)
+            self.code.emit(0x59)
+            self.load(entry)
+            self.invoke_interface_noargs(
+                "java/util/Map$Entry", "getKey" if index == 0 else "getValue", "()Ljava/lang/Object;")
+            self.dictionary_value_cast(descriptor)
+            reference = self.class_file.field_reference(owner.name, f"_{index}", descriptor)
+            self.code.emit(0xB5, reference.to_bytes(2, "big"))
 
     def string_iterator_next(self, node: IteratorNext) -> None:
         source = f"{node.iterator}.source"
@@ -5953,7 +5980,7 @@ class JVMEmitter:
             # Analysis only admits string literals; their ABI is ordinary str.
             return "Ljava/lang/String;"
         if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
-                and node.value.id == "KeysView"):
+                and node.value.id in {"KeysView", "ItemsView"}):
             return "Ljava/util/Set;"
         if isinstance(node, ast.Name):
             if node.id == "int":
@@ -6177,7 +6204,7 @@ class JVMEmitter:
         if value_type.generic_name == "set":
             sets.item_type(self, value_type)
             return sets.DESCRIPTOR
-        if value_type.generic_name == "KeysView":
+        if value_type.generic_name in {"KeysView", "ItemsView"}:
             return "Ljava/util/Set;"
         if value_type.generic_name == "tuple":
             if value_type.tuple_variadic:

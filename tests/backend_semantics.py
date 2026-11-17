@@ -4012,6 +4012,50 @@ DICTIONARY_POP_CONTRACT = _contract(
 )
 
 
+DICTIONARY_ITEMS_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    def item_mapping(events: list[int]) -> dict[str, int]:
+        events.append(1)
+        return {"beta": 2, "alpha": 1}
+    ''',
+    "dictionary_items_result",
+    '''
+    events: list[int] = []
+    ordered = ""
+    for key, value in item_mapping(events).items():
+        ordered += key + str(value)
+    mapping = {"first": 1, "last": 2}
+    view = mapping.items()
+    mapping["third"] = 3
+    saved: list[tuple[str, int]] = []
+    for item in view:
+        saved.append(item)
+        key, value = item
+        mapping[key] = 7
+    detached = ""
+    for key, value in saved:
+        detached += key + str(value)
+    repeated = ""
+    for key, value in mapping.items():
+        repeated += key + str(value)
+    copied = list(mapping.items())
+    copied_text = ""
+    for key, value in copied:
+        copied_text += key + str(value)
+    ''',
+    (
+        ("items preserve insertion order", "ordered != 'beta2alpha1'"),
+        ("receiver expression is evaluated once", "len(events) != 1"),
+        ("already yielded tuples retain their values", "detached != 'first1last2third3'"),
+        ("fresh views observe updates", "repeated != 'first7last7third7'"),
+        ("list construction consumes items", "copied_text != repeated"),
+    ),
+)
+
+
 DICTIONARY_KEYS_CONTRACT = _contract(
     '''
     from pyjs import js

@@ -123,8 +123,8 @@ class JVMInferenceVisitor(IRInferenceVisitor):
         if (node not in self.active_call_analysis and len(result.args) == 1 and not result.keywords
                 and getattr(target, "generic_name", None) == "list"
                 and target.container.scope.is_builtins
-                and getattr(analyzed_value_type(result.args[0]), "generic_name", None) in {"dict", "KeysView"}):
-            from .collections import ListFromKeys
+                and getattr(analyzed_value_type(result.args[0]), "generic_name", None) in {"dict", "KeysView", "ItemsView"}):
+            from .collections import ListFromView
 
             value = result.args[0]
             if analyzed_value_type(value).generic_name == "dict":
@@ -134,7 +134,7 @@ class JVMInferenceVisitor(IRInferenceVisitor):
                     args=[], keywords=[]), node))
             source = analyzed_value_type(value)
             item = analyzed_value_type(result).generic_types["V"]
-            helper = resolve_imported(ListFromKeys, self.module, "ListFromKeys")(source, item)
+            helper = resolve_imported(ListFromView, self.module, "ListFromView")(source, item)
             call = ast.Call(func=AnalyzedExpression(Name(helper)),
                             args=[AnalyzedExpression(value)], keywords=[])
             return self.visit(ast.copy_location(

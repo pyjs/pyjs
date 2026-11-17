@@ -4,11 +4,11 @@ from pyjs import jvm
 from pyjs.java import i32
 
 
-class ListFromKeys[Source, Item]:
+class ListFromView[Source, Item]:
     def __init__(self, source: Source):
         self.result: list[Item] = []
-        for key in source:
-            self.result.append(key)
+        for item in source:
+            self.result.append(item)
 
 
 @jvm.native("java/util/List", interface=True)

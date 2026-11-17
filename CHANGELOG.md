@@ -10,6 +10,10 @@
   first line of a growing textarea. `FieldContent` can shrink around those
   controls without forcing long content outside the row.
 
+- JVM dictionary item views support insertion-ordered iteration, tuple
+  unpacking and list construction. Views remain live and repeatable; yielded
+  tuples retain their values when dictionary entries are later updated.
+
 - `Textarea(auto_size=True)` grows and shrinks with wrapped content and
   available width, starting at a touch-friendly row. Native field sizing
   avoids measuring on each input; older browsers keep native scrolling and
