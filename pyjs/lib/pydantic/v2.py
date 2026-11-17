@@ -6,8 +6,10 @@ from pyjs import js
 from pyjs.analysis.libraries import LibraryClassInfo
 
 from .constraints import field_constraints
+from .patterns import matches_pattern
 
 
+@js.references(matches_pattern)
 @js
 def assign_model_values(model: object, values: dict[str, object]) -> None:
     defaults = deepcopy(getattr(type(model), "__pyjs_defaults__", {}))
@@ -203,6 +205,10 @@ assign_model_values.source(
         if (result !== null && Object.hasOwn(data, name)) {
             let length;
             for (const [kind, bound] of constraints.get(name) || []) {
+                if (kind === 'pattern') {
+                    if (!matches_pattern(result, bound)) fail(name, 'match the field pattern');
+                    continue;
+                }
                 let measured = result;
                 if (kind === 'min_length' || kind === 'max_length') {
                     if (length === undefined) {
@@ -397,7 +403,8 @@ def _class_info(
     }
     constraints = {name: constraints for name, field in model.model_fields.items()
                    if (constraints := field_constraints(field, model_config=model.model_config))}
-    if constraints or any(field_constraints(field) for base in model.__mro__[1:]
+    if constraints or any(field_constraints(field, model_config=base.model_config)
+                          for base in model.__mro__[1:]
                           for field in getattr(base, "model_fields", {}).values()):
         config["field_constraints"] = constraints
     return LibraryClassInfo(annotations, defaults, tuple(required), config=config)

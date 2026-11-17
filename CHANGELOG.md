@@ -14,6 +14,11 @@
   final value. Nonnumeric bounds remain server-side. This is not full Pydantic
   validation.
 
+- Client string fields validate a portable subset of `Field(pattern=...)`
+  consistently in JavaScript and JVM JSON decoding, including Unicode text
+  and strict end anchors. Unsupported regex syntax is rejected at compilation;
+  matching avoids backtracking on overlapping repetitions.
+
 - Horizontal fields support `FieldAccessory` slots for controls beside the
   first line of a growing textarea. `FieldContent` can shrink around those
   controls without forcing long content outside the row.
