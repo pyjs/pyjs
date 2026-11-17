@@ -142,6 +142,14 @@ ANDROID_CONTROL_BINDINGS = (
         ),
     ),
     JVMClassBinding(
+        "android/widget/HorizontalScrollView",
+        methods=(
+            _method.constructor("(Landroid/content/Context;)V"),
+            _method("setFillViewport", "(Z)V"),
+            _method("scrollTo", "(II)V"),
+        ),
+    ),
+    JVMClassBinding(
         "android/text/InputType",
         fields=tuple(
             _field(name, "I")

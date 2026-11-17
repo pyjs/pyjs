@@ -687,6 +687,9 @@ class View:
     def getScrollY(self) -> i32:
         return i32(0)
 
+    def getScrollX(self) -> i32:
+        return i32(0)
+
     def getContext(self) -> Context:
         return self.context
 

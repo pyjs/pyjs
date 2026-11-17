@@ -319,6 +319,12 @@ Selectors are exact and combined; `focused=None` leaves focus unrestricted.
 For launcher or system flows that can precede the target process, explicitly
 pass `require_running=False`. Ordinary waits retain early app-exit reporting.
 
+`pyjs.android.controls.HorizontalScrollView` hosts one child, typically a
+horizontal layout containing multiple actions. Give the viewport a bounded
+width; keep essential actions outside it. `set_fill_viewport(True)` expands
+short content to the viewport, while `scroll_to(x, y)` clamps to its bounds.
+Use `getScrollX()` to inspect the horizontal pixel offset.
+
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
 `getLayout()` returns `TextLayout` or `None`, including between a wrapping

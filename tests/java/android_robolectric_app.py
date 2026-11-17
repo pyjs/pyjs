@@ -4,15 +4,36 @@ from pyjs.android import (
     Button,
     EditorInfo,
     KeyEvent,
+    LayoutParams,
     LinearLayout,
+    LinearLayoutParams,
     OnClickListener,
     OnEditorActionListener,
     TextView,
     View,
 )
-from pyjs.android.controls import EditText
+from pyjs.android.controls import EditText, HorizontalScrollView
 from pyjs.android.dialogs import AlertDialogBuilder, DialogClickListener, DialogInterface
 from pyjs.java import i32
+
+
+class HorizontalActivity(Activity):
+    def onCreate(self, state: Bundle | None) -> None:
+        super().onCreate(state)
+        root = LinearLayout(self)
+        root.setOrientation(LinearLayout.VERTICAL)
+        for index in range(2):
+            scroll = HorizontalScrollView(self)
+            scroll.setId(i32(1001 + index))
+            scroll.setLayoutParams(LinearLayoutParams(160, 60, 0.0))
+            scroll.set_fill_viewport(True)
+            child = TextView(self)
+            child.setText("X")
+            child.setMinimumWidth(i32(600 if index == 0 else 40))
+            child.setLayoutParams(LayoutParams(LayoutParams.WRAP_CONTENT, 48))
+            scroll.addView(child)
+            root.addView(scroll)
+        self.setContentView(root)
 
 
 class ConfirmGreeting(DialogClickListener):
