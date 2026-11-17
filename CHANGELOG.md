@@ -13,6 +13,7 @@
 - JVM dictionary item views support insertion-ordered iteration, tuple
   unpacking and list construction. Views remain live and repeatable; yielded
   tuples retain their values when dictionary entries are later updated.
+  Materialized lists preserve fixed-width key and value representations.
 
 - `Textarea(auto_size=True)` grows and shrinks with wrapped content and
   available width, starting at a touch-friendly row. Native field sizing

@@ -2844,6 +2844,12 @@ class JVMEmitter:
             self.load("self")
             return self.slot_types["self"]
         if isinstance(target, (Class, GenericClass)):
+            if (getattr(target, "generic_name", None) == "list"
+                    and target.container.scope.is_builtins
+                    and len(node.args) == 1 and not node.keywords
+                    and getattr(analyzed_value_type(node.args[0]), "generic_name", None)
+                    in {"dict", "KeysView", "ItemsView"}):
+                return self.list_from_dictionary_view(node)
             if (getattr(target, "generic_name", None) == "set"
                     and target.container.scope.is_builtins):
                 if node.args or node.keywords:
@@ -3496,20 +3502,28 @@ class JVMEmitter:
         self.code.emit(0xB9, reference.to_bytes(2, "big") + b"\x01\x00")
 
     def dictionary_iterator_next(self, node, item_type, semantic_item, *, collection="keys"):
+        self.dictionary_size_guard(f"{node.iterator}.view", f"{node.iterator}.index", collection)
+        self.load(f"{node.iterator}.source")
+        self.invoke_interface_noargs("java/util/Iterator", "hasNext", "()Z")
+        self.code.branch(0x99, self.block_label(node.exhausted))
+        self.dictionary_iterator_value(f"{node.iterator}.source", item_type, semantic_item, collection)
+        self.assign_iterator_target(node, item_type, semantic_item)
+        self.code.branch(0xA7, self.block_label(node.body))
+
+    def dictionary_size_guard(self, view, size, collection):
         unchanged = self.new_label("dictionary.size.unchanged")
-        self.load(f"{node.iterator}.view")
+        self.load(view)
         self.invoke_interface_noargs("java/util/Set", "size", "()I")
         self.code.emit(0x85)
-        self.load(f"{node.iterator}.index")
+        self.load(size)
         self.code.emit(0x94)
         self.code.branch(0x99, unchanged)
         self.throw_python("RuntimeError", ("Set" if collection == "set" else "dictionary")
                           + " changed size during iteration")
         self.code.mark(unchanged)
-        self.load(f"{node.iterator}.source")
-        self.invoke_interface_noargs("java/util/Iterator", "hasNext", "()Z")
-        self.code.branch(0x99, self.block_label(node.exhausted))
-        self.load(f"{node.iterator}.source")
+
+    def dictionary_iterator_value(self, iterator, item_type, semantic_item, collection):
+        self.load(iterator)
         owner = self.class_files[self.main_class_name]
         name, descriptor = emit_iterator_next(owner, self.throw_python, collection=collection)
         reference = self.class_file.method_reference(owner.name, name, descriptor)
@@ -3518,8 +3532,49 @@ class JVMEmitter:
             self.dictionary_entry_tuple(semantic_item)
         else:
             self.dictionary_value_cast(item_type)
-        self.assign_iterator_target(node, item_type, semantic_item)
-        self.code.branch(0xA7, self.block_label(node.body))
+
+    def list_from_dictionary_view(self, node):
+        source = analyzed_value_type(node.args[0])
+        result = analyzed_value_type(node)
+        collection = "items" if source.generic_name == "ItemsView" else "keys"
+        item = (JVM_ENVIRONMENT.builtins.search("tuple")(*source.generic_types.values())
+                if collection == "items" else next(iter(source.generic_types.values())))
+        if not same_analyzer_type(item, result.generic_types["V"]):
+            raise JVMUnsupported("JVM dictionary view copying requires matching item storage", node)
+        item_type = self.value_type(item)
+        self.expression(node.args[0])
+        if source.generic_name == "dict":
+            self.invoke_interface_noargs("java/util/Map", "keySet", "()Ljava/util/Set;")
+        view = self.allocate_temporary("Ljava/util/Set;", "list.view")
+        self.store(view, "Ljava/util/Set;")
+        size = self.allocate_temporary("J", "list.view.size")
+        self.load(view)
+        self.invoke_interface_noargs("java/util/Set", "size", "()I")
+        self.code.emit(0x85)
+        self.store(size, "J")
+        iterator = self.allocate_temporary("Ljava/util/Iterator;", "list.view.iterator")
+        self.load(view)
+        self.invoke_interface_noargs("java/util/Set", "iterator", "()Ljava/util/Iterator;")
+        self.store(iterator, "Ljava/util/Iterator;")
+        owner = self.list_class(result)
+        descriptor = self.collection_new(CollectionNew(AnalyzedList(result, elts=[], ctx=ast.Load())))
+        output = self.allocate_temporary(descriptor, "list.view.result")
+        self.store(output, descriptor)
+        loop = self.new_label("list.view.loop")
+        done = self.new_label("list.view.done")
+        self.code.mark(loop)
+        self.dictionary_size_guard(view, size, collection)
+        self.load(iterator)
+        self.invoke_interface_noargs("java/util/Iterator", "hasNext", "()Z")
+        self.code.branch(0x99, done)
+        self.load(output)
+        self.dictionary_iterator_value(iterator, item_type, item, collection)
+        append = self.class_file.method_reference(owner.name, "append", f"({item_type})V")
+        self.code.emit(0xB6, append.to_bytes(2, "big"))
+        self.code.branch(0xA7, loop)
+        self.code.mark(done)
+        self.load(output)
+        return descriptor
 
     def dictionary_entry_tuple(self, item):
         self.checkcast("Ljava/util/Map$Entry;")

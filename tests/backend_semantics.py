@@ -4045,6 +4045,12 @@ DICTIONARY_ITEMS_CONTRACT = _contract(
     copied_text = ""
     for key, value in copied:
         copied_text += key + str(value)
+    copy_events: list[int] = []
+    factory_copy = list(item_mapping(copy_events).items())
+    factory_text = ""
+    for key, value in factory_copy:
+        factory_text += key + str(value)
+    empty: dict[str, int] = {}
     ''',
     (
         ("items preserve insertion order", "ordered != 'beta2alpha1'"),
@@ -4052,6 +4058,8 @@ DICTIONARY_ITEMS_CONTRACT = _contract(
         ("already yielded tuples retain their values", "detached != 'first1last2third3'"),
         ("fresh views observe updates", "repeated != 'first7last7third7'"),
         ("list construction consumes items", "copied_text != repeated"),
+        ("list construction evaluates its source once", "len(copy_events) != 1 or factory_text != ordered"),
+        ("empty views materialize an empty list", "len(list(empty.items())) != 0"),
     ),
 )
 
