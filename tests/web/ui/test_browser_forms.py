@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 
-from examples.components.catalog import CatalogForm, growing_field_example
+from examples.components.catalog import CatalogForm, GrowingFieldExample
 from pyjs import js
 from pyjs.testing.web import assert_render, wait_for_frames
 from pyjs.web.dom import document, window
@@ -90,7 +90,7 @@ async def test_horizontal_field_accessories_stay_at_first_line_during_reflow():
 
 @js
 def test_catalog_growing_field_clear_action_keeps_checkbox_state():
-    row = growing_field_example()
+    row = GrowingFieldExample()
     mount(row)
     field = cast(HTMLTextAreaElement, row.querySelector("textarea"))
     checkbox = cast(HTMLElement, row.querySelector("input"))

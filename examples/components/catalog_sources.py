@@ -133,12 +133,16 @@ def catalog_source(component_id: str) -> str:
         )
     if component_id == "forms":
         return (
+            "complete = Checkbox(name='complete')\n"
+            "complete.element.setAttribute('aria-label', 'Complete task')\n"
+            "task = Textarea('Task', auto_size=True)\n"
+            "task.element.setAttribute('aria-label', 'Task')\n"
             "FieldGroup(\n"
             "    Field(FieldLabel('Email'), Input(input_type='email')),\n"
             "    Field(FieldLabel('Biography'), Textarea(auto_size=True)),\n"
             "    Field(\n"
-            "        FieldAccessory(Checkbox(name='complete')),\n"
-            "        FieldContent(Textarea('Task', auto_size=True)),\n"
+            "        FieldAccessory(complete),\n"
+            "        FieldContent(task),\n"
             "        FieldAccessory(Button('Clear', variant='ghost')),\n"
             "        orientation='horizontal',\n"
             "    ),\n"

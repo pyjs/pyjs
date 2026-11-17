@@ -39,6 +39,14 @@ def test_components_preserves_its_shell_during_partial_navigation():
                     "document.querySelector('catalog-app')._initialized === true",
                     "the editable field example to hydrate",
                 )
+                task = '#forms textarea[aria-label="Task"]'
+                initial_task = (
+                    "Review the project notes and write down the next steps before the meeting.")
+                assert await page.evaluate(
+                    f"document.querySelector('{task}').value") == initial_task
+                await page.fill(task, "Edited task before clearing")
+                assert await page.evaluate(
+                    f"document.querySelector('{task}').value") == "Edited task before clearing"
                 await page.click('#forms [aria-label="Complete task"]')
                 await page.click('#forms [data-slot="field-accessory"] button')
                 assert await page.evaluate(
@@ -74,6 +82,20 @@ def test_components_preserves_its_shell_during_partial_navigation():
                 })()""")
                 await page.wait_for_text('[data-testid=pasted-files]', 'clipboard.png')
                 await page.evaluate("document.querySelector('workspace-app').new_task_dialog.close()")
+
+                await page.click('a[href="/"]')
+                await page.wait_for(
+                    "document.querySelector('catalog-app')?._initialized === true",
+                    "the catalog to hydrate after partial navigation",
+                )
+                assert await page.evaluate(
+                    f"document.querySelector('{task}').value") == initial_task
+                await page.fill(task, "A new task after navigation")
+                await page.click('#forms [data-slot="field-accessory"] button')
+                assert await page.evaluate(f"document.querySelector('{task}').value") == ""
+                assert await page.evaluate(
+                    "document.querySelector('components-app') === window.__componentsShell") is True
+                assert page.exceptions == []
 
                 await page.click('a[href="/diagrams"]')
                 await page.wait_for("document.querySelector('diagram-canvas')?._initialized === true",
