@@ -823,7 +823,7 @@ class CatalogForm(Widget):
     def __init__(self):
         super().__init__()
         self.email = ref(Input(input_type="email", placeholder="you@example.com", name="email"))
-        self.bio = ref(Textarea(placeholder="Tell us a little about yourself", name="bio"))
+        self.bio = ref(Textarea(placeholder="Tell us a little about yourself", name="bio", auto_size=True))
         self.terms = ref(Checkbox(name="terms"))
         self.updates = ref(Switch(name="updates", checked=True))
         self.error = ref(FieldError("Enter an email address and accept the terms."))

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `Textarea(auto_size=True)` grows and shrinks with wrapped content and
+  available width, starting at a touch-friendly row. Native field sizing
+  avoids measuring on each input; older browsers keep native scrolling and
+  vertical resizing. The Components profile form demonstrates this option.
+
 - Android exposes `HorizontalScrollView` for native horizontal overflow,
   including viewport filling and bounded scrolling. `View.getScrollX()`
   reports the horizontal offset.

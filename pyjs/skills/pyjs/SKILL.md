@@ -156,6 +156,11 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
+  fields that should fit their wrapped content. It fills its container's
+  width and grows or shrinks from a touch-friendly row without input listeners.
+  Do not set a fixed height. Browsers without CSS field sizing retain native
+  scrolling and vertical resizing; callers still own Enter/submit semantics.
 - Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
   editor or composer. Connect it during client initialization/reconnection
   and disconnect it on removal. Listen on its host for `files-paste`, cast
