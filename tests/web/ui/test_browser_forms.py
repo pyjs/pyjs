@@ -30,6 +30,7 @@ async def test_horizontal_field_accessories_stay_at_first_line_during_reflow():
     trailing = FieldAccessory(action)
     row = Field(leading, FieldContent(control), trailing, orientation="horizontal")
     host = div(tw("w-80 bg-white p-2"), row)
+    host.style.setProperty("font-family", "Arial, sans-serif")
     mount(host)
     control.set_value("A task with words that wrap. " * 8)
     field.focus()
