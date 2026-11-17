@@ -52,6 +52,17 @@ def test_components_preserves_its_shell_during_partial_navigation():
                 ) == "page"
                 assert await page.evaluate("location.pathname") == "/workspace"
                 assert page.exceptions == []
+                await page.evaluate("""(() => {
+                    const app = document.querySelector('workspace-app');
+                    app.new_task_dialog.open();
+                    const data = new DataTransfer();
+                    data.items.add(new File(['preview'], 'clipboard.png', {type: 'image/png'}));
+                    app.task_description.element.dispatchEvent(new ClipboardEvent('paste', {
+                        clipboardData: data, cancelable: true,
+                    }));
+                })()""")
+                await page.wait_for_text('[data-testid=pasted-files]', 'clipboard.png')
+                await page.evaluate("document.querySelector('workspace-app').new_task_dialog.close()")
 
                 await page.click('a[href="/diagrams"]')
                 await page.wait_for("document.querySelector('diagram-canvas')?._initialized === true",

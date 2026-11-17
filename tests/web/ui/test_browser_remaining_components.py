@@ -221,6 +221,21 @@ def test_otp_select_scroller_and_toaster_support_their_core_interactions():
 
 
 @js
+def test_toaster_only_intercepts_pointer_events_on_visible_notifications():
+    toaster = Toaster(position="top-right")
+    mount(toaster)
+    bounds = toaster.getBoundingClientRect()
+    assert document.elementFromPoint(bounds.right - 1, bounds.top + 1) is not toaster
+    toaster.notify("Still saving", duration=0)
+    bounds = toaster.getBoundingClientRect()
+    assert document.elementFromPoint(bounds.right - 1, bounds.top + 1) is not toaster
+    close = require_element(toaster, "[data-toast-close]")
+    button = close.getBoundingClientRect()
+    assert document.elementFromPoint(button.left + button.width / 2,
+                                     button.top + button.height / 2) is close
+
+
+@js
 def test_context_menu_combobox_date_picker_and_sidebar_support_core_interactions():
     context_menu = ContextMenu(
         ContextMenuTrigger("Right click"),

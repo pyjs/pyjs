@@ -29,6 +29,11 @@ uv run python -m pyjs_examples.components
 Open the printed URL. Move between **Catalog** and **Workspace block** to see
 the persistent shell and partial navigation.
 
+In **Workspace block**, open **New task** and paste a file into Description.
+The example displays its name without uploading or storing it. The reusable
+`FilePasteController` accepts files only when the consumer synchronously
+cancels its `files-paste` event; ordinary text paste remains native.
+
 ## Diagram editor
 
 Open **Diagrams** (`/diagrams`) for a decision-tree editor. Click nodes to

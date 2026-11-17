@@ -156,6 +156,14 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
+  editor or composer. Connect it during client initialization/reconnection
+  and disconnect it on removal. Listen on its host for `files-paste`, cast
+  `event.detail` to `list[File]`, and accept with `event.preventDefault()`
+  before awaiting storage or uploads. Text-only and unaccepted file pastes
+  keep native behavior. The consumer owns file validation and pending saves;
+  accepting a paste does not mean its files were persisted. Components'
+  Workspace task description demonstrates a preview-only consumer.
 - For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`
   with snapshot models and `DiagramEditor` from `pyjs.ui.diagram`. Configure a
   graph, then read committed content on `diagram-change`. Programmatic edits
