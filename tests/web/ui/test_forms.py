@@ -54,3 +54,18 @@ def test_catalog_form_keeps_initial_values_in_native_controls():
     assert not form.terms.is_checked()
     assert form.updates.is_checked()
     assert form.error.getAttribute("hidden") == ""
+
+
+@pytest.mark.pyjs_python
+def test_auto_sizing_textarea_retains_native_form_contract():
+    control = Textarea("Write a task", "task", auto_size=True)
+    control.set_value("A long task\nWith another line")
+    assert control.element.tagName == "TEXTAREA"
+    assert control.element.getAttribute("name") == "task"
+    assert control.element.getAttribute("rows") == "1"
+    assert control.get_value() == "A long task\nWith another line"
+    assert "field-sizing-content" in control.element.getAttribute("class").split()
+    assert "w-full" in control.element.getAttribute("class").split()
+    assert "px-3" in control.element.getAttribute("class").split()
+    assert "min-h-24" not in control.element.getAttribute("class").split()
+    assert Textarea().element.getAttribute("rows") is None

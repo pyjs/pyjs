@@ -135,7 +135,7 @@ def catalog_source(component_id: str) -> str:
         return (
             "FieldGroup(\n"
             "    Field(FieldLabel('Email'), Input(input_type='email')),\n"
-            "    Field(FieldLabel('Biography'), Textarea()),\n"
+            "    Field(FieldLabel('Biography'), Textarea(auto_size=True)),\n"
             ")"
         )
     if component_id == "hover-card":
