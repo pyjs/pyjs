@@ -2,7 +2,15 @@ import pytest
 
 from examples.components.catalog import CatalogForm
 from pyjs.web.ui.checkbox import Checkbox
-from pyjs.web.ui.field import Field, FieldDescription, FieldLabel, FieldSet, FieldTitle
+from pyjs.web.ui.field import (
+    Field,
+    FieldAccessory,
+    FieldContent,
+    FieldDescription,
+    FieldLabel,
+    FieldSet,
+    FieldTitle,
+)
 from pyjs.web.ui.input import Input
 from pyjs.web.ui.label import Label
 from pyjs.web.ui.switch import Switch
@@ -44,6 +52,22 @@ def test_field_primitives_preserve_semantics_and_orientation():
     assert field.getAttribute("role") == "group"
     assert field.getAttribute("data-orientation") == "vertical"
     assert field.children[0].getAttribute("data-slot") == "field-label"
+
+
+@pytest.mark.pyjs_python
+def test_horizontal_field_accessory_preserves_native_controls():
+    checkbox = Checkbox("complete")
+    control = Textarea("Task", auto_size=True)
+    accessory = FieldAccessory(checkbox)
+    content = FieldContent(control)
+    field = Field(accessory, content, orientation="horizontal")
+
+    assert field.getAttribute("data-orientation") == "horizontal"
+    assert accessory.getAttribute("data-slot") == "field-accessory"
+    assert accessory.children[0] is checkbox.element
+    assert content.children[0] is control.element
+    assert "min-w-0" in content.getAttribute("class").split()
+    assert accessory.getAttribute("tabindex") is None
 
 
 @pytest.mark.pyjs_python

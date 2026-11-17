@@ -35,6 +35,16 @@ def test_components_preserves_its_shell_during_partial_navigation():
                     "the components navigation shell to hydrate",
                 )
                 assert page.exceptions == []
+                await page.wait_for(
+                    "document.querySelector('catalog-app')._initialized === true",
+                    "the editable field example to hydrate",
+                )
+                await page.click('#forms [aria-label="Complete task"]')
+                await page.click('#forms [data-slot="field-accessory"] button')
+                assert await page.evaluate(
+                    "document.querySelector('#forms textarea[aria-label=Task]').value") == ""
+                assert await page.evaluate(
+                    "document.querySelector('#forms [aria-label=\"Complete task\"]').checked") is True
                 await page.evaluate(
                     "window.__componentsShell = document.querySelector('components-app')"
                 )

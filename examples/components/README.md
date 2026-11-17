@@ -38,6 +38,12 @@ text keeps native paste behavior even when an image preview accompanies it.
 An image with HTML markup but no plain text is still accepted. Rich editors
 can separately use `has_html` when their native paste supports HTML.
 
+In **Catalog → Forms**, edit the task beside its checkbox. Compose
+`FieldAccessory` and `FieldContent` inside `Field(orientation="horizontal")`
+to keep controls beside the first line as `Textarea(auto_size=True)` wraps.
+Accessory slots stay at least 36px tall and grow for larger controls; they
+do not forward clicks or focus. Supply accessible labels for each control.
+
 ## Diagram editor
 
 Open **Diagrams** (`/diagrams`) for a decision-tree editor. Click nodes to

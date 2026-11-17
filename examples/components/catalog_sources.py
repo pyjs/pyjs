@@ -136,6 +136,12 @@ def catalog_source(component_id: str) -> str:
             "FieldGroup(\n"
             "    Field(FieldLabel('Email'), Input(input_type='email')),\n"
             "    Field(FieldLabel('Biography'), Textarea(auto_size=True)),\n"
+            "    Field(\n"
+            "        FieldAccessory(Checkbox(name='complete')),\n"
+            "        FieldContent(Textarea('Task', auto_size=True)),\n"
+            "        FieldAccessory(Button('Clear', variant='ghost')),\n"
+            "        orientation='horizontal',\n"
+            "    ),\n"
             ")"
         )
     if component_id == "hover-card":
