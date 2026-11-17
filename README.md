@@ -913,7 +913,7 @@ with `pyjs template`.
 - Plain Pydantic 2 models compile as typed JVM field containers, with
   keyword-only construction, inherited fields, scalar defaults, nested models,
   and supported JVM collection types. Compiler type checks apply; Pydantic
-  coercion and `Field` constraints remain server-side, not JVM validators.
+  coercion and constructor-time `Field` constraints remain server-side.
   Empty list/dictionary defaults and built-in `list`/`dict` default factories
   allocate fresh collections for each model and each missing JSON field.
   Explicit `None` remains distinct from an omitted nullable collection.
@@ -928,8 +928,9 @@ with `pyjs template`.
   the field is non-nullable with an empty default. Required fields and nullable
   fields or items containing those dictionaries remain unsupported. This does
   not restrict existing non-nullable API-result decoding. JSON methods validate
-  structure, not Pydantic coercion or `Field` constraints. Nested fields serialize
-  their declared model shape, excluding subclass-only fields. Custom JSON method
+  structure and the field bounds described below, not Pydantic coercion.
+  Nested fields serialize their declared model shape, excluding subclass-only
+  fields. Custom JSON method
   overrides and optional Pydantic method arguments are not supported.
   Constructing an unsupported-codec subclass also disables its parent's
   virtual JSON dump calls, even on an explicitly constructed parent. Static
@@ -949,6 +950,14 @@ with `pyjs template`.
   supplied model fields, including nested fields; defaults do not increase
   this count. Ties retain declaration order. This is not full Pydantic smart
   coercion. JSON object key order is not a cross-backend canonical format.
+- JavaScript model validation and JVM model JSON decoding enforce field-level
+  `ge`, `gt`, `le`, `lt`, `min_length`, and `max_length` constraints. Text
+  lengths count Unicode code points, not UTF-16 units. Nested fields and
+  inherited overrides keep their constraints; optional `None` bypasses bounds.
+  Omitted defaults are not constraint-validated, matching Pydantic's default
+  behavior. This does not implement `validate_default`, item-level `Annotated`
+  constraints, patterns, multiple-of checks, or custom validators. JVM direct
+  construction remains field-only. Keep server-side validation enabled.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
@@ -980,8 +989,8 @@ with `pyjs template`.
   Server operation bodies are not analyzed or emitted. Supported schemas are
   scalar values, string literals, nullable values, lists, string-keyed mappings,
   and the plain Pydantic models described above. Results are decoded by schema;
-  Pydantic coercion and constraints remain server-side. The compiler rejects
-  recursive schemas, excessive API graphs, streams, JSON:API resources,
+  Pydantic coercion and unsupported constraints remain server-side. The compiler
+  rejects recursive schemas, excessive API graphs, streams, JSON:API resources,
   relationships, variadic operation parameters, and custom API initialization.
   Operation errors preserve their status, code, title, detail, and field path;
   malformed error bodies become a generic `OperationError` retaining the body.

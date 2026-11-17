@@ -4,6 +4,8 @@ from hashlib import sha256
 from types import UnionType
 from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
+from pyjs.lib.pydantic.constraints import field_constraints
+
 from . import double_to_string
 from .json import JSONReader, quote
 from .models import field_default, field_info, is_model
@@ -219,6 +221,7 @@ class JSONCodegen:
             self.emit(f"{'if' if index == 0 else 'elif'} {key} == {name!r}:")
             self.level += 1
             item = self.decode(field.annotation, reader, depth + 1)
+            self.check_constraints(field, item)
             self.emit(f"{value} = {item}")
             self.emit(f"{seen} = True")
             self.level -= 1
@@ -243,3 +246,25 @@ class JSONCodegen:
             field_type = self.annotation(field.annotation)
             arguments.append(f"{name}=_pyjs_cast({field_type}, {value})")
         self.emit(f"{result} = {self.annotation(annotation)}({', '.join(arguments)})")
+
+    def check_constraints(self, field, value):
+        constraints = field_constraints(field)
+        if not constraints:
+            return
+        annotation = self.unwrap(field.annotation)
+        optional = get_origin(annotation) in (Union, UnionType) and type(None) in get_args(annotation)
+        if optional:
+            self.emit(f"if {value} is not None:")
+            self.level += 1
+        operators = {"ge": ">=", "gt": ">", "le": "<=", "lt": "<",
+                     "min_length": ">=", "max_length": "<="}
+        length = None
+        if "min_length" in constraints or "max_length" in constraints:
+            length = self.name()
+            self.emit(f"{length} = {self.type_name(len)}({value})")
+        for kind, bound in constraints.items():
+            measured = length if kind in ("min_length", "max_length") else value
+            self.emit(f"if not ({measured} {operators[kind]} {bound!r}):")
+            self.emit(f"    raise {self.type_name(ValueError)}({'Invalid JSON field constraint: ' + kind!r})")
+        if optional:
+            self.level -= 1

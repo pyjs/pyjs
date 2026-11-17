@@ -1278,7 +1278,7 @@ class Transpiler(_Unparser):
             self.fill(f"{class_name}.__pyjs_config__ = ")
             self.traverse(ast.Dict(
                 keys=[ast.Constant(value=name) for name in node.obj.client_config],
-                values=[ast.Constant(value=value) for value in node.obj.client_config.values()],
+                values=[py_to_ast(value) for value in node.obj.client_config.values()],
             ))
             self.write(";")
         if node.obj.client_fields or node.obj.client_config:
