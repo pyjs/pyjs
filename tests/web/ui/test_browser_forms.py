@@ -5,7 +5,7 @@ import pytest
 from examples.components.catalog import CatalogForm, growing_field_example
 from pyjs import js
 from pyjs.testing.web import assert_render, wait_for_frames
-from pyjs.web.dom import document
+from pyjs.web.dom import document, window
 from pyjs.web.domx import button, div, tw
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLElement, HTMLTextAreaElement
@@ -79,7 +79,13 @@ async def test_horizontal_field_accessories_stay_at_first_line_during_reflow():
     action.style.removeProperty("height")
     control.set_value("A task with words that wrap. " * 8)
     await wait_for_frames(2)
-    assert_render(host, "field-growing-textarea-accessories")
+    # Native text rasterization differs even with identical font metrics.
+    platform = "linux"
+    if window.navigator.platform.startswith("Mac"):
+        platform = "macos"
+    elif window.navigator.platform.startswith("Win"):
+        platform = "windows"
+    assert_render(host, "field-growing-textarea-accessories-" + platform)
 
 
 @js
