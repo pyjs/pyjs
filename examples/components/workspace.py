@@ -3,7 +3,6 @@ from typing import cast
 from pyjs import effect, js, state
 from pyjs.web.domx import div, h1, h3, p, ref, span, tag, tw
 from pyjs.web.events import CustomEvent, Event
-from pyjs.web.files import File
 from pyjs.web.ui import Widget
 from pyjs.web.ui.accordion import AccordionGroup, AccordionItem
 from pyjs.web.ui.alert import Alert, AlertDescription, AlertTitle
@@ -61,7 +60,7 @@ from pyjs.web.ui.dropdown_menu import (
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 )
-from pyjs.web.ui.file_paste import FilePasteController
+from pyjs.web.ui.file_paste import FilePasteController, PastedFiles
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
 from pyjs.web.ui.input import Input
 from pyjs.web.ui.item import Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle
@@ -733,10 +732,12 @@ class WorkspaceApp(Widget):
         self.file_paste.disconnect()
 
     def files_pasted(self, event: CustomEvent):
+        pasted = cast(PastedFiles, event.detail)
+        if pasted.has_text:
+            return
         event.preventDefault()
-        files = cast(list[File], event.detail)
         self.pasted_files.textContent = "Clipboard files (preview only): " + ", ".join(
-            file.name for file in files)
+            file.name for file in pasted.files)
 
     @effect(task_count)
     def render_task_count(self):

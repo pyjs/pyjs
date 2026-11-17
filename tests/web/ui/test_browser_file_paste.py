@@ -9,7 +9,7 @@ from pyjs.web.domx import div, textarea
 from pyjs.web.dragdrop import DataTransfer
 from pyjs.web.events import CustomEvent
 from pyjs.web.files import File
-from pyjs.web.ui.file_paste import FilePasteController
+from pyjs.web.ui.file_paste import FilePasteController, PastedFiles
 
 pytestmark = pytest.mark.pyjs_web
 
@@ -20,11 +20,17 @@ class Receiver:
         self.name = name
         self.owners = owners
         self.files: list[File] = []
+        self.types: list[str] = []
+        self.prefer_text = False
         self.listener: callable = self.accept
 
     def accept(self, event: CustomEvent):
+        pasted = cast(PastedFiles, event.detail)
+        self.types = pasted.types
+        if self.prefer_text and pasted.has_text:
+            return
         self.owners.append(self.name)
-        self.files.extend(cast(list[File], event.detail))
+        self.files.extend(pasted.files)
         event.preventDefault()
 
 
@@ -65,8 +71,31 @@ async def test_file_paste_retains_files_but_leaves_text_and_unaccepted_files_alo
     assert data is not None
     assert cast(DataTransfer, data).getData("text/plain") == "caption"
     cast(DataTransfer, data).items.clear()
+    assert "text/plain" in receiver.types and "Files" in receiver.types
     assert await received[0].text() == "image bytes"
     assert await received[1].text() == "second"
+    controller.disconnect()
+
+
+@js
+def test_file_paste_consumer_can_preserve_mixed_text_or_html_paste():
+    host = textarea()
+    mount(host)
+    controller = FilePasteController(host)
+    controller.connect()
+    receiver = Receiver("editor", [])
+    receiver.prefer_text = True
+    host.addEventListener("files-paste", receiver.listener)
+    file = File(["preview"], "selection.png", type="image/png")
+    assert host.dispatchEvent(clipboard([file], "spreadsheet cells"))
+    data = DataTransfer()
+    data.items.add(file)
+    data.setData("text/html", "<table><tr><td>cells</td></tr></table>")
+    assert host.dispatchEvent(ClipboardEvent("paste", cancelable=True, clipboardData=data))
+    assert not receiver.files
+    data.clearData()
+    assert not host.dispatchEvent(ClipboardEvent("paste", cancelable=True, clipboardData=data))
+    assert len(receiver.files) == 1
     controller.disconnect()
 
 

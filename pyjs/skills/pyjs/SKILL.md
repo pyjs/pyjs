@@ -159,9 +159,12 @@ available for every released version.
 - Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
   editor or composer. Connect it during client initialization/reconnection
   and disconnect it on removal. Listen on its host for `files-paste`, cast
-  `event.detail` to `list[File]`, and accept with `event.preventDefault()`
-  before awaiting storage or uploads. Text-only and unaccepted file pastes
-  keep native behavior. The consumer owns file validation and pending saves;
+  `event.detail` to `PastedFiles` from the same module, and accept with
+  `event.preventDefault()` before awaiting storage or uploads. The snapshot
+  exposes `files`, clipboard MIME `types`, and `has_text` (plain text or HTML).
+  Decline offers with `has_text` to prefer native text over image previews
+  included by rich-content producers. Acceptance replaces the entire native
+  paste, including any text. The consumer owns validation and pending saves;
   accepting a paste does not mean its files were persisted. Components'
   Workspace task description demonstrates a preview-only consumer.
 - For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`

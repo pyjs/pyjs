@@ -5,6 +5,8 @@
 - `FilePasteController` offers clipboard files to existing controls through
   a cancelable `files-paste` event. Unaccepted files and ordinary text retain
   native paste behavior; nested accepting controls own their paste operation.
+  Offers expose clipboard types so consumers can prefer text or HTML over an
+  accompanying image representation.
   Toast containers no longer intercept clicks outside visible notifications.
 
 - Shared chat page/panel layouts and compact `PromptInput` composition own

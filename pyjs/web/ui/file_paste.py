@@ -6,11 +6,29 @@ from pyjs.web.files import File
 
 
 @js
+class PastedFiles:
+    """Clipboard snapshot. Accepting its offer replaces the entire native paste.
+
+    Inspect types before accepting when text or HTML should take precedence
+    over an accompanying image representation. File validation and storage are
+    still the consumer's responsibility.
+    """
+
+    def __init__(self, files: list[File], types: list[str]):
+        self.files = files
+        self.types = types
+
+    @property
+    def has_text(self) -> bool:
+        return "text/plain" in self.types or "text/html" in self.types
+
+
+@js
 class FilePasteController:
     """Offer clipboard files to an existing element without changing its layout.
 
     Call connect/disconnect with the host's client lifecycle. Listen on the host
-    for the non-bubbling ``files-paste`` event; its detail is a list of Files.
+    for the non-bubbling ``files-paste`` event; its detail is ``PastedFiles``.
     Accept synchronously with preventDefault(), before awaiting any upload.
     Unaccepted files and ordinary text retain their native paste behavior.
     Validation, pending-file ownership and persistence belong to the consumer.
@@ -38,7 +56,8 @@ class FilePasteController:
         if not files:
             return
         # Clipboard data is only readable during the native event dispatch.
-        offer = CustomEvent("files-paste", cancelable=True, detail=files)
+        offer = CustomEvent("files-paste", cancelable=True,
+                            detail=PastedFiles(files, list(data.types)))
         if not self.host.dispatchEvent(offer):
             event.preventDefault()
             event.stopPropagation()
