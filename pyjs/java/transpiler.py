@@ -6158,13 +6158,9 @@ class JVMEmitter:
                     raise JVMUnsupported("JVM sets currently require reference items with Java-compatible equality", node)
                 return sets.DESCRIPTOR
             if node.value.id == "dict":
-                if len(fields) != 2 or not all(
-                    _is_reference_descriptor(field) for field in fields
-                ):
-                    raise JVMUnsupported(
-                        "JVM dictionaries require reference key and value types",
-                        node,
-                    )
+                if len(fields) != 2:
+                    raise JVMUnsupported("JVM dictionaries require key and value types", node)
+                self.dictionary_storage_types(fields[0], fields[1], node)
                 return "Ljava/util/HashMap;"
             classes = self.list_classes if node.value.id == "list" else self.tuple_classes
             for value_type in classes:
@@ -6315,6 +6311,11 @@ class JVMEmitter:
         self.validate_java_object_semantics(key, source, dictionary_key=True)
         key_type = self.value_type(key)
         value_descriptor = self.value_type(value)
+        return self.dictionary_storage_types(key_type, value_descriptor, source)
+
+    def dictionary_storage_types(
+        self, key_type: str, value_descriptor: str, source: ast.AST | None = None,
+    ) -> tuple[str, str]:
         if key_type in {"Ljava/lang/Long;", "Ljava/lang/Double;"}:
             raise JVMUnsupported("JVM dictionaries do not support nullable numeric keys", source)
         if key_type == "J":

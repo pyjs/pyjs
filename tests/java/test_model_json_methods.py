@@ -29,6 +29,27 @@ def test_json_methods_compile_to_android(tmp_path):
     assert_compiles_to_android_dex(SOURCE, tmp_path)
 
 
+@pytest.mark.parametrize("annotation, payload", [
+    ("dict[str, int]", '{"wide":9007199254740993,"negative":-7}'),
+    ("dict[str, float]", '{"positive":1.25,"negative":-0.0}'),
+    ("dict[str, bool]", '{"yes":true,"no":false}'),
+    ("dict[str, dict[str, int]]", '{"nested":{"value":42}}'),
+])
+@pytest.mark.parametrize("check", [assert_text_matches_python, assert_compiles_to_android_dex],
+                         ids=["jvm", "android-dex"])
+def test_required_scalar_dictionary_json_roundtrip(annotation, payload, check, tmp_path):
+    source = f'''from pydantic import BaseModel
+class Mapping(BaseModel):
+    values: {annotation}
+def main() -> str:
+    value = Mapping.model_validate_json('{{"values":{payload}}}')
+    restored = Mapping.model_validate_json(value.model_dump_json())
+    empty = Mapping.model_validate_json('{{"values":{{}}}}')
+    return restored.model_dump_json() + "|" + empty.model_dump_json()
+'''
+    check(source, tmp_path)
+
+
 def test_json_subclasses_unicode_and_nested_declared_fields(tmp_path):
     source = '''from tests.java.json_models import Item, ChildItem, Page
 def main() -> str:
