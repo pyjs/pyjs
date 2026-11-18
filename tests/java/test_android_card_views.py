@@ -35,10 +35,17 @@ class CardLifecycle(ViewAssertion):
             assert cards.recycled > 0
 
 
+class NonClickableChild(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        assert not view.isClickable()
+
+
 def test_recycled_cards_receive_native_attach_detach_and_recycle_callbacks() -> None:
     launch(CardsActivity)
     by_text("Row 0").assert_displayed()
     by_id(100).check(CardLifecycle("initial"))
+    by_description("Cards far").check(NonClickableChild())
     by_description("Cards far").click()
     by_text("Row 40").assert_displayed()
     by_id(100).check(CardLifecycle("scrolled"))

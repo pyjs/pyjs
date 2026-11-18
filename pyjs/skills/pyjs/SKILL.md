@@ -418,6 +418,11 @@ parametrization, and per-item setup or skip behavior are not yet transported.
 Select views with `by_text()`, `by_id()` or exact accessible names with
 `by_description()`. These use Espresso matchers and normal action visibility
 constraints; descriptions also let tests target images and icon controls.
+`View.setClickable(False)` marks a view nonclickable without removing its
+click listener, letting a parent handle taps on an otherwise inert child.
+Long-click and custom touch handlers remain independent.
+Use `isClickable()` to inspect that state; disabled and nonclickable views are
+not interchangeable for touch dispatch.
 `--pyjs-android-timeout` bounds the entire compiled suite, not each test.
 Device timeouts retain completed results and fail unfinished tests with the
 last started test and bounded output. A timeout after all results were reported

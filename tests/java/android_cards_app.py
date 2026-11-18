@@ -100,8 +100,13 @@ class CardsActivity(Activity):
             button = TextView(self)
             button.setText(action)
             button.setContentDescription("Cards " + action)
-            button.setOnClickListener(CardsAction(self, action))
-            root.addView(button)
+            # A child that intercepts the tap must fail the parent's scroll check.
+            button.setOnClickListener(CardsAction(self, "replace"))
+            button.setClickable(False)
+            control = LinearLayout(self)
+            control.setOnClickListener(CardsAction(self, action))
+            control.addView(button)
+            root.addView(control)
         self.setContentView(root)
 
 

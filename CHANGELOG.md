@@ -7,6 +7,8 @@
   callbacks for managing resources associated with reused cards.
   Compiled Android tests can select views by exact content description with
   `by_description()`, including image and icon controls without visible text.
+  Native clickability controls let noninteractive overlays pass touch input
+  to their parent card while retaining a listener for later retry states.
 
 - Compiled Android device tests retain completed results when instrumentation
   times out. Unfinished tests report the last started test and bounded output;
