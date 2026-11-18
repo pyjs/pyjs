@@ -168,22 +168,24 @@ class DialogContent(Widget):
                 "border-t border-slate-200 bg-white p-0 text-slate-950 shadow-xl "
                 "backdrop:bg-black/50"
             )
+        surface_style = tw(
+            "relative flex flex-col gap-4 p-6 "
+            "data-[placement=left]:h-full data-[placement=right]:h-full"
+        )
+        if scrollable:
+            surface_style["class"] += " " + tw(
+                "max-h-dvh overflow-y-auto overscroll-contain "
+                "data-[placement=center]:max-h-[calc(100dvh-2rem)]"
+            )["class"]
+            content_style["class"] += " " + tw("max-h-none")["class"]
         surface = div(
-            tw(
-                "relative flex flex-col gap-4 p-6 "
-                "data-[placement=left]:h-full data-[placement=right]:h-full"
-            ),
+            surface_style,
             {"data-placement": placement},
             *children,
         )
         if show_close:
             surface.append(close_button)
         self.surface = ref(surface)
-        if scrollable:
-            self.surface.className += " " + tw(
-                "max-h-dvh overflow-y-auto overscroll-contain "
-                "data-[placement=center]:max-h-[calc(100dvh-2rem)]"
-            )["class"]
         self.dialog_element = ref(
             dialog_element(
                 content_style,
@@ -198,8 +200,6 @@ class DialogContent(Widget):
                 self.surface,
             )
         )
-        if scrollable:
-            self.dialog_element.className += " " + tw("max-h-none")["class"]
         self.dialog_element.addEventListener("cancel", self.cancel)
         self.dialog_element.addEventListener("click", self.dialog_clicked)
         self.add(
