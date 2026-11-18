@@ -501,6 +501,7 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                     ));
                     const fields = model.constructor.__pyjs_fields__ || new Map();
                     const config = model.constructor.__pyjs_config__ || new Map();
+                    const constraints = config.get('field_constraints') || new Map();
                     if (config.get('extra') === 'forbid') {
                         for (const name of Object.keys(data)) {
                             if (!fields.has(name)) throw new TypeError(`Unexpected field: ${name}`);
@@ -663,7 +664,27 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                     }
                     for (const [name, descriptor] of fields) {
                         const value = Object.hasOwn(data, name) ? data[name] : defaults[name];
-                        model[name] = validate(value, descriptor, name);
+                        const result = validate(value, descriptor, name);
+                        if (result !== null && Object.hasOwn(data, name)) {
+                            let length;
+                            for (const [kind, bound] of constraints.get(name) || []) {
+                                let measured = result;
+                                if (kind === 'min_length' || kind === 'max_length') {
+                                    if (length === undefined) {
+                                        if (typeof result === 'string') {
+                                            length = 0;
+                                            for (const character of result) length++;
+                                        } else length = result.size ?? result.length;
+                                    }
+                                    measured = length;
+                                }
+                                const valid = kind === 'ge' || kind === 'min_length' ? measured >= bound
+                                    : kind === 'le' || kind === 'max_length' ? measured <= bound
+                                    : kind === 'gt' ? measured > bound : measured < bound;
+                                if (!valid) fail(name, `${kind} ${bound}`);
+                            }
+                        }
+                        model[name] = result;
                     }
                 }
 

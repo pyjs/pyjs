@@ -4,6 +4,8 @@ from hashlib import sha256
 from types import UnionType
 from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
+from pyjs.lib.pydantic.constraints import field_constraints
+
 from . import double_to_string
 from .json import JSONReader, quote
 from .models import field_default, field_info, is_model
@@ -201,45 +203,74 @@ class JSONCodegen:
         return result
 
     def decode_model(self, annotation, reader, result, depth):
+        # Index final member positions before decoding: an overwritten nested
+        # model may be invalid, but only its replacement should be validated.
         fields = []
         for name, field in annotation.model_fields.items():
-            value, seen = self.name(), self.name()
-            field_type = self.annotation(field.annotation)
-            default = "None" if field.is_required() else repr(field_default(field, name))
-            self.emit(f"{value}: {field_type} | None = {default}")
-            self.emit(f"{seen} = False")
-            fields.append((name, field, value, seen))
+            position = self.name()
+            self.emit(f"{position} = -1")
+            fields.append((name, field, position))
         self.emit(f"{reader}.expect('{{')")
         self.emit(f"if not {reader}.take('}}'):")
         self.emit("    while True:")
         self.level += 2
         key = self.decode(str, reader)
         self.emit(f"{reader}.expect(':')")
-        for index, (name, field, value, seen) in enumerate(fields):
+        for index, (name, _field, position) in enumerate(fields):
             self.emit(f"{'if' if index == 0 else 'elif'} {key} == {name!r}:")
-            self.level += 1
-            item = self.decode(field.annotation, reader, depth + 1)
-            self.emit(f"{value} = {item}")
-            self.emit(f"{seen} = True")
-            self.level -= 1
-        if fields:
-            self.emit("else:")
-            self.level += 1
+            self.emit(f"    {position} = {reader}.position")
         if annotation.model_config.get("extra") == "forbid":
+            if fields:
+                self.emit("else:")
+                self.level += 1
             self.emit(f"raise {self.type_name(ValueError)}('Unexpected JSON model field')")
-        else:
-            self.emit(f"{reader}.skip({63 - depth})")
-        if fields:
-            self.level -= 1
+            if fields:
+                self.level -= 1
+        self.emit(f"{reader}.skip({63 - depth})")
         self.emit(f"if {reader}.take('}}'):")
         self.emit("    break")
         self.emit(f"{reader}.expect(',')")
         self.level -= 2
+        end = self.name()
+        self.emit(f"{end} = {reader}.position")
         arguments = []
-        for name, field, value, seen in fields:
-            if field.is_required():
-                self.emit(f"if not {seen}:")
-                self.emit(f"    raise {self.type_name(ValueError)}({'Missing JSON model field: ' + name!r})")
+        for name, field, position in fields:
+            value = self.name()
             field_type = self.annotation(field.annotation)
+            default = "None" if field.is_required() else repr(field_default(field, name))
+            self.emit(f"{value}: {field_type} | None = {default}")
+            self.emit(f"if {position} >= 0:")
+            self.level += 1
+            self.emit(f"{reader}.position = {position}")
+            item = self.decode(field.annotation, reader, depth + 1)
+            self.check_constraints(field, item, model_config=annotation.model_config)
+            self.emit(f"{value} = {item}")
+            self.level -= 1
+            if field.is_required():
+                self.emit("else:")
+                self.emit(f"    raise {self.type_name(ValueError)}({'Missing JSON model field: ' + name!r})")
             arguments.append(f"{name}=_pyjs_cast({field_type}, {value})")
+        self.emit(f"{reader}.position = {end}")
         self.emit(f"{result} = {self.annotation(annotation)}({', '.join(arguments)})")
+
+    def check_constraints(self, field, value, *, model_config=None):
+        constraints = field_constraints(field, model_config=model_config)
+        if not constraints:
+            return
+        annotation = self.unwrap(field.annotation)
+        optional = get_origin(annotation) in (Union, UnionType) and type(None) in get_args(annotation)
+        if optional:
+            self.emit(f"if {value} is not None:")
+            self.level += 1
+        operators = {"ge": ">=", "gt": ">", "le": "<=", "lt": "<",
+                     "min_length": ">=", "max_length": "<="}
+        length = None
+        if "min_length" in constraints or "max_length" in constraints:
+            length = self.name()
+            self.emit(f"{length} = {self.type_name(len)}({value})")
+        for kind, bound in constraints.items():
+            measured = length if kind in ("min_length", "max_length") else value
+            self.emit(f"if not ({measured} {operators[kind]} {bound!r}):")
+            self.emit(f"    raise {self.type_name(ValueError)}({'Invalid JSON field constraint: ' + kind!r})")
+        if optional:
+            self.level -= 1

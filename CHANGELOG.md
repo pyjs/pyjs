@@ -6,6 +6,14 @@
   decoding. Read caller-sized UTF-16 chunks without silently replacing invalid
   input, and copy character-array ranges into strings.
 
+- Client model validation enforces field-level numeric bounds and text or
+  collection length limits in JavaScript and JVM JSON decoding. Unicode text,
+  nested models, inherited field overrides, optional values and omitted
+  defaults retain their schema behavior. Grouped annotations and constrained
+  aliases preserve their bounds; duplicate JSON model fields validate their
+  final value. Nonnumeric bounds remain server-side. This is not full Pydantic
+  validation.
+
 - Horizontal fields support `FieldAccessory` slots for controls beside the
   first line of a growing textarea. `FieldContent` can shrink around those
   controls without forcing long content outside the row.
