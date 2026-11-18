@@ -164,8 +164,9 @@ available for every released version.
 - Use `DialogPanel(label, *children)` for an editor with fixed action areas.
   Compose its public `header`, `body` and `footer` elements; children start in
   the body, which owns scrolling. The panel fills narrow viewports and is
-  centered and bounded on larger screens. Set `padded_controls=False` for
-  toolbars with their own spacing. Use it with `Dialog`, or handle
+  centered and fits its content up to a height limit on larger screens.
+  Set `padded_controls=False` for toolbars with their own spacing.
+  Use it with `Dialog`, or handle
   `DialogCloseRequest` and call `show_modal()`/`close()` after application
   save checks. It inserts no close button. A native modal escapes ancestor
   inertness: disable its `dialog_element` explicitly while replacing inputs.

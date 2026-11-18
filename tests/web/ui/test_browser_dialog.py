@@ -99,6 +99,26 @@ def test_dialog_close_controls_cancel_and_restore_focus():
 
 
 @js
+async def test_dialog_panel_short_content_fits_desktop_without_empty_space():
+    panel = DialogPanel("Short document", input({"aria-label": "First line"}))
+    panel.header.append(button("Back"))
+    panel.footer.append(DialogClose("Done").element)
+    demo = Dialog(DialogTrigger("Edit short document"), panel)
+    mount(demo)
+    demo.open()
+    await wait_for_frames()
+    viewport = document.documentElement
+    if viewport is None:
+        raise ValueError("Expected a browser document")
+    bounds = panel.dialog_element.getBoundingClientRect()
+    if viewport.clientWidth >= 768:
+        assert 0 < bounds.height < viewport.clientHeight / 2
+    else:
+        assert bounds.height == viewport.clientHeight
+    demo.close()
+
+
+@js
 def test_dialog_closes_from_the_backdrop_and_default_close_button():
     demo = mounted_dialog()
     demo.open()
