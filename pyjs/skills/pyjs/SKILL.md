@@ -389,6 +389,12 @@ with `--pyjs-android-runtime=device --pyjs-android-avd=NAME`; add
 `--pyjs-android-headless` for a deterministic cold boot without a window.
 Keep compiled tests self-contained and zero-argument; pytest fixtures,
 parametrization, and per-item setup or skip behavior are not yet transported.
+`--pyjs-android-timeout` bounds the entire compiled suite, not each test.
+Device timeouts retain completed results and fail unfinished tests with the
+last started test and bounded output. A timeout after all results were reported
+fails the last reported test to expose incomplete instrumentation teardown.
+The runner stops its test packages on the selected device after a timeout;
+the emulator remains running for reuse. Cleanup errors remain in the report.
 Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
 intent with `Intent().set_class(application_context(), YourActivity)` and add
 the action, MIME type and extras before launching. Activities receive later

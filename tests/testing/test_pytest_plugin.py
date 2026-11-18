@@ -350,6 +350,29 @@ def test_android_suite_failure_is_cached_for_the_remaining_tests(monkeypatch):
     assert run.call_count == 1
 
 
+def test_device_partial_results_do_not_poison_completed_tests_or_restart_the_suite(monkeypatch):
+    first = SelectedTest("tests/test_notes.py::test_first", "test_notes", "test_first")
+    second = SelectedTest("tests/test_notes.py::test_second", "test_notes", "test_second")
+    state = AndroidJVMResults()
+    state.eligible_tests = [first, second]
+    config = SimpleNamespace(
+        _pyjs_android_jvm_results=state,
+        getoption=lambda name: {"--pyjs-target": "android",
+                                "--pyjs-android-runtime": "device"}.get(name),
+    )
+    item = SimpleNamespace(config=config, nodeid=second.nodeid,
+                           get_closest_marker=lambda name: (
+                               object() if name == "pyjs_android_jvm" else None))
+    run = Mock(return_value={first.nodeid: AndroidTestResult("passed"),
+                             second.nodeid: AndroidTestResult("failed", "instrumentation timeout")})
+    monkeypatch.setattr(pytest_plugin, "run_android_device_target", run)
+    with pytest.raises(pytest.fail.Exception, match="instrumentation timeout"):
+        pytest_pyfunc_call(item)
+    item.nodeid = first.nodeid
+    assert pytest_pyfunc_call(item) is True
+    assert run.call_count == 1
+
+
 def test_pytest_plugin_does_not_load_android_compilers_until_selected():
     result = subprocess.run(
         [

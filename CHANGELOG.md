@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compiled Android device tests retain completed results when instrumentation
+  times out. Unfinished tests report the last started test and bounded output;
+  the runner stops its test packages on the selected device. A timeout during
+  teardown remains a suite failure even if every test body reported success.
+
 - Browser `fetch()` accepts an existing `Request`, both directly and as a
   callback. Forward request bodies and headers without rebuilding the request;
   explicit fetch options retain the browser's normal override behavior.
