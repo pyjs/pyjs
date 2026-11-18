@@ -1,6 +1,9 @@
+from typing import cast
+
 import pytest
 
-from pyjs.android import DragShadowBuilder, KeyEvent, Point, Runnable, View
+from pyjs.android import Bundle, DragShadowBuilder, KeyEvent, Point, Runnable, View
+from pyjs.android.controls import EditText
 from pyjs.android.testing import (
     NoMatchingViewException,
     ViewAssertion,
@@ -12,7 +15,7 @@ from pyjs.android.testing import (
     resume,
 )
 
-from .android_robolectric_app import GreetingActivity
+from .android_robolectric_app import DeferredRestoreActivity, GreetingActivity
 
 pytestmark = pytest.mark.pyjs_android_jvm
 
@@ -91,6 +94,53 @@ def test_activity_lifecycle_controls_restore_saved_instance_state() -> None:
     by_id(1001).assert_text("Clicked from Python")
     recreate()
     by_id(1001).assert_text("Clicked from Python")
+
+
+class DeferredSelection(ViewAssertion):
+    def __init__(self, set_value: bool):
+        self.set_value = set_value
+
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        field = cast(EditText, view)
+        if self.set_value:
+            field.requestFocus()
+            field.set_selection_range(2, 5)
+        else:
+            assert field.getSelectionStart() == 2
+            assert field.getSelectionEnd() == 5
+
+
+class CompleteDeferredLoad(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        activity = cast(DeferredRestoreActivity, view.getContext())
+        assert activity.restore_calls == 1
+        activity.complete_load()
+
+
+def test_native_view_restoration_can_wait_until_controls_exist() -> None:
+    launch(DeferredRestoreActivity)
+    by_id(1011).replace_text("A 😀 draft 日本語")
+    by_id(1011).check(DeferredSelection(True))
+    recreate()
+    by_id(1010).assert_text("Loading")
+    by_id(1010).check(CompleteDeferredLoad())
+    by_id(1011).assert_text("A 😀 draft 日本語")
+    by_id(1011).check(DeferredSelection(False))
+
+
+def test_nested_bundles_preserve_state_and_accept_null() -> None:
+    outer = Bundle()
+    assert outer.get_bundle("pending") is None
+    inner = Bundle()
+    inner.put_string("draft", "Saved 日本語😀")
+    outer.put_bundle("pending", inner)
+    restored = outer.get_bundle("pending")
+    assert restored is not None
+    assert restored.get_string("draft") == "Saved 日本語😀"
+    outer.put_bundle("pending", None)
+    assert outer.get_bundle("pending") is None
 
 
 def test_dialog_scoped_confirmation_and_cancellation() -> None:

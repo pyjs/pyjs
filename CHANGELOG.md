@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android Activities expose `onRestoreInstanceState`, allowing asynchronous
+  screens to defer native view restoration until their controls exist.
+  Bundles support typed nested bundles for retaining pending saved state.
+
 - Locked Android artifacts retry a Maven Central 404 once through its other
   supported HTTPS endpoint. Both downloads require the same pinned checksum;
   local storage failures, authentication errors and rate limits do not trigger
