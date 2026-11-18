@@ -410,7 +410,7 @@ class AndroidDeviceTestRunner:
             elif "stack" in status:
                 status["stack"] += "\n" + line
         missing = [test for test in compilation.tests if test.nodeid not in results]
-        summary = re.search(r"INSTRUMENTATION_FAILED:.*", output)
+        summary = re.search(r"^INSTRUMENTATION_FAILED:.*", output, re.MULTILINE)
         failure = failure or (summary.group(0) if summary else None)
         if not missing and failure is None:
             return results

@@ -166,6 +166,27 @@ def test_unknown_and_truncated_status_cannot_overwrite_completed_results(three_t
         assert "Completed: 1/3" in result.error
 
 
+@pytest.mark.parametrize(("error", "stream"), [
+    ("AssertionError: INSTRUMENTATION_FAILED: quoted text", ""),
+    ("AssertionError: mismatch\n    expected INSTRUMENTATION_FAILED: quoted text", ""),
+    ("AssertionError: mismatch", "printed INSTRUMENTATION_FAILED: quoted text"),
+])
+def test_failure_text_does_not_turn_a_later_pass_into_an_instrumentation_failure(
+    three_tests, error, stream,
+):
+    details = f"INSTRUMENTATION_STATUS: stack={error}\n"
+    if stream:
+        details += f"INSTRUMENTATION_STATUS: stream={stream}\n"
+    output = (instrumentation_status("test_save", -2, details=details)
+              + instrumentation_status("test_open", 0)
+              + instrumentation_status("test_close", 0))
+    assert AndroidDeviceTestRunner._results(three_tests, output) == {
+        "test_notes.py::test_save": AndroidTestResult("failed", error),
+        "test_notes.py::test_open": AndroidTestResult("passed"),
+        "test_notes.py::test_close": AndroidTestResult("passed"),
+    }
+
+
 def test_device_runner_maps_instrumentation_status_to_pytest_nodeids():
     compilation = JVMCompilation(
         "Tests",
