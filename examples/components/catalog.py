@@ -996,6 +996,7 @@ class CatalogApp(Widget):
                         field("Username", self.username_input),
                     ),
                     DialogFooter(DialogClose("Cancel"), self.save_button),
+                    scrollable=True,
                 ),
             )
         )
@@ -1184,6 +1185,7 @@ class CatalogApp(Widget):
             "        ),\n"
             "        profile_fields,\n"
             '        DialogFooter(DialogClose("Cancel"), save_button),\n'
+            "        scrollable=True,\n"
             "    ),\n"
             ")"
         )
@@ -1215,7 +1217,7 @@ class CatalogApp(Widget):
                     "Uses native dialog behavior, traps focus, supports Escape and backdrop "
                     "dismissal, and restores focus to the trigger.",
                     "Dialog(trigger: DialogTrigger, content: DialogContent)",
-                    "DialogContent(label: str, *children, placement='center')",
+                    "DialogContent(label: str, *children, placement='center', scrollable=False)",
                     "DialogTrigger(*children)",
                 ),
                 component_showcase(

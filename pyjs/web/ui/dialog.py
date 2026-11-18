@@ -111,6 +111,7 @@ class DialogContent(Widget):
         role: str = "dialog",
         show_close: bool = True,
         close_on_backdrop: bool = True,
+        scrollable: bool = False,
     ):
         super().__init__()
         if (
@@ -167,11 +168,18 @@ class DialogContent(Widget):
                 "border-t border-slate-200 bg-white p-0 text-slate-950 shadow-xl "
                 "backdrop:bg-black/50"
             )
+        surface_style = tw(
+            "relative flex flex-col gap-4 p-6 "
+            "data-[placement=left]:h-full data-[placement=right]:h-full"
+        )
+        if scrollable:
+            surface_style["class"] += " " + tw(
+                "max-h-dvh overflow-y-auto overscroll-contain "
+                "data-[placement=center]:max-h-[calc(100dvh-2rem)]"
+            )["class"]
+            content_style["class"] += " " + tw("max-h-none")["class"]
         surface = div(
-            tw(
-                "relative flex flex-col gap-4 p-6 "
-                "data-[placement=left]:h-full data-[placement=right]:h-full"
-            ),
+            surface_style,
             {"data-placement": placement},
             *children,
         )

@@ -32,7 +32,9 @@ class Panel(Widget):
 def main() -> str:
     panel = Panel()
     dialog = Dialog(DialogTrigger("Open"), DialogContent("Details", panel))
-    response = NavigationPage(div(dialog), str(Title.EXAMPLE), int(Status.OK))
+    long_dialog = Dialog(DialogTrigger("Open long"),
+                         DialogContent("Long details", div("Body"), scrollable=True))
+    response = NavigationPage(div(dialog, long_dialog), str(Title.EXAMPLE), int(Status.OK))
     assert response.headers == {}
     assert response.status == 200
     assert response.title == "Example"
@@ -42,6 +44,8 @@ def main() -> str:
     return render_html(response.body)
 ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
     assert 'data-slot="dialog"' in result.native.stdout
+    assert "overflow-y-auto" in result.native.stdout
+    assert "max-h-none" in result.native.stdout
     assert result.native.stderr == ""
 
 
