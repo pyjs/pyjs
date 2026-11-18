@@ -82,6 +82,9 @@ class CardsAction(OnClickListener):
 
 
 class CardsActivity(Activity):
+    cards: Cards
+    recycler: RecyclerView
+
     def onCreate(self, state: Bundle | None) -> None:
         super().onCreate(state)
         self.cards = Cards()
@@ -96,12 +99,15 @@ class CardsActivity(Activity):
         for action in ["far", "start", "replace"]:
             button = TextView(self)
             button.setText(action)
+            button.setContentDescription("Cards " + action)
             button.setOnClickListener(CardsAction(self, action))
             root.addView(button)
         self.setContentView(root)
 
 
 class TextPreviewActivity(Activity):
+    original: str
+
     def onCreate(self, state: Bundle | None) -> None:
         super().onCreate(state)
         root = LinearLayout(self)

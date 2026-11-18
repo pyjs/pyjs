@@ -415,6 +415,9 @@ with `--pyjs-android-runtime=device --pyjs-android-avd=NAME`; add
 `--pyjs-android-headless` for a deterministic cold boot without a window.
 Keep compiled tests self-contained and zero-argument; pytest fixtures,
 parametrization, and per-item setup or skip behavior are not yet transported.
+Select views with `by_text()`, `by_id()` or exact accessible names with
+`by_description()`. These use Espresso matchers and normal action visibility
+constraints; descriptions also let tests target images and icon controls.
 `--pyjs-android-timeout` bounds the entire compiled suite, not each test.
 Device timeouts retain completed results and fail unfinished tests with the
 last started test and bounded output. A timeout after all results were reported

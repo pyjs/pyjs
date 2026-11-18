@@ -5,6 +5,8 @@
 - Android text previews support native ellipsizing without changing their
   source text. RecyclerView adapters expose attach, detach, and recycle
   callbacks for managing resources associated with reused cards.
+  Compiled Android tests can select views by exact content description with
+  `by_description()`, including image and icon controls without visible text.
 
 - Compiled Android device tests retain completed results when instrumentation
   times out. Unfinished tests report the last started test and bounded output;

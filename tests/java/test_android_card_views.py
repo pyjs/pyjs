@@ -6,6 +6,7 @@ from pyjs.android import TextView, TruncateAt, View
 from pyjs.android.testing import (
     NoMatchingViewException,
     ViewAssertion,
+    by_description,
     by_id,
     by_text,
     launch,
@@ -38,14 +39,15 @@ def test_recycled_cards_receive_native_attach_detach_and_recycle_callbacks() -> 
     launch(CardsActivity)
     by_text("Row 0").assert_displayed()
     by_id(100).check(CardLifecycle("initial"))
-    by_text("far").click()
+    by_description("Cards far").click()
     by_text("Row 40").assert_displayed()
     by_id(100).check(CardLifecycle("scrolled"))
-    by_text("start").click()
+    by_description("Cards start").click()
     by_text("Row 0").assert_displayed()
     by_id(100).check(CardLifecycle("scrolled"))
-    by_text("replace").click()
+    by_description("Cards replace").click()
     by_id(100).check(CardLifecycle("replaced"))
+    by_description("Cards unknown").assert_absent()
 
 
 class TextEllipsis(ViewAssertion):

@@ -16,6 +16,7 @@ def test_espresso_bridge_exposes_the_python_view_operations():
     } == {
         ("fromText", "(Ljava/lang/String;)Lorg/pyjs/testing/PyjsView;"),
         ("fromId", "(I)Lorg/pyjs/testing/PyjsView;"),
+        ("fromDescription", "(Ljava/lang/String;)Lorg/pyjs/testing/PyjsView;"),
         ("click", "()V"),
         ("press_key", "(I)V"),
         ("ime_action", "()V"),
