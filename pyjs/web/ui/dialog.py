@@ -255,10 +255,10 @@ class DialogPanel(DialogContent):
             "border-0 bg-white p-0 text-slate-950 shadow-xl backdrop:bg-black/50 "
             "md:inset-auto md:left-1/2 md:top-1/2 md:h-auto md:max-h-[min(48rem,calc(100dvh-4rem))] "
             "md:w-[min(48rem,calc(100%-4rem))] md:-translate-x-1/2 md:-translate-y-1/2 "
-            "md:rounded-lg md:border md:border-slate-200"
+            "md:rounded-lg md:border md:border-slate-200 md:open:flex md:flex-col"
         )["class"]
         self.surface.className = tw(
-            "flex h-full min-h-0 flex-col md:h-auto md:max-h-[inherit]")["class"]
+            "flex h-full min-h-0 flex-col md:h-auto md:flex-1")["class"]
         controls_style = tw("shrink-0 px-6 py-4") if padded_controls else tw("shrink-0")
         self.header = ref(div(controls_style, {"data-slot": "dialog-panel-header"}))
         self.body = ref(div(

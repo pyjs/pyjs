@@ -207,7 +207,7 @@ async def test_dialog_panel_keeps_header_and_footer_visible_while_editing_long_c
     first: HTMLInputElement = input({"aria-label": "First line"})
     last: HTMLInputElement = input({"aria-label": "Last line"})
     tall: HTMLDivElement = div(tw("min-h-[1500px]"), "Document")
-    panel = DialogPanel("Edit document", first, tall, last)
+    panel = DialogPanel("Edit document", first, tall, last, padded_controls=False)
     back = button("Back")
     save = DialogClose("Save")
     panel.header.append(back)
@@ -225,6 +225,10 @@ async def test_dialog_panel_keeps_header_and_footer_visible_while_editing_long_c
         raise ValueError("Expected a browser document")
     assert bounds.top >= 0 and bounds.bottom <= viewport.clientHeight
     assert bounds.left >= 0 and bounds.right <= viewport.clientWidth
+    padding_top = bounds.top + panel.dialog_element.clientTop
+    padding_bottom = padding_top + panel.dialog_element.clientHeight
+    assert header.top >= padding_top
+    assert footer.bottom <= padding_bottom
     assert panel.body.scrollHeight > panel.body.clientHeight
     assert panel.body.clientHeight > 0
     last.focus()
@@ -242,4 +246,5 @@ async def test_dialog_panel_keeps_header_and_footer_visible_while_editing_long_c
     assert panel.footer.getBoundingClientRect().bottom <= viewport.clientHeight
     bubbling_click(save.element)
     assert not panel.dialog_element.open
+    assert panel.dialog_element.getBoundingClientRect().width == 0
     assert document.activeElement is demo.trigger.element
