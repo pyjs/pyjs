@@ -27,6 +27,13 @@ def catalog_source(component_id: str) -> str:
         )
     if component_id == "aspect-ratio":
         return "AspectRatio(image, ratio='16 / 9')"
+    if component_id == "image-preview":
+        return (
+            "gallery_queue = ImagePreviewQueue()\n"
+            "preview = ImagePreview(alt='Color study', max_width=320)\n"
+            "# Bind the async Blob loader during client initialization.\n"
+            "preview.load_with(load_image_blob, queue=gallery_queue)"
+        )
     if component_id == "attachment":
         return (
             "Attachment(\n"

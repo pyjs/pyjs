@@ -798,12 +798,6 @@ def _write_bundle(
           runModuleFactories(name, module);
           return module.exports;
         };
-        const __pyjsAssert__ = (condition, message, AssertionError) => {
-          if (condition) {
-            return;
-          }
-          throw new AssertionError(message === undefined ? "" : String(message()));
-        };
         """)
         )
     else:
@@ -833,12 +827,6 @@ def _write_bundle(
         importModule(dependency);
       }
       return module.exports;
-    };
-    const __pyjsAssert__ = (condition, message, AssertionError) => {
-      if (condition) {
-        return;
-      }
-      throw new AssertionError(message === undefined ? "" : String(message()));
     };
     """)
         )
@@ -3014,16 +3002,18 @@ class Transpiler(_Unparser):
             self.write(f"({formatted}).padStart({width}, ' ')")
 
     def visit_Assert(self, node: ast.Assert):
-        self.fill("__pyjsAssert__(")
+        self.fill("if (!(")
         self.traverse(node.test)
-        if node.msg:
-            self.write(", () => ")
-            self.traverse(node.msg)
-        else:
-            self.write(", undefined")
-        self.write(", ")
-        self.write(node.runtime_alias)
-        self.write(");")
+        self.write("))")
+        with self.block():
+            self.fill(f"throw new {node.runtime_alias}(")
+            if node.msg:
+                self.write("String(")
+                self.traverse(node.msg)
+                self.write(")")
+            else:
+                self.write('""')
+            self.write(");")
 
 
 class HydrateGenerator(ast.NodeVisitor):

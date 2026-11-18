@@ -44,4 +44,10 @@ def test_compilation_extension_can_return_the_original_function():
         "assert True", wrap=True, extensions=(CompilationExtension(),)
     ).javascript
 
-    assert "__pyjsAssert__(true, undefined, $AssertionError);" in source
+    assert source == (
+        "import { AssertionError as $AssertionError } from './pyjs.python.js';\n"
+        "\nexport function main() {\n"
+        "    if (!(true)) {\n"
+        '        throw new $AssertionError("");\n'
+        "    }\n}"
+    )

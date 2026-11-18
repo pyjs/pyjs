@@ -177,6 +177,7 @@ from pyjs.web.ui.tooltip import Tooltip, TooltipContent, TooltipTrigger
 from pyjs.web.ui.typography import TypographyH3, TypographyInlineCode, TypographyLead, TypographyP
 
 from .catalog_sources import catalog_source
+from .images import ImagePreviewExample
 
 TESTING_GUIDE_URL: JS = "/docs/guide/testing/"
 CATALOG_DARK_STYLES: JS = """
@@ -1041,6 +1042,11 @@ class CatalogApp(Widget):
                         ),
                         a(
                             tw("block rounded-md px-3 py-2 text-slate-600 hover:text-slate-950"),
+                            {"href": "#image-preview"},
+                            "Image Preview",
+                        ),
+                        a(
+                            tw("block rounded-md px-3 py-2 text-slate-600 hover:text-slate-950"),
                             {"href": "#avatar"},
                             "Avatar",
                         ),
@@ -1305,6 +1311,12 @@ class CatalogApp(Widget):
                             ratio="16 / 9",
                         ),
                     ),
+                ),
+                component_showcase(
+                    "image-preview",
+                    "Image Preview",
+                    "Loads visible images on demand, bounds thumbnail pixels, and offers retry.",
+                    ImagePreviewExample(),
                 ),
                 component_showcase(
                     "avatar",

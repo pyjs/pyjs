@@ -50,8 +50,12 @@ def test_class_instance_assertions_retain_local_and_field_checks():
         }
 
         export function check(state, owner) {
-            __pyjsAssert__((state instanceof ReadyState), () => 'state', $AssertionError);
-            __pyjsAssert__((owner.state instanceof ReadyState), () => 'owner', $AssertionError);
+            if (!((state instanceof ReadyState))) {
+                throw new $AssertionError(String('state'));
+            }
+            if (!((owner.state instanceof ReadyState))) {
+                throw new $AssertionError(String('owner'));
+            }
         }
 
         export function main() {
@@ -663,7 +667,9 @@ def test_assert_uses_the_typed_assertion_error_runtime():
 
         export function main() {
             try {
-                __pyjsAssert__(false, () => 'broken', $AssertionError);
+                if (!(false)) {
+                    throw new $AssertionError(String('broken'));
+                }
             } catch ($error0) {
                 if ($error0 instanceof $AssertionError) {
                     let error = $error0;

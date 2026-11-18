@@ -1,14 +1,19 @@
 import pytest
 
+from pyjs.analysis.analyzer import release_compilation
 from pyjs.analysis.diagnostics import CompilationError, format_compilation_error
 from pyjs.analysis.source import create_module
 from pyjs.javascript.transpiler import (
     BundleTarget,
     StandaloneBundleTarget,
+    _write_bundle,
+    bundle_import,
     bundle_standalone_with_source_maps,
     bundle_targets_with_source_maps,
     bundle_with_source_map,
+    prepare_bundle,
 )
+from pyjs.tooling.node import Node
 
 
 def custom_element_class(source: str, class_name: str, tag_name: str) -> str:
@@ -218,6 +223,63 @@ def page():
         "export { define, importModule };\n"
     )
     assert generated["example.page"].source_map.file == "example.page.mjs"
+
+
+@pytest.mark.parametrize("fragmented", [False, True])
+def test_assertions_execute_in_direct_modules_and_nested_bundles(tmp_path, fragmented):
+    module = create_module('''from pyjs import js
+@js
+def message(events: list[str]) -> str:
+    events.append("message")
+    return "required"
+@js
+def main() -> str:
+    events: list[str] = []
+    assert True, message(events)
+    try:
+        assert False, message(events)
+    except AssertionError as error:
+        events.append(str(error))
+    try:
+        assert False
+    except AssertionError as error:
+        events.append(str(error))
+    return ";".join(events)
+''', "assertions.py", "assertions")
+    expected = module.main()
+    package, entry, _ = prepare_bundle(
+        module.main, include_main=True,
+        importer=bundle_import if fragmented else None,
+        exporter=(lambda name: f"__export_js__.{name} = {name};") if fragmented else None,
+    )
+    try:
+        if fragmented:
+            for name, parent, content in (
+                ("root", None, {}), ("section", "root.mjs", {}),
+                ("page", "section.mjs", package),
+            ):
+                source = _write_bundle(
+                    content, entry, call_main=False, expose_entry=False,
+                    fragmented=True, parent_filename=parent,
+                )
+                (tmp_path / f"{name}.mjs").write_text(source, encoding="utf-8")
+            runner = "import {importModule} from './page.mjs';\nconsole.log(importModule('assertions').main());"
+        else:
+            (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+            for name, source in package.items():
+                (tmp_path / f"{name}.js").write_text(source, encoding="utf-8")
+            runner = "import {main} from './assertions.js';\nconsole.log(main());"
+    finally:
+        release_compilation(entry)
+    (tmp_path / "run.mjs").write_text(runner, encoding="utf-8")
+    node = Node()
+    node.ensure()
+    result = node.runner.run(
+        [node.executable, tmp_path / "run.mjs"],
+        environment=node.environment(), capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected + "\n"
 
 
 def test_server_rendered_element_emits_hydration_without_creation_helpers():
