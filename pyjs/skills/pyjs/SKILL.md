@@ -346,6 +346,19 @@ width; keep essential actions outside it. `set_fill_viewport(True)` expands
 short content to the viewport, while `scroll_to(x, y)` clamps to its bounds.
 Use `getScrollX()` to inspect the horizontal pixel offset.
 
+For software-keyboard visibility, use `get_insets_controller(window, view)`
+and `ime()` from `pyjs.android.insets`, with the AndroidX runtime dependency.
+An Activity exposes `get_window()`; its window exposes `get_decor_view()`.
+Call `controller.hide(ime())` when finishing an editing task, before detaching
+its views. To show the keyboard, focus the editor and call
+`controller.show(ime())`. Do not hide it on every focus change. These requests
+are asynchronous; they do not prove the keyboard changed visibility.
+`root_window_insets(view)` returns `None` for detached views. Otherwise,
+`insets.is_visible(ime())` reads the current snapshot. Older Android versions
+use AndroidX's compatibility behavior, which can approximate IME visibility.
+Robolectric checks bindings and lifecycle boundaries; test real keyboard
+transitions on a device or emulator.
+
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
 `getLayout()` returns `TextLayout` or `None`, including between a wrapping

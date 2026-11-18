@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- AndroidX window-insets controls expose software-keyboard show/hide requests
+  and attached-root visibility snapshots. Activities expose their native
+  window and decor view for finishing editing tasks without leaving the
+  keyboard over the next screen.
+
 - Android Intents can carry and read parcelable extras, including shared image
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme
   before opening untrusted shares; URI permissions remain Android-managed.

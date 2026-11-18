@@ -1004,6 +1004,12 @@ class Application(Context):
     def onCreate(self) -> None: ...
 
 
+@jvm.native("android/view/Window")
+class Window:
+    @jvm.native("android/view/Window", name="getDecorView", invocation="virtual")
+    def get_decor_view(self) -> View: ...
+
+
 @jvm.native("android/app/Activity")
 class Activity(Context):
     RESULT_CANCELED: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 0
@@ -1041,6 +1047,9 @@ class Activity(Context):
 
     def setTitle(self, title: CharSequence) -> None:
         pass
+
+    @jvm.native("android/app/Activity", name="getWindow", invocation="virtual")
+    def get_window(self) -> Window: ...
 
     @jvm.native("android/app/Activity", name="getIntent", invocation="virtual")
     def get_intent(self) -> Intent | None:
@@ -1136,6 +1145,7 @@ __all__ = [
     "Uri",
     "View",
     "ViewGroup",
+    "Window",
     "dp",
     "parse_color",
 ]
