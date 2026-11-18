@@ -179,6 +179,17 @@ available for every released version.
   paste, including any text. The consumer owns validation and pending saves;
   accepting a paste does not mean its files were persisted. Components'
   Workspace task description demonstrates a preview-only consumer.
+- Use `ImagePreview` and `ImagePreviewQueue` from `pyjs.web.ui.image_preview`
+  for viewport-loaded image galleries. Configure alt text, contain/cover fit,
+  aspect ratio and maximum thumbnail dimensions; bind an async Blob loader
+  with `preview.load_with(loader, queue=gallery_queue)` during client
+  initialization. Share the queue across cards to serialize reads/decoding.
+  The widget owns loading, retry, stale-result rejection and URL cleanup.
+  Leaving the viewport releases its URL; returning loads again. Original
+  decoding still needs temporary memory, so consumers must validate input
+  size and bound I/O timeouts. An active loader is not cancelled on exit;
+  the shared queue waits for it to settle. Sources are unchanged; previews
+  are still frames.
 - For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`
   with snapshot models and `DiagramEditor` from `pyjs.ui.diagram`. Configure a
   graph, then read committed content on `diagram-change`. Programmatic edits

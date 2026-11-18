@@ -124,6 +124,25 @@ def test_native_instance_fields_wait_for_their_value_types():
     )
 
 
+def test_create_image_bitmap_uses_the_global_api_and_canonical_blob():
+    assert_transpile(
+        """
+        from pyjs.web.files import Blob
+        from pyjs.web.html import createImageBitmap
+
+        async def main(image: Blob) -> None:
+            bitmap = await createImageBitmap(image)
+            bitmap.close()
+        """,
+        """
+        export async function main(image) {
+            var bitmap = await createImageBitmap(image);
+            bitmap.close();
+        }
+        """,
+    )
+
+
 def test_draw_image_source_emits_nine_argument_draw_image():
     at(
         """

@@ -10,7 +10,7 @@ from pyjs.tooling.browser import Browser, free_port, wait_for_http
 pytestmark = pytest.mark.pyjs_python
 
 
-def test_components_preserves_its_shell_during_partial_navigation():
+def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
     async def run():
         port = free_port()
         url = f"http://127.0.0.1:{port}/"
@@ -53,6 +53,37 @@ def test_components_preserves_its_shell_during_partial_navigation():
                     "document.querySelector('#forms textarea[aria-label=Task]').value") == ""
                 assert await page.evaluate(
                     "document.querySelector('#forms [aria-label=\"Complete task\"]').checked") is True
+                assert await page.evaluate("document.querySelectorAll('#image-preview image-preview').length") == 3
+                assert await page.evaluate("""[...document.querySelectorAll(
+                    '#image-preview image-preview')].every(preview =>
+                    preview.dataset.state === 'idle' && !preview.querySelector('img').hasAttribute('src'))
+                """) is True
+                await page.evaluate("document.getElementById('image-preview').scrollIntoView({block:'center'})")
+                try:
+                    await page.wait_for("""document.querySelectorAll(
+                        '#image-preview image-preview[data-state=ready]').length === 2 &&
+                        document.querySelectorAll('#image-preview image-preview[data-state=error]').length === 1
+                    """, "the visible gallery to load and expose its retry control")
+                finally:
+                    await page.screenshot(tmp_path / "image-previews.png", selector="#image-preview")
+                await page.click('#image-preview image-preview[data-state=error] button')
+                await page.wait_for("""document.querySelectorAll(
+                    '#image-preview image-preview[data-state=ready]').length === 3
+                """, "the gallery retry to decode the image")
+                await page.set_viewport(390, 844)
+                for index in range(3):
+                    preview = f"document.querySelectorAll('#image-preview image-preview')[{index}]"
+                    await page.evaluate(preview + ".scrollIntoView({block:'center'})")
+                    await page.wait_for(preview + ".dataset.state === 'ready'",
+                                        "the narrow-screen preview to load")
+                    assert await page.evaluate(f"""(() => {{
+                        const rect = {preview}.getBoundingClientRect();
+                        return rect.left >= 0 && rect.right <= innerWidth && rect.width > 0;
+                    }})()""") is True
+                    if index == 0:
+                        await page.screenshot(tmp_path / "image-previews-mobile.png")
+                await page.clear_viewport()
+                assert page.exceptions == []
                 await page.evaluate(
                     "window.__componentsShell = document.querySelector('components-app')"
                 )

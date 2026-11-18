@@ -7,6 +7,17 @@
   the runner stops its test packages on the selected device. A timeout during
   teardown remains a suite failure even if every test body reported success.
 
+- Python assertions execute in development-server modules and split page
+  bundles without depending on a bundle-global helper. Assertion messages
+  remain lazy and failed checks raise the Python-compatible assertion type.
+
+- `ImagePreview` loads visible image blobs on demand and releases displayed
+  URLs when it leaves the viewport. Bound thumbnail dimensions, contain/cover
+  fitting, accessible loading/error states, and retry are built in. Share an
+  `ImagePreviewQueue` to serialize gallery reads and decoding; bind loaders
+  during client initialization, including after server rendering. Animated
+  sources display a still frame and originals remain unchanged.
+
 - Browser `fetch()` accepts an existing `Request`, both directly and as a
   callback. Forward request bodies and headers without rebuilding the request;
   explicit fetch options retain the browser's normal override behavior.

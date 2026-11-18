@@ -25,6 +25,23 @@ from pyjs.web.geometry import DOMMatrix, DOMMatrix2DInit, DOMPointInit
 from pyjs.web.svg import SVGImageElement
 
 
+@js.native
+async def createImageBitmap(
+    image: HTMLImageElement
+    | SVGImageElement
+    | HTMLVideoElement
+    | HTMLCanvasElement
+    | ImageBitmap
+    | OffscreenCanvas
+    | VideoFrame
+    | Blob
+    | ImageData,
+    options: ImageBitmapOptions | None = None,
+) -> ImageBitmap:
+    """Decode an image using the global browser API and canonical HTML types."""
+    ...
+
+
 @js.dictionary
 class AssignedNodesOptions:
     """WebIDL source: @webref/idl/html.idl"""

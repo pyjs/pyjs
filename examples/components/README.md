@@ -44,6 +44,22 @@ to keep controls beside the first line as `Textarea(auto_size=True)` wraps.
 Accessory slots stay at least 36px tall and grow for larger controls; they
 do not forward clicks or focus. Supply accessible labels for each control.
 
+## Image previews
+
+In **Catalog → Image Preview**, the gallery loads source blobs only when its
+previews enter the viewport. The example generates its own images locally;
+the third preview deliberately fails once so its Retry button can recover it.
+
+Compose `ImagePreview(alt=..., fit="contain")` or `fit="cover"`, then bind an
+async Blob loader with `preview.load_with(loader, queue=gallery_queue)` during
+client initialization. Share an `ImagePreviewQueue` across the gallery to
+serialize loading and decoding, including after hydration. Leaving the
+viewport releases displayed URLs; returning invokes the loader again.
+`max_width` and `max_height` bound retained preview pixels, not the temporary
+memory needed to decode the original. The application owns source validation,
+I/O timeouts, persistence, and any source cache. Animated images show a still
+frame; the original blob is unchanged.
+
 ## Diagram editor
 
 Open **Diagrams** (`/diagrams`) for a decision-tree editor. Click nodes to

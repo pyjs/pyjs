@@ -37,8 +37,12 @@ def test_assert_narrowing_preserves_complete_javascript_runtime_checks():
         import { AssertionError as $AssertionError } from './pyjs.python.js';
 
         export function main(value) {
-            __pyjsAssert__(value != null, () => 'required', $AssertionError);
-            __pyjsAssert__(((value)=>typeof value==='boolean'||Number.isInteger(value))(value), () => 'integer', $AssertionError);
+            if (!(value != null)) {
+                throw new $AssertionError(String('required'));
+            }
+            if (!(((value)=>typeof value==='boolean'||Number.isInteger(value))(value))) {
+                throw new $AssertionError(String('integer'));
+            }
             return value + 1;
         }
     ''')
