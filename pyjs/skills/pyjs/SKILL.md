@@ -370,6 +370,8 @@ permanent: a cached view can reattach without rebinding. Attachment also does
 not guarantee viewport visibility. Cancel or invalidate pending work on
 rebinding and release owned resources on detach/recycle; late asynchronous
 results must still verify their binding before updating a reused holder.
+Restore or schedule any detached resources when the holder reattaches;
+rebinding is not guaranteed, and loading can still wait for viewport visibility.
 
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
@@ -420,6 +422,8 @@ Select views with `by_text()`, `by_id()` or exact accessible names with
 constraints; descriptions also let tests target images and icon controls.
 `View.setClickable(False)` marks a view nonclickable without removing its
 click listener, letting a parent handle taps on an otherwise inert child.
+`setOnClickListener()` makes the view clickable again, so apply
+`setClickable(False)` after assigning or replacing its listener.
 Long-click and custom touch handlers remain independent.
 Use `isClickable()` to inspect that state; disabled and nonclickable views are
 not interchangeable for touch dispatch.

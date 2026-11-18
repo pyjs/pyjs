@@ -9,6 +9,8 @@
   `by_description()`, including image and icon controls without visible text.
   Native clickability controls let noninteractive overlays pass touch input
   to their parent card while retaining a listener for later retry states.
+  Assigning a click listener makes the view clickable again; disable
+  clickability after assigning or replacing a listener when appropriate.
 
 - Compiled Android device tests retain completed results when instrumentation
   times out. Unfinished tests report the last started test and bounded output;

@@ -101,7 +101,9 @@ class CardsActivity(Activity):
             button.setText(action)
             button.setContentDescription("Cards " + action)
             # A child that intercepts the tap must fail the parent's scroll check.
+            button.setClickable(False)
             button.setOnClickListener(CardsAction(self, "replace"))
+            assert button.isClickable(), "Installing a listener must restore native clickability"
             button.setClickable(False)
             control = LinearLayout(self)
             control.setOnClickListener(CardsAction(self, action))
