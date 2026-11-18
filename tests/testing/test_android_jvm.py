@@ -1,6 +1,24 @@
+from pathlib import Path
+
 from pyjs.java import read_jvm_class
 from pyjs.testing.android_jvm import AndroidJVMSuiteBuilder
 from pyjs.testing.builder import SelectedTest
+
+
+def test_card_fixtures_compile_after_an_unrelated_activity(tmp_path):
+    selected = [
+        ("tests.java.test_android_robolectric",
+         "test_compiled_python_uses_espresso_under_robolectric"),
+        ("tests.java.test_android_card_views",
+         "test_recycled_cards_receive_native_attach_detach_and_recycle_callbacks"),
+        ("tests.java.test_android_card_views",
+         "test_multiline_ellipsis_preserves_source_text_and_can_be_disabled"),
+    ]
+    tests = [SelectedTest(f"{module}::{name}", module, name) for module, name in selected]
+    compilation = AndroidJVMSuiteBuilder(Path(__file__).parents[2], tmp_path).build(
+        tests, "combined-cards", robolectric=False,
+    )
+    assert len(compilation.tests) == len(selected)
 
 
 def test_android_jvm_suite_compiles_selected_tests(tmp_path):

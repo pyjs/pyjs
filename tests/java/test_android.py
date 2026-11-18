@@ -34,9 +34,11 @@ def test_text_layout_is_a_public_android_export():
     from pyjs import android
 
     assert "TextLayout" in android.__all__
+    assert "TruncateAt" in android.__all__
     namespace = {}
     exec("from pyjs.android import *", namespace)
     assert namespace["TextLayout"] is android.TextLayout
+    assert namespace["TruncateAt"] is android.TruncateAt
 
 
 def android_sdk() -> tuple[Path, Path]:

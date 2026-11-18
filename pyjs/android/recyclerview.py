@@ -262,6 +262,30 @@ class RecyclerViewAdapter(Object):
 
     @jvm.native(
         "androidx/recyclerview/widget/RecyclerView$Adapter",
+        name="onViewAttachedToWindow",
+        invocation="virtual",
+    )
+    def on_view_attached_to_window(self, holder: RecyclerViewViewHolder) -> None:
+        pass
+
+    @jvm.native(
+        "androidx/recyclerview/widget/RecyclerView$Adapter",
+        name="onViewDetachedFromWindow",
+        invocation="virtual",
+    )
+    def on_view_detached_from_window(self, holder: RecyclerViewViewHolder) -> None:
+        pass
+
+    @jvm.native(
+        "androidx/recyclerview/widget/RecyclerView$Adapter",
+        name="onViewRecycled",
+        invocation="virtual",
+    )
+    def on_view_recycled(self, holder: RecyclerViewViewHolder) -> None:
+        pass
+
+    @jvm.native(
+        "androidx/recyclerview/widget/RecyclerView$Adapter",
         name="getItemCount",
         invocation="virtual",
     )

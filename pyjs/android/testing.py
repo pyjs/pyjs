@@ -96,6 +96,12 @@ def by_id(value: i32) -> ViewInteraction:
     return ViewInteraction(f"id={value}")
 
 
+@jvm.native("org/pyjs/testing/PyjsView", name="fromDescription")
+def by_description(value: str) -> ViewInteraction:
+    """Match a view by its exact accessibility content description."""
+    return ViewInteraction(f"description={value}")
+
+
 @jvm.native("org/pyjs/testing/PyjsAndroid", name="launch")
 def launch(activity: ActivityClass) -> None:
     instance = activity()
@@ -145,6 +151,7 @@ __all__ = [
     "ViewInteraction",
     "application_context",
     "background",
+    "by_description",
     "by_id",
     "by_text",
     "launch",

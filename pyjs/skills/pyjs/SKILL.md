@@ -356,6 +356,23 @@ pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
 offsets and returns the same mutable buffer; it is different from replacing
 the field with `setText()`.
 
+For bounded text previews, combine `setMaxLines()` with
+`setEllipsize(TruncateAt.END)`; `TruncateAt` comes from `pyjs.android`.
+This changes layout without modifying `getText()`. Pass `None` to disable
+ellipsizing. `TextLayout.getEllipsisStart(line)` and `getEllipsisCount(line)`
+describe omitted UTF-16 units after layout; `getLayout()` may still be `None`
+until the next layout pass.
+
+RecyclerView adapters expose `on_view_attached_to_window(holder)`,
+`on_view_detached_from_window(holder)`, and `on_view_recycled(holder)`.
+Use these native callbacks to manage per-card resources. Detachment is not
+permanent: a cached view can reattach without rebinding. Attachment also does
+not guarantee viewport visibility. Cancel or invalidate pending work on
+rebinding and release owned resources on detach/recycle; late asynchronous
+results must still verify their binding before updating a reused holder.
+Restore or schedule any detached resources when the holder reattaches;
+rebinding is not guaranteed, and loading can still wait for viewport visibility.
+
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
 in `finally`. It may return `None` or raise a native I/O or permission error.
@@ -400,6 +417,16 @@ with `--pyjs-android-runtime=device --pyjs-android-avd=NAME`; add
 `--pyjs-android-headless` for a deterministic cold boot without a window.
 Keep compiled tests self-contained and zero-argument; pytest fixtures,
 parametrization, and per-item setup or skip behavior are not yet transported.
+Select views with `by_text()`, `by_id()` or exact accessible names with
+`by_description()`. These use Espresso matchers and normal action visibility
+constraints; descriptions also let tests target images and icon controls.
+`View.setClickable(False)` marks a view nonclickable without removing its
+click listener, letting a parent handle taps on an otherwise inert child.
+`setOnClickListener()` makes the view clickable again, so apply
+`setClickable(False)` after assigning or replacing its listener.
+Long-click and custom touch handlers remain independent.
+Use `isClickable()` to inspect that state; disabled and nonclickable views are
+not interchangeable for touch dispatch.
 `--pyjs-android-timeout` bounds the entire compiled suite, not each test.
 Device timeouts retain completed results and fail unfinished tests with the
 last started test and bounded output. A timeout after all results were reported

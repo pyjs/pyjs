@@ -197,6 +197,9 @@ def espresso_view_class() -> tuple[str, bytes]:
     ))
     class_file.add_method(_factory(class_file, "fromText", "Ljava/lang/String;", "withText"))
     class_file.add_method(_factory(class_file, "fromId", "I", "withId"))
+    class_file.add_method(_factory(
+        class_file, "fromDescription", "Ljava/lang/String;", "withContentDescription",
+    ))
     class_file.add_method(_action(class_file, "click", "click"))
     class_file.add_method(_action(class_file, "press_key", "pressKey", "I"))
     class_file.add_method(_action(class_file, "ime_action", "pressImeActionButton"))

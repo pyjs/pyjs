@@ -286,6 +286,20 @@ class TextLayout:
 
     def increaseWidthTo(self, width: i32) -> None: ...
 
+    def getLineCount(self) -> i32: ...
+
+    def getEllipsisStart(self, line: i32) -> i32: ...
+
+    def getEllipsisCount(self, line: i32) -> i32: ...
+
+
+@jvm.native("android/text/TextUtils$TruncateAt")
+class TruncateAt:
+    START: ClassVar[Annotated[TruncateAt, jvm.field(writable=False)]] = None
+    MIDDLE: ClassVar[Annotated[TruncateAt, jvm.field(writable=False)]] = None
+    END: ClassVar[Annotated[TruncateAt, jvm.field(writable=False)]] = None
+    MARQUEE: ClassVar[Annotated[TruncateAt, jvm.field(writable=False)]] = None
+
 
 @jvm.native("android/text/TextWatcher", interface=True)
 class TextWatcher:
@@ -566,6 +580,10 @@ class View:
 
     def performClick(self) -> bool: ...
 
+    def setClickable(self, clickable: bool) -> None: ...
+
+    def isClickable(self) -> bool: ...
+
     def getParent(self) -> ViewParent | None: ...
 
     def setVisibility(self, value: i32) -> None:
@@ -775,6 +793,10 @@ class TextView(View):
 
     def setMaxLines(self, lines: i32) -> None:
         pass
+
+    def setEllipsize(self, where: TruncateAt | None) -> None: ...
+
+    def getEllipsize(self) -> TruncateAt | None: ...
 
     def setLines(self, lines: i32) -> None:
         pass
@@ -1096,6 +1118,7 @@ __all__ = [
     "SharedPreferences",
     "SharedPreferencesEditor",
     "TextLayout",
+    "TruncateAt",
     "TextView",
     "TextWatcher",
     "Uri",
