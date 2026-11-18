@@ -156,6 +156,11 @@ available for every released version.
   composition patterns before using them.
 - Hand-craft a control only when no suitable component exists or the design
   intentionally requires custom behavior.
+- Use `DialogContent(scrollable=True)` for forms or confirmation content that
+  can exceed the viewport height. The surface scrolls with its actions and
+  follows the dynamic viewport; centered dialogs retain a small outer margin.
+  Native focus scrolls offscreen controls into view. The default remains
+  overflow-visible for compositions that require unclipped popup children.
 - Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
   fields that should fit their wrapped content. It fills its container's
   width and grows or shrinks from a touch-friendly row without input listeners.

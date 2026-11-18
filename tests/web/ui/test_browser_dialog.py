@@ -1,6 +1,9 @@
+from typing import cast
+
 import pytest
 
 from pyjs import js
+from pyjs.testing.web import wait_for_frames
 from pyjs.web.dom import document
 from pyjs.web.domx import (
     button,
@@ -10,7 +13,7 @@ from pyjs.web.domx import (
     tw,
 )
 from pyjs.web.events import Event
-from pyjs.web.html import HTMLButtonElement, HTMLInputElement
+from pyjs.web.html import HTMLButtonElement, HTMLDivElement, HTMLInputElement
 from pyjs.web.ui.dialog import (
     Dialog,
     DialogClose,
@@ -140,3 +143,39 @@ def test_dialog_visual_showcase():
     assert bounds.width > 300
     assert bounds.height > 150
     assert round(bounds.left + bounds.width / 2) == round(body_bounds.left + body_bounds.width / 2)
+
+
+@js
+async def test_scrollable_dialog_keeps_growing_content_and_actions_reachable():
+    root = document.documentElement
+    if root is None:
+        raise ValueError("The browser document must have a root element")
+    for placement in ["center", "top", "bottom", "left", "right"]:
+        first: HTMLInputElement = input({"autofocus": "", "aria-label": "First field"})
+        last = DialogClose("Done")
+        last_button = cast(HTMLButtonElement, last.element)
+        tall: HTMLDivElement = div(tw("min-h-[1500px]"), "Long content")
+        content = DialogContent("Long form", first, tall, DialogFooter(last),
+                                placement=placement, scrollable=True)
+        demo = Dialog(DialogTrigger("Open long form"), content)
+        mount(demo)
+        demo.open()
+        await wait_for_frames()
+        assert content.surface.scrollHeight > content.surface.clientHeight
+        assert document.activeElement is first
+        last_button.focus()
+        await wait_for_frames()
+        bounds = last.element.getBoundingClientRect()
+        assert bounds.top >= 0 and bounds.bottom <= root.clientHeight, (
+            placement + ": " + str(bounds.top) + ".." + str(bounds.bottom) + " / " + str(root.clientHeight))
+        assert content.surface.scrollTop > 0
+        first.focus()
+        await wait_for_frames()
+        assert first.getBoundingClientRect().top >= 0
+        tall.style.setProperty("min-height", "2200px")
+        last_button.focus()
+        await wait_for_frames()
+        assert last.element.getBoundingClientRect().bottom <= root.clientHeight
+        bubbling_click(last.element)
+        assert not content.dialog_element.open
+        assert document.activeElement is demo.trigger.element

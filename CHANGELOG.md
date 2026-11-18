@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `DialogContent(scrollable=True)` keeps long modal content and actions
+  reachable within the dynamic viewport. Scrolling is opt-in; existing
+  overflow-visible dialogs and their popup compositions remain unchanged.
+
 - JVM and Android expose bounded native character reads and strict byte-stream
   decoding. Read caller-sized UTF-16 chunks without silently replacing invalid
   input, and copy character-array ranges into strings.

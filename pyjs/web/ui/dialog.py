@@ -111,6 +111,7 @@ class DialogContent(Widget):
         role: str = "dialog",
         show_close: bool = True,
         close_on_backdrop: bool = True,
+        scrollable: bool = False,
     ):
         super().__init__()
         if (
@@ -178,6 +179,11 @@ class DialogContent(Widget):
         if show_close:
             surface.append(close_button)
         self.surface = ref(surface)
+        if scrollable:
+            self.surface.className += " " + tw(
+                "max-h-dvh overflow-y-auto overscroll-contain "
+                "data-[placement=center]:max-h-[calc(100dvh-2rem)]"
+            )["class"]
         self.dialog_element = ref(
             dialog_element(
                 content_style,
@@ -192,6 +198,8 @@ class DialogContent(Widget):
                 self.surface,
             )
         )
+        if scrollable:
+            self.dialog_element.className += " " + tw("max-h-none")["class"]
         self.dialog_element.addEventListener("cancel", self.cancel)
         self.dialog_element.addEventListener("click", self.dialog_clicked)
         self.add(
