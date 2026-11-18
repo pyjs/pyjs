@@ -1609,11 +1609,11 @@ class IRInferenceVisitor(InferenceVisitor):
             assertion = super().visit_Assert(node)
             self.emit_statement(assertion)
             return assertion
-        test = self.visit(node.test)
+        test = self.visit_truth_condition(node.test)
         passed = self.ir.new_block("assert_passed")
         failed = self.ir.new_block("assert_failed")
         self.ir.terminate(Branch(
-            self.lowering.visit(self.truth_test(node.test, test)),
+            self.lowering.visit(test),
             passed.name, failed.name,
         ))
         # Visiting an expression can emit control flow, so even analysis of

@@ -17,6 +17,43 @@ def test_assertion_truth_and_lazy_evaluation():
     assert_semantics(ASSERT_TRUTH_CONTRACT.print_source + "\nmain()\n")
 
 
+@pytest.mark.parametrize("protocol, annotation, result", [
+    ("__bool__", "bool", "self.calls == 1"),
+    ("__len__", "int", "1 if self.calls == 1 else 0"),
+])
+@pytest.mark.parametrize("expression", [
+    "value or False", "value and True", "value and value", "value or value",
+    "not (value or False)", "not (value and False)",
+    "(value or False) and True", "(value and False) or True",
+    "value if value or False else False", "False if value and False else value",
+])
+def test_assertion_short_circuit_truth_runs_only_at_the_consumed_operands(
+    protocol, annotation, result, expression,
+):
+    assert_semantics(f'''
+        from pyjs import js
+        @js
+        class Changing:
+            def __init__(self):
+                self.calls = 0
+            def {protocol}(self) -> {annotation}:
+                self.calls += 1
+                print("truth", self.calls)
+                return {result}
+        @js
+        def message() -> str:
+            print("message")
+            return "failed"
+        value = Changing()
+        try:
+            assert {expression}, message()
+            print("passed")
+        except AssertionError:
+            print("failed")
+        print(value.calls)
+    ''')
+
+
 @pytest.mark.parametrize("empty, present", [
     ("[]", "[0]"), ("()", "(0,)"), ("{}", "{0: 0}"),
     ("set[int]()", "{0}"), ("''", "'0'"), ("0", "1"), ("None", "True"),

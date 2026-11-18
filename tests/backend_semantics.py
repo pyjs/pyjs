@@ -3049,6 +3049,54 @@ ASSERT_TRUTH_CONTRACT = _contract(
         if events[0] != 1 or (len(events) == 2 and events[1] != 2):
             return "wrong evaluation order"
         return result + ":" + str(len(events))
+
+    @js
+    class ChangingAssertion:
+        def __init__(self, present: bool):
+            self.present = present
+            self.calls = 0
+
+        def __bool__(self) -> bool:
+            self.calls += 1
+            return self.present if self.calls == 1 else not self.present
+
+    @js
+    def assert_short_circuit(present: bool, kind: int) -> str:
+        value = ChangingAssertion(present)
+        result = "passed"
+        try:
+            if kind == 0:
+                assert value or False
+            elif kind == 1:
+                assert value and True
+            elif kind == 2:
+                assert not (value or False)
+            else:
+                assert value if value or False else False
+        except AssertionError:
+            result = "failed"
+        return result + ":" + str(value.calls)
+
+    @js
+    class ChangingAssertionLength:
+        def __init__(self):
+            self.calls = 0
+
+        def __len__(self) -> int:
+            self.calls += 1
+            return 1 if self.calls == 1 else 0
+
+    @js
+    def assert_length_short_circuit(conditional: bool) -> int:
+        value = ChangingAssertionLength()
+        try:
+            if conditional:
+                assert value if value or False else False
+            else:
+                assert value or False
+        except AssertionError:
+            return -value.calls
+        return value.calls
     ''',
     "assert_truth",
     "",
@@ -3059,6 +3107,26 @@ ASSERT_TRUTH_CONTRACT = _contract(
          'assert_condition(False) != "empty:2"'),
         ("true protocol runs once without evaluating the message",
          'assert_condition(True) != "present:1"'),
+        ("short-circuited or keeps its first true result",
+         'assert_short_circuit(True, 0) != "passed:1"'),
+        ("fall-through or consumes its false result",
+         'assert_short_circuit(False, 0) != "failed:1"'),
+        ("fall-through and consumes its true result",
+         'assert_short_circuit(True, 1) != "passed:1"'),
+        ("short-circuited and keeps its first false result",
+         'assert_short_circuit(False, 1) != "failed:1"'),
+        ("negation does not repeat a true protocol",
+         'assert_short_circuit(True, 2) != "failed:1"'),
+        ("negation does not repeat a false protocol",
+         'assert_short_circuit(False, 2) != "passed:1"'),
+        ("conditional branch consumes the selected operand anew",
+         'assert_short_circuit(True, 3) != "failed:2"'),
+        ("conditional test skips the unselected operand",
+         'assert_short_circuit(False, 3) != "failed:1"'),
+        ("short circuit consumes length once",
+         'assert_length_short_circuit(False) != 1'),
+        ("conditional branches consume their own length result",
+         'assert_length_short_circuit(True) != -2'),
     ),
 )
 

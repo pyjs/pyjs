@@ -6,9 +6,11 @@
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme
   before opening untrusted shares; URI permissions remain Android-managed.
 
-- JavaScript assertions use the same Python truth checks as conditionals,
+- JavaScript assertions apply Python truth checks,
   including empty containers and custom truth methods. Empty list and mapping
   literals are false in both assertions and conditional statements.
+  Short-circuit assertions consume each operand's truth only when reached,
+  without repeating stateful truth methods after selecting an operand.
 
 - Android text previews support native ellipsizing without changing their
   source text. RecyclerView adapters expose attach, detach, and recycle

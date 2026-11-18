@@ -66,6 +66,24 @@ def test_assertion_truth_conversion_remains_in_the_typed_tree():
     ''')
 
 
+def test_assertion_short_circuit_keeps_truth_at_each_operand():
+    at('''
+        def main(left: list[int], right: list[int]):
+            assert left or right
+    ''', '''
+        def main(left: list__int, right: list__int) -> None:
+            assert left.[list__int]__bool__!() or right.[list__int]__bool__!()
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main(left, right) {
+            if (!(left.length || right.length)) {
+                throw new $AssertionError("");
+            }
+        }
+    ''')
+
+
 def test_empty_literal_truth_is_false_without_container_type_arguments():
     at('''
         def main():
