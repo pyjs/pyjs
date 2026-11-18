@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM and Android expose bounded native character reads and strict byte-stream
+  decoding. Read caller-sized UTF-16 chunks without silently replacing invalid
+  input, and copy character-array ranges into strings.
+
 - Horizontal fields support `FieldAccessory` slots for controls beside the
   first line of a growing textarea. `FieldContent` can shrink around those
   controls without forcing long content outside the row.

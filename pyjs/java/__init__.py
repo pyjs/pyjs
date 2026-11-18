@@ -3,7 +3,7 @@
 import math
 import time as _time
 
-from pyjs import jvm
+from pyjs import jvm, uint16
 from pyjs.decorators import preserves_numeric_format
 
 from .bindings import (
@@ -63,6 +63,12 @@ class JVMArray[T]:
 def current_time_millis() -> int:
     """Return wall-clock milliseconds on CPython or the JVM."""
     return _time.time_ns() // 1_000_000
+
+
+@jvm.native("java/lang/String", name="valueOf")
+def string_from_chars(buffer: JVMArray[uint16], offset: i32, length: i32) -> str:
+    """Copy a UTF-16 character-array range into a Java string."""
+    ...
 
 
 @jvm.native("java/lang/Double", name="parseDouble")
@@ -130,5 +136,6 @@ __all__ = [
     "read_jvm_class",
     "render_jvm_bindings",
     "run_sync",
+    "string_from_chars",
     "transpile_jvm",
 ]

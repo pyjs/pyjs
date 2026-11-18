@@ -1115,6 +1115,16 @@ with `pyjs template`.
   and I/O errors propagate; close owned streams in `finally` and do not report
   a completed export before close succeeds. A failed write can leave partial
   output; this API does not provide atomic replacement or disk synchronization.
+- `pyjs.java.io.InputStreamReader(stream, decoder)` reads native character
+  chunks with `read(buffer, offset, length)`. Obtain a strict UTF-8 decoder
+  with `pyjs.java.charset.charset_for_name("UTF-8").newDecoder()`. Malformed
+  and truncated byte sequences raise `IOException`, not replacement text.
+  Use `JVMArray[uint16]` for the buffer and `pyjs.java.string_from_chars()`
+  to copy a returned range. Offsets and counts are UTF-16 code units, so a
+  chunk may split a surrogate pair; joining chunks preserves the text.
+  Reads return -1 at EOF. Bound total input before accumulating chunks and
+  close the reader in `finally`, which also closes its underlying stream.
+  `StringReader` and `ByteArrayInputStream` support in-memory sources.
 - `pyjs.java.base64` provides `base64_encoder()` and `base64_decoder()` for
   native byte arrays. Encoding uses the basic alphabet and padding; decoding
   follows Java's rules, including omitted final padding, rather than enforcing

@@ -359,6 +359,16 @@ stream, including document-provider streams. Close owned outputs in `finally`;
 range/I/O failures propagate and can leave partial output. A successful write
 is not an atomic publication or a disk-synchronization guarantee.
 
+For strict text input, wrap the owned stream in `InputStreamReader` from
+`pyjs.java.io` with `charset_for_name("UTF-8").newDecoder()` from
+`pyjs.java.charset`. Call `read(buffer, offset, length)` with a bounded
+`JVMArray[uint16]`; -1 means EOF. Counts are UTF-16 code units, not Python
+characters. `string_from_chars` from `pyjs.java` copies a character-array
+range; join chunks before interpreting split surrogate pairs. Invalid or
+truncated bytes raise `IOException`. Close the reader in `finally`; it closes
+the underlying stream too. The caller still enforces total/record-size limits
+before accumulating content and publishes imported data only after validation.
+
 Resolve Android resources for configurable application package names with
 `context.get_resources().get_identifier(name, kind, package)`. Missing names
 return zero; check before constructing views. Prefer generated `R` bindings
