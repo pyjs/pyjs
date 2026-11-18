@@ -1,7 +1,8 @@
 """Native Java file APIs for JVM and Android applications."""
 
-from pyjs import int8, jvm
+from pyjs import int8, jvm, uint16
 from pyjs.java import JVMArray, i32
+from pyjs.java.charset import CharsetDecoder
 
 
 @jvm.native("java/io/InputStream")
@@ -13,6 +14,29 @@ class InputStream:
 @jvm.native("java/io/IOException")
 class IOException(Exception):
     def getMessage(self) -> str | None: ...
+
+
+@jvm.native("java/io/ByteArrayInputStream")
+class ByteArrayInputStream(InputStream):
+    def __init__(self, data: JVMArray[int8]) -> None: ...
+
+
+@jvm.native("java/io/Reader")
+class Reader:
+    """Read UTF-16 code units into a bounded caller-owned character array."""
+
+    def read(self, buffer: JVMArray[uint16], offset: i32, length: i32) -> i32: ...
+    def close(self) -> None: ...
+
+
+@jvm.native("java/io/InputStreamReader")
+class InputStreamReader(Reader):
+    def __init__(self, stream: InputStream, decoder: CharsetDecoder) -> None: ...
+
+
+@jvm.native("java/io/StringReader")
+class StringReader(Reader):
+    def __init__(self, text: str) -> None: ...
 
 
 @jvm.native("java/io/OutputStream")
