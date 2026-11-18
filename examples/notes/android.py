@@ -11,6 +11,7 @@ from pyjs.android import (
     LinearLayoutParams,
     OnClickListener,
     TextView,
+    TruncateAt,
     View,
     ViewGroup,
     parse_color,
@@ -254,6 +255,7 @@ class NotesActivity(Activity):
         self.shared_preview.setId(102)
         self.shared_preview.setTextSize(16.0)
         self.shared_preview.setMaxLines(5)
+        self.shared_preview.setEllipsize(TruncateAt.END)
         self.shared_preview.setPadding(40, 20, 40, 20)
         self.shared_preview.setLayoutParams(
             LinearLayoutParams(LayoutParams.MATCH_PARENT, 0, 0.6))

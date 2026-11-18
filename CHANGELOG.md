@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android text previews support native ellipsizing without changing their
+  source text. RecyclerView adapters expose attach, detach, and recycle
+  callbacks for managing resources associated with reused cards.
+
 - Compiled Android device tests retain completed results when instrumentation
   times out. Unfinished tests report the last started test and bounded output;
   the runner stops its test packages on the selected device. A timeout during

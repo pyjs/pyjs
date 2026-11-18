@@ -566,6 +566,15 @@ class Adapter(RecyclerViewAdapter):
     ) -> None:
         pass
 
+    def on_view_attached_to_window(self, holder: RecyclerViewViewHolder) -> None:
+        super().on_view_attached_to_window(holder)
+
+    def on_view_detached_from_window(self, holder: RecyclerViewViewHolder) -> None:
+        super().on_view_detached_from_window(holder)
+
+    def on_view_recycled(self, holder: RecyclerViewViewHolder) -> None:
+        super().on_view_recycled(holder)
+
     def get_item_count(self) -> i32:
         return 4
 
@@ -669,6 +678,9 @@ def main() -> int:
         ("getItemCount", "()I"),
         ("getItemId", "(I)J"),
         ("getItemViewType", "(I)I"),
+        ("onViewAttachedToWindow", "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V"),
+        ("onViewDetachedFromWindow", "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V"),
+        ("onViewRecycled", "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V"),
         (
             "onBindViewHolder",
             "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;I)V",

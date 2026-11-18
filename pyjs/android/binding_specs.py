@@ -412,6 +412,21 @@ RECYCLER_VIEW_BINDINGS = (
                 "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;I)V",
                 parameter_names=("holder", "position"),
             ),
+            _method(
+                "onViewAttachedToWindow",
+                "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V",
+                parameter_names=("holder",),
+            ),
+            _method(
+                "onViewDetachedFromWindow",
+                "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V",
+                parameter_names=("holder",),
+            ),
+            _method(
+                "onViewRecycled",
+                "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)V",
+                parameter_names=("holder",),
+            ),
             _method("getItemCount", "()I"),
             _method("getItemId", "(I)J"),
             _method("getItemViewType", "(I)I"),
