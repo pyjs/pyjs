@@ -170,6 +170,9 @@ available for every released version.
   `DialogCloseRequest` and call `show_modal()`/`close()` after application
   save checks. It inserts no close button. A native modal escapes ancestor
   inertness: disable its `dialog_element` explicitly while replacing inputs.
+  Panel and backdrop scroll containment leave the page's overflow styles
+  unchanged. This prevents gesture scroll-through in current Chromium;
+  older browsers may not contain gestures on non-scrolling containers.
 - Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
   fields that should fit their wrapped content. It fills its container's
   width and grows or shrinks from a touch-friendly row without input listeners.

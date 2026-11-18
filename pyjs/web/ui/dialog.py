@@ -251,6 +251,7 @@ class DialogPanel(DialogContent):
         super().__init__(label, show_close=False, close_on_backdrop=close_on_backdrop)
         self.dialog_element.className = tw(
             "fixed inset-0 z-50 m-0 h-dvh max-h-none w-full max-w-none overflow-hidden "
+            "overscroll-contain backdrop:overflow-hidden backdrop:overscroll-contain "
             "border-0 bg-white p-0 text-slate-950 shadow-xl backdrop:bg-black/50 "
             "md:inset-auto md:left-1/2 md:top-1/2 md:h-auto md:max-h-[min(48rem,calc(100dvh-4rem))] "
             "md:w-[min(48rem,calc(100%-4rem))] md:-translate-x-1/2 md:-translate-y-1/2 "
