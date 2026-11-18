@@ -24,8 +24,10 @@
   an instance first. Separate bindings for the same native class retain their
   declared interface compatibility regardless of discovery order.
   Text unions work through ordinary Python helpers, fields and collections;
-  queried span objects support native type narrowing. Unsupported builtin
-  class filters report a located compilation error.
+  queried span objects support native type narrowing. String operations after
+  union narrowing retain verifier-safe storage, including arguments and
+  returns. Unsupported builtin class filters report a located compilation
+  error, including generic containers.
 
 - Android Intents can carry and read parcelable extras, including shared image
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme

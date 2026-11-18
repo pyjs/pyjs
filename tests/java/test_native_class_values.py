@@ -6,13 +6,14 @@ from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.java.test_jvm import java
 
 
-def test_builtin_class_literal_has_a_located_diagnostic():
+@pytest.mark.parametrize("name", ["str", "int", "bool", "object", "list", "dict", "tuple", "set"])
+def test_builtin_class_literal_has_a_located_diagnostic(name):
     with pytest.raises(JVMUnsupported) as caught:
-        transpile_jvm('''from pyjs.android.text import SpannableString
+        transpile_jvm(f'''from pyjs.android.text import SpannableString
 from pyjs.java import i32
 def main() -> int:
     text = SpannableString("x")
-    text.get_spans(i32(0), i32(1), str)
+    text.get_spans(i32(0), i32(1), {name})
     return 0
 ''', filename="span_query.py")
     assert str(caught.value) == (

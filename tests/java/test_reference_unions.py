@@ -3,7 +3,7 @@ import pytest
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import transpile_jvm
 from tests.java.test_context_managers import assert_text_matches_python
-from tests.java.test_exceptions import assert_matches_python
+from tests.java.test_exceptions import assert_matches_python, run_jvm
 
 TEXT_HELPERS = '''
 from typing import cast
@@ -116,4 +116,111 @@ def main() -> int:
     if isinstance(value, First):
         return value.read()
     return value.read()
+''', tmp_path)
+
+
+@pytest.mark.parametrize("result", [
+    "text", "text.upper()", 'text + "!"', '"!" + text',
+    'str(text == "abc")', "str(len(text))", "string_argument(text)",
+    'text.replace("a", "z")', 'text[1:]', '"b" if text else "e"',
+    'f"({text})"', 'str("abc".find(text))', 'str(text in "abc")',
+])
+def test_negative_text_union_guard_supplies_string_consumers(tmp_path, result):
+    source = TEXT_HELPERS.replace("def text_value(text: CharSequence)", "def text_value(text: str | Builder)")
+    source = source.replace("isinstance(text, JavaCharSequence)", "isinstance(text, Builder)")
+    source = source.replace("return cast(str, text)", f"return {result}")
+    source += '''
+def string_argument(text: str) -> str:
+    return text + "?"
+
+def main() -> str:
+    return text_value("abc") + ":" + text_value(Builder("native"))
+'''
+    assert_text_matches_python(source, tmp_path)
+
+
+@pytest.mark.parametrize("storage", ["local", "field", "model", "list"])
+def test_negative_managed_union_guard_supplies_string_consumers(tmp_path, storage):
+    setup = {
+        "local": "text = choose(True)",
+        "field": "holder = Holder(choose(True))\n    text = holder.text",
+        "model": "holder = Model(text=choose(True))\n    text = holder.text",
+        "list": "values: list[str | Inner] = [choose(True)]\n    text = values[0]",
+    }[storage]
+    assert_text_matches_python(f'''
+from pydantic import BaseModel
+
+class Inner(BaseModel):
+    label: str = "inner"
+
+class Holder:
+    def __init__(self, text: str | Inner):
+        self.text = text
+
+class Model(BaseModel):
+    text: str | Inner
+
+def choose(plain: bool) -> str | Inner:
+    return "abc" if plain else Inner()
+
+def main() -> str:
+    {setup}
+    if isinstance(text, Inner):
+        return text.label
+    return text.upper()
+''', tmp_path)
+
+
+def test_native_text_interface_guard_keeps_java_string_membership(tmp_path):
+    source = TEXT_HELPERS.replace("return cast(str, text)", "return text.upper()")
+    source += '''
+def main() -> str:
+    return text_value("abc") + ":" + text_value(Builder("native"))
+'''
+    # Native isinstance follows the JVM interface, which String implements.
+    # The unreachable Python-string branch must still produce valid bytecode.
+    result = run_jvm(source, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "abc:native"
+
+
+@pytest.mark.parametrize("expression", [
+    "value", "relay(value)", "relay(text=value)", "native_relay(value)",
+    "str(isinstance(value, Item))", "str(value is holder.text)",
+])
+def test_replaced_text_field_keeps_wider_consumers_uncast(tmp_path, expression):
+    assert_text_matches_python(f'''
+from pyjs import jvm
+
+class Item:
+    def __init__(self):
+        self.label = "new"
+
+class Holder:
+    def __init__(self):
+        self.text: str | Item = "old"
+
+    def replace(self) -> None:
+        self.text = Item()
+
+def relay(text: str | Item) -> str | Item:
+    return text
+
+@jvm.native("java/util/Objects", name="requireNonNull")
+def native_relay(text: str | Item) -> str | Item:
+    return text
+
+def read(holder: Holder) -> str | Item:
+    value = relay("before")
+    if not isinstance(holder.text, Item):
+        holder.replace()
+        value = holder.text
+        return {expression}
+    return "unexpected"
+
+def main() -> str:
+    result = read(Holder())
+    if isinstance(result, Item):
+        return result.label
+    return result
 ''', tmp_path)

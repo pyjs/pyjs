@@ -380,6 +380,9 @@ These APIs do not parse Markdown or persist formatting; applications own
 their document model and source-to-display mapping.
 Ordinary Python helpers can use `CharSequence` annotations to pass through
 strings and native text without discarding spans.
+Native `isinstance` checks use Java's hierarchy: Java strings also implement
+`JavaCharSequence`. Check `Spanned` to distinguish styled text; the host-side
+Python text shim does not model Java string inheritance.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
