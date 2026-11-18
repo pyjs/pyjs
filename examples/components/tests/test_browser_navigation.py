@@ -39,6 +39,37 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                     "document.querySelector('catalog-app')._initialized === true",
                     "the editable field example to hydrate",
                 )
+                for width, height in [(1280, 800), (390, 844), (700, 360)]:
+                    await page.set_viewport(width, height)
+                    await page.evaluate("document.querySelector('catalog-app').document_dialog.open()")
+                    panel = 'dialog[aria-label="Edit document"]'
+                    await page.wait_for_attribute(panel, "open", "")
+                    await page.fill(panel + " textarea", "Edited after hydration\n" * 100)
+                    await page.evaluate("""(() => {
+                        const panel = document.querySelector('dialog[aria-label="Edit document"]');
+                        panel.querySelector('button').focus();
+                    })()""")
+                    await page.wait_for_frames()
+                    await page.screenshot(tmp_path / f"document-panel-{width}.png")
+                    assert await page.evaluate("""(() => {
+                        const button = document.querySelector('dialog[aria-label="Edit document"] button');
+                        const bounds = button.getBoundingClientRect();
+                        return bounds.top >= 0 && bounds.bottom <= innerHeight && bounds.height > 0;
+                    })()""")
+                    await page.session.send("Input.dispatchKeyEvent", {
+                        "type": "keyDown", "key": "Escape", "code": "Escape",
+                        "windowsVirtualKeyCode": 27,
+                    })
+                    await page.session.send("Input.dispatchKeyEvent", {
+                        "type": "keyUp", "key": "Escape", "code": "Escape",
+                        "windowsVirtualKeyCode": 27,
+                    })
+                    await page.wait_for("!document.querySelector('catalog-app').document_dialog.is_open",
+                                        "the document panel to close")
+                    assert await page.evaluate("document.activeElement === "
+                        "document.querySelector('catalog-app').document_dialog.trigger.element")
+                await page.clear_viewport()
+                assert page.exceptions == []
                 task = '#forms textarea[aria-label="Task"]'
                 initial_task = (
                     "Review the project notes and write down the next steps before the meeting.")

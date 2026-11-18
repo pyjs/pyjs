@@ -21,6 +21,7 @@ from pyjs.web.ui.dialog import (
     DialogDescription,
     DialogFooter,
     DialogHeader,
+    DialogPanel,
     DialogTitle,
     DialogTrigger,
 )
@@ -179,3 +180,46 @@ async def test_scrollable_dialog_keeps_growing_content_and_actions_reachable():
         bubbling_click(last.element)
         assert not content.dialog_element.open
         assert document.activeElement is demo.trigger.element
+
+
+@js
+async def test_dialog_panel_keeps_header_and_footer_visible_while_editing_long_content():
+    first: HTMLInputElement = input({"aria-label": "First line"})
+    last: HTMLInputElement = input({"aria-label": "Last line"})
+    tall: HTMLDivElement = div(tw("min-h-[1500px]"), "Document")
+    panel = DialogPanel("Edit document", first, tall, last)
+    back = button("Back")
+    save = DialogClose("Save")
+    panel.header.append(back)
+    panel.footer.append(save.element)
+    demo = Dialog(DialogTrigger("Edit document"), panel)
+    background = button("Background")
+    mount(background, demo)
+    demo.open()
+    await wait_for_frames()
+    bounds = panel.dialog_element.getBoundingClientRect()
+    header = panel.header.getBoundingClientRect()
+    footer = panel.footer.getBoundingClientRect()
+    viewport = document.documentElement
+    if viewport is None:
+        raise ValueError("Expected a browser document")
+    assert bounds.top >= 0 and bounds.bottom <= viewport.clientHeight
+    assert bounds.left >= 0 and bounds.right <= viewport.clientWidth
+    assert panel.body.scrollHeight > panel.body.clientHeight
+    assert panel.body.clientHeight > 0
+    last.focus()
+    await wait_for_frames()
+    assert panel.body.scrollTop > 0
+    assert panel.header.getBoundingClientRect().top == header.top
+    assert panel.footer.getBoundingClientRect().top == footer.top
+    assert last.getBoundingClientRect().bottom <= footer.top
+    background.focus()
+    assert document.activeElement is last
+    tall.style.setProperty("min-height", "2200px")
+    last.focus()
+    await last.scrollIntoView(block="nearest")
+    await wait_for_frames()
+    assert panel.footer.getBoundingClientRect().bottom <= viewport.clientHeight
+    bubbling_click(save.element)
+    assert not panel.dialog_element.open
+    assert document.activeElement is demo.trigger.element

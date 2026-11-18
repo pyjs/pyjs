@@ -5,6 +5,9 @@
 - JVM `list(text)` constructs independent, mutable lists of Unicode code points
   using the existing string iterator, without repeated prefix indexing.
 
+- `DialogPanel` provides native modal editors with fixed headers and footers,
+  a scrolling body, and a full-viewport layout on small screens.
+
 - JVM JSON decoding accepts required dictionaries containing integer, float,
   and Boolean values, including nested mappings. Generated codec annotations
   now use the same storage rules as ordinary typed dictionaries.

@@ -161,6 +161,14 @@ available for every released version.
   follows the dynamic viewport; centered dialogs retain a small outer margin.
   Native focus scrolls offscreen controls into view. The default remains
   overflow-visible for compositions that require unclipped popup children.
+- Use `DialogPanel(label, *children)` for an editor with fixed action areas.
+  Compose its public `header`, `body` and `footer` elements; children start in
+  the body, which owns scrolling. The panel fills narrow viewports and is
+  centered and bounded on larger screens. Set `padded_controls=False` for
+  toolbars with their own spacing. Use it with `Dialog`, or handle
+  `DialogCloseRequest` and call `show_modal()`/`close()` after application
+  save checks. It inserts no close button. A native modal escapes ancestor
+  inertness: disable its `dialog_element` explicitly while replacing inputs.
 - Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
   fields that should fit their wrapped content. It fills its container's
   width and grows or shrinks from a touch-friendly row without input listeners.
