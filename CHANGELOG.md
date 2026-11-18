@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Locked Android artifacts retry a Maven Central 404 once through its other
+  supported HTTPS endpoint. Both downloads require the same pinned checksum;
+  local storage failures, authentication errors and rate limits do not trigger
+  endpoint fallback.
+
 - AndroidX window-insets controls expose software-keyboard show/hide requests
   and attached-root visibility snapshots. Activities expose their native
   window and decor view for finishing editing tasks without leaving the

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CENTRAL = "https://repo.maven.apache.org/maven2"
+CENTRAL_ALTERNATE = "https://repo1.maven.org/maven2"
 GOOGLE = "https://dl.google.com/dl/android/maven2"
 
 
@@ -106,7 +107,16 @@ class AndroidArtifactResolver:
             if existing := cache.find(selected):
                 return existing
             self.progress(f"Downloading {artifact.group}:{artifact.name}:{artifact.version}")
-            return cache.ensure(selected)
+            try:
+                return cache.ensure(selected)
+            except SDKError as error:
+                # sdkmgr retains the HTTP response on its chained download error.
+                response = getattr(error.__cause__, "response", None)
+                if artifact.repository != "central" or getattr(response, "status_code", None) != 404:
+                    raise
+                alternate = CENTRAL_ALTERNATE + artifact.url[len(CENTRAL):]
+                self.progress(f"Retrying missing artifact through {CENTRAL_ALTERNATE}")
+                return cache.ensure(Artifact(alternate, artifact.sha256, artifact.filename))
         except SDKError as error:
             raise RuntimeError(str(error)) from error
 
