@@ -459,12 +459,19 @@ For a single shared attachment, read
 `intent.get_parcelable_extra(Intent.EXTRA_STREAM)`. Check `isinstance(value,
 Uri)` and `value.get_scheme()` before opening it. A parcelable extra is not
 necessarily a URI; reject unsupported schemes rather than treating arbitrary
-file paths as trusted input. `put_parcelable_extra()` accepts a native
-parcelable or `None`. Android still controls the sender's URI grants: read
+file paths as trusted input. `put_parcelable_extra()` accepts a declared
+`Parcelable` binding, such as `Uri` or `Intent`, or `None`; not every Android
+parcelable type has a corresponding binding. Android controls URI grants: read
 permission is not persistent ownership, and the claimed MIME type is not
 content validation. Copy accepted bytes into app-owned storage before
 acknowledging a durable import. These bindings do not copy bytes or grant
 permissions themselves.
+For anchored actions, use `pyjs.android.menus.PopupMenu(context, anchor)`.
+Add entries through `get_menu().add(group_id, item_id, order, title)`, then
+attach an `OnMenuItemClickListener` and call `show()`. Return whether the
+selection was handled. `OnMenuDismissListener` also runs after cancellation;
+do not interpret dismissal alone as a selected action. Menu items support
+enabled/visible state; either listener can be set to `None` to detach it.
 Use `finish()` to close a completed capture Activity; `is_finishing()` reports
 whether finishing was requested, not whether content was saved. Wait for a
 durable save acknowledgement before closing a form that promises persistence.

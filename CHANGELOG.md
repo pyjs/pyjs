@@ -12,6 +12,10 @@
   window and decor view for finishing editing tasks without leaving the
   keyboard over the next screen.
 
+- Android supports anchored native popup menus with stable item identifiers,
+  enabled/visible entries, selection callbacks and dismissal notifications.
+  Menus can be updated or cleared, and listeners can be detached explicitly.
+
 - Android Intents can carry and read parcelable extras, including shared image
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme
   before opening untrusted shares; URI permissions remain Android-managed.

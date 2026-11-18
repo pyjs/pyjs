@@ -133,6 +133,7 @@ def test_shared_package_aliases_mount_base_before_theme_once(tmp_path):
     async def run():
         async with Browser(headless=True) as browser:
             page = await browser.new_page(document.as_uri())
+            await page.wait_for_selector('style[id="pyjs-npm:example-style@1.0.0/theme.css"]')
             assert await page.evaluate("getComputedStyle(document.querySelector('.target')).color") == 'rgb(40, 50, 60)'
             assert await page.evaluate("Array.from(document.querySelectorAll('style'), s => s.id)") == [
                 'pyjs-npm:example-style@1.0.0/base.css', 'pyjs-npm:example-style@1.0.0/theme.css']
