@@ -1434,9 +1434,11 @@ class JVMEmitter:
             if isinstance(target, Function):
                 raise JVMUnsupported("JVM function values are not implemented", node)
             if isinstance(target, Class) and (
-                target in self.classes or exception_type(target) is not None
+                target in self.classes or target in self.native_classes
+                or exception_type(target) is not None
             ):
-                owner = (self.class_name(target) if target in self.classes
+                owner = (self.native_class_name(target) if target in self.native_classes
+                         else self.class_name(target) if target in self.classes
                          else self.exception_class(target, node))
                 index = self.class_file.constants.class_(owner)
                 if index <= 255:
@@ -6556,41 +6558,38 @@ class JVMEmitter:
             return False
         if actual.startswith("[") or expected.startswith("["):
             return False
-        actual_type = next(
-            (
-                value_type
-                for value_type in (*self.classes, *self.native_classes)
+        candidates = [
+            value_type for value_type in (*self.classes, *self.native_classes)
+            if (self.class_descriptor(value_type) if value_type in self.classes
+                else f"L{self.native_class_name(value_type)};") == actual
+        ]
+        native_exception = self.native_exception_types.get(actual)
+        if native_exception is not None:
+            candidates.append(native_exception)
+        # Separate bindings can expose different interfaces of the same JVM owner.
+        for actual_type in candidates:
+            while actual_type is not None:
                 if (
-                    self.class_descriptor(value_type)
-                    if value_type in self.classes
-                    else f"L{self.native_class_name(value_type)};"
-                )
-                == actual
-            ),
-            self.native_exception_types.get(actual),
-        )
-        while actual_type is not None:
-            if (
-                expected == "Ljava/lang/Throwable;"
-                and exception_type(actual_type) is not None
-                and (managed_exception(actual_type)
-                     or is_declaration(actual_type.py_obj, "jvm"))
-            ):
-                return True
-            layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
-            if layout is None:
-                break
-            actual_type = layout.base
-            if (
-                actual_type in self.classes
-                and self.class_descriptor(actual_type) == expected
-            ):
-                return True
-            if (
-                actual_type in self.native_classes
-                and f"L{self.native_class_name(actual_type)};" == expected
-            ):
-                return True
+                    expected == "Ljava/lang/Throwable;"
+                    and exception_type(actual_type) is not None
+                    and (managed_exception(actual_type)
+                         or is_declaration(actual_type.py_obj, "jvm"))
+                ):
+                    return True
+                layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
+                if layout is None:
+                    break
+                actual_type = layout.base
+                if (
+                    actual_type in self.classes
+                    and self.class_descriptor(actual_type) == expected
+                ):
+                    return True
+                if (
+                    actual_type in self.native_classes
+                    and f"L{self.native_class_name(actual_type)};" == expected
+                ):
+                    return True
         return False
 
     @staticmethod
