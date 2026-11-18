@@ -28,9 +28,11 @@ class MenuSelection(OnMenuItemClickListener):
 class MenuDismissal(OnMenuDismissListener):
     def __init__(self, output: TextView):
         self.output = output
+        self.count = 0
 
     def onDismiss(self, menu: PopupMenu) -> None:
-        self.output.setText("Dismissed")
+        self.count += 1
+        self.output.setText("Dismissed " + str(self.count))
 
 
 class OpenMenu(OnClickListener):

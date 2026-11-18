@@ -45,11 +45,12 @@ def test_popup_selection_and_back_dismissal_have_separate_callbacks() -> None:
     by_text("Unavailable").assert_displayed()
     by_text("Bold 雪").click()
     by_id(1002).assert_text("Selected 10")
-    by_id(1003).assert_text("Dismissed")
+    by_id(1003).assert_text("Dismissed 1")
     by_id(1001).click()
     press_back()
     by_text("Bold 雪").assert_absent()
     by_id(1002).assert_text("Selected 10")
+    by_id(1003).assert_text("Dismissed 2")
 
 
 def test_popup_menu_mutation_and_listener_removal() -> None:
