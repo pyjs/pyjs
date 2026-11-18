@@ -472,6 +472,15 @@ fails the last reported test to expose incomplete instrumentation teardown.
 The runner stops its test packages on the selected device after a timeout;
 the emulator remains running for reuse. Cleanup errors remain in the report.
 
+After `background()`, `resume()` waits for the Activity's resumed lifecycle
+and, on API 29+, Android's window/input transaction barrier. This prevents a
+temporary backgrounding Activity's input sink from consuming the next tap.
+The barrier uses an instrumentation-only Android test API, preserves existing
+accessibility services, and fails if its UiAutomation connection is missing.
+It does not wait for application-specific asynchronous loading; assert that
+the desired controls are ready separately. Earlier APIs retain lifecycle-only
+synchronization.
+
 Activities can override `onRestoreInstanceState(state)` and call the superclass
 after asynchronously loaded controls exist. Retain the original bundle until
 then; restoring into a loading placeholder cannot restore absent views.

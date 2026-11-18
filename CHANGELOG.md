@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android tests synchronize window/input transactions after `resume()` on
+  API 29+, preventing a temporary Activity's input sink from dropping the
+  next Espresso tap. Application-specific loading still needs its own wait.
+
 - Android Activities expose `onRestoreInstanceState`, allowing asynchronous
   screens to defer native view restoration until their controls exist.
   Bundles support typed nested bundles for retaining pending saved state.

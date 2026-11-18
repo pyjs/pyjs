@@ -133,7 +133,7 @@ def background() -> None:
 
 @jvm.native("org/pyjs/testing/PyjsAndroid", name="resume")
 def resume() -> None:
-    """Return the launched activity to its RESUMED state."""
+    """Resume the activity and flush window/input transactions on API 29+."""
     pass
 
 
