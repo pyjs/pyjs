@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM JSON decoding accepts required dictionaries containing integer, float,
+  and Boolean values, including nested mappings. Generated codec annotations
+  now use the same storage rules as ordinary typed dictionaries.
+
 - Android artifact downloads fall back to Google's Maven Central mirror when
   both Central endpoints return 404, retaining locked checksum verification.
 
