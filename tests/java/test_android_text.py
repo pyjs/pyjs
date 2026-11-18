@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 
-from pyjs.android import View
+from pyjs.android import BuildVersion, View
 from pyjs.android.controls import EditText, InputType
 from pyjs.android.testing import NoMatchingViewException, ViewAssertion, by_id, launch
 from pyjs.java import i32
@@ -11,6 +11,26 @@ from pyjs.java.errors import IllegalArgumentException
 from .android_robolectric_app import GreetingActivity
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+class GlyphBoundsWidth(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        field = cast(EditText, view)
+        if BuildVersion.SDK_INT >= 35:
+            field.setUseBoundsForWidth(True)
+            assert field.getUseBoundsForWidth()
+            field.setUseBoundsForWidth(False)
+            assert not field.getUseBoundsForWidth()
+            field.setUseBoundsForWidth(True)
+            assert field.getUseBoundsForWidth()
+
+
+def test_glyph_bounds_width_policy_can_be_changed_without_replacing_text() -> None:
+    launch(GreetingActivity)
+    by_id(i32(1004)).replace_text("j😀 Unicode")
+    by_id(i32(1004)).check(GlyphBoundsWidth())
+    by_id(i32(1004)).assert_text("j😀 Unicode")
 
 
 class EditBuffer(ViewAssertion):

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android text views expose API 35's glyph-bounds width policy, allowing
+  applications to select advance-based layout for expensive long lines
+  without modifying their contents.
+
 - Android tests can measure serialized Bundle bytes with `saved_state_size()`
   to detect oversized saved state without attempting a Binder transaction.
   Native views expose `scroll_to()` for explicit viewport restoration.

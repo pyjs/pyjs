@@ -861,6 +861,10 @@ class TextView(View):
     def setHorizontallyScrolling(self, enabled: bool) -> None:
         pass
 
+    def setUseBoundsForWidth(self, enabled: bool) -> None: ...
+
+    def getUseBoundsForWidth(self) -> bool: ...
+
     def getLayout(self) -> TextLayout | None:
         return None
 
