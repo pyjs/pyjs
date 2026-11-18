@@ -335,7 +335,7 @@ def main(values: list[int]) -> int:
         assert analysis.types == dedent('''\
             def main(values: list__int) -> int:
                 block entry:
-                    branch values.[list__int]__len__():
+                    branch values.[list__int]__len__().[int]__bool__():
                         true -> assert_passed
                         false -> assert_failed
                 block assert_failed:
