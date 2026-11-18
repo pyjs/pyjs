@@ -4940,6 +4940,29 @@ LIST_CONCAT_CONTRACT = _contract(
 )
 
 
+STRING_LIST_CONTRACT = _contract(
+    "from pyjs import js",
+    "string_list_result",
+    '''
+        text = "a😀é雪"
+        characters = list(text)
+        original = "".join(characters)
+        copied = list[str](text)
+        characters[0] = "changed"
+        characters.append("extra")
+        empty = list("")
+        empty.append("grown")
+    ''',
+    (
+        ("Unicode code points, not UTF-16 units", "len(copied) != 5 or copied[1] != '😀'"),
+        ("combining marks remain separate", "copied[2] != 'e' or copied[3] != '́'"),
+        ("exact round trip", "original != text"),
+        ("independent mutable results", "copied[0] != 'a' or len(copied) != 5 or len(characters) != 6"),
+        ("empty result can grow", "len(empty) != 1 or empty[0] != 'grown'"),
+    ),
+)
+
+
 LIST_COPY_CONTRACT = _contract(
     "from pyjs import js, int8, float32",
     "list_copy_result",

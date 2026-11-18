@@ -2,8 +2,80 @@ import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
-from tests.backend_semantics import LIST_COPY_CONTRACT
-from tests.java.test_exceptions import assert_matches_python
+from tests.backend_semantics import LIST_COPY_CONTRACT, STRING_LIST_CONTRACT
+from tests.java.test_exceptions import (
+    assert_compiles_to_android_dex,
+    assert_matches_python,
+)
+
+
+def test_shared_string_list_contract(tmp_path):
+    assert_matches_python(STRING_LIST_CONTRACT.source, tmp_path)
+
+
+def test_string_list_compiles_to_android_dex(tmp_path):
+    assert_compiles_to_android_dex(STRING_LIST_CONTRACT.source, tmp_path)
+
+
+@pytest.mark.parametrize("text", ["", "ascii", "\x00\r\n", "😀a😀", "é", "\ud800x\udc00"])
+def test_string_list_preserves_each_code_point(tmp_path, text):
+    points = [ord(character) for character in text]
+    assert_matches_python(f'''
+        def main() -> int:
+            characters = list({text!r})
+            expected: list[int] = {points!r}
+            assert len(characters) == len(expected)
+            for index in range(len(expected)):
+                assert ord(characters[index]) == expected[index]
+            return 42
+    ''', tmp_path)
+
+
+def test_string_list_evaluates_source_once_and_keeps_reference_storage(tmp_path):
+    assert_matches_python('''
+        def source(events: list[int]) -> str:
+            events.append(1)
+            return "a😀雪"
+        def characters(value: str | None) -> list[str]:
+            if value is None:
+                return []
+            return list(value)
+        def main() -> int:
+            events: list[int] = []
+            result = list(source(events))
+            assert len(events) == 1
+            assert len(result) == 3 and result[1] == "😀"
+            objects = list[object]("ab")
+            objects.append("extra")
+            assert len(objects) == 3
+            assert len(characters(None)) == 0
+            assert characters("😀")[0] == "😀"
+            return 42
+    ''', tmp_path)
+
+
+def test_long_string_list_uses_code_point_iteration(tmp_path):
+    assert_matches_python('''
+        def main() -> int:
+            source = "a😀雪" * 20000
+            result = list(source)
+            assert len(result) == 60000
+            assert result[59998] == "😀"
+            assert "".join(result) == source
+            return 42
+    ''', tmp_path)
+
+
+def test_string_list_helper_does_not_replace_an_application_list_class(tmp_path):
+    assert_matches_python('''
+        class list:
+            def __init__(self, value: str):
+                self.value = value
+        def main() -> int:
+            result = list("not a builtin")
+            assert result.value == "not a builtin"
+            return 42
+    ''', tmp_path)
 
 
 def test_shared_list_copy_contract(tmp_path):

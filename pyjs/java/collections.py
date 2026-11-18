@@ -1,7 +1,14 @@
-"""JVM collection interfaces."""
+"""JVM collection interfaces and Python-authored construction helpers."""
 
 from pyjs import jvm
 from pyjs.java import i32
+
+
+class ListFromIterable[Source, Item]:
+    def __init__(self, source: Source):
+        self.result: list[Item] = []
+        for item in source:
+            self.result.append(item)
 
 
 @jvm.native("java/util/List", interface=True)

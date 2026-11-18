@@ -8,7 +8,17 @@ from pyjs.native.analysis import NATIVE_ENVIRONMENT
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.testing.helpers import analyze_module_source
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import EAGER_COLLECTION_CONTRACT, LIST_COPY_CONTRACT
+from tests.backend_semantics import (
+    EAGER_COLLECTION_CONTRACT,
+    LIST_COPY_CONTRACT,
+    STRING_LIST_CONTRACT,
+)
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_string_list_contract(optimize):
+    result = LLVM().assert_matches_python(STRING_LIST_CONTRACT.source, optimize=optimize)
+    assert result.native.returncode == 0, STRING_LIST_CONTRACT.failure(result.native.returncode)
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
