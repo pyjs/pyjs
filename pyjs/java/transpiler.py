@@ -57,7 +57,11 @@ from pyjs.analysis.objects import (
 )
 from pyjs.analysis.source import analyze_source
 from pyjs.analysis.super_proxy import is_receiver as is_super_receiver
-from pyjs.analysis.type_relations import is_builtin_class, same_analyzer_type
+from pyjs.analysis.type_relations import (
+    is_builtin_class,
+    is_return_type_compatible,
+    same_analyzer_type,
+)
 from pyjs.analysis.value_representation import (
     analyzed_numeric_format,
     analyzed_representation,
@@ -3540,9 +3544,7 @@ class JVMEmitter:
         item = (JVM_ENVIRONMENT.builtins.search("tuple")(*source.generic_types.values())
                 if collection == "items" else next(iter(source.generic_types.values())))
         target = result.generic_types["V"]
-        members = target.types if isinstance(target, UnionType) else (target,)
-        if not (same_analyzer_type(item, target)
-                or any(same_analyzer_type(item, member) for member in members)):
+        if not is_return_type_compatible(target, item):
             raise JVMUnsupported("JVM dictionary view copying requires matching item storage", node)
         item_type = self.value_type(item)
         target_type = self.list_item_type(result)

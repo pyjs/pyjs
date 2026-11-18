@@ -1,5 +1,6 @@
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.backend_semantics import DICTIONARY_ITEMS_CONTRACT, DICTIONARY_KEYS_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
@@ -228,3 +229,71 @@ def main() -> int:
     assert copied[1] == "key"
     return len(copied)
 ''', tmp_path)
+
+
+@pytest.mark.parametrize("expression", ["mapping", "mapping.keys()"])
+@pytest.mark.parametrize("nullable", [False, True])
+def test_explicit_dictionary_key_list_widens_subclasses(tmp_path, expression, nullable):
+    target = "Base | None" if nullable else "Base"
+    append = "    copied.append(None)\n" if nullable else ""
+    assert_text_matches_python(f'''
+class Base:
+    def __init__(self, value: int):
+        self.value = value
+    def label(self) -> str:
+        return "base" + str(self.value)
+class Child(Base):
+    def label(self) -> str:
+        return "child" + str(self.value)
+class Grandchild(Child):
+    pass
+def main() -> str:
+    key = Grandchild(1)
+    mapping = {{key: "first", Grandchild(3): "second"}}
+    copied = list[{target}]({expression})
+    copied.append(Base(2))
+{append}    assert copied[0] is key
+    mapping[key] = "changed"
+    key.value = 9
+    result = ""
+    for item in copied:
+        if item is None:
+            result += "none"
+        else:
+            result += item.label()
+    return result
+''', tmp_path)
+
+
+@pytest.mark.parametrize("expression", ["mapping", "mapping.keys()"])
+def test_nullable_subclass_keys_widen_to_nullable_base(tmp_path, expression):
+    assert_text_matches_python(f'''
+class Base:
+    def __init__(self, value: int):
+        self.value = value
+class Child(Base):
+    pass
+def main() -> str:
+    mapping: dict[Child | None, str] = {{None: "empty", Child(4): "value"}}
+    copied = list[Base | None]({expression})
+    copied.append(Base(2))
+    result = ""
+    for item in copied:
+        result += "none" if item is None else str(item.value)
+    return result
+''', tmp_path)
+
+
+@pytest.mark.parametrize("source,target,value", [
+    ("int8", "int | None", "int8(127)"),
+    ("int", "int8 | None", "128"),
+    ("int8", "int64 | None", "int8(127)"),
+])
+def test_dictionary_key_widening_cannot_change_numeric_representation(source, target, value):
+    with pytest.raises(CompilationError, match="Stored iterable items use an incompatible representation"):
+        transpile_jvm(f'''
+from pyjs import int8, int64
+def main() -> int:
+    mapping: dict[{source}, str] = {{{value}: "item"}}
+    return len(list[{target}](mapping.keys()))
+''')
