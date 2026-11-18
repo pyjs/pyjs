@@ -39,11 +39,10 @@ def test_calculator_registers_python_service_worker_and_runs_offline():
                     "the calculator service worker to control the page",
                 )
 
-                scope = await page.attribute("calculator-app", "data-service-worker")
-                assert scope == url
+                await page.wait_for_attribute("calculator-app", "data-service-worker", url)
 
                 await page.navigate(url)
-                await page.wait_for_selector('[data-testid="calculator-display"]')
+                await page.wait_for_attribute("calculator-app", "data-service-worker", url)
                 cached_urls = await page.evaluate(
                     "(async () => {"
                     " const cache = await caches.open('pyjs-calculator-v1');"
@@ -55,7 +54,7 @@ def test_calculator_registers_python_service_worker_and_runs_offline():
 
                 await page.set_offline()
                 await page.navigate(url)
-                await page.wait_for_selector('[data-testid="calculator-display"]')
+                await page.wait_for_attribute("calculator-app", "data-service-worker", url)
                 await page.click('[data-key="7"]')
                 assert await page.text('[data-testid="calculator-display"]') == "7"
                 assert page.exceptions == []
@@ -70,7 +69,9 @@ def test_calculator_registers_python_service_worker_and_runs_offline():
                 assert browser.pages == []
                 assert page.session.reader.done()
                 page = await browser.new_page(url)
-                await page.wait_for_selector('[data-testid="calculator-display"]')
+                # Cached server-rendered controls exist before hydration binds
+                # their listeners, particularly after a cold process restart.
+                await page.wait_for_attribute("calculator-app", "data-service-worker", url)
                 assert await page.evaluate("localStorage.getItem('restart-proof')") == "saved"
                 assert await page.evaluate("window.transientProof === undefined")
                 await page.click('[data-key="8"]')

@@ -463,6 +463,7 @@ embedding JavaScript for ordinary DOM interaction.
 Use `await browser.restart()` inside a `Browser` context to verify durable
 state across a real Chrome process restart. It closes existing pages and their
 DevTools sessions but retains the owned temporary profile. Open fresh pages
-afterward; leaving the context removes the profile. This does not simulate a
-crash. For offline restart checks, stop the owned test server rather than
+afterward; normal context exit removes the profile. Forced termination can
+leave temporary profile files. This does not simulate a crash. For offline
+restart checks, stop the owned test server rather than
 relying on a page's CDP network override, which ends with that page.
