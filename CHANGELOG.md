@@ -8,6 +8,11 @@
   `navigator.serviceWorker.ready` is awaitable and resolves to the active
   registration.
 
+- Managed browser tests can restart their owned Chrome process while retaining
+  the temporary profile with `await browser.restart()`. New pages can verify
+  durable storage and offline startup across process boundaries; leaving the
+  browser context still removes its profile.
+
 - `DialogContent(scrollable=True)` keeps long modal content and actions
   reachable within the dynamic viewport. Scrolling is opt-in; existing
   overflow-visible dialogs and their popup compositions remain unchanged.

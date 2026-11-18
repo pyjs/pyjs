@@ -59,6 +59,24 @@ def test_calculator_registers_python_service_worker_and_runs_offline():
                 await page.click('[data-key="7"]')
                 assert await page.text('[data-testid="calculator-display"]') == "7"
                 assert page.exceptions == []
+
+                await page.evaluate("localStorage.setItem('restart-proof', 'saved'); window.transientProof = true")
+                previous_process, profile = browser.process, browser.profile
+                stop_process(server)
+                await browser.restart()
+                assert previous_process.poll() is not None
+                assert browser.process.pid != previous_process.pid
+                assert browser.profile == profile
+                assert browser.pages == []
+                assert page.session.reader.done()
+                page = await browser.new_page(url)
+                await page.wait_for_selector('[data-testid="calculator-display"]')
+                assert await page.evaluate("localStorage.getItem('restart-proof')") == "saved"
+                assert await page.evaluate("window.transientProof === undefined")
+                await page.click('[data-key="8"]')
+                assert await page.text('[data-testid="calculator-display"]') == "8"
+                assert page.exceptions == []
+            assert not profile.exists()
         finally:
             stop_process(server)
 

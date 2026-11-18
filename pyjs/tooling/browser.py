@@ -705,6 +705,12 @@ class Browser:
 
     async def __aenter__(self) -> Browser:
         self.profile = Path(tempfile.mkdtemp(prefix="pyjs-browser-"))
+        await self._start()
+        return self
+
+    async def _start(self) -> None:
+        if self.profile is None:
+            raise RuntimeError("Browser has no active profile")
         self.stderr_path = self.profile / "chrome-stderr.log"
         self.launch_arguments = self._launch_arguments(self.profile)
         try:
@@ -736,7 +742,35 @@ class Browser:
         except BaseException:
             await self.close()
             raise
-        return self
+
+    async def restart(self) -> None:
+        """Gracefully restart Chrome, preserving its owned temporary profile.
+
+        Open pages and their DevTools sessions are closed; create new pages
+        afterward. Context exit still removes the profile. This is a process
+        restart, not a simulated crash or a page reload.
+        """
+        if self.profile is None:
+            raise RuntimeError("Enter the browser context before restarting")
+        try:
+            process = self.process
+            if process is not None and process.poll() is None:
+                version = request_json(self.devtools_url)
+                session = await CDPSession.open(version["webSocketDebuggerUrl"])
+                try:
+                    try:
+                        await asyncio.wait_for(session.send("Browser.close"), timeout=5)
+                    except ConnectionError, ConnectionClosed:
+                        # Chrome can close DevTools before acknowledging shutdown.
+                        pass
+                finally:
+                    await session.close()
+                process.wait(timeout=5)
+            await self._stop()
+            await self._start()
+        except BaseException:
+            await self.close()
+            raise
 
     async def _wait_for_startup(self) -> None:
         waiting = asyncio.create_task(wait_for_http(self.devtools_url, timeout=30))
@@ -806,15 +840,17 @@ class Browser:
         await page.session.close()
         self.pages.remove(page)
 
-    async def close(self) -> None:
-        pages = self.pages
-        self.pages.clear()
+    async def _stop(self) -> None:
+        pages, self.pages = self.pages, []
         self._close_process()
+        await asyncio.gather(
+            *(page.session.close() for page in pages),
+            return_exceptions=True,
+        )
+
+    async def close(self) -> None:
         try:
-            await asyncio.gather(
-                *(page.session.close() for page in pages),
-                return_exceptions=True,
-            )
+            await self._stop()
         finally:
             if self.profile is not None:
                 shutil.rmtree(self.profile, ignore_errors=True)
