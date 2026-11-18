@@ -5,6 +5,7 @@ from types import UnionType
 from typing import Annotated, Literal, Union, cast, get_args, get_origin
 
 from pyjs.lib.pydantic.constraints import field_constraints
+from pyjs.lib.pydantic.patterns import decode_pattern, encode_pattern, matches_pattern
 
 from . import double_to_string
 from .json import JSONReader, quote
@@ -270,7 +271,11 @@ class JSONCodegen:
             self.emit(f"{length} = {self.type_name(len)}({value})")
         for kind, bound in constraints.items():
             measured = length if kind in ("min_length", "max_length") else value
-            self.emit(f"if not ({measured} {operators[kind]} {bound!r}):")
+            if kind == "pattern":
+                program = f"{self.type_name(decode_pattern)}({encode_pattern(bound)!r})"
+                self.emit(f"if not {self.type_name(matches_pattern)}({value}, {program}):")
+            else:
+                self.emit(f"if not ({measured} {operators[kind]} {bound!r}):")
             self.emit(f"    raise {self.type_name(ValueError)}({'Invalid JSON field constraint: ' + kind!r})")
         if optional:
             self.level -= 1

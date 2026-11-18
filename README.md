@@ -961,9 +961,25 @@ with `pyjs template`.
   rejected at compilation; those transformations are not implemented yet.
   Omitted defaults are not constraint-validated, matching Pydantic's default
   behavior. This does not implement `validate_default`, item-level `Annotated`
-  constraints, nonnumeric bounds such as dates, patterns, multiple-of checks,
+  constraints, nonnumeric bounds such as dates, multiple-of checks,
   or custom validators. JVM direct construction remains field-only. Keep
   server-side validation enabled.
+- String `Field(pattern=...)` validation shares the same non-backtracking
+  matcher in JavaScript and JVM JSON decoding. It follows default Pydantic
+  search semantics: use `^` and `$` for whole-value matching; `$` does not
+  match before a trailing newline. Supported patterns contain literals,
+  character ranges/negated classes, dot (excluding LF), escaped punctuation
+  or `\n`/`\r`/`\t`, `?`/`*`/`+`, and `{n}`/`{n,m}`/`{n,}` repetitions.
+  Outer anchors are optional. Unsupported syntax fails compilation, including
+  groups, alternation, shorthand/Unicode classes, flags, class set operations,
+  compiled Python regex objects and `regex_engine="python-re"`. Patterns are
+  limited to 4096 source characters, 256 expanded matching states, and 4096
+  integers in their compact program. Repetitions share character-range tables.
+  JVM codecs load those tables from compact constants rather than expanding
+  each state into generated instructions.
+  Matching uses bounded state storage and linear input scanning for a fixed
+  pattern; it does not use platform regex backtracking. Constraints apply to
+  `str` or `str | None` fields, not annotated collection items.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;

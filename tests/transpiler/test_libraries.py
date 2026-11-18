@@ -486,7 +486,129 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
             print(restored.title)
         """,
         {
+            "pyjs.lib.pydantic.patterns": """
+                import { get_list_item as $get_list_item, set_list_item as $set_list_item } from './pyjs.python.js';
+
+                export function matches_pattern(value, program) {
+                    var count = $get_list_item($get_list_item(program, 0), 2);
+                    var anchored_start = $get_list_item($get_list_item(program, 0), 0) == 1;
+                    var anchored_end = $get_list_item($get_list_item(program, 0), 1) == 1;
+                    var active = [];
+                    var following = [];
+                    const $range_start0 = +(0);
+                    const $range_stop1 = +(count + 1);
+                    const $range_step2 = +(1);
+                    if ($range_step2 === 0) throw new RangeError('range() arg 3 must not be zero');
+                    for (let $range_index3 = $range_start0; $range_step2 > 0 ? $range_index3 < $range_stop1 : $range_index3 > $range_stop1; $range_index3 += $range_step2) {
+                        var _ = $range_index3;
+                        (active.push(false), null);
+                        (following.push(false), null);
+                    }
+                    $set_list_item(active, 0, true);
+                    const $range_start4 = +(0);
+                    const $range_stop5 = +(count);
+                    const $range_step6 = +(1);
+                    if ($range_step6 === 0) throw new RangeError('range() arg 3 must not be zero');
+                    for (let $range_index7 = $range_start4; $range_step6 > 0 ? $range_index7 < $range_stop5 : $range_index7 > $range_stop5; $range_index7 += $range_step6) {
+                        var index = $range_index7;
+                        if ($get_list_item(active, index) && $get_list_item($get_list_item(program, index + 1), 0) == 1) {
+                            $set_list_item(active, index + 1, true);
+                        }
+                    }
+                    if ($get_list_item(active, count) && !anchored_end) {
+                        return true;
+                    }
+                    for (var character of value) {
+                        var point = ((characters)=>{if(characters.length!==1)throw new TypeError(`ord() expected a character, but string of length ${characters.length} found`);return characters[0].codePointAt(0);})(Array.from(character));
+                        var reachable = false;
+                        const $range_start8 = +(0);
+                        const $range_stop9 = +(count + 1);
+                        const $range_step10 = +(1);
+                        if ($range_step10 === 0) throw new RangeError('range() arg 3 must not be zero');
+                        for (let $range_index11 = $range_start8; $range_step10 > 0 ? $range_index11 < $range_stop9 : $range_index11 > $range_stop9; $range_index11 += $range_step10) {
+                            var index = $range_index11;
+                            $set_list_item(following, index, false);
+                        }
+                        const $range_start12 = +(0);
+                        const $range_stop13 = +(count);
+                        const $range_step14 = +(1);
+                        if ($range_step14 === 0) throw new RangeError('range() arg 3 must not be zero');
+                        for (let $range_index15 = $range_start12; $range_step14 > 0 ? $range_index15 < $range_stop13 : $range_index15 > $range_stop13; $range_index15 += $range_step14) {
+                            var index = $range_index15;
+                            if ($get_list_item(active, index)) {
+                                var state = $get_list_item(program, index + 1);
+                                var atom = $get_list_item(program, count + 1 + $get_list_item(state, 2));
+                                var included = false;
+                                const $range_start16 = +(1);
+                                const $range_stop17 = +(atom.length);
+                                const $range_step18 = +(2);
+                                if ($range_step18 === 0) throw new RangeError('range() arg 3 must not be zero');
+                                for (let $range_index19 = $range_start16; $range_step18 > 0 ? $range_index19 < $range_stop17 : $range_index19 > $range_stop17; $range_index19 += $range_step18) {
+                                    var offset = $range_index19;
+                                    if ((($compare0) => (($compare1) => $compare0 <= $compare1 && (($compare2) => $compare1 <= $compare2)($get_list_item(atom, offset + 1)))(point))($get_list_item(atom, offset))) {
+                                        included = true;
+                                        break
+                                    }
+                                }
+                                if (included != ($get_list_item(atom, 0) == 1)) {
+                                    var target = $get_list_item(state, 1) == 1 ? index : index + 1;
+                                    $set_list_item(following, target, true);
+                                    reachable = true;
+                                }
+                            }
+                        }
+                        if (anchored_start && !reachable) {
+                            return false;
+                        }
+                        if (!anchored_start) {
+                            $set_list_item(following, 0, true);
+                        }
+                        const $range_start20 = +(0);
+                        const $range_stop21 = +(count);
+                        const $range_step22 = +(1);
+                        if ($range_step22 === 0) throw new RangeError('range() arg 3 must not be zero');
+                        for (let $range_index23 = $range_start20; $range_step22 > 0 ? $range_index23 < $range_stop21 : $range_index23 > $range_stop21; $range_index23 += $range_step22) {
+                            var index = $range_index23;
+                            if ($get_list_item(following, index) && $get_list_item($get_list_item(program, index + 1), 0) == 1) {
+                                $set_list_item(following, index + 1, true);
+                            }
+                        }
+                        var previous = active;
+                        active = following;
+                        following = previous;
+                        if ($get_list_item(active, count) && !anchored_end) {
+                            return true;
+                        }
+                    }
+                    return $get_list_item(active, count);
+                }
+            """,
+            "pyjs.python": """
+                export function get_list_item(target, index) {
+                    var actual_index = index < 0 ? index + target.length : index;
+                    if (actual_index < 0 || actual_index >= target.length) {
+                        throw new IndexError('list index out of range');
+                    }
+                    return target[Number(actual_index)];
+                }
+
+                export function set_list_item(target, index, value) {
+                    var actual_index = index < 0 ? index + target.length : index;
+                    if (actual_index < 0 || actual_index >= target.length) {
+                        throw new IndexError('list assignment index out of range');
+                    }
+                    (target[Number(actual_index)] = value, null);
+                }
+
+                export class LookupError extends Error {
+                }
+
+                export class IndexError extends LookupError {
+                }
+            """,
             "pyjs.lib.pydantic.v2": """
+                import { matches_pattern } from './pyjs.lib.pydantic.patterns.js';
+
                 export function assign_model_values(model, values) {
                     const data = values === undefined
                         ? {}
@@ -668,6 +790,10 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         if (result !== null && Object.hasOwn(data, name)) {
                             let length;
                             for (const [kind, bound] of constraints.get(name) || []) {
+                                if (kind === 'pattern') {
+                                    if (!matches_pattern(result, bound)) fail(name, 'match the field pattern');
+                                    continue;
+                                }
                                 let measured = result;
                                 if (kind === 'min_length' || kind === 'max_length') {
                                     if (length === undefined) {

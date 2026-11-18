@@ -2,6 +2,8 @@ import math
 from types import UnionType
 from typing import Union, get_args, get_origin
 
+from .patterns import compile_pattern
+
 
 def expand_metadata(items):
     from annotated_types import GroupedMetadata
@@ -21,6 +23,18 @@ def field_constraints(field, *, model_config=None):
     constraints = {}
     metadata_items = list(expand_metadata(field.metadata))
     for metadata in metadata_items:
+        pattern = getattr(metadata, "pattern", None)
+        if pattern is not None:
+            annotation = field.annotation
+            if annotation is not str and not (
+                get_origin(annotation) in (Union, UnionType)
+                and set(get_args(annotation)) == {str, type(None)}
+            ):
+                raise TypeError("Client model patterns require str or str | None fields")
+            if (model_config or {}).get("regex_engine", "rust-regex") != "rust-regex":
+                raise TypeError("Client model patterns require the default rust-regex semantics")
+            constraints["pattern"] = compile_pattern(pattern)
+            continue
         name = names.get(type(metadata))
         if name is None:
             continue
