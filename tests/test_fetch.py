@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from pyjs import js
 from pyjs.server.dev import Response as ServerResponse
 from pyjs.web.domx import CustomElement, tag
-from pyjs.web.network import RequestInit, Response, fetch
+from pyjs.web.network import Request, RequestInit, Response, fetch
 
 @js
 class Client(CustomElement):
@@ -38,6 +38,16 @@ class Client(CustomElement):
         self.setAttribute('data-order', '')
         response = await fetch(options={'method': 'POST', 'body': self.record('reversed'),
             'headers': {'X-Probe': 'reversed'}}, url=self.record('/echo'))
+        self.textContent += await response.text()
+        original = Request('/echo', method='POST', body='request',
+            headers={'X-Probe': 'request'}, credentials='same-origin', cache='no-store')
+        response = await fetch(original.clone())
+        self.textContent += await response.text()
+        self.setAttribute('data-original-unused', 'false' if original.bodyUsed else 'true')
+        forward: Callable[[Request], Awaitable[Response]] = fetch
+        response = await forward(original.clone())
+        self.textContent += await response.text()
+        response = await fetch(url=original, options=RequestInit(headers={'X-Probe': 'override'}))
         self.textContent += await response.text()
         self.setAttribute('data-ready', 'true')
 
@@ -63,10 +73,16 @@ def echo(request):
         try:
             async with Browser(headless=True) as browser:
                 page = await browser.new_page(f'http://127.0.0.1:{port}/')
-                await page.wait_for_attribute('[data-testid=client]', 'data-ready', 'true')
+                try:
+                    await page.wait_for_attribute('[data-testid=client]', 'data-ready', 'true')
+                except TimeoutError:
+                    assert not page.exceptions, page.exceptions
+                    raise
                 assert await page.text('[data-testid=client]') == '\n'.join(
-                    'POST/' + name + '/' + name for name in ('dictionary', 'native', 'keyword', 'reversed')) + '\n'
+                    'POST/' + name + '/' + name for name in
+                    ('dictionary', 'native', 'keyword', 'reversed', 'request', 'request')) + '\nPOST/override/request\n'
                 assert await page.attribute('[data-testid=client]', 'data-order') == 'reversed/echo'
+                assert await page.attribute('[data-testid=client]', 'data-original-unused') == 'true'
                 assert page.exceptions == []
         finally:
             server.close()
