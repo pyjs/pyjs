@@ -2,8 +2,23 @@ import subprocess
 
 import pytest
 
-from pyjs.java import transpile_jvm
+from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.java.test_jvm import java
+
+
+def test_builtin_class_literal_has_a_located_diagnostic():
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm('''from pyjs.android.text import SpannableString
+from pyjs.java import i32
+def main() -> int:
+    text = SpannableString("x")
+    text.get_spans(i32(0), i32(1), str)
+    return 0
+''', filename="span_query.py")
+    assert str(caught.value) == (
+        "JVM class literals require an emitted or native class at line 5 "
+        "while compiling span_query.main"
+    )
 
 
 @pytest.mark.parametrize("expression, expected", [

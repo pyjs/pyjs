@@ -2,7 +2,7 @@ from typing import cast
 
 import pytest
 
-from pyjs.android import TextView, View
+from pyjs.android import CharSequence, TextView, View
 from pyjs.android.controls import EditText
 from pyjs.android.graphics import Typeface
 from pyjs.android.testing import NoMatchingViewException, ViewAssertion, by_id, launch
@@ -21,6 +21,28 @@ from pyjs.java.errors import IndexOutOfBoundsException
 from .android_styled_text_app import StyledTextActivity
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+def relay_text(text: CharSequence) -> CharSequence:
+    return text
+
+
+def test_queried_spans_support_narrowing_casts_and_negative_guards() -> None:
+    text = SpannableString("styled")
+    text.set_span(StyleSpan(Typeface.BOLD), i32(0), i32(6),
+                  Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    text.set_span(TypefaceSpan("monospace"), i32(0), i32(6),
+                  Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    styles = text.get_spans(i32(0), text.length(), StyleSpan)
+    item = styles[0]
+    assert isinstance(item, StyleSpan)
+    assert item.get_style() == Typeface.BOLD
+    assert cast(StyleSpan, styles[0]).get_style() == Typeface.BOLD
+    faces = text.get_spans(i32(0), text.length(), TypefaceSpan)
+    other = faces[0]
+    assert not isinstance(other, StyleSpan)
+    assert isinstance(other, TypefaceSpan)
+    assert other.get_family() == "monospace"
 
 
 def test_span_ranges_use_utf16_and_relocate_the_same_span_object() -> None:
@@ -96,12 +118,12 @@ class StyledEditor(ViewAssertion):
         span = StyleSpan(Typeface.BOLD)
         source.set_span(span, i32(4), i32(8), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         label = TextView(view.getContext())
-        label.setText(source)
+        label.setText(relay_text(source))
         shown = label.getText()
         assert isinstance(shown, Spanned)
         assert shown.get_span_start(span) == 4 and shown.get_span_end(span) == 8
         field = cast(EditText, view)
-        field.setText(source)
+        field.setText(relay_text(source))
         buffer = field.get_text()
         assert isinstance(buffer, Spannable)
         buffer.replace(i32(1), i32(3), "Q")
@@ -109,6 +131,8 @@ class StyledEditor(ViewAssertion):
         assert buffer.get_span_start(span) == 3 and buffer.get_span_end(span) == 7
         buffer.remove_span(span)
         assert buffer.get_span_start(span) == -1
+        label.setText(relay_text(buffer))
+        assert label.getText().to_string() == "AQ bold"
         assert source.get_span_start(span) == 4 and source.to_string() == "A😀 bold"
 
 

@@ -1446,6 +1446,11 @@ class JVMEmitter:
                 else:
                     self.code.emit(0x13, index.to_bytes(2, "big"))
                 return "Ljava/lang/Class;"
+            if isinstance(target, Class):
+                raise JVMUnsupported(
+                    "JVM class literals require an emitted or native class", node,
+                    fragment=self.current_function.source_fragment,
+                )
             if (
                 isinstance(target, Instance)
                 and target.static_value is not None
@@ -6556,6 +6561,8 @@ class JVMEmitter:
             return True
         if not _is_reference_descriptor(actual) or not _is_reference_descriptor(expected):
             return False
+        if expected == "Ljava/lang/Object;":
+            return True
         if actual.startswith("[") or expected.startswith("["):
             return False
         candidates = [

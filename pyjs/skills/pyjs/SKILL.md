@@ -368,6 +368,9 @@ directly to `TextView.setText()` rather than converting it to a string.
 offsets. Reusing a span object moves its range; create separate objects for
 separate ranges. Inclusive/exclusive flags govern inserted text at endpoints.
 `get_spans(start, end, StyleSpan)` returns native objects matching that class;
+use `isinstance(item, StyleSpan)` or `cast(StyleSpan, item)` before calling
+style-specific methods. Class filters require declared native or emitted
+classes, not Python builtins such as `str`.
 `get_span_start`, `get_span_end` and `get_span_flags` inspect their ranges.
 `remove_span` is harmless for an absent object. `SpannableString` has fixed
 characters but mutable spans; the builder also supports `append` and
@@ -375,6 +378,8 @@ characters but mutable spans; the builder also supports `append` and
 `EditText.get_text()` exposes span operations on its native editable buffer.
 These APIs do not parse Markdown or persist formatting; applications own
 their document model and source-to-display mapping.
+Ordinary Python helpers can use `CharSequence` annotations to pass through
+strings and native text without discarding spans.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.

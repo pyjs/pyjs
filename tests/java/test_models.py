@@ -148,21 +148,23 @@ def main() -> int:
     )
 
 
-@pytest.mark.parametrize("annotation", ["str | Inner", "str | list[int]"])
-def test_model_reference_union_constructor_boundaries_are_located(annotation):
-    with pytest.raises(JVMUnsupported) as caught:
-        transpile_jvm(f'''from pydantic import BaseModel
+@pytest.mark.parametrize("annotation, value, result", [
+    ("str | Inner", '"text"', 'cast(str, item.value)'),
+    ("str | Inner", 'Inner(label="nested")', 'cast(Inner, item.value).label'),
+    ("str | list[int]", '"text"', 'cast(str, item.value)'),
+    ("str | list[int]", '[42]', 'str(cast(list[int], item.value)[0])'),
+])
+def test_model_reference_union_constructors_preserve_values(tmp_path, annotation, value, result):
+    assert_text_matches_python(f'''from pydantic import BaseModel
+from typing import cast
 class Inner(BaseModel):
     label: str
 class Item(BaseModel):
     value: {annotation}
-def main() -> int:
-    Item(value="text")
-    return 0
-''', filename="model.py")
-    assert str(caught.value) == (
-        "JVM constructor for Item has incompatible arguments at line 7 while compiling model.main"
-    )
+def main() -> str:
+    item = Item(value={value})
+    return {result}
+''', tmp_path)
 
 
 @pytest.mark.parametrize(("field", "message"), [

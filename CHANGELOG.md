@@ -23,6 +23,9 @@
   can be passed to native APIs requiring a Java Class without constructing
   an instance first. Separate bindings for the same native class retain their
   declared interface compatibility regardless of discovery order.
+  Text unions work through ordinary Python helpers, fields and collections;
+  queried span objects support native type narrowing. Unsupported builtin
+  class filters report a located compilation error.
 
 - Android Intents can carry and read parcelable extras, including shared image
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme

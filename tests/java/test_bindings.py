@@ -36,6 +36,17 @@ class Classpath:
         return self.classes.get(name.replace(".", "/"))
 
 
+@pytest.mark.parametrize("native_text", [False, True])
+def test_host_text_view_returns_text_after_plain_or_native_input(native_text):
+    from pyjs.android import Activity, JavaCharSequence, TextView
+
+    view = TextView(Activity())
+    text = "A😀 text"
+    view.setText(JavaCharSequence(text) if native_text else text)
+    assert view.getText().to_string() == text
+    assert view.getText().length() == 8
+
+
 OBJECT = JVMClass("java/lang/Object", 0x0001, None, (), (), ())
 WIDGET = JVMClass(
     "sample/Widget",

@@ -823,7 +823,7 @@ class TextView(View):
         self.text = ""
 
     def setText(self, text: CharSequence) -> None:
-        self.text = text
+        self.text = text.to_string() if isinstance(text, JavaCharSequence) else text
 
     def getText(self) -> JavaCharSequence:
         return JavaCharSequence(self.text)
