@@ -533,6 +533,12 @@ def test_assert_narrowing_retains_the_webassembly_union_storage_boundary():
         transpile_webassembly(ASSERT_NARROWING_CONTRACT.source)
 
 
+def test_assertion_truth_retains_webassembly_exception_boundary():
+    from tests.backend_semantics import ASSERT_TRUTH_CONTRACT
+    with pytest.raises(CompilationError, match="native IR exception handlers are not implemented"):
+        transpile_webassembly(ASSERT_TRUTH_CONTRACT.source)
+
+
 def test_instance_assertion_contract_keeps_the_wasm_exception_boundary():
     from tests.backend_semantics import ASSERT_INSTANCE_STATE_CONTRACT
     with pytest.raises(

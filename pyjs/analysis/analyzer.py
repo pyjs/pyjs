@@ -15009,6 +15009,11 @@ class InferenceVisitor(ast.NodeVisitor):
         return value
 
     def truth_test(self, node, test):
+        if (
+            isinstance(test, (List, Tuple, Set)) and not test.elts
+            or isinstance(test, Dict) and not test.keys
+        ):
+            return ast.copy_location(Constant(BUILTINS.search("bool"), value=False), node)
         test_type = analyzed_value_type(test)
         if test_type is BUILTINS.search("bool"):
             return test
@@ -15169,6 +15174,7 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_Assert(self, node: ast.Assert):
         test = self.visit(node.test)
+        test = self.truth_test(node.test, test)
         message = self.visit(node.msg) if node.msg is not None else None
         assertion_type = BUILTINS.search("AssertionError")
         assert isinstance(assertion_type, Class)

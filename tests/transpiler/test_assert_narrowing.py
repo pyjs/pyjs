@@ -48,6 +48,52 @@ def test_assert_narrowing_preserves_complete_javascript_runtime_checks():
     ''')
 
 
+def test_assertion_truth_conversion_remains_in_the_typed_tree():
+    at('''
+        def main(values: list[int], detail: str):
+            assert values, detail
+    ''', '''
+        def main(values: list__int, detail: str) -> None:
+            assert values.[list__int]__bool__!(), detail
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main(values, detail) {
+            if (!(values.length)) {
+                throw new $AssertionError(String(detail));
+            }
+        }
+    ''')
+
+
+def test_empty_literal_truth_is_false_without_container_type_arguments():
+    at('''
+        def main():
+            assert []
+            if {}:
+                return 1
+            return 0
+    ''', '''
+        def main() -> int:
+            assert False
+            if False:
+                return 1
+            return 0
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main() {
+            if (!(false)) {
+                throw new $AssertionError("");
+            }
+            if (false) {
+                return 1;
+            }
+            return 0;
+        }
+    ''')
+
+
 @pytest.mark.parametrize("environment", [JS_ENVIRONMENT, NATIVE_ENVIRONMENT])
 @pytest.mark.parametrize("body", [
     "assert value is not None or allowed",

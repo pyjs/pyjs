@@ -3011,6 +3011,58 @@ ASSERT_BOOLEAN_FLOW_CONTRACT = _contract(
 )
 
 
+ASSERT_TRUTH_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class AssertionCondition:
+        def __init__(self, events: list[int], present: bool):
+            self.events = events
+            self.present = present
+
+        def __bool__(self) -> bool:
+            self.events.append(1)
+            return self.present
+
+    @js
+    def assertion_text(events: list[int]) -> str:
+        events.append(2)
+        return "empty"
+
+    @js
+    def assert_collection(values: list[int]) -> str:
+        try:
+            assert values, "empty"
+        except AssertionError as error:
+            return str(error)
+        return "present"
+
+    @js
+    def assert_condition(present: bool) -> str:
+        events: list[int] = []
+        result = "present"
+        try:
+            assert AssertionCondition(events, present), assertion_text(events)
+        except AssertionError as error:
+            result = str(error)
+        if events[0] != 1 or (len(events) == 2 and events[1] != 2):
+            return "wrong evaluation order"
+        return result + ":" + str(len(events))
+    ''',
+    "assert_truth",
+    "",
+    (
+        ("empty collection must fail", 'assert_collection([]) != "empty"'),
+        ("nonempty collection must pass", 'assert_collection([0]) != "present"'),
+        ("false protocol runs once before the lazy message",
+         'assert_condition(False) != "empty:2"'),
+        ("true protocol runs once without evaluating the message",
+         'assert_condition(True) != "present:1"'),
+    ),
+)
+
+
 ASSERT_FAILURE_CONTRACT = _contract(
     """
     from pyjs import js

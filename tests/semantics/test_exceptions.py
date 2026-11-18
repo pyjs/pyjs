@@ -1,6 +1,7 @@
 import pytest
 
 from tests.backend_semantics import (
+    ASSERT_TRUTH_CONTRACT,
     CONTEXT_MANAGER_CONTRACT,
     CUSTOM_EXCEPTION_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
@@ -10,6 +11,75 @@ from tests.backend_semantics import (
 )
 
 from .helpers import assert_semantics
+
+
+def test_assertion_truth_and_lazy_evaluation():
+    assert_semantics(ASSERT_TRUTH_CONTRACT.print_source + "\nmain()\n")
+
+
+@pytest.mark.parametrize("empty, present", [
+    ("[]", "[0]"), ("()", "(0,)"), ("{}", "{0: 0}"),
+    ("set[int]()", "{0}"), ("''", "'0'"), ("0", "1"), ("None", "True"),
+])
+def test_assertions_share_collection_and_scalar_truthiness(empty, present):
+    assert_semantics(f'''
+        try:
+            assert {empty}
+        except AssertionError:
+            print("empty")
+        value = {present}
+        assert value
+        print("present")
+    ''')
+
+
+def test_assertion_length_protocol_and_errors_evaluate_once():
+    assert_semantics('''
+        from pyjs import js
+        @js
+        class Sized:
+            def __init__(self, count: int):
+                self.count = count
+            def __len__(self) -> int:
+                print("length")
+                if self.count < 0:
+                    raise ValueError("unavailable")
+                return self.count
+        @js
+        def condition(count: int) -> Sized:
+            print("condition")
+            return Sized(count)
+        @js
+        def message() -> str:
+            print("message")
+            return "empty"
+        for count in [0, 1, -1]:
+            try:
+                assert condition(count), message()
+            except (AssertionError, ValueError) as error:
+                print(str(error))
+    ''')
+
+
+def test_assertion_union_truth_dispatches_without_erasing_the_value():
+    assert_semantics('''
+        from pyjs import js
+        @js
+        def check(value: list[int] | str | None) -> None:
+            try:
+                assert value, "empty"
+                if isinstance(value, str):
+                    print(value.upper())
+                else:
+                    print(value[0])
+            except AssertionError as error:
+                print(str(error))
+        check([])
+        check([0])
+        check("")
+        check("kept")
+        check(None)
+    ''')
 
 
 @pytest.mark.parametrize("contract", [EXCEPTION_CONTROL_FLOW_CONTRACT, EXCEPTION_CLEANUP_CONTRACT, EXCEPTION_VALUE_IDENTITY_CONTRACT, CUSTOM_EXCEPTION_CONTRACT, EXCEPTION_OBJECT_CONTRACT], ids=["handlers", "cleanup", "owned-value", "custom", "custom-owned"])
