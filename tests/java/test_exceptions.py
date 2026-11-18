@@ -7,6 +7,7 @@ import pytest
 from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
 from tests.backend_semantics import (
+    ASSERT_TRUTH_CONTRACT,
     CONTEXT_MANAGER_CONTRACT,
     EXCEPTION_CAUSE_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
@@ -52,6 +53,10 @@ def test_shared_exception_cause_contract(tmp_path):
 
 def test_shared_exception_context_contract(tmp_path):
     assert_matches_python(EXCEPTION_CONTEXT_CONTRACT.source, tmp_path)
+
+
+def test_assertion_truth_and_lazy_evaluation(tmp_path):
+    assert_matches_python(ASSERT_TRUTH_CONTRACT.source, tmp_path)
 
 
 @pytest.mark.parametrize("caught", ["ValueError", "(TypeError, ValueError)", "Exception", "BaseException"])

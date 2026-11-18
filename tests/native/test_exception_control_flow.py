@@ -8,6 +8,7 @@ from tests.backend_semantics import (
     ASSERT_CAPTURE_CONTRACT,
     ASSERT_FAILURE_CONTRACT,
     ASSERT_NARROWING_CONTRACT,
+    ASSERT_TRUTH_CONTRACT,
     CUSTOM_EXCEPTION_CONTRACT,
     EXCEPTION_CLEANUP_CONTRACT,
     EXCEPTION_CONTROL_FLOW_CONTRACT,
@@ -31,7 +32,7 @@ def test_global_narrowing_without_exception_handlers(tmp_path, optimize):
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-@pytest.mark.parametrize("contract", [ASSERT_NARROWING_CONTRACT, ASSERT_FAILURE_CONTRACT, ASSERT_CAPTURE_CONTRACT, ASSERT_BOOLEAN_FLOW_CONTRACT])
+@pytest.mark.parametrize("contract", [ASSERT_NARROWING_CONTRACT, ASSERT_FAILURE_CONTRACT, ASSERT_CAPTURE_CONTRACT, ASSERT_BOOLEAN_FLOW_CONTRACT, ASSERT_TRUTH_CONTRACT])
 def test_shared_assert_narrowing_contract(tmp_path, optimize, contract):
     result = LLVM().assert_matches_python(
         contract.source, directory=tmp_path, optimize=optimize,
@@ -39,6 +40,15 @@ def test_shared_assert_narrowing_contract(tmp_path, optimize, contract):
     )
     assert result.native.returncode == 0
     assert not result.native.stderr
+
+
+def test_untyped_empty_list_assertion_keeps_native_item_type_boundary():
+    with pytest.raises(LLVMUnsupported, match="LLVM list list has no concrete item type"):
+        transpile_llvm('''
+def main() -> int:
+    assert []
+    return 0
+''')
 
 
 @pytest.mark.parametrize("optimize", [0, 2])

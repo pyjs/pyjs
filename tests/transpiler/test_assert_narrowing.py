@@ -48,6 +48,103 @@ def test_assert_narrowing_preserves_complete_javascript_runtime_checks():
     ''')
 
 
+def test_assertion_truth_conversion_remains_in_the_typed_tree():
+    at('''
+        def main(values: list[int], detail: str):
+            assert values, detail
+    ''', '''
+        def main(values: list__int, detail: str) -> None:
+            assert values.[list__int]__bool__!(), detail
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main(values, detail) {
+            if (!(values.length)) {
+                throw new $AssertionError(String(detail));
+            }
+        }
+    ''')
+
+
+def test_assertion_short_circuit_keeps_truth_at_each_operand():
+    at('''
+        def main(left: list[int], right: list[int]):
+            assert left or right
+    ''', '''
+        def main(left: list__int, right: list__int) -> None:
+            assert left.[list__int]__bool__!() or right.[list__int]__bool__!()
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main(left, right) {
+            if (!(left.length || right.length)) {
+                throw new $AssertionError("");
+            }
+        }
+    ''')
+
+
+def test_none_assertion_leaves_convert_truth_without_removing_calls():
+    at('''
+        @js
+        def mark(events: list[int]) -> None:
+            events.append(1)
+        def main(present: bool, events: list[int]) -> None:
+            assert present or mark(events)
+            assert None if present else mark(events)
+    ''', '''
+        def mark(events: list__int) -> None:
+            events.[list__int]append!(1)
+
+        def main(present: bool, events: list__int) -> None:
+            assert present or bool(mark(events))
+            assert bool(None) if present else bool(mark(events))
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function mark(events) {
+            (events.push(1), null);
+        }
+
+        export function main(present, events) {
+            if (!(present || Boolean(mark(events)))) {
+                throw new $AssertionError("");
+            }
+            if (!(present ? Boolean(null) : Boolean(mark(events)))) {
+                throw new $AssertionError("");
+            }
+        }
+    ''')
+
+
+def test_empty_literal_truth_is_false_without_container_type_arguments():
+    at('''
+        def main():
+            assert []
+            if {}:
+                return 1
+            return 0
+    ''', '''
+        def main() -> int:
+            assert False
+            if False:
+                return 1
+            return 0
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function main() {
+            if (!(false)) {
+                throw new $AssertionError("");
+            }
+            if (false) {
+                return 1;
+            }
+            return 0;
+        }
+    ''')
+
+
 @pytest.mark.parametrize("environment", [JS_ENVIRONMENT, NATIVE_ENVIRONMENT])
 @pytest.mark.parametrize("body", [
     "assert value is not None or allowed",

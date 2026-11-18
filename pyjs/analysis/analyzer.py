@@ -15009,6 +15009,11 @@ class InferenceVisitor(ast.NodeVisitor):
         return value
 
     def truth_test(self, node, test):
+        if (
+            isinstance(test, (List, Tuple, Set)) and not test.elts
+            or isinstance(test, Dict) and not test.keys
+        ):
+            return ast.copy_location(Constant(BUILTINS.search("bool"), value=False), node)
         test_type = analyzed_value_type(test)
         if test_type is BUILTINS.search("bool"):
             return test
@@ -15167,8 +15172,39 @@ class InferenceVisitor(ast.NodeVisitor):
         set_analyzed_representation(result, representation)
         return result
 
+    def visit_truth_condition(self, node):
+        # A condition must not re-test the object returned by a short circuit.
+        boolean = BUILTINS.search("bool")
+        if isinstance(node, ast.BoolOp):
+            visitor = self
+            values = []
+            for value in node.values:
+                values.append(visitor.visit_truth_condition(value))
+                visitor = visitor.narrow_for_condition(value, isinstance(node.op, ast.And))
+            return ast.copy_location(BoolOp(boolean, op=node.op, values=values), node)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return ast.copy_location(UnaryOp(
+                boolean, op=node.op, operand=self.visit_truth_condition(node.operand),
+            ), node)
+        if isinstance(node, ast.IfExp):
+            test = self.visit_truth_condition(node.test)
+            body = self.narrow_for_condition(node.test, True).visit_truth_condition(node.body)
+            orelse = self.narrow_for_condition(node.test, False).visit_truth_condition(node.orelse)
+            value = boolean("__condition_result__", self.scope, self.func)
+            return ast.copy_location(IfExp(
+                boolean, value_obj=value, test=test, body=body, orelse=orelse,
+            ), node)
+        test = self.truth_test(node, self.visit(node))
+        if analyzed_value_type(test) is not boolean:
+            # Length protocols can return integers; conditional arms store bool.
+            test = self.truth_test(node, test)
+        if analyzed_value_type(test) is get_none_type():
+            # A None-returning call still runs before yielding false.
+            test = self.call_node(node, boolean, func=Name(boolean), args=[test], keywords=[])
+        return ast.copy_location(test, node)
+
     def visit_Assert(self, node: ast.Assert):
-        test = self.visit(node.test)
+        test = self.visit_truth_condition(node.test)
         message = self.visit(node.msg) if node.msg is not None else None
         assertion_type = BUILTINS.search("AssertionError")
         assert isinstance(assertion_type, Class)
