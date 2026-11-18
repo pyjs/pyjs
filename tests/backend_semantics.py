@@ -3097,6 +3097,34 @@ ASSERT_TRUTH_CONTRACT = _contract(
         except AssertionError:
             return -value.calls
         return value.calls
+
+    @js
+    def assertion_none(events: list[int]) -> None:
+        events.append(7)
+
+    @js
+    def assert_none_leaf(present: bool, kind: int) -> str:
+        events: list[int] = []
+        result = "passed"
+        empty = None
+        try:
+            if kind == 0:
+                assert present or assertion_none(events), assertion_text(events)
+            elif kind == 1:
+                assert present and assertion_none(events), assertion_text(events)
+            elif kind == 2:
+                assert not (present or assertion_none(events)), assertion_text(events)
+            elif kind == 3:
+                assert assertion_none(events) if present else "yes", assertion_text(events)
+            elif kind == 4:
+                assert "yes" if present else assertion_none(events), assertion_text(events)
+            elif kind == 5:
+                assert present or empty, assertion_text(events)
+            else:
+                assert present or None, assertion_text(events)
+        except AssertionError:
+            result = "failed"
+        return result + ":" + str(len(events)) + ":" + str(events[0] if events else 0)
     ''',
     "assert_truth",
     "",
@@ -3127,6 +3155,18 @@ ASSERT_TRUTH_CONTRACT = _contract(
          'assert_length_short_circuit(False) != 1'),
         ("conditional branches consume their own length result",
          'assert_length_short_circuit(True) != -2'),
+        ("or skips a None-returning call", 'assert_none_leaf(True, 0) != "passed:0:0"'),
+        ("or consumes None before its failure message", 'assert_none_leaf(False, 0) != "failed:2:7"'),
+        ("and consumes None before its failure message", 'assert_none_leaf(True, 1) != "failed:2:7"'),
+        ("and skips a None-returning call", 'assert_none_leaf(False, 1) != "failed:1:2"'),
+        ("not consumes None once", 'assert_none_leaf(False, 2) != "passed:1:7"'),
+        ("not preserves a skipped None call", 'assert_none_leaf(True, 2) != "failed:1:2"'),
+        ("conditional true arm consumes None", 'assert_none_leaf(True, 3) != "failed:2:7"'),
+        ("conditional false arm skips None", 'assert_none_leaf(False, 3) != "passed:0:0"'),
+        ("conditional true arm skips None", 'assert_none_leaf(True, 4) != "passed:0:0"'),
+        ("conditional false arm consumes None", 'assert_none_leaf(False, 4) != "failed:2:7"'),
+        ("None local is false", 'assert_none_leaf(False, 5) != "failed:1:2"'),
+        ("None literal is false", 'assert_none_leaf(False, 6) != "failed:1:2"'),
     ),
 )
 

@@ -84,6 +84,39 @@ def test_assertion_short_circuit_keeps_truth_at_each_operand():
     ''')
 
 
+def test_none_assertion_leaves_convert_truth_without_removing_calls():
+    at('''
+        @js
+        def mark(events: list[int]) -> None:
+            events.append(1)
+        def main(present: bool, events: list[int]) -> None:
+            assert present or mark(events)
+            assert None if present else mark(events)
+    ''', '''
+        def mark(events: list__int) -> None:
+            events.[list__int]append!(1)
+
+        def main(present: bool, events: list__int) -> None:
+            assert present or bool(mark(events))
+            assert bool(None) if present else bool(mark(events))
+    ''', '''
+        import { AssertionError as $AssertionError } from './pyjs.python.js';
+
+        export function mark(events) {
+            (events.push(1), null);
+        }
+
+        export function main(present, events) {
+            if (!(present || Boolean(mark(events)))) {
+                throw new $AssertionError("");
+            }
+            if (!(present ? Boolean(null) : Boolean(mark(events)))) {
+                throw new $AssertionError("");
+            }
+        }
+    ''')
+
+
 def test_empty_literal_truth_is_false_without_container_type_arguments():
     at('''
         def main():

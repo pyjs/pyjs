@@ -15198,6 +15198,9 @@ class InferenceVisitor(ast.NodeVisitor):
         if analyzed_value_type(test) is not boolean:
             # Length protocols can return integers; conditional arms store bool.
             test = self.truth_test(node, test)
+        if analyzed_value_type(test) is get_none_type():
+            # A None-returning call still runs before yielding false.
+            test = self.call_node(node, boolean, func=Name(boolean), args=[test], keywords=[])
         return ast.copy_location(test, node)
 
     def visit_Assert(self, node: ast.Assert):
