@@ -3,6 +3,7 @@ import pytest
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import transpile_jvm
 from tests.java.test_context_managers import assert_text_matches_python
+from tests.java.test_exceptions import assert_matches_python
 
 TEXT_HELPERS = '''
 from typing import cast
@@ -77,3 +78,42 @@ def main() -> int:
     assert caught.value.diagnostic.help == (
         "Pass a value compatible with str|JavaCharSequence.",
     )
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_application_object_optional_assignment_preserves_nominal_values(tmp_path, present):
+    assert_matches_python(f'''
+class object:
+    def __init__(self, rank: int):
+        self.rank = rank
+
+def initialize(value: object | None) -> int:
+    if value is None:
+        value = object(3)
+    return value.rank
+
+def main() -> int:
+    return initialize(object(7) if {present} else None)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("first", [False, True])
+def test_unrelated_reference_union_can_be_stored_and_narrowed(tmp_path, first):
+    assert_matches_python(f'''
+class First:
+    def read(self) -> int:
+        return 3
+
+class Second:
+    def read(self) -> int:
+        return 7
+
+def choose(first: bool) -> First | Second:
+    return First() if first else Second()
+
+def main() -> int:
+    value = choose({first})
+    if isinstance(value, First):
+        return value.read()
+    return value.read()
+''', tmp_path)

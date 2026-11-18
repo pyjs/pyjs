@@ -898,18 +898,17 @@ def test_jvm_numeric_name_contract_has_explicit_union_boundary():
         transpile_jvm(NUMERIC_NAME_CONTRACT.source)
 
 
-@pytest.mark.parametrize("name", ["str", "object"])
-def test_jvm_nominal_optional_assignment_has_explicit_storage_boundary(name):
+def test_jvm_nominal_string_optional_assignment_has_explicit_storage_boundary():
     # Isolate the unsupported transition: the full shared scenario contains
     # several independent JVM boundaries whose diagnostic order can change.
     with pytest.raises(JVMUnsupported, match="cannot store .* local value .*initialize"):
-        transpile_jvm(f'''
-            class {name}:
+        transpile_jvm('''
+            class str:
                 def __init__(self, rank: int):
                     self.rank = rank
-            def initialize(value: {name} | None) -> int:
+            def initialize(value: str | None) -> int:
                 if value is None:
-                    value = {name}(3)
+                    value = str(3)
                 return value.rank
             def main() -> int:
                 return initialize(None)
@@ -939,9 +938,9 @@ def main() -> int:
 
 
 def test_jvm_union_reflection_has_an_explicit_representation_boundary():
-    # JS/LLVM execute this shared scenario. JVM still cannot store these
-    # unrelated application classes in the union's Object slot.
-    with pytest.raises(JVMUnsupported, match="cannot store .* in Ljava/lang/Object; local conditional"):
+    # Union storage works, but reflected dispatch across unrelated owners
+    # still requires runtime selection of the concrete method.
+    with pytest.raises(JVMUnsupported, match="JVM call to __rsub__ has incompatible arguments"):
         transpile_jvm(UNION_REFLECTED_ARITHMETIC_CONTRACT.source)
 
 
