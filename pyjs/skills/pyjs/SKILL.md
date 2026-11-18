@@ -187,7 +187,9 @@ available for every released version.
   The widget owns loading, retry, stale-result rejection and URL cleanup.
   Leaving the viewport releases its URL; returning loads again. Original
   decoding still needs temporary memory, so consumers must validate input
-  size and bound I/O timeouts. Sources are unchanged; previews are still frames.
+  size and bound I/O timeouts. An active loader is not cancelled on exit;
+  the shared queue waits for it to settle. Sources are unchanged; previews
+  are still frames.
 - For node-and-edge diagrams, use `DiagramCanvas` from `pyjs.web.ui.diagram`
   with snapshot models and `DiagramEditor` from `pyjs.ui.diagram`. Configure a
   graph, then read committed content on `diagram-change`. Programmatic edits

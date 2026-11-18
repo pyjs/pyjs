@@ -60,8 +60,9 @@ class ImagePreview(Widget):
     Register a client-side ``load_with`` callback before or after mounting.
     Pass a shared ImagePreviewQueue to ``load_with`` to serialize reads and
     decoding. Leaving the viewport releases the displayed blob; returning
-    loads it again. The callback owns validation and cancellation/timeouts
-    of its external I/O.
+    loads it again. The callback owns validation and timeouts of its external
+    I/O. An active callback is not cancelled on exit; stale results are ignored,
+    and the queue waits for that callback to settle.
     Decoding temporarily needs the original image's pixels. Animated inputs
     display a still frame; originals are neither modified nor retained here.
     """
@@ -151,6 +152,7 @@ class ImagePreview(Widget):
             self.release()
 
     async def retry_load(self, event: Event):
+        event.preventDefault()
         event.stopPropagation()
         await self.load()
 

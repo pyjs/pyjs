@@ -4,8 +4,8 @@ import pytest
 
 from pyjs import js
 from pyjs.testing.web import mount, wait_for_frames
-from pyjs.web.dom import document
-from pyjs.web.domx import button, div, img, span
+from pyjs.web.dom import document, window
+from pyjs.web.domx import a, button, div, img, span
 from pyjs.web.files import Blob
 from pyjs.web.html import OffscreenCanvas, OffscreenCanvasRenderingContext2D
 from pyjs.web.ui.image_preview import ImagePreview, ImagePreviewQueue
@@ -154,6 +154,31 @@ async def test_bad_image_can_retry_without_triggering_the_parent_action():
     await expect_state(preview, "ready")
     assert source.calls == 2
     assert parent.getAttribute("data-clicked") == "false"
+
+
+@js
+async def test_retry_does_not_follow_a_containing_card_link():
+    source = ImageSource()
+    source.fail = True
+    preview = ImagePreview(alt="Linked image")
+    preview.load_with(source.load)
+    original = window.location.href
+    destination = original.split("#")[0] + "#image-preview-card"
+    parent = a({"href": destination, "style": "display:block;width:240px"}, preview)
+    mount(parent)
+    try:
+        await expect_state(preview, "error")
+        source.fail = False
+        preview.retry.click()
+        await expect_state(preview, "ready")
+        await wait_for_frames(2)
+        assert source.calls == 2
+        assert window.location.href == original
+        parent.click()
+        await wait_for_frames(2)
+        assert window.location.href == destination
+    finally:
+        window.history.replaceState(None, "", original)
 
 
 @js
