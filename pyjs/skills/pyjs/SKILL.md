@@ -442,6 +442,16 @@ This does not change Android's launch record; process death may restore the
 original launch intent. Persist capture identities and contents separately
 and make processing idempotent. Read shared text with
 `get_char_sequence_extra()` and `to_string()` to accept styled text too.
+For a single shared attachment, read
+`intent.get_parcelable_extra(Intent.EXTRA_STREAM)`. Check `isinstance(value,
+Uri)` and `value.get_scheme()` before opening it. A parcelable extra is not
+necessarily a URI; reject unsupported schemes rather than treating arbitrary
+file paths as trusted input. `put_parcelable_extra()` accepts a native
+parcelable or `None`. Android still controls the sender's URI grants: read
+permission is not persistent ownership, and the claimed MIME type is not
+content validation. Copy accepted bytes into app-owned storage before
+acknowledging a durable import. These bindings do not copy bytes or grant
+permissions themselves.
 Use `finish()` to close a completed capture Activity; `is_finishing()` reports
 whether finishing was requested, not whether content was saved. Wait for a
 durable save acknowledgement before closing a form that promises persistence.

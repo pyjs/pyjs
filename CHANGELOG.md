@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android Intents can carry and read parcelable extras, including shared image
+  URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme
+  before opening untrusted shares; URI permissions remain Android-managed.
+
 - Android text previews support native ellipsizing without changing their
   source text. RecyclerView adapters expose attach, detach, and recycle
   callbacks for managing resources associated with reused cards.

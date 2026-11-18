@@ -341,7 +341,10 @@ class TextWatcher:
 
 
 @jvm.native("android/net/Uri")
-class Uri:
+class Uri(Parcelable):
+    @jvm.native("android/net/Uri", name="getScheme", invocation="virtual")
+    def get_scheme(self) -> str | None: ...
+
     @jvm.native("android/net/Uri", name="toString", invocation="virtual")
     def to_string(self) -> str:
         return ""
@@ -373,7 +376,7 @@ class ContentResolver:
 
 
 @jvm.native("android/content/Intent")
-class Intent:
+class Intent(Parcelable):
     EXTRA_TITLE: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
         "android.intent.extra.TITLE"
     )
@@ -397,6 +400,9 @@ class Intent:
     )
     EXTRA_SUBJECT: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
         "android.intent.extra.SUBJECT"
+    )
+    EXTRA_STREAM: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
+        "android.intent.extra.STREAM"
     )
     FLAG_ACTIVITY_SINGLE_TOP: ClassVar[Annotated[i32, jvm.field(writable=False)]] = (
         536870912
@@ -485,6 +491,9 @@ class Intent:
     def get_char_sequence_extra(self, name: str) -> JavaCharSequence | None:
         return None
 
+    @jvm.native("android/content/Intent", name="getParcelableExtra", invocation="virtual")
+    def get_parcelable_extra(self, name: str) -> Parcelable | None: ...
+
     @jvm.native("android/content/Intent", name="removeExtra", invocation="virtual")
     def remove_extra(self, name: str) -> None:
         pass
@@ -500,6 +509,9 @@ class Intent:
     @jvm.native("android/content/Intent", name="putExtra", invocation="virtual")
     def put_string_extra(self, name: str, value: str | None) -> Intent:
         return self
+
+    @jvm.native("android/content/Intent", name="putExtra", invocation="virtual")
+    def put_parcelable_extra(self, name: str, value: Parcelable | None) -> Intent: ...
 
     @jvm.native("android/content/Intent", name="putExtra", invocation="virtual")
     def put_int_array_extra(
