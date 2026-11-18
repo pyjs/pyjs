@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android artifact downloads fall back to Google's Maven Central mirror when
+  both Central endpoints return 404, retaining locked checksum verification.
+
 - Android text views expose API 35's glyph-bounds width policy, allowing
   applications to select advance-based layout for expensive long lines
   without modifying their contents.
