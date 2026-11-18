@@ -35,6 +35,12 @@ class Input(ProxyElement):
     def get_value(self) -> str:
         return cast(HTMLInputElement, self.element).value
 
+    @js
+    def set_value(self, value: str):
+        self.element.setAttribute("value", value)
+        cast(HTMLInputElement, self.element).value = value
+
+    @set_value.client
     def set_value(self, value: str):
         cast(HTMLInputElement, self.element).value = value
 

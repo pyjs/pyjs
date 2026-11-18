@@ -35,6 +35,13 @@ class Textarea(ProxyElement):
     def get_value(self) -> str:
         return cast(HTMLTextAreaElement, self.element).value
 
+    @js
+    def set_value(self, value: str):
+        # HTML parsing discards one leading newline in a textarea.
+        self.element.textContent = "\n" + value
+        cast(HTMLTextAreaElement, self.element).value = value
+
+    @set_value.client
     def set_value(self, value: str):
         cast(HTMLTextAreaElement, self.element).value = value
 

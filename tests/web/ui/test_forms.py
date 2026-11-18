@@ -1,6 +1,12 @@
+import asyncio
+from urllib.parse import quote
+
 import pytest
 
 from examples.components.catalog import CatalogForm
+from pyjs.tooling.browser import Browser
+from pyjs.web.domx import tag
+from pyjs.web.ssr import render_html
 from pyjs.web.ui.checkbox import Checkbox
 from pyjs.web.ui.field import (
     Field,
@@ -15,6 +21,38 @@ from pyjs.web.ui.input import Input
 from pyjs.web.ui.label import Label
 from pyjs.web.ui.switch import Switch
 from pyjs.web.ui.textarea import Textarea
+
+
+@pytest.mark.pyjs_python
+def test_server_set_values_survive_html_parsing_and_native_form_reset():
+    values = ["", "\n\nA journal 日本語 😀", "\r\nFirst\rLast\n",
+              '</textarea><input name="injected"> & < > "']
+    controls = []
+    for index, value in enumerate(values):
+        field = Textarea(name=str(index))
+        field.set_value("Replaced initial value")
+        field.set_value(value)
+        assert field.get_value() == value
+        controls.append(field)
+    title = Input(name="title")
+    title.set_value('Title < > & " 日本語')
+    markup = render_html(tag("form", title, *controls))
+
+    async def run():
+        async with Browser() as browser:
+            page = await browser.new_page("data:text/html;charset=utf-8," + quote(markup))
+            expected = [value.replace("\r\n", "\n").replace("\r", "\n") for value in values]
+            assert await page.evaluate("Array.from(document.querySelectorAll('textarea'), e => e.value)") == expected
+            assert await page.evaluate("document.querySelector('input').value") == title.get_value()
+            assert await page.evaluate("document.querySelectorAll('input').length") == 1
+            await page.evaluate("""(() => {
+                for (const field of document.querySelectorAll('input,textarea')) field.value = 'Edited';
+                document.querySelector('form').reset();
+            })()""")
+            assert await page.evaluate("Array.from(document.querySelectorAll('textarea'), e => e.value)") == expected
+            assert await page.evaluate("document.querySelector('input').value") == title.get_value()
+
+    asyncio.run(run())
 
 
 @pytest.mark.pyjs_python
