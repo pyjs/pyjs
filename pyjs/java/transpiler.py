@@ -1231,7 +1231,8 @@ class JVMEmitter:
                 and isinstance(analyzed_value_object(node), Instance)):
             narrowed = analyzed_value_type(node)
             if (isinstance(narrowed, Class)
-                    and (narrowed in self.classes or narrowed in self.native_classes)
+                    and (narrowed in self.classes or narrowed in self.native_classes
+                         or is_builtin_class(narrowed, "str"))
                     and self.compatible(self.value_type(narrowed), expected)):
                 # Only a consumer requiring a narrower JVM descriptor needs a
                 # cast. A copied field refinement may be stale even on a Name;
@@ -1434,9 +1435,11 @@ class JVMEmitter:
             if isinstance(target, Function):
                 raise JVMUnsupported("JVM function values are not implemented", node)
             if isinstance(target, Class) and (
-                target in self.classes or exception_type(target) is not None
+                target in self.classes or target in self.native_classes
+                or exception_type(target) is not None
             ):
-                owner = (self.class_name(target) if target in self.classes
+                owner = (self.native_class_name(target) if target in self.native_classes
+                         else self.class_name(target) if target in self.classes
                          else self.exception_class(target, node))
                 index = self.class_file.constants.class_(owner)
                 if index <= 255:
@@ -1444,6 +1447,11 @@ class JVMEmitter:
                 else:
                     self.code.emit(0x13, index.to_bytes(2, "big"))
                 return "Ljava/lang/Class;"
+            if isinstance(target, (Class, GenericClass)):
+                raise JVMUnsupported(
+                    "JVM class literals require an emitted or native class", node,
+                    fragment=self.current_function.source_fragment,
+                )
             if (
                 isinstance(target, Instance)
                 and target.static_value is not None
@@ -1794,8 +1802,8 @@ class JVMEmitter:
                     native_builtins._chr: "chr"}[target.py_func]
             if len(node.args) != 1 or node.keywords:
                 raise JVMUnsupported(f"JVM {name} takes one positional argument", node)
-            actual = self.expression(node.args[0])
             expected = "Ljava/lang/String;" if name == "ord" else "J"
+            actual = self.expression(node.args[0], expected=expected)
             if name != "ord" and actual == "Z":
                 self.code.emit(0x85)
                 actual = "J"
@@ -1844,7 +1852,7 @@ class JVMEmitter:
                 self.code.emit(0x85)
                 return "J"
             if list_type.generic_name == "str":
-                if self.expression(node.args[0]) != "Ljava/lang/String;":
+                if self.expression(node.args[0], expected="Ljava/lang/String;") != "Ljava/lang/String;":
                     raise JVMUnsupported("JVM len has an incompatible string", node)
                 reference = self.class_file.method_reference(
                     self.main_class_name,
@@ -1936,19 +1944,28 @@ class JVMEmitter:
             if target.is_classmethod:
                 raise JVMUnsupported("JVM Python classmethod calls are not implemented", node)
             is_super = self.is_super_call(node.func.value)
+            semantic_receiver = analyzed_value_type(node.func.value)
+            if isinstance(semantic_receiver, LiteralClass):
+                semantic_receiver = semantic_receiver.super
+            string_receiver = (is_builtin_class(semantic_receiver, "str")
+                               and target.name not in {"__is__", "__is_not__"})
             leading_argument = None
             if (isinstance(getattr(node, "operator", None), (ast.In, ast.NotIn))
                     or target in self.functions and target.cls in self.classes
                     and getattr(node, "reverse", False)):
                 # Syntax evaluates the left operand first, even when lowering
                 # invokes a method on the right. Explicit methods stay receiver-first.
-                actual = self.expression(node.args[0])
+                actual = self.expression(
+                    node.args[0],
+                    expected=self.expression_type(node.args[0]) if string_receiver else None,
+                )
                 leading_argument = self.allocate_temporary(actual, "operator.left")
                 self.store(leading_argument, actual)
-            receiver_type = self.expression(node.func.value)
-            semantic_receiver = analyzed_value_type(node.func.value)
-            if isinstance(semantic_receiver, LiteralClass):
-                semantic_receiver = semantic_receiver.super
+            receiver_type = self.expression(
+                node.func.value, expected="Ljava/lang/String;" if string_receiver else None,
+            )
+            if string_receiver and not self.compatible(receiver_type, "Ljava/lang/String;"):
+                raise JVMUnsupported("JVM string operation has an incompatible receiver", node)
             if (getattr(semantic_receiver, "generic_name", None) == "tuple"
                     and semantic_receiver.tuple_variadic
                     and target.name not in {"__is__", "__is_not__"}):
@@ -2356,7 +2373,7 @@ class JVMEmitter:
                     and semantic_receiver.generic_name == "str" and target.name in {"find", "rfind"}):
                 if node.keywords or not 1 <= len(node.args) <= 3:
                     raise JVMUnsupported("JVM string search requires a substring and optional positional bounds", node)
-                if self.expression(node.args[0]) != "Ljava/lang/String;":
+                if self.expression(node.args[0], expected="Ljava/lang/String;") != "Ljava/lang/String;":
                     raise JVMUnsupported("JVM string search requires a string substring", node)
                 for index, default in ((1, 0), (2, 9223372036854775807)):
                     if index >= len(node.args):
@@ -2379,7 +2396,9 @@ class JVMEmitter:
                 return "J"
             argument_types = (
                 [self.load(leading_argument)] if leading_argument is not None
-                else [self.expression(argument) for argument in node.args]
+                else [self.expression(
+                    argument, expected=self.expression_type(argument) if string_receiver else None,
+                ) for argument in node.args]
             )
             if (target.name in {"__contains__", "remove"}
                     and isinstance(semantic_receiver, Class)
@@ -4977,7 +4996,7 @@ class JVMEmitter:
             if isinstance(value, ast.Constant):
                 self.string_constant(value.value)
             elif isinstance(value, ast.FormattedValue) and value.format_spec is None:
-                value_type = self.expression(value.value)
+                value_type = self.expression(value.value, expected=self.expression_type(value.value))
                 self.scalar_string(value_type, value)
             else:
                 raise JVMUnsupported(
@@ -6554,43 +6573,42 @@ class JVMEmitter:
             return True
         if not _is_reference_descriptor(actual) or not _is_reference_descriptor(expected):
             return False
+        if expected == "Ljava/lang/Object;":
+            return True
         if actual.startswith("[") or expected.startswith("["):
             return False
-        actual_type = next(
-            (
-                value_type
-                for value_type in (*self.classes, *self.native_classes)
+        candidates = [
+            value_type for value_type in (*self.classes, *self.native_classes)
+            if (self.class_descriptor(value_type) if value_type in self.classes
+                else f"L{self.native_class_name(value_type)};") == actual
+        ]
+        native_exception = self.native_exception_types.get(actual)
+        if native_exception is not None:
+            candidates.append(native_exception)
+        # Separate bindings can expose different interfaces of the same JVM owner.
+        for actual_type in candidates:
+            while actual_type is not None:
                 if (
-                    self.class_descriptor(value_type)
-                    if value_type in self.classes
-                    else f"L{self.native_class_name(value_type)};"
-                )
-                == actual
-            ),
-            self.native_exception_types.get(actual),
-        )
-        while actual_type is not None:
-            if (
-                expected == "Ljava/lang/Throwable;"
-                and exception_type(actual_type) is not None
-                and (managed_exception(actual_type)
-                     or is_declaration(actual_type.py_obj, "jvm"))
-            ):
-                return True
-            layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
-            if layout is None:
-                break
-            actual_type = layout.base
-            if (
-                actual_type in self.classes
-                and self.class_descriptor(actual_type) == expected
-            ):
-                return True
-            if (
-                actual_type in self.native_classes
-                and f"L{self.native_class_name(actual_type)};" == expected
-            ):
-                return True
+                    expected == "Ljava/lang/Throwable;"
+                    and exception_type(actual_type) is not None
+                    and (managed_exception(actual_type)
+                         or is_declaration(actual_type.py_obj, "jvm"))
+                ):
+                    return True
+                layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
+                if layout is None:
+                    break
+                actual_type = layout.base
+                if (
+                    actual_type in self.classes
+                    and self.class_descriptor(actual_type) == expected
+                ):
+                    return True
+                if (
+                    actual_type in self.native_classes
+                    and f"L{self.native_class_name(actual_type)};" == expected
+                ):
+                    return True
         return False
 
     @staticmethod

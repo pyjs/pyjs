@@ -12,8 +12,6 @@ from .api import AndroidAPI, AndroidAvailability, AndroidNullability
 from .graphics import Canvas
 from .motion import MotionEvent
 
-CharSequence = Annotated[str, Reference("java/lang/CharSequence")]
-
 
 @jvm.native("android/os/Build$VERSION")
 class BuildVersion:
@@ -275,8 +273,41 @@ class JavaCharSequence:
         return i32(len(self.value.encode("utf-16-le", errors="surrogatepass")) // 2)
 
 
+CharSequence = Annotated[str | JavaCharSequence, Reference("java/lang/CharSequence")]
+
+
+@jvm.native("android/text/Spanned", interface=True)
+class Spanned(JavaCharSequence):
+    SPAN_INCLUSIVE_EXCLUSIVE: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 17
+    SPAN_INCLUSIVE_INCLUSIVE: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 18
+    SPAN_EXCLUSIVE_EXCLUSIVE: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 33
+    SPAN_EXCLUSIVE_INCLUSIVE: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 34
+
+    @jvm.native("android/text/Spanned", name="getSpans", invocation="virtual")
+    def get_spans(self, start: i32, end: i32,
+                  kind: Annotated[type[object], Reference("java/lang/Class")]) -> JVMArray[object]: ...
+
+    @jvm.native("android/text/Spanned", name="getSpanStart", invocation="virtual")
+    def get_span_start(self, span: object) -> i32: ...
+
+    @jvm.native("android/text/Spanned", name="getSpanEnd", invocation="virtual")
+    def get_span_end(self, span: object) -> i32: ...
+
+    @jvm.native("android/text/Spanned", name="getSpanFlags", invocation="virtual")
+    def get_span_flags(self, span: object) -> i32: ...
+
+
+@jvm.native("android/text/Spannable", interface=True)
+class Spannable(Spanned):
+    @jvm.native("android/text/Spannable", name="setSpan", invocation="virtual")
+    def set_span(self, span: object, start: i32, end: i32, flags: i32) -> None: ...
+
+    @jvm.native("android/text/Spannable", name="removeSpan", invocation="virtual")
+    def remove_span(self, span: object) -> None: ...
+
+
 @jvm.native("android/text/Editable", interface=True)
-class Editable(JavaCharSequence):
+class Editable(Spannable):
     def replace(self, start: i32, end: i32, text: CharSequence) -> Editable: ...
 
 
@@ -792,7 +823,7 @@ class TextView(View):
         self.text = ""
 
     def setText(self, text: CharSequence) -> None:
-        self.text = text
+        self.text = text.to_string() if isinstance(text, JavaCharSequence) else text
 
     def getText(self) -> JavaCharSequence:
         return JavaCharSequence(self.text)
@@ -1138,6 +1169,8 @@ __all__ = [
     "Runnable",
     "SharedPreferences",
     "SharedPreferencesEditor",
+    "Spannable",
+    "Spanned",
     "TextLayout",
     "TruncateAt",
     "TextView",

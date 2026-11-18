@@ -5,6 +5,14 @@ from pyjs import int8, jvm
 from pyjs.java import JVMArray, f32, i32
 
 
+@jvm.native("android/graphics/Typeface")
+class Typeface:
+    NORMAL: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 0
+    BOLD: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 1
+    ITALIC: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 2
+    BOLD_ITALIC: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 3
+
+
 @jvm.native("android/graphics/Bitmap")
 class Bitmap:
     def getWidth(self) -> i32: ...

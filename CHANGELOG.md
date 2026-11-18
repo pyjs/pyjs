@@ -16,6 +16,19 @@
   enabled/visible entries, selection callbacks and dismissal notifications.
   Menus can be updated or cleared, and listeners can be detached explicitly.
 
+- Android text controls accept native styled text as well as strings.
+  Spannable strings and builders support UTF-16 style ranges, copying,
+  endpoint flags and type-filtered span queries; bold/italic, strike-through
+  and typeface spans use Android's own rendering. Native JVM class literals
+  can be passed to native APIs requiring a Java Class without constructing
+  an instance first. Separate bindings for the same native class retain their
+  declared interface compatibility regardless of discovery order.
+  Text unions work through ordinary Python helpers, fields and collections;
+  queried span objects support native type narrowing. String operations after
+  union narrowing retain verifier-safe storage, including arguments and
+  returns. Unsupported builtin class filters report a located compilation
+  error, including generic containers.
+
 - Android Intents can carry and read parcelable extras, including shared image
   URIs through `EXTRA_STREAM`. Inspect the returned native type and URI scheme
   before opening untrusted shares; URI permissions remain Android-managed.
