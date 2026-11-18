@@ -240,6 +240,12 @@ def test_fixed_tuple_assignment_reaches_the_wasm_string_boundary():
         transpile_webassembly(FIXED_TUPLE_ASSIGNMENT_CONTRACT.source)
 
 
+def test_string_list_contract_keeps_the_wasm_string_boundary():
+    from tests.backend_semantics import STRING_LIST_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
+        transpile_webassembly(STRING_LIST_CONTRACT.source)
+
+
 def test_list_copy_contract_keeps_the_wasm_identity_boundary():
     from tests.backend_semantics import LIST_COPY_CONTRACT
     with pytest.raises(WebAssemblyUnsupported) as caught:

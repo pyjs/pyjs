@@ -5,6 +5,7 @@ from tests.backend_semantics import (
     CONDITIONAL_EMPTY_COLLECTIONS,
     CONDITIONAL_EMPTY_MAPPING,
     LIST_COPY_CONTRACT,
+    STRING_LIST_CONTRACT,
 )
 from tests.semantics.helpers import assert_semantics
 
@@ -15,6 +16,10 @@ def test_shared_collection_edit_contract():
 
 def test_shared_list_copy_contract():
     assert_semantics(LIST_COPY_CONTRACT.print_source + "\nmain()")
+
+
+def test_shared_string_list_contract():
+    assert_semantics(STRING_LIST_CONTRACT.print_source + "\nmain()")
 
 
 @pytest.mark.parametrize("contract", [CONDITIONAL_EMPTY_COLLECTIONS, CONDITIONAL_EMPTY_MAPPING])
