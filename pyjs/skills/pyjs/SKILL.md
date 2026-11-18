@@ -390,8 +390,11 @@ On API 35+, `setUseBoundsForWidth()` and `getUseBoundsForWidth()` select
 glyph bounds instead of character advances for layout. Guard calls with
 `BuildVersion.SDK_INT >= 35`. Glyph bounds help avoid clipping overhanging
 characters, but can make exceptionally long lines expensive to lay out.
-Applications choosing advance-based layout should preserve their original
-setting when returning to ordinary text; neither setting changes the text.
+For editable fields accepting large pastes, select the policy before their
+initial layout: an old DynamicLayout can retain its policy while processing
+text changes, even after TextView invalidates it. Advance-based layout trades
+overhang-clipping protection for avoiding that bounds computation; neither
+setting changes the text.
 `getLayout()` returns `TextLayout` or `None`, including between a wrapping
 change and the next layout pass. Its `getWidth()` and `increaseWidthTo()` use
 pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
