@@ -419,7 +419,7 @@ class WebSocket(EventTarget):
 
 
 @js
-async def fetch(url: str, options: object | None = None) -> Response: ...
+async def fetch(url: str | Request, options: object | None = None) -> Response: ...
 
 
 @fetch.inline
@@ -437,7 +437,7 @@ def fetch(_arg_strs, _keyword_strs, **kwargs):
 
 
 @fetch.value
-async def fetch(url: str, *options: object) -> Response:
+async def fetch(url: str | Request, *options: object) -> Response:
     return await fetch(url, options[0] if options else None)
 
 

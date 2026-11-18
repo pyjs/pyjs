@@ -602,7 +602,7 @@ class ServiceWorkerContainer(EventTarget):
         self.oncontrollerchange: callable = None
         self.onmessage: callable = None
         self.onmessageerror: callable = None
-        self.ready: ServiceWorkerRegistration = None
+        self.ready: Awaitable[ServiceWorkerRegistration] = None
 
     async def getRegistration(
         self, clientURL: str = ""

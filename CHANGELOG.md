@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Browser `fetch()` accepts an existing `Request`, both directly and as a
+  callback. Forward request bodies and headers without rebuilding the request;
+  explicit fetch options retain the browser's normal override behavior.
+  `navigator.serviceWorker.ready` is awaitable and resolves to the active
+  registration.
+
 - `DialogContent(scrollable=True)` keeps long modal content and actions
   reachable within the dynamic viewport. Scrolling is opt-in; existing
   overflow-visible dialogs and their popup compositions remain unchanged.

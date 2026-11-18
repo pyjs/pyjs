@@ -272,7 +272,8 @@ class CalculatorApp(Widget):
     async def initialize(self):
         if self.service_worker_url == "":
             return
-        registration = await navigator.serviceWorker.register(self.service_worker_url)
+        await navigator.serviceWorker.register(self.service_worker_url)
+        registration = await navigator.serviceWorker.ready
         self.set_data("service-worker", registration.scope)
 
     @effect(display_value)
