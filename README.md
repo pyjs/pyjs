@@ -973,7 +973,10 @@ with `pyjs template`.
   Outer anchors are optional. Unsupported syntax fails compilation, including
   groups, alternation, shorthand/Unicode classes, flags, class set operations,
   compiled Python regex objects and `regex_engine="python-re"`. Patterns are
-  limited to 4096 source characters and 256 expanded matching states.
+  limited to 4096 source characters, 256 expanded matching states, and 4096
+  integers in their compact program. Repetitions share character-range tables.
+  JVM codecs load those tables from compact constants rather than expanding
+  each state into generated instructions.
   Matching uses bounded state storage and linear input scanning for a fixed
   pattern; it does not use platform regex backtracking. Constraints apply to
   `str` or `str | None` fields, not annotated collection items.

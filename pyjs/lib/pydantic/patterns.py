@@ -10,6 +10,9 @@ def compile_pattern(pattern):
     index = int(start)
     end = False
     program = []
+    atoms = []
+    atom_indices = {}
+    atom_size = 0
 
     def unsupported():
         raise TypeError(
@@ -91,20 +94,53 @@ def compile_pattern(pattern):
         count = minimum + 1 if maximum == -1 else maximum
         if len(program) + count > 256:
             raise TypeError("Client model pattern exceeds 256 matching states")
+        if count == 0:
+            continue
+        merged = []
+        for low, high in sorted(zip(ranges[::2], ranges[1::2], strict=True)):
+            if merged and low <= merged[-1] + 1:
+                merged[-1] = max(merged[-1], high)
+            else:
+                merged.extend((low, high))
+        atom = (int(negate), *merged)
+        atom_index = atom_indices.get(atom)
+        if atom_index is None:
+            atom_index = len(atoms)
+            atom_indices[atom] = atom_index
+            atoms.append(list(atom))
+            atom_size += len(atom)
+        if 3 + 3 * (len(program) + count) + atom_size > 4096:
+            raise TypeError("Client model pattern exceeds 4096 program integers")
         for position in range(count):
             program.append([int(position >= minimum),
                             int(maximum == -1 and position == minimum),
-                            int(negate), *ranges])
-    return [[int(start), int(end)], *program]
+                            atom_index])
+    return [[int(start), int(end), len(program)], *program, *atoms]
+
+
+def encode_pattern(program):
+    return ";".join(",".join(str(value) for value in row) for row in program)
+
+
+def decode_pattern(encoded: str) -> list[list[int]]:
+    # The compiler supplies bounded decimal tables, not user-controlled regex.
+    # Loading them keeps JVM methods small without expanding a list literal.
+    program: list[list[int]] = []
+    for row in encoded.split(";"):
+        values: list[int] = []
+        for value in row.split(","):
+            values.append(int(value))
+        program.append(values)
+    return program
 
 
 @js
 def matches_pattern(value: str, program: list[list[int]]) -> bool:
     # Parallel states prevent backtracking on overlapping repetitions. The
     # compiler bounds the program; storage does not grow with the input.
-    count = len(program) - 1
-    # Header: start/end anchors. Each state: optional/repeat/negate flags,
-    # then inclusive code-point range pairs.
+    count = program[0][2]
+    # Header: anchors and state count. States refer to shared character atoms
+    # after the state table: negate flag, then inclusive code-point pairs.
     anchored_start = program[0][0] == 1
     anchored_end = program[0][1] == 1
     active: list[bool] = []
@@ -125,14 +161,15 @@ def matches_pattern(value: str, program: list[list[int]]) -> bool:
             following[index] = False
         for index in range(count):
             if active[index]:
-                atom = program[index + 1]
+                state = program[index + 1]
+                atom = program[count + 1 + state[2]]
                 included = False
-                for offset in range(3, len(atom), 2):
+                for offset in range(1, len(atom), 2):
                     if atom[offset] <= point <= atom[offset + 1]:
                         included = True
                         break
-                if included != (atom[2] == 1):
-                    target = index if atom[1] == 1 else index + 1
+                if included != (atom[0] == 1):
+                    target = index if state[1] == 1 else index + 1
                     following[target] = True
                     reachable = True
         if anchored_start and not reachable:

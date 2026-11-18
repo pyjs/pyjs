@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, StringConstraints, TypeAdapter
 
 from pyjs import js
 
@@ -8,6 +8,8 @@ PATTERN_CASES = [
     (r"^#[0-9a-fA-F]{6}$", ["#aB09fF", "#abcdef\n", "#abc", "#abcxyz", "x#abcdef"]),
     ("", ["", "anything", "\n"]),
     ("^$", ["", "\n", "x"]),
+    ("^a{0}[x-z]{0}$", ["", "a", "x"]),
+    ("^[a-zA-Za-zabc]{1,3}$", ["aZ", "abc", "abcd", "0"]),
     ("a$", ["a", "ba", "a\n"]),
     ("^a", ["a", "ab", "ba"]),
     ("^.$", ["\r", "\n", "😀", "ab"]),
@@ -64,6 +66,39 @@ class UnrestrictedBadge(Badge):
 @js
 class Badges(BaseModel):
     badges: list[Badge]
+
+
+@js
+class Identifier(BaseModel):
+    value: str = Field(pattern=r"^[A-Za-z0-9._%+\-]{1,255}$")
+
+
+@js
+class ShortCode(BaseModel):
+    value: Annotated[str, StringConstraints(min_length=2, max_length=3, pattern="^x")]
+
+
+@js
+def check_large_and_grouped_patterns() -> str:
+    assert Identifier.model_validate_json('{"value":"a.b+c"}').value == "a.b+c"
+    assert ShortCode.model_validate_json('{"value":"xy"}').value == "xy"
+    longest = ""
+    for _ in range(255):
+        longest += "a"
+    assert Identifier.model_validate_json('{"value":"' + longest + '"}').value == longest
+    for value in ["", "a b", longest + "a"]:
+        try:
+            Identifier.model_validate_json('{"value":"' + value + '"}')
+        except ValueError:
+            continue
+        return "accepted invalid identifier"
+    for value in ["x", "xxxx", "yy"]:
+        try:
+            ShortCode.model_validate_json('{"value":"' + value + '"}')
+        except ValueError:
+            continue
+        return "ignored grouped length or pattern"
+    return "validated"
 
 
 @js

@@ -17,7 +17,9 @@
 - Client string fields validate a portable subset of `Field(pattern=...)`
   consistently in JavaScript and JVM JSON decoding, including Unicode text
   and strict end anchors. Unsupported regex syntax is rejected at compilation;
-  matching avoids backtracking on overlapping repetitions.
+  matching avoids backtracking on overlapping repetitions. Repeated states
+  share character tables, and JVM codecs load compact bounded constants
+  instead of emitting large table-construction methods.
 
 - Horizontal fields support `FieldAccessory` slots for controls beside the
   first line of a growing textarea. `FieldContent` can shrink around those

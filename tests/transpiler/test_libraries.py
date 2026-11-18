@@ -490,7 +490,7 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                 import { get_list_item as $get_list_item, set_list_item as $set_list_item } from './pyjs.python.js';
 
                 export function matches_pattern(value, program) {
-                    var count = program.length - 1;
+                    var count = $get_list_item($get_list_item(program, 0), 2);
                     var anchored_start = $get_list_item($get_list_item(program, 0), 0) == 1;
                     var anchored_end = $get_list_item($get_list_item(program, 0), 1) == 1;
                     var active = [];
@@ -536,9 +536,10 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                         for (let $range_index15 = $range_start12; $range_step14 > 0 ? $range_index15 < $range_stop13 : $range_index15 > $range_stop13; $range_index15 += $range_step14) {
                             var index = $range_index15;
                             if ($get_list_item(active, index)) {
-                                var atom = $get_list_item(program, index + 1);
+                                var state = $get_list_item(program, index + 1);
+                                var atom = $get_list_item(program, count + 1 + $get_list_item(state, 2));
                                 var included = false;
-                                const $range_start16 = +(3);
+                                const $range_start16 = +(1);
                                 const $range_stop17 = +(atom.length);
                                 const $range_step18 = +(2);
                                 if ($range_step18 === 0) throw new RangeError('range() arg 3 must not be zero');
@@ -549,8 +550,8 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                                         break
                                     }
                                 }
-                                if (included != ($get_list_item(atom, 2) == 1)) {
-                                    var target = $get_list_item(atom, 1) == 1 ? index : index + 1;
+                                if (included != ($get_list_item(atom, 0) == 1)) {
+                                    var target = $get_list_item(state, 1) == 1 ? index : index + 1;
                                     $set_list_item(following, target, true);
                                     reachable = true;
                                 }
