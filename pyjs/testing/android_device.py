@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -18,6 +19,10 @@ from .android_runtime import AndroidDeviceClasspath, AndroidTestResult
 TARGET_PACKAGE = "org.pyjs.testing.target"
 TEST_PACKAGE = "org.pyjs.testing"
 RUNNER = "androidx.test.runner.AndroidJUnitRunner"
+
+
+def _output_text(value: str | bytes | None) -> str:
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
 
 
 @dataclass(frozen=True)
@@ -331,41 +336,59 @@ class AndroidDeviceTestRunner:
         self.sdk.install(self.device, packages.target)
         self.sdk.install(self.device, packages.tests)
         self.sdk.prepare_for_tests(self.device)
-        completed = self.sdk.runner.run(
-            [
-                self.sdk.adb,
-                "-s",
-                self.device.identifier,
-                "shell",
-                "am",
-                "instrument",
-                "-w",
-                "-r",
-                "-e",
-                "class",
-                ",".join(
-                    dict.fromkeys(
-                        test.class_name.replace("/", ".").replace("$", r"\$")
-                        for test in compilation.tests
-                    )
-                ),
-                f"{TEST_PACKAGE}/{RUNNER}",
-            ],
-            environment=self.sdk.environment(),
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-        return self._results(compilation, completed.stdout + completed.stderr)
+        command = [
+            self.sdk.adb, "-s", self.device.identifier,
+            "shell", "am", "instrument", "-w", "-r", "-e", "class",
+            ",".join(dict.fromkeys(
+                test.class_name.replace("/", ".").replace("$", r"\$")
+                for test in compilation.tests
+            )),
+            f"{TEST_PACKAGE}/{RUNNER}",
+        ]
+        try:
+            completed = self.sdk.runner.run(
+                command, environment=self.sdk.environment(), capture_output=True,
+                check=False, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as error:
+            output = _output_text(error.stdout) + "\n" + _output_text(error.stderr)
+            failure = f"Android instrumentation timed out after {timeout:g} seconds."
+            failure += self._stop_packages()
+            return self._results(compilation, output, failure=failure)
+        failure = (f"Android instrumentation exited with status {completed.returncode}."
+                   if completed.returncode else None)
+        return self._results(compilation, completed.stdout + completed.stderr, failure=failure)
+
+    def _stop_packages(self) -> str:
+        errors = []
+        for package in (TARGET_PACKAGE, TEST_PACKAGE):
+            try:
+                stopped = self.sdk.runner.run(
+                    [self.sdk.adb, "-s", self.device.identifier,
+                     "shell", "am", "force-stop", package],
+                    environment=self.sdk.environment(), capture_output=True,
+                    check=False, timeout=10,
+                )
+                if stopped.returncode:
+                    detail = (stopped.stderr or stopped.stdout).strip()[-1024:]
+                    errors.append(f"Could not stop {package} (status {stopped.returncode}): {detail}")
+            except Exception as error:
+                errors.append(f"Could not stop {package}: {str(error)[-1024:]}")
+        return "\n" + "\n".join(errors) if errors else ""
 
     @staticmethod
     def _results(
         compilation: JVMCompilation,
         output: str,
+        *,
+        failure: str | None = None,
     ) -> dict[str, AndroidTestResult]:
-        methods = {test.method_name: test.nodeid for test in compilation.tests}
+        methods = {(test.class_name.replace("/", "."), test.method_name): test.nodeid
+                   for test in compilation.tests}
         results = {}
         status = {}
+        last_started = None
+        last_reported = None
         for line in output.splitlines():
             if line.startswith("INSTRUMENTATION_STATUS: "):
                 key, separator, value = line.removeprefix(
@@ -374,23 +397,38 @@ class AndroidDeviceTestRunner:
                 if separator:
                     status[key] = value
             elif line.startswith("INSTRUMENTATION_STATUS_CODE:"):
-                code = int(line.partition(":")[2].strip())
-                nodeid = methods.get(status.get("test"))
-                if nodeid is not None and code in {0, -1, -2}:
-                    outcome = "passed" if code == 0 else "failed"
+                code = line.partition(":")[2].strip()
+                nodeid = methods.get((status.get("class"), status.get("test")))
+                if nodeid is not None and code == "1":
+                    last_started = nodeid
+                if nodeid is not None and code in {"0", "-1", "-2"}:
+                    outcome = "passed" if code == "0" else "failed"
                     error = status.get("stack", "").strip() or None
                     results[nodeid] = AndroidTestResult(outcome, error)
+                    last_reported = nodeid
                 status = {}
             elif "stack" in status:
                 status["stack"] += "\n" + line
         missing = [test for test in compilation.tests if test.nodeid not in results]
+        summary = re.search(r"^INSTRUMENTATION_FAILED:.*", output, re.MULTILINE)
+        failure = failure or (summary.group(0) if summary else None)
+        if not missing and failure is None:
+            return results
+        error = (failure or "AndroidJUnitRunner did not report a result.")
+        error += (f"\nLast started: {last_started or 'not reported'}."
+                  f" Completed: {len(results)}/{len(compilation.tests)}.")
+        if output.strip():
+            error += "\nInstrumentation output (tail):\n" + output.strip()[-8192:]
         for test in missing:
-            summary = re.search(r"INSTRUMENTATION_FAILED:.*", output)
-            error = summary.group(0) if summary else output.strip()
-            results[test.nodeid] = AndroidTestResult(
-                "failed",
-                error or "AndroidJUnitRunner did not report a result",
-            )
+            results[test.nodeid] = AndroidTestResult("failed", error)
+        if not missing and failure is not None:
+            # Results can finish before instrumentation teardown hangs. Keep a
+            # failing pytest item even when every test body reported success.
+            if last_reported is None:
+                raise RuntimeError(error)
+            previous = results[last_reported].error
+            results[last_reported] = AndroidTestResult(
+                "failed", previous + "\n" + error if previous else error)
         return results
 
 
