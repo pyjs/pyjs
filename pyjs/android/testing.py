@@ -145,6 +145,27 @@ def application_context() -> Context:
     pass
 
 
+@jvm.native("android/os/Parcel")
+class _Parcel:
+    def writeBundle(self, state: Bundle) -> None: ...
+    def dataSize(self) -> i32: ...
+    def recycle(self) -> None: ...
+
+
+@jvm.native("android/os/Parcel", name="obtain")
+def _obtain_parcel() -> _Parcel: ...
+
+
+def saved_state_size(state: Bundle) -> int:
+    """Measure serialized Bundle bytes, excluding surrounding Binder overhead."""
+    parcel = _obtain_parcel()
+    try:
+        parcel.writeBundle(state)
+        return int(parcel.dataSize())
+    finally:
+        parcel.recycle()
+
+
 __all__ = [
     "NoMatchingViewException",
     "ViewAssertion",
@@ -160,4 +181,5 @@ __all__ = [
     "recreate",
     "resume",
     "run_on_main",
+    "saved_state_size",
 ]

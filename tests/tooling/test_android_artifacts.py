@@ -84,8 +84,8 @@ def test_resolves_locked_jar_and_aar_classpath(tmp_path, explicit_artifacts):
     assert result.aars == (aar_path,)
 
 
-@pytest.mark.parametrize("alternate", ["valid", "missing", "corrupt"])
-def test_central_missing_artifact_uses_one_verified_alternate(tmp_path, monkeypatch, alternate):
+@pytest.mark.parametrize("alternate", ["valid", "missing", "corrupt", "mirror", "mirror-corrupt"])
+def test_central_missing_artifact_uses_verified_alternates(tmp_path, monkeypatch, alternate):
     content = b"locked artifact"
     artifact = AndroidArtifact("example", "runtime", "1", "jar", "central",
                                hashlib.sha256(content).hexdigest())
@@ -93,15 +93,16 @@ def test_central_missing_artifact_uses_one_verified_alternate(tmp_path, monkeypa
 
     def download(request):
         urls.append(str(request.url))
-        if len(urls) == 1 or alternate == "missing":
+        if (len(urls) == 1 or alternate == "missing"
+                or len(urls) == 2 and alternate.startswith("mirror")):
             return httpx.Response(404)
-        return httpx.Response(200, content=content if alternate == "valid" else b"wrong content")
+        return httpx.Response(200, content=content if alternate in {"valid", "mirror"} else b"wrong content")
 
     client = httpx.Client
     monkeypatch.setattr(httpx, "Client", lambda **options:
                         client(transport=httpx.MockTransport(download), **options))
     resolver = AndroidArtifactResolver(tmp_path)
-    if alternate == "valid":
+    if alternate in {"valid", "mirror"}:
         path = resolver.resolve_artifacts([artifact]).jars[0]
         assert path.read_bytes() == content
         assert resolver.resolve_artifacts([artifact]).jars == (path,)
@@ -110,15 +111,19 @@ def test_central_missing_artifact_uses_one_verified_alternate(tmp_path, monkeypa
             resolver.resolve_artifacts([artifact])
         assert sdkmgr.ArtifactCache(tmp_path).find(
             sdkmgr.Artifact(artifact.url, artifact.sha256, artifact.filename)) is None
-    assert urls == [artifact.url, "https://repo1.maven.org/maven2/example/runtime/1/runtime-1.jar"]
+    expected = [artifact.url, "https://repo1.maven.org/maven2/example/runtime/1/runtime-1.jar"]
+    if alternate in {"missing", "mirror", "mirror-corrupt"}:
+        expected.append("https://maven-central.storage-download.googleapis.com/maven2/example/runtime/1/runtime-1.jar")
+    assert urls == expected
 
 
 @pytest.mark.parametrize("repository, failure", [
     ("google", 404), ("central", 401), ("central", 403), ("central", 429),
     ("central", "corrupt"), ("central", "disk"), ("central", "opaque"),
 ])
+@pytest.mark.parametrize("missing_primary", [False, True])
 def test_alternate_does_not_mask_other_download_or_storage_errors(
-    tmp_path, monkeypatch, repository, failure,
+    tmp_path, monkeypatch, repository, failure, missing_primary,
 ):
     artifact = AndroidArtifact("example", "runtime", "1", "jar", repository,
                                hashlib.sha256(b"locked artifact").hexdigest())
@@ -126,6 +131,12 @@ def test_alternate_does_not_mask_other_download_or_storage_errors(
 
     def download(url, destination):
         urls.append(url)
+        if missing_primary and repository == "central" and len(urls) == 1:
+            response = httpx.Response(404, request=httpx.Request("GET", url))
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                raise sdkmgr.SDKError("Could not download artifact") from error
         if failure == "corrupt":
             destination.write_bytes(b"wrong content")
         elif failure == "disk":
@@ -142,6 +153,9 @@ def test_alternate_does_not_mask_other_download_or_storage_errors(
     monkeypatch.setattr(sdkmgr.artifacts, "fetch", download)
     with pytest.raises(RuntimeError):
         AndroidArtifactResolver(tmp_path).resolve_artifacts([artifact])
-    assert urls == [artifact.url]
+    expected = [artifact.url]
+    if missing_primary and repository == "central":
+        expected.append("https://repo1.maven.org/maven2/example/runtime/1/runtime-1.jar")
+    assert urls == expected
     assert sdkmgr.ArtifactCache(tmp_path).find(
         sdkmgr.Artifact(artifact.url, artifact.sha256, artifact.filename)) is None

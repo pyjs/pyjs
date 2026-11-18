@@ -386,6 +386,15 @@ Python text shim does not model Java string inheritance.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
+On API 35+, `setUseBoundsForWidth()` and `getUseBoundsForWidth()` select
+glyph bounds instead of character advances for layout. Guard calls with
+`BuildVersion.SDK_INT >= 35`. Glyph bounds help avoid clipping overhanging
+characters, but can make exceptionally long lines expensive to lay out.
+For editable fields accepting large pastes, select the policy before their
+initial layout: an old DynamicLayout can retain its policy while processing
+text changes, even after TextView invalidates it. Advance-based layout trades
+overhang-clipping protection for avoiding that bounds computation; neither
+setting changes the text.
 `getLayout()` returns `TextLayout` or `None`, including between a wrapping
 change and the next layout pass. Its `getWidth()` and `increaseWidthTo()` use
 pixel widths. Shrinking raises Java's plain `RuntimeException`, caught by
@@ -487,6 +496,15 @@ then; restoring into a loading placeholder cannot restore absent views.
 Use `Bundle.put_bundle()` and `get_bundle()` to carry that pending state through
 another recreation. Stable view IDs remain necessary. Do not replay a prior
 account's native field state into another account's controls.
+
+Use `saved_state_size(bundle)` from `pyjs.android.testing` to measure native
+serialized Bundle bytes in Robolectric or device tests. It does not include
+the surrounding Binder transaction or guarantee that a transaction will fit.
+Keep large documents in durable storage rather than saved instance state;
+`EditText` saves its full text by default. If disabling that with
+`setSaveEnabled(False)`, explicitly retain any required focus, selection and
+viewport metadata. `View.scroll_to(x, y)` dispatches to the native view;
+subclasses may clamp offsets to their content bounds.
 
 Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
 intent with `Intent().set_class(application_context(), YourActivity)` and add
