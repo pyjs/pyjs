@@ -359,6 +359,23 @@ use AndroidX's compatibility behavior, which can approximate IME visibility.
 Robolectric checks bindings and lifecycle boundaries; test real keyboard
 transitions on a device or emulator.
 
+For styled text, use `SpannableString` or `SpannableStringBuilder` from
+`pyjs.android.text`. `StyleSpan` takes `Typeface.BOLD`, `ITALIC`, or
+`BOLD_ITALIC` from `pyjs.android.graphics`; `StrikethroughSpan()` and
+`TypefaceSpan("monospace")` supply additional styles. Pass the styled object
+directly to `TextView.setText()` rather than converting it to a string.
+`set_span(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)` uses UTF-16
+offsets. Reusing a span object moves its range; create separate objects for
+separate ranges. Inclusive/exclusive flags govern inserted text at endpoints.
+`get_spans(start, end, StyleSpan)` returns native objects matching that class;
+`get_span_start`, `get_span_end` and `get_span_flags` inspect their ranges.
+`remove_span` is harmless for an absent object. `SpannableString` has fixed
+characters but mutable spans; the builder also supports `append` and
+`replace`. Copies retain span objects with independent range tables.
+`EditText.get_text()` exposes span operations on its native editable buffer.
+These APIs do not parse Markdown or persist formatting; applications own
+their document model and source-to-display mapping.
+
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
 `getLayout()` returns `TextLayout` or `None`, including between a wrapping
