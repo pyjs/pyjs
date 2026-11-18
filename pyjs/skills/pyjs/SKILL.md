@@ -488,6 +488,15 @@ Use `Bundle.put_bundle()` and `get_bundle()` to carry that pending state through
 another recreation. Stable view IDs remain necessary. Do not replay a prior
 account's native field state into another account's controls.
 
+Use `saved_state_size(bundle)` from `pyjs.android.testing` to measure native
+serialized Bundle bytes in Robolectric or device tests. It does not include
+the surrounding Binder transaction or guarantee that a transaction will fit.
+Keep large documents in durable storage rather than saved instance state;
+`EditText` saves its full text by default. If disabling that with
+`setSaveEnabled(False)`, explicitly retain any required focus, selection and
+viewport metadata. `View.scroll_to(x, y)` dispatches to the native view;
+subclasses may clamp offsets to their content bounds.
+
 Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
 intent with `Intent().set_class(application_context(), YourActivity)` and add
 the action, MIME type and extras before launching. Activities receive later

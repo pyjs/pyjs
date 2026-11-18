@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android tests can measure serialized Bundle bytes with `saved_state_size()`
+  to detect oversized saved state without attempting a Binder transaction.
+  Native views expose `scroll_to()` for explicit viewport restoration.
+
 - Android tests synchronize window/input transactions after `resume()` on
   API 29+, preventing a temporary Activity's input sink from dropping the
   next Espresso tap. Application-specific loading still needs its own wait.

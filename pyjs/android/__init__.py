@@ -759,6 +759,9 @@ class View:
     def getScrollX(self) -> i32:
         return i32(0)
 
+    @jvm.native("android/view/View", name="scrollTo", invocation="virtual")
+    def scroll_to(self, x: i32, y: i32) -> None: ...
+
     def getContext(self) -> Context:
         return self.context
 
