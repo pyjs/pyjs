@@ -753,24 +753,29 @@ class Browser:
         if self.profile is None:
             raise RuntimeError("Enter the browser context before restarting")
         try:
-            process = self.process
-            if process is not None and process.poll() is None:
-                version = request_json(self.devtools_url)
+            await self._close_browser()
+            await self._stop()
+            await self._start()
+        except BaseException:
+            self._close_process()
+            await self.close()
+            raise
+
+    async def _close_browser(self) -> None:
+        process = self.process
+        if process is not None and process.poll() is None:
+            version = request_json(self.devtools_url)
+            async with asyncio.timeout(5):
                 session = await CDPSession.open(version["webSocketDebuggerUrl"])
                 try:
                     try:
-                        await asyncio.wait_for(session.send("Browser.close"), timeout=5)
+                        await session.send("Browser.close")
                     except ConnectionError, ConnectionClosed:
                         # Chrome can close DevTools before acknowledging shutdown.
                         pass
                 finally:
                     await session.close()
-                process.wait(timeout=5)
-            await self._stop()
-            await self._start()
-        except BaseException:
-            await self.close()
-            raise
+            process.wait(timeout=5)
 
     async def _wait_for_startup(self) -> None:
         waiting = asyncio.create_task(wait_for_http(self.devtools_url, timeout=30))
@@ -850,12 +855,19 @@ class Browser:
 
     async def close(self) -> None:
         try:
-            await self._stop()
+            try:
+                # SIGTERM can leave a network child recreating profile files.
+                await self._close_browser()
+            except Exception:
+                pass
         finally:
-            if self.profile is not None:
-                shutil.rmtree(self.profile, ignore_errors=True)
-            self.profile = None
-            self.stderr_path = None
+            try:
+                await self._stop()
+            finally:
+                if self.profile is not None:
+                    shutil.rmtree(self.profile, ignore_errors=True)
+                self.profile = None
+                self.stderr_path = None
 
     def _close_process(self) -> None:
         process = self.process

@@ -458,7 +458,7 @@ def test_restart_reuses_profile_and_closes_old_sessions(tmp_path, monkeypatch, f
                 raise TimeoutError("Chrome did not acknowledge shutdown")
             if failure == "close-cancel":
                 raise asyncio.CancelledError
-            processes[0].running = False
+            processes[len(starts) - 1].running = False
             if failure == "reply-lost":
                 raise ConnectionError("Chrome closed DevTools before replying")
             return {}
@@ -504,7 +504,7 @@ def test_restart_reuses_profile_and_closes_old_sessions(tmp_path, monkeypatch, f
                 assert len(starts) == 1
         assert not profile.exists()
         if failure in (None, "reply-lost", "cancel"):
-            assert processes[1].terminated and not processes[1].running
+            assert not processes[1].terminated and not processes[1].running
 
     asyncio.run(run())
 
@@ -514,6 +514,41 @@ def test_restart_requires_an_active_context():
         instance = Browser(executable="chrome")
         with pytest.raises(RuntimeError, match="browser context"):
             await instance.restart()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("error", [OSError, asyncio.CancelledError])
+def test_failed_graceful_close_still_releases_process_sessions_and_profile(tmp_path, error):
+    class ClosableSession(Session):
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    async def run():
+        instance = Browser(executable="chrome")
+        profile = tmp_path / "profile"
+        profile.mkdir()
+        instance.profile = profile
+        process = BrowserProcess()
+        instance.process = process
+        session = ClosableSession()
+        instance.pages = [BrowserPage(session)]
+
+        async def fail():
+            raise error("Interrupted graceful shutdown")
+
+        instance._close_browser = fail
+        if error is asyncio.CancelledError:
+            with pytest.raises(asyncio.CancelledError):
+                await instance.close()
+        else:
+            await instance.close()
+        assert process.terminated and not process.running
+        assert session.closed and instance.pages == []
+        assert instance.process is None and instance.profile is None
+        assert not profile.exists()
 
     asyncio.run(run())
 
