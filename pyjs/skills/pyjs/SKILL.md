@@ -459,3 +459,11 @@ directly; the repository's `scripts/capture_*_screenshot.py` scenarios and
 `wait_for_selector`, `wait_for_attribute`, `wait_for_text`, `wait_for_count`,
 `click`, `fill`, `submit`, `attribute`, `attributes`, `text`, and `texts` over
 embedding JavaScript for ordinary DOM interaction.
+
+Use `await browser.restart()` inside a `Browser` context to verify durable
+state across a real Chrome process restart. It closes existing pages and their
+DevTools sessions but retains the owned temporary profile. Open fresh pages
+afterward; normal context exit removes the profile. Forced termination can
+leave temporary profile files. This does not simulate a crash. For offline
+restart checks, stop the owned test server rather than
+relying on a page's CDP network override, which ends with that page.

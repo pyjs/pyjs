@@ -395,10 +395,13 @@ def test_browser_reports_an_early_exit_and_stderr(tmp_path, monkeypatch):
 
 def test_browser_terminates_when_a_page_session_fails_to_close(tmp_path):
     class BrokenSession:
+        closed = False
+
         def listen(self, method, callback):
             pass
 
         async def close(self):
+            self.closed = True
             raise ConnectionError("Chrome connection closed")
 
     async def run():
@@ -408,14 +411,143 @@ def test_browser_terminates_when_a_page_session_fails_to_close(tmp_path):
         instance = Browser(executable="chrome")
         instance.profile = profile
         instance.process = process
-        instance.pages = [BrowserPage(BrokenSession())]
+        session = BrokenSession()
+        instance.pages = [BrowserPage(session)]
 
         await instance.close()
 
         assert process.terminated
+        assert session.closed
         assert instance.pages == []
         assert instance.process is None
         assert instance.profile is None
+        assert not profile.exists()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("failure", [None, "reply-lost", "close", "close-cancel", "launch", "cancel"])
+def test_restart_reuses_profile_and_closes_old_sessions(tmp_path, monkeypatch, failure):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    stored = profile / "durable-data"
+    stored.write_text("saved")
+    processes = [BrowserProcess(), BrowserProcess()]
+    starts = []
+
+    def start(arguments, **kwargs):
+        starts.append(arguments)
+        if len(starts) == 2 and failure == "launch":
+            raise OSError("Chrome restart failed")
+        return processes[len(starts) - 1]
+
+    async def ready(url, timeout):
+        if len(starts) == 2 and failure == "cancel":
+            raise asyncio.CancelledError
+
+    class ClosableSession(Session):
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    class BrowserSession(ClosableSession):
+        async def send(self, method, params=None):
+            assert method == "Browser.close"
+            if failure == "close":
+                raise TimeoutError("Chrome did not acknowledge shutdown")
+            if failure == "close-cancel":
+                raise asyncio.CancelledError
+            processes[len(starts) - 1].running = False
+            if failure == "reply-lost":
+                raise ConnectionError("Chrome closed DevTools before replying")
+            return {}
+
+    closing = BrowserSession()
+
+    async def open_session(url):
+        assert url == "ws://owned-browser"
+        return closing
+
+    monkeypatch.setattr(browser.tempfile, "mkdtemp", lambda prefix: str(profile))
+    monkeypatch.setattr(browser.subprocess, "Popen", start)
+    monkeypatch.setattr(browser, "wait_for_http", ready)
+    monkeypatch.setattr(browser, "request_json", lambda url: {"webSocketDebuggerUrl": "ws://owned-browser"})
+    monkeypatch.setattr(browser.CDPSession, "open", open_session)
+
+    async def run():
+        async with Browser(executable="chrome") as instance:
+            session = ClosableSession()
+            instance.pages = [BrowserPage(session)]
+            if failure in (None, "reply-lost"):
+                await instance.restart()
+                assert instance.profile == profile
+                assert stored.read_text() == "saved"
+                assert instance.process is processes[1]
+                assert processes[1].running
+            else:
+                error = {"close": TimeoutError, "close-cancel": asyncio.CancelledError,
+                         "launch": BrowserLaunchError,
+                         "cancel": asyncio.CancelledError}[failure]
+                with pytest.raises(error):
+                    await instance.restart()
+                assert instance.process is None
+                assert instance.profile is None
+                assert not profile.exists()
+            assert not processes[0].running
+            assert closing.closed
+            assert session.closed
+            assert instance.pages == []
+            if failure not in ("close", "close-cancel"):
+                assert starts[0] == starts[1]
+            else:
+                assert len(starts) == 1
+        assert not profile.exists()
+        if failure in (None, "reply-lost", "cancel"):
+            assert not processes[1].terminated and not processes[1].running
+
+    asyncio.run(run())
+
+
+def test_restart_requires_an_active_context():
+    async def run():
+        instance = Browser(executable="chrome")
+        with pytest.raises(RuntimeError, match="browser context"):
+            await instance.restart()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("error", [OSError, asyncio.CancelledError])
+def test_failed_graceful_close_still_releases_process_sessions_and_profile(tmp_path, error):
+    class ClosableSession(Session):
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    async def run():
+        instance = Browser(executable="chrome")
+        profile = tmp_path / "profile"
+        profile.mkdir()
+        instance.profile = profile
+        process = BrowserProcess()
+        instance.process = process
+        session = ClosableSession()
+        instance.pages = [BrowserPage(session)]
+
+        async def fail():
+            raise error("Interrupted graceful shutdown")
+
+        instance._close_browser = fail
+        if error is asyncio.CancelledError:
+            with pytest.raises(asyncio.CancelledError):
+                await instance.close()
+        else:
+            await instance.close()
+        assert process.terminated and not process.running
+        assert session.closed and instance.pages == []
+        assert instance.process is None and instance.profile is None
         assert not profile.exists()
 
     asyncio.run(run())
