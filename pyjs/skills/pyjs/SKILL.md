@@ -471,6 +471,14 @@ last started test and bounded output. A timeout after all results were reported
 fails the last reported test to expose incomplete instrumentation teardown.
 The runner stops its test packages on the selected device after a timeout;
 the emulator remains running for reuse. Cleanup errors remain in the report.
+
+Activities can override `onRestoreInstanceState(state)` and call the superclass
+after asynchronously loaded controls exist. Retain the original bundle until
+then; restoring into a loading placeholder cannot restore absent views.
+Use `Bundle.put_bundle()` and `get_bundle()` to carry that pending state through
+another recreation. Stable view IDs remain necessary. Do not replay a prior
+account's native field state into another account's controls.
+
 Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
 intent with `Intent().set_class(application_context(), YourActivity)` and add
 the action, MIME type and extras before launching. Activities receive later

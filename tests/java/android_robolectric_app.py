@@ -17,6 +17,40 @@ from pyjs.android.dialogs import AlertDialogBuilder, DialogClickListener, Dialog
 from pyjs.java import i32
 
 
+class DeferredRestoreActivity(Activity):
+    pending: Bundle | None
+    restore_calls: int
+
+    def onCreate(self, state: Bundle | None) -> None:
+        super().onCreate(state)
+        self.pending = None
+        self.restore_calls = 0
+        if state is None:
+            self.show_editor()
+        else:
+            loading = TextView(self)
+            loading.setId(1010)
+            loading.setText("Loading")
+            self.setContentView(loading)
+
+    def show_editor(self) -> None:
+        field = EditText(self)
+        field.setId(1011)
+        field.setText("Initial")
+        self.setContentView(field)
+
+    def onRestoreInstanceState(self, state: Bundle) -> None:
+        self.restore_calls += 1
+        self.pending = state
+
+    def complete_load(self) -> None:
+        pending = self.pending
+        assert pending is not None
+        self.show_editor()
+        super().onRestoreInstanceState(pending)
+        self.pending = None
+
+
 class HorizontalActivity(Activity):
     def onCreate(self, state: Bundle | None) -> None:
         super().onCreate(state)

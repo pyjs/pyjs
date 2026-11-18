@@ -254,6 +254,14 @@ class Bundle:
     def put_parcelable(self, key: str, value: Parcelable | None) -> None:
         pass
 
+    @jvm.native("android/os/Bundle", name="getBundle", invocation="virtual")
+    def get_bundle(self, key: str) -> Bundle | None:
+        return None
+
+    @jvm.native("android/os/Bundle", name="putBundle", invocation="virtual")
+    def put_bundle(self, key: str, value: Bundle | None) -> None:
+        pass
+
 
 @jvm.native("android/os/Parcelable")
 class Parcelable:
@@ -1053,6 +1061,9 @@ class Activity(Context):
         pass
 
     def onSaveInstanceState(self, state: Bundle) -> None:
+        pass
+
+    def onRestoreInstanceState(self, state: Bundle) -> None:
         pass
 
     def onResume(self) -> None:
