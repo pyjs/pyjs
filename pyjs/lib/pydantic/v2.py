@@ -396,7 +396,7 @@ def _class_info(
         if name in model.model_config
     }
     constraints = {name: constraints for name, field in model.model_fields.items()
-                   if (constraints := field_constraints(field))}
+                   if (constraints := field_constraints(field, model_config=model.model_config))}
     if constraints or any(field_constraints(field) for base in model.__mro__[1:]
                           for field in getattr(base, "model_fields", {}).values()):
         config["field_constraints"] = constraints

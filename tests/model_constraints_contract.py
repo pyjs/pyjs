@@ -1,4 +1,15 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
+
+from annotated_types import Interval, Len
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    conint,
+    conlist,
+    constr,
+)
 
 from pyjs import js
 
@@ -39,6 +50,92 @@ class Unconstrained(Constrained):
 class MixedBounds(BaseModel):
     fraction: float = Field(ge=0, le=2)
     count: int = Field(gt=1.0, lt=4.0)
+
+
+@js
+class GroupedBounds(BaseModel):
+    title: Annotated[str, StringConstraints(min_length=1, max_length=2)]
+    tags: Annotated[list[str], Len(1, 2)]
+    count: Annotated[int, Interval(ge=0, lt=5)]
+
+
+@js
+class AliasedBounds(BaseModel):
+    title: constr(min_length=1, max_length=2)
+    tags: conlist(str, min_length=1, max_length=2)
+    count: conint(ge=0, lt=5)
+
+
+@js
+class OverrideBounds(GroupedBounds):
+    title: Annotated[str, StringConstraints(min_length=3), Field(min_length=1, max_length=2)]
+
+
+@js
+class Envelope(BaseModel):
+    item: Constrained
+
+
+@js
+def check_grouped_constraints() -> str:
+    valid = '{"title":"😀é","tags":["a"],"count":0}'
+    assert GroupedBounds.model_validate_json(valid).title == "😀é"
+    assert AliasedBounds.model_validate_json(valid).count == 0
+    assert OverrideBounds.model_validate_json(valid).title == "😀é"
+    for document in [
+        valid.replace('😀é', ''), valid.replace('😀é', 'abc'),
+        valid.replace('["a"]', '[]'), valid.replace('["a"]', '["a","b","c"]'),
+        valid.replace('"count":0', '"count":-1'),
+        valid.replace('"count":0', '"count":5'),
+    ]:
+        try:
+            GroupedBounds.model_validate_json(document)
+        except ValueError:
+            pass
+        else:
+            return "accepted grouped bound: " + document
+        try:
+            AliasedBounds.model_validate_json(document)
+        except ValueError:
+            continue
+        return "accepted aliased bound: " + document
+    return "validated"
+
+
+@js
+def check_duplicate_constraints() -> str:
+    entry = '{"title":"","title":"ok","count":-1,"count":2,"ratio":0.0}'
+    restored = Entry.model_validate_json(entry)
+    assert restored.title == "ok"
+    assert restored.count == 2
+    assert restored.unchecked_default == -1
+    for document in [
+        '{"item":{"value":-1},"item":{"value":2}}',
+        '{"item":null,"item":{"value":2}}',
+        '{"item":{"value":"wrong type"},"item":{"value":2}}',
+    ]:
+        assert Envelope.model_validate_json(document).item.value == 2
+    for document in [
+        entry.replace('"title":"","title":"ok"', '"title":"ok","title":""'),
+        entry.replace('"count":-1,"count":2', '"count":2,"count":-1'),
+        entry.replace('"ratio":0.0', '"ratio":0.0,"unchecked_default":-1'),
+    ]:
+        try:
+            Entry.model_validate_json(document)
+        except ValueError:
+            continue
+        return "accepted invalid final field: " + document
+    for document in [
+        '{"item":{"value":2},"item":{"value":-1}}',
+        '{"item":{"value":2},"item":null}',
+        '{"item":{"value":-1,},"item":{"value":2}}',
+    ]:
+        try:
+            Envelope.model_validate_json(document)
+        except ValueError:
+            continue
+        return "accepted invalid final model or syntax: " + document
+    return "validated"
 
 
 @js

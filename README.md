@@ -954,10 +954,16 @@ with `pyjs template`.
   `ge`, `gt`, `le`, `lt`, `min_length`, and `max_length` constraints. Text
   lengths count Unicode code points, not UTF-16 units. Nested fields and
   inherited overrides keep their constraints; optional `None` bypasses bounds.
+  Grouped annotations (`Interval`, `Len`, `StringConstraints`) and constrained
+  aliases such as `conint` and `constr` use the same bounds. Duplicate JSON
+  model fields validate their final value, including replacement nested models.
+  Combining text constraints with stripping or case-conversion settings is
+  rejected at compilation; those transformations are not implemented yet.
   Omitted defaults are not constraint-validated, matching Pydantic's default
   behavior. This does not implement `validate_default`, item-level `Annotated`
-  constraints, patterns, multiple-of checks, or custom validators. JVM direct
-  construction remains field-only. Keep server-side validation enabled.
+  constraints, nonnumeric bounds such as dates, patterns, multiple-of checks,
+  or custom validators. JVM direct construction remains field-only. Keep
+  server-side validation enabled.
 - `pyjs.server.jvm.JVMTransport` implements the existing `ClientTransport`
   HTTP interface using native Java HTTP(S), including on Android. It sends
   UTF-8 JSON and retains status/body for errors. Headers are explicit;
