@@ -253,6 +253,41 @@ def espresso_view_class() -> tuple[str, bytes]:
     return CLASS_NAME, class_file.render()
 
 
+def _sync_resumed_input(class_file: ClassFile, code: Bytecode) -> None:
+    # ActivityScenario's RESUMED event can precede removal of EmptyActivity's
+    # input sink. Main-looper idleness alone does not flush window transactions.
+    sdk = class_file.field_reference("android/os/Build$VERSION", "SDK_INT", "I")
+    code.emit(0xB2, sdk.to_bytes(2, "big"))
+    code.emit(0x10, bytes([29]))
+    code.branch(0xA1, "input.ready")
+    code.emit(0xB8, _reference(
+        class_file, "androidx/test/platform/app/InstrumentationRegistry",
+        "getInstrumentation", "()Landroid/app/Instrumentation;",
+    ))
+    code.emit(0x59)
+    code.emit(0xB6, _reference(
+        class_file, "android/app/Instrumentation", "waitForIdleSync", "()V",
+    ))
+    # Preserve existing accessibility services when connecting the test API.
+    code.emit(0x04)
+    code.emit(0xB6, _reference(
+        class_file, "android/app/Instrumentation", "getUiAutomation",
+        "(I)Landroid/app/UiAutomation;",
+    ))
+    code.emit(0x59)
+    code.branch(0xC7, "input.connected")
+    code.emit(0x57)
+    code.throw_new(class_file, "java/lang/IllegalStateException", message=(
+        "Cannot synchronize resumed Android input: UiAutomation is unavailable"
+    ))
+    code.mark("input.connected")
+    # This @TestApi is deliberately confined to the instrumentation bridge.
+    code.emit(0xB6, _reference(
+        class_file, "android/app/UiAutomation", "syncInputTransactions", "()V",
+    ))
+    code.mark("input.ready")
+
+
 def espresso_android_class() -> tuple[str, bytes]:
     scenario = "Landroidx/test/core/app/ActivityScenario;"
     class_file = ClassFile(ANDROID_CLASS_NAME)
@@ -315,9 +350,11 @@ def espresso_android_class() -> tuple[str, bytes]:
             "recreate" if state is None else "moveToState", f"({parameter}){scenario}",
         ))
         lifecycle.emit(0x57)
+        if name == "resume":
+            _sync_resumed_input(class_file, lifecycle)
         lifecycle.emit(0xB1)
         class_file.add_method(Method(
-            0x0009, name, "()V", lifecycle.render(), 2, 0,
+            0x0009, name, "()V", lifecycle.render(), 3, 0,
         ))
     back = Bytecode()
     back.emit(
