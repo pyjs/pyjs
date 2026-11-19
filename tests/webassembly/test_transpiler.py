@@ -62,6 +62,7 @@ from tests.backend_semantics import (
     RECURSIVE_OPTIONAL_CONTRACT,
     RECURSIVE_TREE_CONTRACT,
     REVERSED_PROTOCOL_CONTRACT,
+    SCALAR_LIST_EQUALITY_CONTRACT,
     SCALAR_MAPPING_VALUES_CONTRACT,
     SEQUENCE_REFLECTION_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
@@ -211,6 +212,12 @@ def test_membership_contract_has_an_explicit_wasm_boundary(contract, message):
     with pytest.raises(WebAssemblyUnsupported) as error:
         transpile_webassembly(contract.source)
     assert str(error.value) == message
+
+
+def test_list_equality_keeps_wasm_string_boundary():
+    with pytest.raises(WebAssemblyUnsupported) as caught:
+        transpile_webassembly(SCALAR_LIST_EQUALITY_CONTRACT.source)
+    assert str(caught.value) == "WebAssembly value type str is not implemented"
 
 
 @pytest.mark.parametrize(("contract", "message"), [
