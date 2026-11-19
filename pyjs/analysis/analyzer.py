@@ -4288,6 +4288,21 @@ class InferenceVisitor(ast.NodeVisitor):
                 body.extend(stmt)
             else:
                 body.append(stmt)
+        # A guard can put later declarations in child flow scopes. The caller
+        # joins this region's scope, so retain those new storage declarations,
+        # without exporting narrower proofs for existing locals.
+        scope = narrow_visitor.scope
+        while scope is not self.scope:
+            for name, value in scope.names.items():
+                if not isinstance(value, Instance):
+                    continue
+                try:
+                    self.declared_local(name)
+                except NameError:
+                    declared = narrow_visitor.declared_local(name)
+                    if getattr(declared, "narrowed_from", None) is None:
+                        self.scope.add(declared.reassign(name, self.scope, self.func))
+            scope = scope.parent
         return body
 
     # region assignment & lookup

@@ -2118,7 +2118,37 @@ EXCEPTION_HIERARCHIES = (
 
 EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
     '''
-    from pyjs import js
+    from pyjs import int8, js
+
+    @js
+    def guarded_width(value: str | None) -> int8:
+        try:
+            if value is None:
+                raise ValueError("missing")
+            copied = int8(127)
+        finally:
+            value = None
+        return copied + int8(1)
+
+    @js
+    def guarded_copy(value: str | None) -> str:
+        try:
+            if value is None:
+                raise ValueError("missing")
+            copied = value.upper()
+        finally:
+            value = None
+        return copied
+
+    @js
+    def guarded_handler(value: str | None) -> str:
+        try:
+            raise ValueError("handled")
+        except ValueError:
+            if value is None:
+                return "empty"
+            copied = value.upper()
+        return copied
 
     @js
     class Holder:
@@ -2232,6 +2262,9 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
         ("return value is evaluated before field cleanup", 'close_twice() != 3'),
         ("else reads body writes and returns through finally", 'else_read("a", True) + else_read("b", False) + else_read(None, True) != "ANBb-"'),
         ("else field reads retain conditional body writes", 'Holder().observe_else(True) + Holder().observe_else(False) != "Nold"'),
+        ("guarded declarations survive cleanup", 'guarded_copy("copied") != "COPIED"'),
+        ("guarded declarations retain numeric representation", 'guarded_width("present") != -128'),
+        ("guarded handler declarations survive joining", 'guarded_handler("kept") + guarded_handler(None) != "KEPTempty"'),
     ),
 )
 

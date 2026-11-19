@@ -6,6 +6,10 @@
   added, removed or moved. Activation stays with the focused item instead of
   a stale index, including inside open submenus.
 
+- Locals declared after type-narrowing guards remain available when their
+  enclosing control-flow region joins, including after `try/finally` cleanup.
+  Their storage types are retained without leaking conditional field proofs.
+
 - Android broadcast receivers can retain a delivery with `go_async()` while a
   short background task runs, then release it with `finish()` on the pending
   result. Context bindings support app-scoped dynamic and ordered broadcasts.
