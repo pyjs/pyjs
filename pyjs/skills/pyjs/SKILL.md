@@ -556,6 +556,8 @@ For native date/time selection, import `DatePickerDialog`, `TimePickerDialog`,
 dialogs with an Activity context and call `show()` on the main thread.
 Picker months are zero-based; `java.time` months are one-based. Use
 `is_24_hour_format(context)` to follow the device's time-display preference.
+The dialogs support API 21; the `TimePicker` hour/minute getters and setters
+require API 23 or newer.
 Only a selection callback commits a choice; Back/cancellation is separate
 through `DialogCancelListener` from `pyjs.android.dialogs`. Retain drafts
 outside dialogs and dismiss owned dialogs when their Activity is destroyed.

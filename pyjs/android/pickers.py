@@ -1,4 +1,7 @@
-"""Native date/time selection; Android picker months are zero-based."""
+"""Native date/time selection; Android picker months are zero-based.
+
+TimePicker hour/minute accessors require API 23; dialogs support API 21.
+"""
 
 from pyjs import jvm
 from pyjs.android import Context, ViewGroup

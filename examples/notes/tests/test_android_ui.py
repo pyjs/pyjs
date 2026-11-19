@@ -3,6 +3,7 @@ from typing import cast
 import pytest
 from pyjs import JS, jvm
 from pyjs.android import Intent, TextView, View
+from pyjs.android.pickers import DatePickerDialog, TimePickerDialog
 from pyjs.android.recycler_testing import StaggeredGridSnapshot
 from pyjs.android.recyclerview import RecyclerView
 from pyjs.android.testing import (
@@ -21,7 +22,9 @@ from pyjs.android.uiautomator import device, find_resource, find_text
 from pyjs.java import format_exception, i32
 from pyjs.java.concurrent import Runnable, Thread
 from pyjs.java.io import File, RandomAccessFile
+from pyjs.java.time import system_zone
 from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication, StorageStatus
+from pyjs_examples.notes.android_datetime import DateTimePreview
 from pyjs_examples.notes.android_saves import BackgroundSaveDriver
 from pyjs_examples.notes.android_storage import Closing, OrderFile, OrderSession, StorageError
 
@@ -31,16 +34,40 @@ pytestmark = [
 ]
 
 
-class DateTimePreviewResult(ViewAssertion):
+class PreviewOwner(ViewAssertion):
+    def __init__(self):
+        self.preview: DateTimePreview | None = None
+
     def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
-        assert error is None and isinstance(view, TextView)
-        value = view.getText().to_string()
-        assert "Preview only · no reminder scheduled" in value
-        assert ":" in value
+        assert error is None and view is not None
+        current = cast(NotesActivity, view.getContext()).date_time
+        previous = self.preview
+        if previous is not None:
+            assert previous is not current and previous.dialog is None
+        self.preview = current
+
+
+class SelectPreview(Runnable):
+    def __init__(self, owner: PreviewOwner, date: bool):
+        self.owner = owner
+        self.date = date
+
+    def run(self) -> None:
+        preview = self.owner.preview
+        assert preview is not None
+        dialog = preview.dialog
+        if self.date:
+            assert isinstance(dialog, DatePickerDialog)
+            dialog.updateDate(i32(2024), i32(1), i32(29))
+        else:
+            assert isinstance(dialog, TimePickerDialog)
+            dialog.updateTime(i32(13), i32(7))
 
 
 def test_date_time_preview_cancels_each_stage_and_confirms_without_scheduling() -> None:
     launch(NotesActivity)
+    owner = PreviewOwner()
+    by_id(104).check(owner)
     by_id(104).click()
     press_back()
     by_id(104).assert_text("Selection cancelled · no reminder scheduled")
@@ -49,11 +76,29 @@ def test_date_time_preview_cancels_each_stage_and_confirms_without_scheduling() 
     press_back()
     by_id(104).assert_text("Selection cancelled · no reminder scheduled")
     by_id(104).click()
+    run_on_main(SelectPreview(owner, True))
     by_id(16908313).in_dialog().click()
+    run_on_main(SelectPreview(owner, False))
     by_id(16908313).in_dialog().click()
-    by_id(104).check(DateTimePreviewResult())
+    by_id(104).assert_text("2024-02-29 13:07 " + system_zone().getId()
+                           + "\nPreview only · no reminder scheduled")
     recreate()
     by_id(104).assert_text("Choose date and time · preview only")
+
+
+def test_recreation_releases_each_open_preview_dialog() -> None:
+    for time_stage in [False, True]:
+        launch(NotesActivity)
+        owner = PreviewOwner()
+        by_id(104).check(owner)
+        by_id(104).click()
+        run_on_main(SelectPreview(owner, True))
+        if time_stage:
+            by_id(16908313).in_dialog().click()
+            run_on_main(SelectPreview(owner, False))
+        recreate()
+        by_id(104).assert_text("Choose date and time · preview only")
+        by_id(104).check(owner)
 
 
 @jvm.native("android/util/Log", name="getStackTraceString")
