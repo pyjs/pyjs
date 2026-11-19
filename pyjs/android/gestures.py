@@ -1,8 +1,17 @@
-"""Android's native pinch-scale recognizer."""
+"""Android's native gesture recognition and thresholds."""
 from pyjs import jvm
 from pyjs.android import Context
 from pyjs.android.motion import MotionEvent
-from pyjs.java import f32
+from pyjs.java import f32, i32
+
+
+@jvm.native("android/view/ViewConfiguration")
+class ViewConfiguration:
+    def getScaledTouchSlop(self) -> i32: ...
+
+
+@jvm.native("android/view/ViewConfiguration", name="get")
+def view_configuration(context: Context) -> ViewConfiguration: ...
 
 
 @jvm.native("android/view/ScaleGestureDetector$OnScaleGestureListener", interface=True)

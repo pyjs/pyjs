@@ -5,6 +5,7 @@ from typing import Annotated, ClassVar
 from pyjs import jvm
 from pyjs.android import Context, MarginLayoutParams, Parcelable, Rect, View, ViewGroup
 from pyjs.java import JVMArray, f32, i32
+from pyjs.java.collections import JavaList
 
 
 @jvm.native("java/lang/Object")
@@ -52,6 +53,20 @@ class ItemTouchHelper(RecyclerView_ItemDecoration):
 @jvm.native("androidx/recyclerview/widget/ItemTouchHelper$Callback")
 class ItemTouchCallback(Object):
     def __init__(self) -> None:
+        pass
+
+    @jvm.native("androidx/recyclerview/widget/ItemTouchHelper$Callback",
+                name="chooseDropTarget", invocation="virtual")
+    def choose_drop_target(self, selected: RecyclerViewViewHolder,
+                           targets: JavaList, x: i32, y: i32) -> RecyclerViewViewHolder | None:
+        pass
+
+    @jvm.native("androidx/recyclerview/widget/ItemTouchHelper$Callback",
+                name="onMoved", invocation="virtual")
+    def on_moved(self, recycler_view: RecyclerView,
+                 view_holder: RecyclerViewViewHolder, from_position: i32,
+                 target: RecyclerViewViewHolder, to_position: i32,
+                 x: i32, y: i32) -> None:
         pass
 
     @jvm.native(

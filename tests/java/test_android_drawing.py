@@ -96,6 +96,7 @@ def test_drawing_surface_matches_installed_android_sdk():
             ("measureText", "(Ljava/lang/String;)F"),
         },
         "android/view/View": {
+            ("layout", "(IIII)V"),
             ("invalidate", "()V"), ("onDraw", "(Landroid/graphics/Canvas;)V"),
             ("onTouchEvent", "(Landroid/view/MotionEvent;)Z"), ("performClick", "()Z"),
             ("dispatchTouchEvent", "(Landroid/view/MotionEvent;)Z"),
@@ -111,6 +112,10 @@ def test_drawing_surface_matches_installed_android_sdk():
         "android/view/MotionEvent$PointerProperties": {("<init>", "()V")},
         "android/view/MotionEvent$PointerCoords": {("<init>", "()V")},
         "android/os/SystemClock": {("uptimeMillis", "()J")},
+        "android/view/ViewConfiguration": {
+            ("get", "(Landroid/content/Context;)Landroid/view/ViewConfiguration;"),
+            ("getScaledTouchSlop", "()I"),
+        },
         "android/view/ScaleGestureDetector": {
             ("<init>", "(Landroid/content/Context;Landroid/view/ScaleGestureDetector$OnScaleGestureListener;)V"),
             ("onTouchEvent", "(Landroid/view/MotionEvent;)Z"), ("isInProgress", "()Z"),

@@ -538,6 +538,15 @@ Applications own bounded, atomic ciphertext storage and backup exclusions.
 Never replace a missing decryption key silently or treat device-bound
 ciphertext as a portable backup. Keep key work off the Android main thread.
 
+For staggered-grid drag reordering, subclass
+`pyjs.android.reorder.StaggeredGridDragCallback` instead of
+`ItemTouchCallback`. It keeps Android's target selection and scrolling but
+prevents a repeated swap with the same holder during transient relayout.
+Swapping back requires reversing by Android's touch slop along the previous
+swap's dominant axis. Other targets remain immediately eligible. Implement
+movement flags, `on_move`, and `on_swiped` normally; preserve `super()` calls
+when overriding selection, target selection, or `on_moved` hooks.
+
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
 in `finally`. It may return `None` or raise a native I/O or permission error.
