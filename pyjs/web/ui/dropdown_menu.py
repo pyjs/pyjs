@@ -17,6 +17,21 @@ def dropdown_item_element(element: Element) -> HTMLElement:
 
 
 @js
+def dropdown_descendants(root: Element, attribute: str) -> list[Element]:
+    found: list[Element] = []
+    for child in root.children:
+        if child.hasAttribute(attribute):
+            found.append(child)
+        found.extend(dropdown_descendants(child, attribute))
+    return found
+
+
+@dropdown_descendants.client
+def dropdown_descendants(root: Element, attribute: str) -> list[Element]:
+    return list(root.querySelectorAll("[" + attribute + "]"))
+
+
+@js
 class DropdownMenuTrigger(ProxyElement):
     def __init__(self, *children):
         self.element = button(
@@ -221,7 +236,7 @@ class DropdownMenuSub(Widget):
 
     def panel_items(self) -> list[HTMLElement]:
         found: list[HTMLElement] = []
-        for item in self.panel.querySelectorAll("[data-value]"):
+        for item in dropdown_descendants(self.panel, "data-value"):
             role = item.getAttribute("role") or ""
             if (
                 role != "menuitem"
@@ -322,8 +337,9 @@ class DropdownMenu(Widget):
         while index < len(pending):
             root = pending[index]
             index = index + 1
-            for node in root.querySelectorAll("[data-slot=dropdown-menu-sub]"):
-                if not isinstance(node, DropdownMenuSub):
+            for node in dropdown_descendants(root, "data-slot"):
+                if (not isinstance(node, DropdownMenuSub)
+                        or node.getAttribute("data-slot") != "dropdown-menu-sub"):
                     continue
                 already = False
                 for existing in found:
@@ -369,7 +385,7 @@ class DropdownMenu(Widget):
 
     def _parent_items(self) -> list[HTMLElement]:
         found: list[HTMLElement] = []
-        for item in self.content.querySelectorAll("[data-value]"):
+        for item in dropdown_descendants(self.content, "data-value"):
             if not self._is_menu_item(item) or self._is_nested_item(item):
                 continue
             found.append(dropdown_item_element(item))

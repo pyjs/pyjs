@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from pyjs.server import CursorPageRequest, Page
+from pyjs.web.domx import tag
 from pyjs.web.events import Event
 from pyjs.web.ssr import render_html
 from pyjs.web.ui.attachment import (
@@ -27,6 +28,16 @@ from pyjs.web.ui.context_menu import (
 from pyjs.web.ui.date_picker import DatePicker
 from pyjs.web.ui.direction import Direction
 from pyjs.web.ui.drawer import Drawer, DrawerContent, DrawerTitle, DrawerTrigger
+from pyjs.web.ui.dropdown_menu import (
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+    DropdownMenuTrigger,
+)
 from pyjs.web.ui.infinite_scroll import InfiniteScroll
 from pyjs.web.ui.input_group import InputGroup, InputGroupAddon, InputGroupInput
 from pyjs.web.ui.input_otp import InputOTP
@@ -207,6 +218,27 @@ def test_remaining_interactive_components_store_initial_state_on_the_dom():
     assert select.selected_value == "pear"
     assert select.item_elements()[1].getAttribute("aria-selected") == "true"
     assert toaster.getAttribute("aria-live") == "polite"
+
+
+@pytest.mark.pyjs_python
+def test_dropdown_server_items_follow_tree_edits_and_submenu_boundaries():
+    first = DropdownMenuItem("first", "First")
+    nested = DropdownMenuCheckboxItem("nested", "Nested")
+    trigger = DropdownMenuSubTrigger("more", "More")
+    submenu = DropdownMenuSub(trigger, DropdownMenuSubContent(nested))
+    menu = DropdownMenu(DropdownMenuTrigger("Actions"),
+                        DropdownMenuContent(tag("div", first), submenu))
+    assert menu.item_elements() == [first.element, trigger.element]
+    assert menu.items == [first.element, trigger.element, nested.element]
+    first.element.remove()
+    inserted = DropdownMenuItem("inserted", "Inserted")
+    menu.content.append(inserted.element)
+    assert menu.item_elements() == [trigger.element, inserted.element]
+    assert menu.items == [trigger.element, inserted.element, nested.element]
+    menu.select("nested")
+    assert nested.getAttribute("aria-checked") == "true"
+    nested.element.remove()
+    assert menu.items == [trigger.element, inserted.element]
 
 
 @pytest.mark.pyjs_python

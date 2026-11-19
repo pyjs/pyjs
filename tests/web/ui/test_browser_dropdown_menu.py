@@ -22,6 +22,7 @@ from pyjs.web.ui.dropdown_menu import (
     DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 )
+from pyjs.web.ui.select import Select, SelectContent, SelectItem, SelectTrigger
 from tests.web.ui.browser import (
     bubbling_click,
     floating_alignment_gap,
@@ -41,6 +42,27 @@ class MenuSelectionCounter:
 
     def selected(self, event: Event):
         self.count += 1
+
+
+@js
+def test_select_preserves_initial_value_and_accepts_new_keyboard_choices():
+    first = SelectItem("first", "First")
+    selected = SelectItem("selected", "Selected")
+    menu = Select(SelectTrigger(), SelectContent(first, selected), value="selected")
+    mount(menu)
+    assert menu.selected_value == "selected"
+    assert selected.getAttribute("aria-selected") == "true"
+    selected.element.remove()
+    inserted = SelectItem("inserted", "Inserted")
+    menu.content.append(inserted.element)
+    press_key(menu.trigger.element, "ArrowUp")
+    assert document.activeElement is inserted.element
+    press_key(inserted.element, "Enter")
+    assert menu.selected_value == "inserted"
+    assert inserted.getAttribute("aria-selected") == "true"
+    assert first.getAttribute("aria-selected") == "false"
+    assert menu.trigger.element.textContent == "Inserted▼"
+    assert not menu.is_open
 
 
 @js
