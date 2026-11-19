@@ -198,6 +198,12 @@ def test_boolean_arithmetic_has_an_explicit_wasm_boundary():
         transpile_webassembly(BOOLEAN_NUMERIC_CONTRACT.source)
 
 
+def test_numeric_short_circuit_keeps_the_wasm_boolean_boundary():
+    from tests.backend_semantics import NUMERIC_SHORT_CIRCUIT_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly boolean operators require bool operands"):
+        transpile_webassembly(NUMERIC_SHORT_CIRCUIT_CONTRACT.source)
+
+
 def test_property_getter_contract_keeps_wasm_inheritance_boundary():
     with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly class inheritance is not implemented$"):
         transpile_webassembly(PROPERTY_GETTER_CONTRACT.source)
