@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Dropdown keyboard navigation follows current item order after items are
+  added, removed or moved. Activation stays with the focused item instead of
+  a stale index, including inside open submenus.
+
 - Android broadcast receivers can retain a delivery with `go_async()` while a
   short background task runs, then release it with `finish()` on the pending
   result. Context bindings support app-scoped dynamic and ordered broadcasts.

@@ -195,6 +195,9 @@ available for every released version.
   their own state/listeners when a containing dialog closes or is removed.
   Use `DropdownMenuItem.on_select()` for pointer and keyboard actions; keep
   server-rendered controls in `ref()` fields when binding their callbacks.
+  Menu contents may change after initialization: append item elements to the
+  content or remove them normally. Keyboard navigation follows the current
+  order and activates the focused item, including in open submenus.
 - Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
   editor or composer. Connect it during client initialization/reconnection
   and disconnect it on removal. Listen on its host for `files-paste`, cast
