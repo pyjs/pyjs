@@ -16,6 +16,9 @@
   caller, supporting configuration and selection flows with explicit
   cancellation.
 
+- Android `Context.start_activity()` can launch an Intent from an application
+  context, subject to Android's task flags and background-launch restrictions.
+
 - Generated web and Django documents request layout resizing when the software
   keyboard opens, keeping viewport-sized editors and fixed actions above it
   in supporting browsers. Browsers that ignore `interactive-widget` retain

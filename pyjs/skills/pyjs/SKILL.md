@@ -500,6 +500,13 @@ when the package is fixed. `RemoteViews.apply(context, parent)` inflates the
 widget layout and applies its actions for a local preview; `parent` may be
 `None`. Publishing to a launcher still uses `AppWidgetManager`.
 
+`Context.start_activity(intent)` exposes the framework's `startActivity()`.
+Application and service contexts require `Intent.FLAG_ACTIVITY_NEW_TASK`.
+It does not bypass Android's background activity launch restrictions; use an
+appropriate user-initiated flow, such as a launcher-delivered PendingIntent.
+The foreground Context example tests dispatch and extras, not permission to
+launch from an arbitrary background process.
+
 For short background work started by a `BroadcastReceiver`, call `go_async()`
 inside `on_receive()` and transfer the returned `BroadcastPendingResult` to
 the worker. It may be `None` outside a delivery or after detaching it already.
