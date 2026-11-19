@@ -216,11 +216,40 @@ class AndroidBrowser:
             self.targets.discard(target)
 
     async def tap(self, page: BrowserPage, selector: str):
-        """Dispatch a real touch; DOM .click() does not reliably open the IME."""
-        await page.evaluate(f'document.querySelector({json.dumps(selector)}).scrollIntoView({{block:"nearest"}})')
+        """Touch a visible, unobstructed point; DOM clicks do not open the IME."""
+        target = json.dumps(selector)
+        await page.evaluate(f'''(() => {{
+            const element = document.querySelector({target});
+            if (!element) throw new Error('Could not find selector: ' + {target});
+            element.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        }})()''')
         await page.wait_for_frames()
-        box = await page._selector_bounds(selector)
-        point = {'x': box['x'] + box['width'] / 2, 'y': box['y'] + box['height'] / 2}
+        point = await page.evaluate(f'''(async () => {{
+            const element = document.querySelector({target});
+            if (!element) throw new Error('Could not find selector: ' + {target});
+            // The browser follows containing blocks and top-layer escapes, not
+            // the DOM ancestry, when applying overflow clips.
+            const box = await new Promise(resolve => {{
+                const observer = new IntersectionObserver(entries => {{
+                    observer.disconnect();
+                    resolve(entries[0].intersectionRect);
+                }});
+                observer.observe(element);
+            }});
+            const viewport = window.visualViewport;
+            const offsetX = viewport ? viewport.offsetLeft : 0;
+            const offsetY = viewport ? viewport.offsetTop : 0;
+            const left = Math.max(box.left, offsetX);
+            const top = Math.max(box.top, offsetY);
+            const right = Math.min(box.right, offsetX + (viewport ? viewport.width : innerWidth));
+            const bottom = Math.min(box.bottom, offsetY + (viewport ? viewport.height : innerHeight));
+            if (right <= left || bottom <= top) throw new Error('No visible touch area: ' + {target});
+            const point = {{x: (left + right) / 2, y: (top + bottom) / 2}};
+            const hit = document.elementFromPoint(point.x, point.y);
+            if (!hit || !element.contains(hit)) throw new Error('Touch target is obscured: ' + {target});
+            // Hit testing uses layout coordinates; CDP touch uses visual ones.
+            return {{x: point.x - offsetX, y: point.y - offsetY}};
+        }})()''')
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [point]})
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
 

@@ -2,6 +2,7 @@ import asyncio
 import functools
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import Mock
 from urllib.parse import urlsplit
 
 import pytest
@@ -10,6 +11,8 @@ from pyjs import js
 from pyjs.javascript.transpiler import bundle
 from pyjs.server.rendering import page
 from pyjs.testing.android_browser import AndroidBrowser
+from pyjs.tooling.android import AndroidSDK
+from pyjs.tooling.browser import Browser
 from pyjs.web.ui.dialog import Dialog, DialogClose, DialogPanel, DialogTrigger
 from pyjs.web.ui.textarea import Textarea
 
@@ -38,6 +41,37 @@ def editor_origin(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_touch_targets_hydrated_modal_and_oversized_textarea(editor_origin, tmp_path):
+    driver = AndroidBrowser("geometry-only", sdk=Mock(spec=AndroidSDK))
+
+    async def scenario():
+        async with Browser() as browser:
+            document = await browser.new_page(editor_origin)
+            await document.set_viewport(400, 600, mobile=True)
+            await document.wait_for_selector("[data-slot=dialog-trigger]")
+            await driver.tap(document, "[data-slot=dialog-trigger]")
+            await document.wait_for_selector("dialog[open]")
+            text = "Long document line 日本語 😀\n" * 60
+            await document.fill("textarea", text)
+            await document.wait_for("""(() => {
+                const body = document.querySelector('[data-slot=dialog-panel-body]');
+                return body.scrollHeight > body.clientHeight;
+            })()""", "auto-growing editor overflows its scrolling body")
+            await document.evaluate("""document.addEventListener('touchstart', event => {
+                window.touched = event.target.tagName;
+            })""")
+            await driver.tap(document, "textarea")
+            assert await document.evaluate("window.touched") == "TEXTAREA"
+            assert await document.evaluate("document.activeElement.tagName") == "TEXTAREA"
+            await document.screenshot(tmp_path / "editor-touch.png")
+            await driver.tap(document, "[data-slot=dialog-panel-footer] button")
+            await document.wait_for("!document.querySelector('dialog').open", "editor closed")
+            assert await document.evaluate("document.querySelector('textarea').value") == text
+            assert not document.exceptions, document.exceptions
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=60))
 
 
 def test_generated_document_keeps_editor_actions_above_android_keyboard(
