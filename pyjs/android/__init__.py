@@ -438,6 +438,12 @@ class ContentResolver:
 
 @jvm.native("android/content/Intent")
 class Intent(Parcelable):
+    ACTION_CHOOSER: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
+        "android.intent.action.CHOOSER"
+    )
+    EXTRA_INTENT: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
+        "android.intent.extra.INTENT"
+    )
     EXTRA_TITLE: ClassVar[Annotated[str, jvm.field(writable=False)]] = (
         "android.intent.extra.TITLE"
     )
@@ -590,6 +596,12 @@ class Intent(Parcelable):
         value: JVMArray[i32] | None,
     ) -> Intent:
         return self
+
+
+@jvm.native("android/content/Intent", name="createChooser")
+def create_chooser(target: Intent, title: CharSequence | None = None) -> Intent:
+    """Wrap an intent for the system chooser; launch it from a user action."""
+    ...
 
 
 @jvm.native("android/content/ComponentName")
@@ -1281,6 +1293,7 @@ __all__ = [
     "View",
     "ViewGroup",
     "Window",
+    "create_chooser",
     "dp",
     "parse_color",
     "uri_clip_data",

@@ -33,6 +33,10 @@ Android card content is sample data. Its process-owned session retains pending
 card order across activity recreation; successfully saved order also survives
 process restarts. No backend is required.
 
+Tap an Android sample card to send its text through the system Sharesheet.
+Cancelling leaves its content and position unchanged; long-press still drags
+the card. The example shares text only, without a hosted link or account.
+
 Android accepts `text/plain` shares and shows a clearly marked preview above
 the sample board. It does not save shared text as a note. The preview accepts
 plain or styled text and handles delivery to an already-open Activity. It

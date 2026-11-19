@@ -16,7 +16,7 @@ from pyjs.android.testing import (
     recreate,
     run_on_main,
 )
-from pyjs.android.uiautomator import find_text
+from pyjs.android.uiautomator import device, find_text
 from pyjs.java import format_exception, i32
 from pyjs.java.concurrent import Runnable, Thread
 from pyjs.java.io import File, RandomAccessFile
@@ -491,6 +491,19 @@ def test_grid_displays_sample_cards_in_adapter_order() -> None:
     by_id(100).check(NoteOrder([1001, 1002, 1003, 1004, 1005, 1006, 1007]))
     by_text(LAUNCH_NOTE).assert_displayed()
     by_text(WEEKEND_NOTE).assert_displayed()
+
+
+@pytest.mark.pyjs_android_device
+def test_tapping_a_card_opens_system_share_and_cancellation_keeps_the_board() -> None:
+    reset_order()
+    launch(NotesActivity)
+    for text in [LAUNCH_NOTE, WEEKEND_NOTE]:
+        by_text(text).click()
+        assert find_text(text).text() == text
+        assert device().current_package() != application_context().get_package_name()
+        device().press_back()
+        by_text(text).assert_displayed()
+        by_id(100).check(NoteOrder([1001, 1002, 1003, 1004, 1005, 1006, 1007]))
 
 
 @pytest.mark.pyjs_android_device

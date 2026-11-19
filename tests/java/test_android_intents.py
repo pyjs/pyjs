@@ -1,7 +1,14 @@
 import pytest
 
 from pyjs import jvm
-from pyjs.android import CharSequence, Intent, JavaCharSequence, Uri, parse_uri
+from pyjs.android import (
+    CharSequence,
+    Intent,
+    JavaCharSequence,
+    Uri,
+    create_chooser,
+    parse_uri,
+)
 
 pytestmark = pytest.mark.pyjs_android_jvm
 
@@ -68,3 +75,25 @@ def test_uri_scheme_distinguishes_content_files_and_relative_paths() -> None:
     assert parse_uri("file:///private/image.png").get_scheme() == "file"
     assert parse_uri("https://example.org/image.png").get_scheme() == "https"
     assert parse_uri("image.png").get_scheme() is None
+
+
+def test_system_chooser_preserves_share_payload_and_optional_styled_title() -> None:
+    target = (Intent().set_action(Intent.ACTION_SEND).set_type("text/plain")
+              .put_string_extra(Intent.EXTRA_SUBJECT, "A subject 雪")
+              .put_string_extra(Intent.EXTRA_TEXT, "First line\n\n- [x] Task 😀"))
+    for chooser in [create_chooser(target), create_chooser(target, None)]:
+        assert chooser.get_action() == Intent.ACTION_CHOOSER
+        assert chooser.get_char_sequence_extra(Intent.EXTRA_TITLE) is None
+        nested = chooser.get_parcelable_extra(Intent.EXTRA_INTENT)
+        assert isinstance(nested, Intent)
+        assert nested.get_type() == "text/plain"
+        assert nested.get_action() == Intent.ACTION_SEND
+        assert nested.get_string_extra(Intent.EXTRA_SUBJECT) == "A subject 雪"
+        assert nested.get_string_extra(Intent.EXTRA_TEXT) == "First line\n\n- [x] Task 😀"
+    plain = create_chooser(target, "Send a copy")
+    assert plain.get_string_extra(Intent.EXTRA_TITLE) == "Send a copy"
+    styled = create_chooser(target, StyledText("Choose 日本語"))
+    title = styled.get_char_sequence_extra(Intent.EXTRA_TITLE)
+    assert title is not None and title.to_string() == "Choose 日本語"
+    assert target.get_action() == Intent.ACTION_SEND
+    assert target.get_parcelable_extra(Intent.EXTRA_INTENT) is None

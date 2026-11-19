@@ -256,6 +256,17 @@ available for every released version.
   its IndexedDB requests, but not timers or network I/O. It resolves only after
   commit and aborts on operation failure; request success alone is not a
   durable-save acknowledgement.
+- For system sharing, import `ShareData` and `navigator` from
+  `pyjs.web.sharing`. Check `hasattr(navigator, "share")`; availability depends
+  on the browser, operating system, secure context and permissions policy.
+  If present, `navigator.canShare(data)` checks the payload, not whether a
+  later share will succeed. Call `await navigator.share(data)` directly from
+  a user action, before unrelated asynchronous work consumes activation.
+  Handle rejection, including cancellation, without modifying the source.
+  A fulfilled promise does not prove that a recipient received the content.
+  Offer an explicit alternative such as copying or downloading when sharing
+  is unavailable; do not silently copy after cancellation. `ShareData` accepts
+  `title`, `text`, `url` and `files`; omitted fields remain absent.
 
 ## Django applications
 
@@ -643,6 +654,15 @@ belong in the file, not another text extra. Keep copies available while a
 recipient may be reading them; chooser dismissal is not proof of delivery
 or completion. Applications own bounded cache retention and failure UI.
 
+For outgoing text, construct an `Intent` with `ACTION_SEND`, `text/plain`,
+`EXTRA_TEXT` and an optional `EXTRA_SUBJECT`. From a user action, pass
+`create_chooser(intent)` to the Activity's `start_activity()`. Import
+`create_chooser` from `pyjs.android`; an optional title accepts a string,
+native `CharSequence`, or `None`. Android may supply its own share title.
+The chooser wraps the target without changing it. Dismissal is not proof of
+delivery. Keep large documents out of Binder extras; share files through
+content URIs with appropriate read grants instead. The helper does not create
+a file provider or grant access to private files.
 For anchored actions, use `pyjs.android.menus.PopupMenu(context, anchor)`.
 Add entries through `get_menu().add(group_id, item_id, order, title)`, then
 attach an `OnMenuItemClickListener` and call `show()`. Return whether the
@@ -666,6 +686,9 @@ tests. Register project-specific checksum locks as `NAME=PATH` entries in
 Use `pyjs.android.uiautomator` with the additional
 `pytest.mark.pyjs_android_device` marker only for system UI and cross-app
 interactions; Robolectric excludes device-only tests.
+Use `device().press_back()` from that module to dismiss system screens such as
+the Sharesheet. Espresso's `press_back()` requires a resumed app Activity and
+is not a substitute while another app owns the foreground.
 
 Inspect the relevant template for current testing patterns. Normal application
 tree shaking omits unreferenced test functions from the browser bundle.

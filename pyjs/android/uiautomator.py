@@ -12,6 +12,10 @@ class Device:
     def press_home(self) -> None:
         pass
 
+    def press_back(self) -> None:
+        """Press system Back, including while another app owns the foreground."""
+        pass
+
     def current_package(self) -> str:
         return ""
 

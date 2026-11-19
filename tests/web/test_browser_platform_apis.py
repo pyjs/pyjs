@@ -29,6 +29,8 @@ from pyjs.web.indexeddb import (
 )
 from pyjs.web.network import RequestInit, Response, fetch
 from pyjs.web.serviceworker import caches, navigator
+from pyjs.web.sharing import ShareData
+from pyjs.web.sharing import navigator as sharing_navigator
 from pyjs.web.storage import navigator as storage_navigator
 from pyjs.web.svg import SVGLineElement, SVGSVGElement
 from pyjs.web.timers import (
@@ -172,6 +174,22 @@ async def test_storage_and_clipboard_are_available_on_the_browser_navigator():
     assert estimate.quota is not None
     assert estimate.usage is not None
     assert clipboard_navigator.clipboard is not None
+
+
+@js
+def test_share_dictionary_keeps_files_and_optional_fields_without_opening_system_ui():
+    data = ShareData()
+    assert not hasattr(data, "files") and not hasattr(data, "text")
+    assert not hasattr(data, "title") and not hasattr(data, "url")
+    file = File(["Body 日本語"], "note.txt", type="text/plain")
+    with_file = ShareData(files=[file], text="", title="Title")
+    assert with_file.files[0] is file
+    assert with_file.text == "" and with_file.title == "Title"
+    assert not hasattr(with_file, "url")
+    # Desktop platform support varies; this never opens a native share sheet.
+    if hasattr(sharing_navigator, "canShare"):
+        assert not sharing_navigator.canShare(data)
+        assert not sharing_navigator.canShare(ShareData(url="http://["))
 
 
 @js

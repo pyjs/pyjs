@@ -231,6 +231,7 @@ def uiautomator_device_class() -> tuple[str, bytes]:
     )
     for name, native_name, result, opcode in (
         ("press_home", "pressHome", "Z", 0xB1),
+        ("press_back", "pressBack", "Z", 0xB1),
         ("current_package", "getCurrentPackageName", "Ljava/lang/String;", 0xB0),
     ):
         code = Bytecode()
