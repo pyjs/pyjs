@@ -186,7 +186,7 @@ def test_share_dictionary_keeps_files_and_optional_fields_without_opening_system
     assert with_file.files[0] is file
     assert with_file.text == "" and with_file.title == "Title"
     assert not hasattr(with_file, "url")
-    # Desktop platform support varies; this never opens a native share sheet.
+    # Linux Chrome omits canShare; payload validation runs only where exposed.
     if hasattr(sharing_navigator, "canShare"):
         assert not sharing_navigator.canShare(data)
         assert not sharing_navigator.canShare(ShareData(url="http://["))
