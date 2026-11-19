@@ -44,6 +44,57 @@ class MenuSelectionCounter:
 
 
 @js
+def test_dropdown_keyboard_uses_current_items_after_removal_and_insertion():
+    selection = MenuSelectionCounter()
+    retained = DropdownMenuItem("retained", "Retained")
+    removed = DropdownMenuItem("removed", "Removed")
+    removed.on_select(selection.selected)
+    menu = DropdownMenu(DropdownMenuTrigger("Actions"), DropdownMenuContent(retained, removed))
+    mount(menu)
+    removed.element.remove()
+    press_key(menu.trigger.element, "ArrowUp")
+    assert document.activeElement is retained.element
+    press_key(retained.element, "Enter")
+    assert selection.count == 0 and menu.selected_value == "retained"
+    inserted = DropdownMenuCheckboxItem("inserted", "Inserted")
+    inserted.on_select(selection.selected)
+    menu.content.append(inserted.element)
+    press_key(menu.trigger.element, "ArrowUp")
+    assert document.activeElement is inserted.element
+    press_key(inserted.element, "Enter")
+    assert selection.count == 1 and inserted.getAttribute("aria-checked") == "true"
+    assert menu.is_open
+    inserted.element.remove()
+    press_key(document, "Enter")
+    assert selection.count == 1
+    press_key(document, "ArrowDown")
+    assert document.activeElement is retained.element
+    retained.element.remove()
+    press_key(document, "ArrowUp")
+    press_key(document, "Enter")
+    assert selection.count == 1 and menu.is_open
+    press_key(document, "Escape")
+    assert not menu.is_open and document.activeElement is menu.trigger.element
+
+
+@js
+def test_dropdown_reordering_does_not_retarget_focused_keyboard_activation():
+    first = DropdownMenuItem("first", "First")
+    second = DropdownMenuItem("second", "Second")
+    menu = DropdownMenu(DropdownMenuTrigger("Actions"), DropdownMenuContent(first, second))
+    mount(menu)
+    press_key(menu.trigger.element, "ArrowUp")
+    assert document.activeElement is second.element
+    menu.content.append(first.element)
+    press_key(second.element, "Enter")
+    assert menu.selected_value == "second"
+    press_key(menu.trigger.element, "ArrowDown")
+    assert document.activeElement is second.element
+    press_key(second.element, "ArrowDown")
+    assert document.activeElement is first.element
+
+
+@js
 def test_dropdown_keyboard_activation_invokes_item_callback_once():
     selection = MenuSelectionCounter()
     item = DropdownMenuItem("history", "History")
@@ -291,6 +342,24 @@ class SubmenuDemo(DropdownMenu):
         content = DropdownMenuContent(self.profile_item, self.submenu)
         super().__init__(trigger, content)
         place_element(self.trigger.element, 48, 36)
+
+
+@js
+def test_open_submenu_accepts_new_items_and_rejects_removed_actions():
+    menu = SubmenuDemo()
+    mount(menu)
+    menu.open()
+    press_key(menu.sub_trigger.element, "ArrowRight")
+    menu.nested_item.element.remove()
+    item = DropdownMenuCheckboxItem("new", "New action")
+    menu.submenu.panel.append(item.element)
+    press_key(document, "ArrowUp")
+    assert document.activeElement is item.element
+    press_key(item.element, "Enter")
+    assert item.getAttribute("aria-checked") == "true"
+    assert menu.is_open
+    assert menu.submenu.is_sub_open()
+    assert menu.selected_value == "new"
 
 
 @js

@@ -123,10 +123,6 @@ class DropdownMenuSubTrigger(DropdownMenuItem):
 @js
 class DropdownMenuContent(FloatingPanel):
     def __init__(self, *children):
-        self.items: list[HTMLElement] = []
-        for child in children:
-            if isinstance(child, DropdownMenuItem):
-                self.items.append(cast(HTMLElement, child.element))
         super().__init__(
             tw(
                 "min-w-48 rounded-md border border-slate-200 bg-white p-1 text-slate-950 shadow-md"
@@ -280,7 +276,6 @@ class DropdownMenu(Widget):
         super().__init__()
         self.trigger = ref(trigger)
         self.content = ref(content)
-        self.items = content.items
         self.content.setAttribute("id", self.get_component_id() + "-content")
         self.trigger.setAttribute(
             "aria-controls", self.get_component_id() + "-content"
@@ -298,10 +293,6 @@ class DropdownMenu(Widget):
         )
 
     def initialize(self):
-        self.items = []
-        for item in self.content.querySelectorAll("[data-value]"):
-            if self._is_menu_item(item):
-                self.items.append(dropdown_item_element(item))
         self.is_open = False
         self.selected_value = self.get_data("value") or ""
         self.focused_index = -1
@@ -367,7 +358,7 @@ class DropdownMenu(Widget):
         for sub in self._submenus():
             sub.close_sub()
 
-    def _is_nested_item(self, item: HTMLElement) -> bool:
+    def _is_nested_item(self, item: Element) -> bool:
         current: Element | None = item
         while current is not None:
             slot = current.getAttribute("data-slot") or ""
@@ -378,11 +369,18 @@ class DropdownMenu(Widget):
 
     def _parent_items(self) -> list[HTMLElement]:
         found: list[HTMLElement] = []
-        for item in self.items:
-            if self._is_nested_item(item):
+        for item in self.content.querySelectorAll("[data-value]"):
+            if not self._is_menu_item(item) or self._is_nested_item(item):
                 continue
-            found.append(item)
+            found.append(dropdown_item_element(item))
         return found
+
+    @property
+    def items(self) -> list[HTMLElement]:
+        items = self._parent_items()
+        for sub in self._submenus():
+            items.extend(sub.panel_items())
+        return items
 
     def _open_submenu(self) -> DropdownMenuSub | None:
         found: DropdownMenuSub | None = None
@@ -469,13 +467,9 @@ class DropdownMenu(Widget):
         if (event.key == "Enter" or event.key == " ") and self.is_open:
             items = self.item_elements()
             chosen: HTMLElement | None = None
-            if self.focused_index >= 0 and self.focused_index < len(items):
-                chosen = items[self.focused_index]
-            else:
-                target = cast(Element, event.target)
-                closest = target.closest("[data-value]")
-                if isinstance(closest, HTMLElement) and self._is_menu_item(closest):
-                    chosen = closest
+            for item in items:
+                if item is document.activeElement:
+                    chosen = item
             if chosen is None:
                 return
             if chosen.getAttribute("aria-haspopup") == "menu":
@@ -500,12 +494,18 @@ class DropdownMenu(Widget):
         if self.contains(target):
             return
         event.preventDefault()
+        self.focused_index = -1
+        for index in range(len(items)):
+            if items[index] is document.activeElement:
+                self.focused_index = index
         if event.key == "Home":
             next_index = 0
         elif event.key == "End":
             next_index = len(items) - 1
         elif event.key == "ArrowDown":
             next_index = self.focused_index + 1
+        elif self.focused_index < 0:
+            next_index = len(items) - 1
         else:
             next_index = self.focused_index - 1
         next_index += len(items)
@@ -529,7 +529,8 @@ class DropdownMenu(Widget):
 
     def select(self, value: str):
         chosen: HTMLElement | None = None
-        for item in self.items:
+        items = self.items
+        for item in items:
             if item.getAttribute("data-value") == value:
                 chosen = item
         if chosen is not None:
@@ -542,7 +543,7 @@ class DropdownMenu(Widget):
                 self.set_data("value", value)
                 return
             if role == "menuitemradio":
-                for item in self.items:
+                for item in items:
                     if item.getAttribute("role") == "menuitemradio":
                         same = item.getAttribute("data-value") == value
                         item.setAttribute("aria-checked", "true" if same else "false")
