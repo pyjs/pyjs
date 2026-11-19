@@ -30,15 +30,14 @@ ANDROID_WIDGETS = (
 )
 
 
-def test_text_layout_is_a_public_android_export():
+@pytest.mark.parametrize("name", ["TextLayout", "TruncateAt", "InputFilter"])
+def test_text_types_are_public_android_exports(name):
     from pyjs import android
 
-    assert "TextLayout" in android.__all__
-    assert "TruncateAt" in android.__all__
+    assert name in android.__all__
     namespace = {}
     exec("from pyjs.android import *", namespace)
-    assert namespace["TextLayout"] is android.TextLayout
-    assert namespace["TruncateAt"] is android.TruncateAt
+    assert namespace[name] is getattr(android, name)
 
 
 def android_sdk() -> tuple[Path, Path]:

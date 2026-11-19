@@ -1177,6 +1177,7 @@ __all__ = [
     "GradientDrawable",
     "Gravity",
     "GridLayout",
+    "InputFilter",
     "Intent",
     "JavaCharSequence",
     "KeyEvent",
