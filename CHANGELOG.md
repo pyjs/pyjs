@@ -10,6 +10,10 @@
   digits with an optional sign. Whitespace, underscores and Unicode digits
   retain their existing validation and signed 64-bit overflow behavior.
 
+- JVM positional `min()` and `max()` accept matching floating operands.
+  Ties and unordered NaN comparisons retain the earlier operand, preserving
+  Python's signed-zero and NaN selection behavior.
+
 - JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
   inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
 

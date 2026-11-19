@@ -4774,12 +4774,23 @@ from pyjs import js
 def observed_number(events: list[int], value: int) -> int:
     events.append(value)
     return value
+
+@js
+def observed_float(events: list[int], step: int, value: float) -> float:
+    events.append(step)
+    return value
 ''',
     "positional_minmax_result",
     '''
         events: list[int] = []
         low = min(observed_number(events, 7), observed_number(events, -3), observed_number(events, 9))
         high = max(-3, 12, 4, 12)
+        inf = 1e309
+        nan = inf - inf
+        floating_events: list[int] = []
+        floating = min(observed_float(floating_events, 1, nan),
+                       observed_float(floating_events, 2, -3.5),
+                       observed_float(floating_events, 3, 9.5))
     ''',
     (
         ("minimum among three", "low != -3"),
@@ -4787,6 +4798,15 @@ def observed_number(events: list[int], value: int) -> int:
         ("arguments evaluated once", "len(events) != 3"),
         ("arguments evaluated in order", "events[0] != 7 or events[1] != -3 or events[2] != 9"),
         ("signed values", "min(-9007199254740991, 0, 9007199254740991) != -9007199254740991"),
+        ("floating minimum", "min(7.5, -3.5, 9.5) != -3.5"),
+        ("floating maximum", "max(-3.5, 9.5, 7.5) != 9.5"),
+        ("minimum retains first NaN", "floating == floating"),
+        ("maximum retains first NaN", "max(nan, 3.5) == max(nan, 3.5)"),
+        ("later NaN does not replace minimum", "min(7.5, nan, -3.5) != -3.5"),
+        ("later NaN does not replace maximum", "max(-3.5, nan, 7.5) != 7.5"),
+        ("floating arguments evaluated once", "len(floating_events) != 3"),
+        ("floating argument order", "floating_events[0] != 1 or floating_events[1] != 2 or floating_events[2] != 3"),
+        ("infinite extrema", "min(inf, -inf, 0.0) != -inf or max(-inf, inf, 0.0) != inf"),
     ),
 )
 
