@@ -550,7 +550,10 @@ files raise native `IOException`. Use `ZipOutputStream(stream)` and
 `ZipEntry(name)` from `pyjs.java.zip` for streaming archives. Call
 `putNextEntry`, write byte ranges, and `closeEntry` for each member; `finish`
 writes the central directory without closing the underlying output.
-Closing the ZIP stream closes its underlying stream, including on failure.
+Closing the ZIP stream normally closes its underlying stream. A failed close
+can leave that stream open, including on JDK 21. Close the ZIP wrapper once in
+an inner `finally` and the owned underlying stream in an outer `finally`;
+retrying the failed ZIP close is not a reliable cleanup strategy.
 `ZipInputStream(stream).getNextEntry()` returns a native entry or `None`;
 `read(buffer)` returns -1 at that entry's end. It reads local headers rather
 than validating the complete central directory. Applications own worker

@@ -1161,7 +1161,9 @@ with `pyjs template`.
   `ZipEntry`, `ZipOutputStream`, `ZipInputStream` and `ZipException` on JVM and
   Android. Open each output entry with `putNextEntry`, write byte ranges, then
   `closeEntry`. `finish` writes the central directory without closing the
-  destination; closing the ZIP stream closes its underlying stream too.
+  destination; a successful ZIP close closes the underlying stream too.
+  Close the ZIP wrapper once in an inner `finally` and the owned underlying
+  stream in an outer `finally`: a failed ZIP close can leave it open.
   Input `read` returns -1 at the current entry's end; `getNextEntry` returns
   `None` after the last entry. These are blocking primitives, not filesystem
   extraction helpers. Bound entry counts and decompressed bytes, validate
