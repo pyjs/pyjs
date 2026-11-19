@@ -224,32 +224,31 @@ class AndroidBrowser:
             element.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
         }})()''')
         await page.wait_for_frames()
-        point = await page.evaluate(f'''(() => {{
+        point = await page.evaluate(f'''(async () => {{
             const element = document.querySelector({target});
             if (!element) throw new Error('Could not find selector: ' + {target});
-            const box = element.getBoundingClientRect();
+            // The browser follows containing blocks and top-layer escapes, not
+            // the DOM ancestry, when applying overflow clips.
+            const box = await new Promise(resolve => {{
+                const observer = new IntersectionObserver(entries => {{
+                    observer.disconnect();
+                    resolve(entries[0].intersectionRect);
+                }});
+                observer.observe(element);
+            }});
             const viewport = window.visualViewport;
-            let left = Math.max(box.left, viewport ? viewport.offsetLeft : 0);
-            let top = Math.max(box.top, viewport ? viewport.offsetTop : 0);
-            let right = Math.min(box.right, viewport ? viewport.offsetLeft + viewport.width : innerWidth);
-            let bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight);
-            for (let parent = element.parentElement; parent; parent = parent.parentElement) {{
-                const style = getComputedStyle(parent);
-                const bounds = parent.getBoundingClientRect();
-                if (style.overflowX !== 'visible') {{
-                    left = Math.max(left, bounds.left + parent.clientLeft);
-                    right = Math.min(right, bounds.left + parent.clientLeft + parent.clientWidth);
-                }}
-                if (style.overflowY !== 'visible') {{
-                    top = Math.max(top, bounds.top + parent.clientTop);
-                    bottom = Math.min(bottom, bounds.top + parent.clientTop + parent.clientHeight);
-                }}
-            }}
+            const offsetX = viewport ? viewport.offsetLeft : 0;
+            const offsetY = viewport ? viewport.offsetTop : 0;
+            const left = Math.max(box.left, offsetX);
+            const top = Math.max(box.top, offsetY);
+            const right = Math.min(box.right, offsetX + (viewport ? viewport.width : innerWidth));
+            const bottom = Math.min(box.bottom, offsetY + (viewport ? viewport.height : innerHeight));
             if (right <= left || bottom <= top) throw new Error('No visible touch area: ' + {target});
             const point = {{x: (left + right) / 2, y: (top + bottom) / 2}};
             const hit = document.elementFromPoint(point.x, point.y);
             if (!hit || !element.contains(hit)) throw new Error('Touch target is obscured: ' + {target});
-            return point;
+            // Hit testing uses layout coordinates; CDP touch uses visual ones.
+            return {{x: point.x - offsetX, y: point.y - offsetY}};
         }})()''')
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [point]})
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})

@@ -217,13 +217,14 @@ def test_unknown_keyboard_state_is_not_silently_accepted_as_hidden(tmp_path, mon
         asyncio.run(browser.wait_for_keyboard(False))
 
 
-def test_touch_targets_use_visible_area_and_reject_obstructions(tmp_path):
+@pytest.mark.parametrize('doctype', ['<!DOCTYPE html>', ''], ids=['standards', 'quirks'])
+def test_touch_targets_use_visible_area_and_reject_obstructions(tmp_path, doctype):
     sdk, _, _, _ = sdk_at(tmp_path)
     driver = AndroidBrowser('geometry-only', sdk=sdk)
 
     async def scenario():
         async with Browser() as browser:
-            markup = '''<style>
+            markup = doctype + '''<style>
                 body { margin: 0; }
                 section { position: fixed; left: 40px; top: 80px;
                           width: 250px; height: 180px; overflow: auto; }
@@ -255,6 +256,105 @@ def test_touch_targets_use_visible_area_and_reject_obstructions(tmp_path):
             await page.evaluate("document.body.replaceChildren(document.querySelector('textarea'))")
             await driver.tap(page, 'textarea')
             assert await page.evaluate('window.touched') == 'TEXTAREA'
+            assert not page.exceptions
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('markup, setup', [
+    pytest.param('''<div style="height:40px;overflow:hidden">
+        <button id="target" style="position:fixed;top:200px">Tap</button>
+        </div>''', '', id='fixed-escapes-overflow'),
+    pytest.param('''<div style="position:relative"><div style="height:20px;overflow:hidden">
+        <button id="target" style="position:absolute;top:200px">Tap</button>
+        </div></div>''', '', id='absolute-escapes-overflow'),
+    pytest.param('''<span style="overflow:hidden">
+        <button id="target">Tap</button></span>''', '', id='inline-overflow'),
+    pytest.param('''<style>body{overflow:hidden}</style><p>Short page</p>
+        <button id="target" style="position:fixed;top:200px">Tap</button>''',
+        '', id='body-scroll-lock'),
+    pytest.param('''<style>html{overflow-y:scroll}</style><div style="height:3000px"></div>
+        <button id="target" style="position:absolute;top:1500px">Tap</button>''',
+        'window.scrollTo(0, 1000)', id='scrolled-root'),
+    pytest.param('''<style>body{overflow-x:hidden}</style><div style="height:3000px"></div>
+        <button id="target" style="position:fixed;bottom:10px">Tap</button>''',
+        'window.scrollTo(0, 1000)', id='scrolled-body'),
+    pytest.param('''<div style="height:0;overflow:hidden">
+        <dialog><button id="target">Tap</button></dialog></div>''',
+        "document.querySelector('dialog').showModal()", id='top-layer-dialog'),
+    pytest.param('''<div style="height:0;overflow:hidden">
+        <div popover><button id="target">Tap</button></div></div>''',
+        "document.querySelector('[popover]').showPopover()", id='top-layer-popover'),
+])
+def test_touch_follows_browser_clipping_not_dom_ancestry(tmp_path, markup, setup):
+    sdk, _, _, _ = sdk_at(tmp_path)
+    driver = AndroidBrowser('geometry-only', sdk=sdk)
+
+    async def scenario():
+        async with Browser() as browser:
+            page = await browser.new_page('data:text/html,' + quote(
+                '<!DOCTYPE html><meta name="viewport" content="width=device-width">' + markup,
+            ))
+            await page.set_viewport(400, 800, mobile=True)
+            if setup:
+                await page.evaluate(setup)
+            await page.evaluate('''document.addEventListener('touchstart', event => {
+                window.touched = event.target.id;
+            })''')
+            await driver.tap(page, '#target')
+            assert await page.evaluate('window.touched') == 'target'
+            assert not page.exceptions
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('position, containing_block', [
+    ('absolute', 'position:relative'),
+    ('fixed', 'transform:translateX(10px)'),
+])
+def test_touch_rejects_target_outside_its_containing_block_clip(tmp_path, position, containing_block):
+    sdk, _, _, _ = sdk_at(tmp_path)
+    driver = AndroidBrowser('geometry-only', sdk=sdk)
+
+    async def scenario():
+        async with Browser() as browser:
+            markup = f'''<!DOCTYPE html><div style="height:40px;overflow:clip;{containing_block}">
+                <button id="target" style="position:{position};top:200px">Tap</button></div>'''
+            page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.evaluate('''window.touched = null;
+                document.addEventListener('touchstart', event => { window.touched = event.target.id })''')
+            with pytest.raises(RuntimeError, match='No visible touch area'):
+                await driver.tap(page, '#target')
+            assert await page.evaluate('window.touched') is None
+            assert not page.exceptions
+
+    asyncio.run(scenario())
+
+
+def test_touch_dispatch_uses_panned_visual_viewport_coordinates(tmp_path):
+    sdk, _, _, _ = sdk_at(tmp_path)
+    driver = AndroidBrowser('geometry-only', sdk=sdk)
+
+    async def scenario():
+        async with Browser() as browser:
+            markup = '''<!DOCTYPE html><meta name="viewport" content="width=device-width">
+                <style>body{margin:0}button{position:absolute;width:50px;height:50px}</style>'''
+            markup += ''.join(
+                f'<button id="cell-{row}-{column}" style="left:{column * 50}px;top:{row * 50}px">{row},{column}</button>'
+                for row in range(16) for column in range(8)
+            )
+            page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.set_viewport(400, 800, mobile=True)
+            await page.session.send('Emulation.setPageScaleFactor', {'pageScaleFactor': 2})
+            await page.evaluate('''document.addEventListener('touchstart', event => {
+                window.touched = event.target.id;
+                window.touchPoint = [event.touches[0].clientX, event.touches[0].clientY];
+            })''')
+            await driver.tap(page, '#cell-12-5')
+            assert await page.evaluate('visualViewport.offsetLeft > 0 && visualViewport.offsetTop > 0')
+            assert await page.evaluate('window.touched') == 'cell-12-5'
+            assert await page.evaluate('window.touchPoint') == pytest.approx([275, 625])
+            await page.screenshot(tmp_path / 'panned-touch.png')
             assert not page.exceptions
 
     asyncio.run(scenario())
