@@ -6,6 +6,21 @@
   bounds for a string prefix or suffix. Bounds count Unicode code points,
   including negative offsets and empty-needle edge cases.
 
+- Floating menus, popovers, tooltips and comboboxes use the browser's popover
+  layer and remain interactive inside native modal dialogs. Closing or
+  removing a containing dialog dismisses its floating controls. Dropdown
+  keyboard activation now invokes item callbacks like pointer activation.
+  Floating panels retain theme styling and remain above rapidly reopened
+  dialogs; pre-reserved root scrollbar gutters are not reserved twice.
+  These controls require browser support for the Popover API.
+
+- Modal `DialogPanel` editors hide the background page scrollbar through CSS
+  tied to native modal state, including nested panels and direct removal.
+  Opening a panel retains an existing page gutter without adding one to short
+  pages; narrow editors fill the viewport. Standalone panels do not mutate
+  inline page overflow styles; CSS `:has()` is required.
+  `Browser(hide_scrollbars=False)` retains native scrollbars for layout tests.
+
 - `Input.set_value()` and `Textarea.set_value()` now include initial values in
   server-rendered HTML. Client updates still change only the live value, not
   the form-reset default. Multiline values retain leading blank lines.

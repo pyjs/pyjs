@@ -169,6 +169,7 @@ class Popover(Widget):
             align=resolved_align,
             side_offset=resolved_side_offset,
             align_offset=resolved_align_offset,
+            on_dismiss=self.close,
         )
         self.is_open = True
         self.setAttribute("data-state", "open")

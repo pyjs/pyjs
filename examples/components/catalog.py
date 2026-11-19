@@ -74,6 +74,12 @@ from pyjs.web.ui.dialog import (
 )
 from pyjs.web.ui.direction import Direction
 from pyjs.web.ui.drawer import Drawer, DrawerContent, DrawerTitle, DrawerTrigger
+from pyjs.web.ui.dropdown_menu import (
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+)
 from pyjs.web.ui.empty import (
     Empty,
     EmptyContent,
@@ -942,6 +948,30 @@ class CatalogForm(Widget):
 
 
 @js
+class DocumentEditorDialog(Dialog):
+    def __init__(self):
+        text = Textarea("Document", auto_size=True)
+        text.set_value("Editable paragraph.\n" * 80)
+        text.element.setAttribute("aria-label", "Document")
+        status = p({"aria-live": "polite", "data-testid": "document-action-status"})
+        details = DropdownMenuItem("details", "Document details")
+        actions = DropdownMenu(
+            DropdownMenuTrigger("Document actions"), DropdownMenuContent(details), align="end")
+        panel = DialogPanel("Edit document", text)
+        tag(panel.header, div(tw("flex items-center justify-between gap-3"),
+                             DialogTitle("Edit document"), actions))
+        tag(panel.footer, DialogFooter(status, DialogClose("Done")))
+        super().__init__(DialogTrigger("Edit long document"), panel)
+        self.text = ref(text)
+        self.status = ref(status)
+        self.details = ref(details)
+        self.details.on_select(self.describe_document)
+
+    def describe_document(self, event: Event):
+        self.status.textContent = str(len(self.text.get_value())) + " characters"
+
+
+@js
 class CatalogApp(Widget):
     def __init__(self, site_root: str = "https://pyjs.org/"):
         super().__init__()
@@ -1003,13 +1033,7 @@ class CatalogApp(Widget):
             )
         )
         self.save_button.addEventListener("click", self.save_profile)
-        document_text = Textarea("Document", auto_size=True)
-        document_text.set_value("Editable paragraph.\n" * 80)
-        document_text.element.setAttribute("aria-label", "Document")
-        document_panel = DialogPanel("Edit document", document_text)
-        tag(document_panel.header, DialogHeader(DialogTitle("Edit document")))
-        tag(document_panel.footer, DialogFooter(DialogClose("Done")))
-        self.document_dialog = ref(Dialog(DialogTrigger("Edit long document"), document_panel))
+        self.document_dialog = ref(DocumentEditorDialog())
 
         sidebar = tag(
             "aside",

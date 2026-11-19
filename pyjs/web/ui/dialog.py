@@ -3,12 +3,13 @@
 from typing import cast
 
 from pyjs import js, llvm
-from pyjs.web.dom import Element, document
+from pyjs.web.dom import Element, document, window
 from pyjs.web.domx import ProxyElement, button, div, p, ref, require_element, tag, tw
 from pyjs.web.domx import dialog as dialog_element
 from pyjs.web.events import CustomEvent, Event
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui import Widget
+from pyjs.web.ui.styles import Stylesheet
 
 
 @js
@@ -249,6 +250,16 @@ class DialogPanel(DialogContent):
     def __init__(self, label: str, *children, close_on_backdrop: bool = True,
                  padded_controls: bool = True):
         super().__init__(label, show_close=False, close_on_backdrop=close_on_backdrop)
+        self.dialog_element.setAttribute("data-dialog-panel", "")
+        self.add(Stylesheet('''
+html:has([data-dialog-panel]:modal) { overflow: hidden; }
+body:has([data-dialog-panel]:modal) {
+  overflow: hidden;
+}
+body:has([data-dialog-panel][data-page-gutter]:modal) {
+  scrollbar-gutter: stable;
+}
+'''))
         self.dialog_element.className = tw(
             "fixed inset-0 z-50 m-0 h-dvh max-h-none w-full max-w-none overflow-hidden "
             "overscroll-contain backdrop:overflow-hidden backdrop:overscroll-contain "
@@ -266,6 +277,20 @@ class DialogPanel(DialogContent):
             {"data-slot": "dialog-panel-body"}, *children))
         self.footer = ref(div(controls_style, {"data-slot": "dialog-panel-footer"}))
         self.surface.replaceChildren(self.header, self.body, self.footer)
+
+    def show_modal(self):
+        root = document.documentElement
+        root_reserves_gutter = root is not None and "stable" in (
+            window.getComputedStyle(root).getPropertyValue("scrollbar-gutter"))
+        page_gutter = (not root_reserves_gutter and root is not None
+                       and window.innerWidth > root.clientWidth)
+        if page_gutter or document.querySelector(
+            "[data-dialog-panel][data-page-gutter]:modal"
+        ) is not None:
+            self.dialog_element.setAttribute("data-page-gutter", "")
+        else:
+            self.dialog_element.removeAttribute("data-page-gutter")
+        super().show_modal()
 
 
 @js
@@ -300,10 +325,10 @@ class Dialog(Widget):
             return
         self.is_open = True
         self.previous_body_overflow = document.body.style.overflow
-        document.body.style.overflow = "hidden"
         self.setAttribute("data-state", "open")
         self.trigger.set_expanded(True)
         self.content.show_modal()
+        document.body.style.overflow = "hidden"
 
     def close(self):
         if not self.is_open:

@@ -170,14 +170,25 @@ available for every released version.
   `DialogCloseRequest` and call `show_modal()`/`close()` after application
   save checks. It inserts no close button. A native modal escapes ancestor
   inertness: disable its `dialog_element` explicitly while replacing inputs.
-  Panel and backdrop scroll containment leave the page's overflow styles
-  unchanged. This prevents gesture scroll-through in current Chromium;
-  older browsers may not contain gestures on non-scrolling containers.
+  Standalone modal panels hide the page scrollbar without changing inline
+  overflow styles. Opening with `show_modal()` retains an existing page
+  gutter without adding one to short pages. The modal fills narrow viewports.
+  The lock follows native modal state, including close/removal and
+  nested panels; this requires CSS `:has()` support. Panel/backdrop gesture
+  containment additionally depends on support for non-scrolling containers.
 - Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
   fields that should fit their wrapped content. It fills its container's
   width and grows or shrinks from a touch-friendly row without input listeners.
   Do not set a fixed height. Browsers without CSS field sizing retain native
   scrolling and vertical resizing; callers still own Enter/submit semantics.
+- Floating controls (dropdowns, popovers, tooltips and comboboxes) use native
+  manual popovers. Inside a modal dialog they remain in its DOM subtree for
+  focus and inertness, while the top layer escapes clipping. Closing or
+  removing the dialog resets the controls. This requires the Popover API.
+  Custom `FloatingPanel` owners can pass `on_dismiss` to `open()` to reset
+  their own state/listeners when a containing dialog closes or is removed.
+  Use `DropdownMenuItem.on_select()` for pointer and keyboard actions; keep
+  server-rendered controls in `ref()` fields when binding their callbacks.
 - Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
   editor or composer. Connect it during client initialization/reconnection
   and disconnect it on removal. Listen on its host for `files-paste`, cast
@@ -605,6 +616,8 @@ directly; the repository's `scripts/capture_*_screenshot.py` scenarios and
 `wait_for_selector`, `wait_for_attribute`, `wait_for_text`, `wait_for_count`,
 `click`, `fill`, `submit`, `attribute`, `attributes`, `text`, and `texts` over
 embedding JavaScript for ordinary DOM interaction.
+Use `Browser(hide_scrollbars=False)` for scrollbar and viewport-layout checks;
+the default hides scrollbars to keep existing visual snapshots stable.
 
 Use `await browser.restart()` inside a `Browser` context to verify durable
 state across a real Chrome process restart. It closes existing pages and their

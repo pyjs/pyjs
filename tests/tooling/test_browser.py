@@ -251,6 +251,15 @@ def test_browser_page_returns_a_clipped_screenshot_data_url():
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("hide_scrollbars", [True, False])
+def test_browser_can_preserve_native_scrollbars(tmp_path, hide_scrollbars):
+    instance = Browser(executable="chrome", hide_scrollbars=hide_scrollbars)
+
+    arguments = instance._launch_arguments(tmp_path)
+
+    assert ("--hide-scrollbars" in arguments) is hide_scrollbars
+
+
 def test_headless_webgpu_uses_software_adapter_without_a_system_gpu(tmp_path, monkeypatch):
     monkeypatch.setattr(browser.sys, "platform", "linux")
     instance = Browser(executable="chrome", webgpu=True)

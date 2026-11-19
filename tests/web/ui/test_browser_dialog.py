@@ -4,7 +4,7 @@ import pytest
 
 from pyjs import js
 from pyjs.testing.web import wait_for_frames
-from pyjs.web.dom import document
+from pyjs.web.dom import document, window
 from pyjs.web.domx import (
     button,
     div,
@@ -116,6 +116,32 @@ async def test_dialog_panel_short_content_fits_desktop_without_empty_space():
     else:
         assert bounds.height == viewport.clientHeight
     demo.close()
+
+
+@js
+def test_nested_standalone_panels_release_page_scroll_after_the_last_modal():
+    first = DialogPanel("First editor")
+    second = DialogPanel("Second editor")
+    mount(first, second)
+    root = document.documentElement
+    if root is None:
+        raise ValueError("Expected a browser document")
+    overflow = window.getComputedStyle(root).overflow
+    root_style = root.getAttribute("style")
+    body_style = document.body.getAttribute("style")
+    first.show_modal()
+    second.show_modal()
+    assert window.getComputedStyle(root).overflow == "hidden"
+    first.close()
+    first.remove()
+    assert window.getComputedStyle(root).overflow == "hidden"
+    second.close()
+    assert window.getComputedStyle(root).overflow == overflow
+    second.show_modal()
+    second.remove()
+    assert window.getComputedStyle(root).overflow == overflow
+    assert root.getAttribute("style") == root_style
+    assert document.body.getAttribute("style") == body_style
 
 
 @js

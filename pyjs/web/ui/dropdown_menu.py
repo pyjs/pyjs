@@ -196,7 +196,7 @@ class DropdownMenuSub(Widget):
             for sub in owner._submenus():
                 if sub is not self and sub.is_sub_open() and sub._containing_panel() is panel:
                     sub.close_sub()
-        self.panel.open(self.trigger.element, side="right", align="start")
+        self.panel.open(self.trigger.element, side="right", align="start", on_dismiss=self.close_sub)
         self.setAttribute("data-state", "open")
 
     def close_sub(self) -> None:
@@ -207,8 +207,7 @@ class DropdownMenuSub(Widget):
         return self.getAttribute("data-state") == "open"
 
     def disconnected(self):
-        parent = self.panel.parentElement
-        if parent is document.body:
+        if self.is_sub_open():
             self.close_sub()
 
     def sub_keydown(self, event: KeyboardEvent) -> None:
@@ -420,6 +419,7 @@ class DropdownMenu(Widget):
             align=align,
             side_offset=side_offset,
             align_offset=align_offset,
+            on_dismiss=self.close,
         )
         self.is_open = True
         self.trigger.set_expanded(True)
@@ -484,7 +484,7 @@ class DropdownMenu(Widget):
             if value is None:
                 return
             event.preventDefault()
-            self.select(value)
+            chosen.click()
             return
         if (
             event.key != "ArrowDown"
