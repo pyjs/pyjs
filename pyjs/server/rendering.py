@@ -4,6 +4,10 @@ from pyjs.web.domx import HTMLElement, tag
 from pyjs.web.navigation import navigation_page
 from pyjs.web.ssr import render_document, render_html, write_html
 
+DEFAULT_VIEWPORT = (
+    "width=device-width, initial-scale=1, interactive-widget=resizes-content"
+)
+
 
 class NavigationPage:
     """Server response metadata for progressively navigated content."""
@@ -25,7 +29,7 @@ def html(body, js, css, script_type, title=""):
         tag(
             "head",
             tag("meta", {"charset": "utf-8"}),
-            tag("meta", {"name": "viewport", "content": "width=device-width, initial-scale=1"}),
+            tag("meta", {"name": "viewport", "content": DEFAULT_VIEWPORT}),
             tag("title", title),
             tag("link", {"rel": "icon", "href": "data:,"}),
             tag("link", {"rel": "stylesheet", "href": css}),

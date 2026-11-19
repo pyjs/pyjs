@@ -143,6 +143,12 @@ available for every released version.
 
 ## Web UI
 
+- Generated web and Django documents use
+  `interactive-widget=resizes-content` in their viewport metadata. Supporting
+  browsers resize layout with the software keyboard so viewport-sized widgets
+  can keep actions visible. Custom document shells should include that policy;
+  browsers that ignore it retain native keyboard behavior. Desktop viewport
+  tests do not prove real IME behavior or iOS compatibility.
 - Start with components from `pyjs.web.ui` for ordinary application controls
   and layouts instead of hand-crafting equivalent HTML and CSS.
 - Run `pyjs template pyjs_examples.components` to browse current component

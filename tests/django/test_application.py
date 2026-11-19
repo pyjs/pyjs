@@ -288,7 +288,8 @@ def test_rendered_page_wraps_nested_sections_and_selects_its_own_bundle():
 
     assert response.content.decode() == (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"/>'
-        '<meta content="width=device-width, initial-scale=1" name="viewport"/>'
+        '<meta content="width=device-width, initial-scale=1, '
+        'interactive-widget=resizes-content" name="viewport"/>'
         '<title>Settings · Example</title>'
         '<link href="/assets/example/app.account.preferences.settings.js" '
         'rel="modulepreload"/>'
@@ -480,7 +481,8 @@ def test_response_renders_a_complete_document_with_django_static_urls():
     assert response.content.decode() == (
         '<!doctype html>\n<html class="h-full" lang="en"><head>'
         '<meta charset="utf-8"/><meta content="width=device-width, '
-        'initial-scale=1" name="viewport"/><title>Account · Example</title>'
+        'initial-scale=1, interactive-widget=resizes-content" '
+        'name="viewport"/><title>Account · Example</title>'
         '<link href="/assets/example/app.js" rel="modulepreload"/>'
         '<link href="/assets/example/app.css" rel="stylesheet"/>'
         '<meta content="PyJS" name="application-name"/>'
