@@ -40,7 +40,7 @@ class _SwapGuard:
             return True
         dx = x - self.x
         dy = y - self.y
-        # Either target-facing axis can select a swap, regardless of which
+        # Either qualifying axis can select a swap, regardless of which
         # pointer displacement is larger. Ignore motion on unrelated axes.
         return ((self.dx > 0 and dx <= -self.slop)
                 or (self.dx < 0 and dx >= self.slop)
@@ -54,7 +54,7 @@ class StaggeredGridDragCallback(ItemTouchCallback):
     Subclasses provide movement flags, on_move and on_swiped as with
     ItemTouchCallback. Preserve super calls when overriding selection,
     target selection or post-move hooks. Another swap with the same holder
-    requires a touch-slop reversal along an axis leading toward that target.
+    requires a touch-slop reversal along an axis that passed the target edge.
     Other targets still use native ItemTouchHelper selection immediately.
     """
 
@@ -86,9 +86,11 @@ class StaggeredGridDragCallback(ItemTouchCallback):
         view = view_holder.item_view
         other = target.item_view
         left, top = int(view.getLeft()), int(view.getTop())
-        horizontal = ((x > left and other.getRight() > view.getRight())
-                      or (x < left and other.getLeft() < left))
-        vertical = ((y > top and other.getBottom() > view.getBottom())
-                    or (y < top and other.getTop() < top))
+        horizontal = ((x > left and other.getRight() > view.getRight()
+                       and x + view.getWidth() > other.getRight())
+                      or (x < left and other.getLeft() < left and x < other.getLeft()))
+        vertical = ((y > top and other.getBottom() > view.getBottom()
+                     and y + view.getHeight() > other.getBottom())
+                    or (y < top and other.getTop() < top and y < other.getTop()))
         self._swap_guard.record(target, left, top, int(x), int(y), horizontal, vertical)
         super().on_moved(recycler_view, view_holder, from_position, target, to_position, x, y)

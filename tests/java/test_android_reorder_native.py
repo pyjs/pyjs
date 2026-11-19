@@ -169,3 +169,36 @@ class ReplayHorizontalNoise(ViewAssertion):
 def test_vertical_swap_ignores_unrelated_horizontal_reversal() -> None:
     launch(GreetingActivity)
     by_text("Hello from Python").check(ReplayHorizontalNoise())
+
+
+class ReplayStaggeredOffsets(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        context = view.getContext()
+        recycler = RecyclerView(context)
+        recycler.set_layout_manager(StaggeredGridLayoutManager(2, 1))
+        source = Holder(TextView(context))
+        target = Holder(TextView(context))
+        candidates = candidate_list(target)
+        native = NativeDrag()
+        for y in [195, 205, 150, 250]:
+            source.item_view.layout(0, 200, 100, 500)
+            target.item_view.layout(112, 150, 212, 550)
+            drag = Drag()
+            drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+            # The taller neighboring card extends above and below the source.
+            # Only the horizontal dragged edge passes it; equality is not past.
+            assert drag.choose_drop_target(source, candidates, 130, i32(y)) is target
+            drag.on_moved(recycler, source, 0, target, 1, 130, i32(y))
+            reverse_y = y + drag._swap_guard.slop if y < 200 else y - drag._swap_guard.slop
+            assert native.choose_drop_target(source, candidates, 130, i32(reverse_y)) is target
+            assert drag.choose_drop_target(source, candidates, 130, i32(reverse_y)) is None
+            source.item_view.layout(112, 200, 212, 500)
+            target.item_view.layout(0, 150, 100, 550)
+            assert native.choose_drop_target(source, candidates, -20, i32(y)) is target
+            assert drag.choose_drop_target(source, candidates, -20, i32(y)) is target
+
+
+def test_staggered_swap_ignores_reversal_on_an_uncrossed_axis() -> None:
+    launch(GreetingActivity)
+    by_text("Hello from Python").check(ReplayStaggeredOffsets())
