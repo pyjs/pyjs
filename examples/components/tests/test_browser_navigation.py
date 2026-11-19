@@ -227,7 +227,9 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                         document.querySelectorAll('#image-preview image-preview[data-state=error]').length === 1
                     """, "the visible gallery to load and expose its retry control")
                 finally:
-                    await page.screenshot(tmp_path / "image-previews.png", selector="#image-preview")
+                    # Cropped CDP capture can relayout the page and notify the
+                    # viewport loaders before the retry click below.
+                    await page.screenshot(tmp_path / "image-previews.png")
                 await page.click('#image-preview image-preview[data-state=error] button')
                 await page.wait_for("""document.querySelectorAll(
                     '#image-preview image-preview[data-state=ready]').length === 3
