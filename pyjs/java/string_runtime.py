@@ -657,6 +657,52 @@ def string_strip_method(class_file: ClassFile) -> Method:
 
 def string_int_method(class_file: ClassFile, *, throw_python) -> Method:
     code = Bytecode()
+    length = class_file.method_reference("java/lang/String", "length", "()I")
+    character = class_file.method_reference("java/lang/String", "charAt", "(I)C")
+    # The common ASCII form needs neither regex compilation nor Unicode
+    # normalization. Share the checked parse/overflow path with the fallback.
+    code.local(0x19, 0)
+    code.emit(0xB6, length.to_bytes(2, "big"))
+    code.local(0x36, 2)
+    code.local(0x15, 2)
+    code.branch(0x99, "int.slow")
+    code.emit(0x03)
+    code.local(0x36, 1)
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.emit(0xB6, character.to_bytes(2, "big"))
+    code.local(0x36, 3)
+    for sign in (43, 45):
+        code.local(0x15, 3)
+        code.emit(0x10, bytes((sign,)))
+        code.branch(0x9F, "int.skip_sign")
+    code.branch(0xA7, "int.ascii_digit")
+    code.mark("int.skip_sign")
+    code.emit(0x04)
+    code.local(0x36, 1)
+    code.local(0x15, 1)
+    code.local(0x15, 2)
+    code.branch(0x9F, "int.slow")
+    code.mark("int.ascii_digit")
+    code.local(0x15, 1)
+    code.local(0x15, 2)
+    code.branch(0xA2, "int.ascii_ready")
+    code.local(0x19, 0)
+    code.local(0x15, 1)
+    code.emit(0xB6, character.to_bytes(2, "big"))
+    code.local(0x36, 3)
+    code.local(0x15, 3)
+    code.emit(0x10, bytes((48,)))
+    code.branch(0xA1, "int.slow")
+    code.local(0x15, 3)
+    code.emit(0x10, bytes((57,)))
+    code.branch(0xA3, "int.slow")
+    code.emit(0x84, bytes((1, 1)))
+    code.branch(0xA7, "int.ascii_digit")
+    code.mark("int.ascii_ready")
+    code.local(0x19, 0)
+    code.branch(0xA7, "int.parse_number")
+    code.mark("int.slow")
     code.local(0x19, 0)
     whitespace = r"[\t\n\x0b\f\r \x85\p{Z}]"
     # Possessive repetition avoids regex-stack growth for long digit strings.
@@ -693,7 +739,6 @@ def string_int_method(class_file: ClassFile, *, throw_python) -> Method:
     code.mark("int.digit")
     code.local(0x15, 2)
     code.local(0x19, 0)
-    length = class_file.method_reference("java/lang/String", "length", "()I")
     code.emit(0xB6, length.to_bytes(2, "big"))
     code.branch(0xA2, "int.parse")
     code.local(0x19, 0)
@@ -734,6 +779,7 @@ def string_int_method(class_file: ClassFile, *, throw_python) -> Method:
         "java/lang/StringBuilder", "toString", "()Ljava/lang/String;",
     )
     code.emit(0xB6, string.to_bytes(2, "big"))
+    code.mark("int.parse_number")
     parse = class_file.method_reference(
         "java/lang/Long", "parseLong", "(Ljava/lang/String;)J",
     )

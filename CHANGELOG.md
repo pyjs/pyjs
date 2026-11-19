@@ -6,6 +6,10 @@
   Unicode code-point widths. Negative widths leave text unchanged; widths
   exceeding JVM string capacity raise `MemoryError` before allocation.
 
+- JVM decimal integer parsing avoids regular-expression compilation for ASCII
+  digits with an optional sign. Whitespace, underscores and Unicode digits
+  retain their existing validation and signed 64-bit overflow behavior.
+
 - JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
   inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
 
