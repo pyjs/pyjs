@@ -10,6 +10,27 @@ from pyjs.web.ui.styles import Stylesheet
 
 
 @js
+def ensure_floating_styles():
+    if document.head.querySelector("style[data-floating-panel-reset]") is not None:
+        return
+    stylesheet = Stylesheet('''
+@layer base {
+  :where([data-floating-panel]) {
+    color: inherit;
+    background-color: transparent;
+    overflow: visible;
+    width: auto;
+    height: auto;
+    border: 0;
+    padding: 0;
+  }
+}
+''')
+    stylesheet.setAttribute("data-floating-panel-reset", "")
+    document.head.append(stylesheet)
+
+
+@js
 class FloatingPosition:
     def __init__(self, left: int, top: int):
         self.left = left
@@ -73,19 +94,6 @@ class FloatingPanel(Widget):
         self.modal_listener = FloatingModalListener(self)
         self.dismiss: Callable[[], None] = self.close
         self.add(
-            Stylesheet('''
-@layer base {
-  :where([data-floating-panel]) {
-    color: inherit;
-    background-color: transparent;
-    overflow: visible;
-    width: auto;
-    height: auto;
-    border: 0;
-    padding: 0;
-  }
-}
-'''),
             tw("fixed z-50"),
             {
                 "data-floating-panel": "",
@@ -109,6 +117,7 @@ class FloatingPanel(Widget):
         on_dismiss: Callable[[], None] | None = None,
     ) -> FloatingPosition:
         self.close()
+        ensure_floating_styles()
         modal = anchor.closest("dialog:modal")
         self.modal = modal if isinstance(modal, HTMLDialogElement) else None
         self.dismiss = self.close if on_dismiss is None else on_dismiss

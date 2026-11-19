@@ -14,6 +14,7 @@ from pyjs.web.ui.floating import FloatingPanel
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
 from pyjs.web.ui.popover import Popover, PopoverClose, PopoverContent, PopoverTrigger
 from pyjs.web.ui.tooltip import Tooltip, TooltipContent, TooltipTrigger
+from pyjs.web.ui.typography import TypographyP
 from tests.web.ui.browser import (
     floating_alignment_gap,
     floating_side_gap,
@@ -24,6 +25,32 @@ from tests.web.ui.browser import (
 )
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+def test_floating_styles_do_not_change_consumer_content_or_child_selectors():
+    paragraph = TypographyP("First paragraph")
+    last = div(tw("mb-4 last:mb-0"), "Last child")
+    content = PopoverContent(paragraph, last)
+    anchor = button("Open")
+    empty = FloatingPanel()
+    mount(div(anchor, content, empty))
+    try:
+        for _attempt in range(2):
+            content.open(anchor)
+            empty.open(anchor)
+            assert paragraph.matches(":first-child")
+            assert last.matches(":last-child")
+            assert empty.matches(":empty")
+            assert document.head.querySelectorAll("style[data-floating-panel-reset]").length == 1
+            assert content.textContent == "First paragraphLast child"
+            assert window.getComputedStyle(paragraph).getPropertyValue("margin-top") == "0px"
+            assert window.getComputedStyle(last).getPropertyValue("margin-bottom") == "0px"
+            content.close()
+            empty.close()
+    finally:
+        content.close()
+        empty.close()
 
 
 @js
