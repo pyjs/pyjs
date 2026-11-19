@@ -5,6 +5,7 @@ from pyjs.android.recyclerview import (
     ItemTouchCallback,
     RecyclerView,
     RecyclerViewViewHolder,
+    StaggeredGridLayoutManager,
 )
 from pyjs.java import i32
 from pyjs.java.collections import JavaArrayList, JavaList
@@ -56,6 +57,8 @@ class StaggeredGridDragCallback(ItemTouchCallback):
     target selection or post-move hooks. Another swap with the same holder
     requires a touch-slop reversal along an axis that passed the target edge.
     Other targets still use native ItemTouchHelper selection immediately.
+    Successful staggered moves preserve viewport positions and span offsets
+    instead of keeping a moved first card anchored at its old screen position.
     """
 
     def __init__(self):
@@ -99,4 +102,14 @@ class StaggeredGridDragCallback(ItemTouchCallback):
                      and y + view.getHeight() > other.getBottom())
                     or (y < top and other.getTop() < top and y < other.getTop()))
         self._swap_guard.record(target, left, top, int(x), int(y), horizontal, vertical)
-        super().on_moved(recycler_view, view_holder, from_position, target, to_position, x, y)
+        manager = recycler_view.get_layout_manager()
+        if isinstance(manager, StaggeredGridLayoutManager):
+            # The first attached holder can be the moved item. Otherwise the
+            # next layout anchors its new adapter position at its old offset,
+            # scrolling the grid instead of relocating the card. Preserve the
+            # viewport's layout positions and span offsets before that pass.
+            manager.on_restore_instance_state(manager.on_save_instance_state())
+            # Native onMoved's edge scroll would invalidate these span offsets.
+            # ItemTouchHelper's separate edge-scroll loop still runs normally.
+        else:
+            super().on_moved(recycler_view, view_holder, from_position, target, to_position, x, y)

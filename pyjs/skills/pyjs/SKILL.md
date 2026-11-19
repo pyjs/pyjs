@@ -540,8 +540,11 @@ ciphertext as a portable backup. Keep key work off the Android main thread.
 
 For staggered-grid drag reordering, subclass
 `pyjs.android.reorder.StaggeredGridDragCallback` instead of
-`ItemTouchCallback`. It keeps Android's target selection and scrolling but
-prevents a repeated swap with the same holder during transient relayout.
+`ItemTouchCallback`. It uses Android's target selection and continuous edge
+scrolling, prevents a repeated swap with the same holder during transient
+relayout, and preserves the staggered viewport when the first card moves.
+Keep the container bounds stable during active gestures; progress banners
+must not change the pointer's coordinate origin or move its scrolling edge.
 Swapping back requires reversing by Android's touch slop along an axis that
 passed the preceding target's edge. Motion on an uncrossed axis does not
 release the guard. Other targets remain immediately eligible. Implement

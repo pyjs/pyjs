@@ -213,6 +213,11 @@ class RecyclerView(ViewGroup):
     def set_layout_manager(self, layout: RecyclerViewLayoutManager) -> None:
         pass
 
+    @jvm.native("androidx/recyclerview/widget/RecyclerView",
+                name="getLayoutManager", invocation="virtual")
+    def get_layout_manager(self) -> RecyclerViewLayoutManager | None:
+        pass
+
     @jvm.native(
         "androidx/recyclerview/widget/RecyclerView",
         name="setHasFixedSize",

@@ -1,15 +1,19 @@
+from typing import cast
+
 import pytest
 
 from pyjs import jvm
-from pyjs.android import TextView, View
+from pyjs.android import TextView, View, ViewGroup
 from pyjs.android.gestures import view_configuration
 from pyjs.android.recyclerview import (
     ItemTouchCallback,
     ItemTouchHelper,
     RecyclerView,
+    RecyclerViewAdapter,
     RecyclerViewLayoutParams,
     RecyclerViewViewHolder,
     StaggeredGridLayoutManager,
+    StaggeredGridLayoutParams,
 )
 from pyjs.android.reorder import StaggeredGridDragCallback
 from pyjs.android.testing import NoMatchingViewException, ViewAssertion, by_text, launch
@@ -235,3 +239,94 @@ class ReplayStaggeredOffsets(ViewAssertion):
 def test_staggered_swap_ignores_reversal_on_an_uncrossed_axis() -> None:
     launch(GreetingActivity)
     by_text("Hello from Python").check(ReplayStaggeredOffsets())
+
+
+@jvm.native("androidx/recyclerview/widget/RecyclerView")
+class MeasuredGrid(RecyclerView):
+    def measure(self, width: i32, height: i32) -> None: ...
+
+
+class VariableCards(RecyclerViewAdapter):
+    def __init__(self):
+        super().__init__()
+        self.ids: list[int] = []
+        for index in range(80):
+            self.ids.append(index)
+        self.set_has_stable_ids(True)
+
+    def get_item_count(self) -> i32:
+        return i32(len(self.ids))
+
+    def get_item_id(self, position: i32) -> int:
+        return self.ids[position]
+
+    def on_create_view_holder(self, parent: ViewGroup, kind: i32) -> RecyclerViewViewHolder:
+        return Holder(TextView(parent.getContext()))
+
+    def on_bind_view_holder(self, holder: RecyclerViewViewHolder, position: i32) -> None:
+        number = self.ids[position]
+        holder.item_view.setLayoutParams(StaggeredGridLayoutParams(-1, i32(80 + number % 5 * 40)))
+        cast(TextView, holder.item_view).setText(str(number))
+
+    def move(self, source: i32, destination: i32) -> None:
+        value = self.ids.pop(source)
+        self.ids.insert(destination, value)
+        self.notify_item_moved(source, destination)
+
+
+def layout_grid(grid: MeasuredGrid) -> None:
+    # EXACTLY measure specs keep this real native layout independent of device size.
+    grid.measure(0x40000000 | 720, 0x40000000 | 800)
+    grid.layout(0, 0, 720, 800)
+
+
+def holder_at(grid: RecyclerView, position: i32) -> RecyclerViewViewHolder:
+    found: RecyclerViewViewHolder | None = None
+    for index in range(grid.getChildCount()):
+        holder = grid.getChildViewHolder(grid.getChildAt(i32(index)))
+        if holder.get_binding_adapter_position() == position:
+            found = holder
+    assert found is not None, "Missing position " + str(position)
+    return found
+
+
+class ReplayNativeLayout(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert view is not None and error is None
+        for columns in [1, 2, 3, 4]:
+            for start in [0, 20]:
+                self.replay(view, columns, start)
+
+    def replay(self, view: View, columns: int, start: int) -> None:
+        grid = MeasuredGrid(view.getContext())
+        manager = StaggeredGridLayoutManager(i32(columns), 1)
+        adapter = VariableCards()
+        grid.set_layout_manager(manager)
+        grid.set_adapter(adapter)
+        layout_grid(grid)
+        manager.scroll_to_position_with_offset(i32(start), 0)
+        layout_grid(grid)
+        source = holder_at(grid, i32(start))
+        before = source.item_view.getTop()
+        destination = i32(start + columns * 3)
+        target = holder_at(grid, destination)
+        drag = Drag()
+        drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+        x, y = target.item_view.getLeft(), target.item_view.getBottom()
+        adapter.move(i32(start), destination)
+        drag.on_moved(grid, source, i32(start), target, destination, x, y)
+        layout_grid(grid)
+        assert source.get_binding_adapter_position() == destination
+        assert source.item_view.getTop() > before + 80, str(columns) + " columns: source did not move"
+        target = holder_at(grid, i32(start))
+        adapter.move(destination, i32(start))
+        drag.on_moved(grid, source, destination, target, i32(start), 0, before)
+        layout_grid(grid)
+        assert source.get_binding_adapter_position() == start
+        assert source.item_view.getTop() == before, (str(columns) + " columns: return "
+                                                    + str(source.item_view.getTop()) + " before " + str(before))
+
+
+def test_adapter_moves_relayout_cards_instead_of_scrolling_the_viewport() -> None:
+    launch(GreetingActivity)
+    by_text("Hello from Python").check(ReplayNativeLayout())
