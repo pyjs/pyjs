@@ -2539,6 +2539,18 @@ class JVMEmitter:
                     self.string_helpers.add("repeat")
                     self.code.emit(0xB8, reference.to_bytes(2, "big"))
                     return "Ljava/lang/String;"
+                if target.name == "zfill":
+                    if node.keywords or argument_types not in (["J"], ["Z"]):
+                        raise JVMUnsupported("JVM str.zfill requires one positional integer width", node)
+                    if argument_types == ["Z"]:
+                        self.code.emit(0x85)
+                    self.string_helpers.add("zfill")
+                    reference = self.class_file.method_reference(
+                        self.main_class_name, "pyjs_string_zfill",
+                        "(Ljava/lang/String;J)Ljava/lang/String;",
+                    )
+                    self.code.emit(0xB8, reference.to_bytes(2, "big"))
+                    return "Ljava/lang/String;"
                 if target.name in {"__eq__", "__ne__"} and argument_types == [
                     "Ljava/lang/String;"
                 ]:

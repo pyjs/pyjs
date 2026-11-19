@@ -720,6 +720,21 @@ BYTES_CONSTRUCTION_CONTRACT = _contract(
 )
 
 
+STRING_ZFILL_CONTRACT = _contract(
+    'from pyjs import js',
+    "string_zfill",
+    'value = "-😀"',
+    (("sign before padding", 'value.zfill(4) != "-00😀"'),
+     ("positive sign", '"+12".zfill(5) != "+0012"'),
+     ("empty input", '"".zfill(3) != "000"'),
+     ("negative width", 'value.zfill(-1) != value'),
+     ("equal width", 'value.zfill(2) != value'),
+     ("combining points", '"e\\u0301".zfill(3) != "0e\\u0301"'),
+     ("only leading ASCII sign", '"−7".zfill(4) != "00−7"'),
+     ("embedded NUL", '"\\0".zfill(2) != "0\\0"')),
+)
+
+
 STRING_FIND_CONTRACT = _contract(
     'from pyjs import js',
     "string_find",
