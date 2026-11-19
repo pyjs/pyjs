@@ -736,6 +736,23 @@ STRING_FIND_CONTRACT = _contract(
 )
 
 
+STRING_AFFIX_BOUNDS_CONTRACT = _contract(
+    'from pyjs import js',
+    "string_affix_bounds",
+    'value = "aé😀é"',
+    (("prefix at character offset", 'not value.startswith("😀", 2)'),
+     ("suffix within bounds", 'not value.endswith("😀", 0, -1)'),
+     ("prefix must fit", 'value.startswith("😀é", 2, 3)'),
+     ("suffix must fit", 'value.endswith("é😀", 2, 3)'),
+     ("empty at end", 'not value.startswith("", 4) or not value.endswith("", 4)'),
+     ("past end rejects empty", 'value.startswith("", 5) or value.endswith("", 5)'),
+     ("inverted interval", 'value.startswith("", 3, 2) or value.endswith("", 3, 2)'),
+     ("negative start", 'not value.startswith("é", -1)'),
+     ("boolean bounds", 'not value.startswith("é", True)'),
+     ("embedded NUL", 'not "x\\0y".endswith("\\0", 0, 2)')),
+)
+
+
 BOUNDED_TEXT_SEARCH_CONTRACT = _contract(
     'from pyjs import js',
     "bounded_text_search",

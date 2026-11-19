@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM string `startswith()` and `endswith()` accept positional start/end
+  bounds for a string prefix or suffix. Bounds count Unicode code points,
+  including negative offsets and empty-needle edge cases.
+
 - `Input.set_value()` and `Textarea.set_value()` now include initial values in
   server-rendered HTML. Client updates still change only the live value, not
   the form-reset default. Multiline values retain leading blank lines.

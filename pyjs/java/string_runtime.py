@@ -9,7 +9,8 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
     required = required | ({"length"} if "getitem" in required else set())
     if "repr" in required:
         required = required | {"printable"}
-    if required & {"contains", "startswith", "endswith", "replace", "find", "rfind"}:
+    if required & {"contains", "startswith", "endswith", "replace", "find", "rfind",
+                   "startswith_bounded", "endswith_bounded"}:
         required = required | {"boundary"}
     for name, factory in (
         ("length", string_length_method),
@@ -25,6 +26,8 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("rfind", partial(string_search_method, reverse=True)),
         ("startswith", partial(string_affix_method, suffix=False)),
         ("endswith", partial(string_affix_method, suffix=True)),
+        ("startswith_bounded", partial(string_bounded_affix_method, suffix=False)),
+        ("endswith_bounded", partial(string_bounded_affix_method, suffix=True)),
         ("replace", string_replace_method),
         ("ord", partial(string_ord_method, throw_python=throw_python)),
         ("chr", partial(string_chr_method, throw_python=throw_python)),
@@ -783,8 +786,8 @@ def string_boundary_method(class_file: ClassFile) -> Method:
     )
 
 
-def string_search_method(class_file: ClassFile, *, reverse: bool) -> Method:
-    code = Bytecode()
+def string_search_bounds(code: Bytecode, class_file: ClassFile) -> None:
+    # Shared search ABI: receiver/needle 0/1, long bounds 2/4, UTF-16 bounds 8/9.
     def call(name, descriptor):
         code.emit(0xB6, class_file.method_reference("java/lang/String", name, descriptor).to_bytes(2, "big"))
     code.local(0x19, 0)
@@ -832,6 +835,13 @@ def string_search_method(class_file: ClassFile, *, reverse: bool) -> Method:
         code.emit(0x88)
         call("offsetByCodePoints", "(II)I")
         code.local(0x36, destination)
+
+
+def string_search_method(class_file: ClassFile, *, reverse: bool) -> Method:
+    code = Bytecode()
+    def call(name, descriptor):
+        code.emit(0xB6, class_file.method_reference("java/lang/String", name, descriptor).to_bytes(2, "big"))
+    string_search_bounds(code, class_file)
     code.local(0x19, 1)
     call("length", "()I")
     code.local(0x36, 10)
@@ -879,6 +889,46 @@ def string_search_method(class_file: ClassFile, *, reverse: bool) -> Method:
         0x0009, "pyjs_string_rfind" if reverse else "pyjs_string_find",
         "(Ljava/lang/String;Ljava/lang/String;JJ)J", code.render(), 6, 12,
     )
+
+
+def string_bounded_affix_method(class_file: ClassFile, *, suffix: bool) -> Method:
+    code = Bytecode()
+    string_search_bounds(code, class_file)
+    length = class_file.method_reference("java/lang/String", "length", "()I")
+    code.local(0x19, 1)
+    code.emit(0xB6, length.to_bytes(2, "big"))
+    code.local(0x36, 10)
+    # Compare lengths before adding to the start, avoiding integer overflow.
+    code.local(0x15, 10)
+    code.local(0x15, 9)
+    code.local(0x15, 8)
+    code.emit(0x64)
+    code.branch(0xA3, "search.missing")
+    code.local(0x15, 9 if suffix else 8)
+    if suffix:
+        code.local(0x15, 10)
+        code.emit(0x64)
+    code.local(0x36, 11)
+    boundary = class_file.method_reference(class_file.name, "pyjs_string_boundary", "(Ljava/lang/String;I)Z")
+    code.local(0x19, 0)
+    code.local(0x15, 11)
+    if not suffix:
+        code.local(0x15, 10)
+        code.emit(0x60)
+    code.emit(0xB8, boundary.to_bytes(2, "big"))
+    code.branch(0x99, "search.missing")
+    code.local(0x19, 0)
+    code.local(0x19, 1)
+    code.local(0x15, 11)
+    match = class_file.method_reference("java/lang/String", "startsWith", "(Ljava/lang/String;I)Z")
+    code.emit(0xB6, match.to_bytes(2, "big"))
+    code.emit(0xAC)
+    code.mark("search.missing")
+    code.emit(0x03)
+    code.emit(0xAC)
+    name = "endswith" if suffix else "startswith"
+    return Method(0x0009, f"pyjs_string_{name}_bounded",
+                  "(Ljava/lang/String;Ljava/lang/String;JJ)Z", code.render(), 6, 12)
 
 
 def string_contains_method(class_file: ClassFile) -> Method:

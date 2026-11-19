@@ -17,9 +17,11 @@ def test_shared_bounded_text_search_contract(optimize):
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-def test_shared_string_find_contract(optimize):
-    from tests.backend_semantics import STRING_FIND_CONTRACT
-    result = LLVM().assert_matches_python(STRING_FIND_CONTRACT.source,
+@pytest.mark.parametrize("affix", [False, True], ids=["find", "affixes"])
+def test_shared_string_search_contract(optimize, affix):
+    from tests.backend_semantics import STRING_AFFIX_BOUNDS_CONTRACT, STRING_FIND_CONTRACT
+    contract = STRING_AFFIX_BOUNDS_CONTRACT if affix else STRING_FIND_CONTRACT
+    result = LLVM().assert_matches_python(contract.source,
                                          optimize=optimize, sanitizers=("address", "undefined"))
     assert not result.native.stderr
 

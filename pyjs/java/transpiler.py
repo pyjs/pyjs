@@ -2370,7 +2370,9 @@ class JVMEmitter:
                     and (node.keywords or len(node.args) != 1)):
                 raise JVMUnsupported("JVM list.remove requires one positional argument", node)
             if (isinstance(semantic_receiver, Class)
-                    and semantic_receiver.generic_name == "str" and target.name in {"find", "rfind"}):
+                    and semantic_receiver.generic_name == "str"
+                    and (target.name in {"find", "rfind"} or
+                         target.name in {"startswith", "endswith"} and len(node.args) > 1)):
                 if node.keywords or not 1 <= len(node.args) <= 3:
                     raise JVMUnsupported("JVM string search requires a substring and optional positional bounds", node)
                 if self.expression(node.args[0], expected="Ljava/lang/String;") != "Ljava/lang/String;":
@@ -2387,13 +2389,16 @@ class JVMEmitter:
                         self.code.emit(0x85)
                     elif actual != "J":
                         raise JVMUnsupported("JVM string search bounds must be integers or None", node)
-                self.string_helpers.add(target.name)
+                affix = target.name in {"startswith", "endswith"}
+                helper = target.name + "_bounded" if affix else target.name
+                result_type = "Z" if affix else "J"
+                self.string_helpers.add(helper)
                 reference = self.class_file.method_reference(
-                    self.main_class_name, f"pyjs_string_{target.name}",
-                    "(Ljava/lang/String;Ljava/lang/String;JJ)J",
+                    self.main_class_name, f"pyjs_string_{helper}",
+                    "(Ljava/lang/String;Ljava/lang/String;JJ)" + result_type,
                 )
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
-                return "J"
+                return result_type
             argument_types = (
                 [self.load(leading_argument)] if leading_argument is not None
                 else [self.expression(
