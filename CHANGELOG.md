@@ -49,6 +49,10 @@
   Compiled Android tests can use `pyjs_android_robolectric` for shadow-based
   checks that must not enter device builds.
 
+- Android date/time picker dialogs expose native selection and cancellation
+  callbacks. JVM zoned-time bindings preserve epoch milliseconds and expose
+  daylight-saving gap adjustment and repeated-time offset choices.
+
 - Electron sessions expose typed permission check and request handlers for
   Python-authored host policies. Callers can inspect requesting frame details
   and explicitly allow selected capabilities while denying others.

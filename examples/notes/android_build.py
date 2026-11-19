@@ -15,6 +15,7 @@ def build_android(output: Path | None = None) -> Path:
         "NotesActivity",
         "PyJS Notes",
         compile_sdk=35,
+        min_sdk=26,
         application_class="NotesApplication",
         manifest_overlays=(source.with_name("share.xml"),),
     )

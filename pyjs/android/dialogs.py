@@ -1,7 +1,7 @@
 """Native confirmation dialogs."""
 
 from pyjs import jvm
-from pyjs.android import CharSequence, Context
+from pyjs.android import Button, CharSequence, Context
 from pyjs.java import i32
 
 
@@ -15,9 +15,19 @@ class DialogClickListener:
     def onClick(self, dialog: DialogInterface, which: i32) -> None: ...
 
 
+@jvm.native("android/content/DialogInterface$OnCancelListener", interface=True)
+class DialogCancelListener:
+    def onCancel(self, dialog: DialogInterface) -> None: ...
+
+
 @jvm.native("android/app/AlertDialog")
 class AlertDialog:
+    def show(self) -> None: ...
     def dismiss(self) -> None: ...
+    def cancel(self) -> None: ...
+    def isShowing(self) -> bool: ...
+    def setOnCancelListener(self, listener: DialogCancelListener | None) -> None: ...
+    def getButton(self, which: i32) -> Button | None: ...
 
 
 @jvm.native("android/app/AlertDialog$Builder")

@@ -63,6 +63,12 @@ the original launch intent again. Applications that save incoming content
 must persist its identity and contents separately and prevent duplicate
 processing; this preview is not a durable capture workflow.
 
+The Android example requires API 26 or newer for its Java time APIs.
+The date/time footer demonstrates native date and time dialogs, including
+cancellation and device time-zone conversion. It only previews the selection;
+it does not save a reminder or schedule a notification. Nonexistent local
+times are rejected. Repeated times use Java's earlier-offset default.
+
 ## Android storage recovery
 
 `android_storage.py` saves the seven card IDs in the app-private

@@ -1,5 +1,6 @@
 import importlib
 from datetime import UTC, date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -80,3 +81,35 @@ def main() -> str:
 ''', tmp_path)
     assert result.returncode == 0 and result.stderr == "", result.stderr
     assert result.stdout == "rejected"
+
+
+def test_zoned_time_contract_on_jvm(tmp_path):
+    result = run_jvm('''
+from tests.java.time_contract import zoned_time_contract
+def main() -> int:
+    zoned_time_contract()
+    return 0
+''', tmp_path)
+    assert result.returncode == 0 and result.stderr == "", result.stderr
+
+
+@pytest.mark.parametrize("zone,fields", [
+    ("UTC", (2024, 2, 29, 23, 59)),
+    ("America/New_York", (2026, 11, 1, 1, 30)),
+    ("Australia/Lord_Howe", (2026, 4, 5, 1, 45)),
+])
+def test_zoned_overlap_offsets_match_python(tmp_path, zone, fields):
+    expected = [int(datetime(*fields, tzinfo=ZoneInfo(zone), fold=fold).timestamp() * 1000)
+                for fold in [0, 1]]
+    arguments = ", ".join(f"i32({field})" for field in fields)
+    result = run_jvm(f'''
+from pyjs.java import i32
+from pyjs.java.time import local_date_time, zone_id
+def main() -> str:
+    value = local_date_time({arguments}).atZone(zone_id({zone!r}))
+    earlier = value.withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
+    later = value.withLaterOffsetAtOverlap().toInstant().toEpochMilli()
+    return str(earlier) + ":" + str(later)
+''', tmp_path)
+    assert result.returncode == 0 and result.stderr == "", result.stderr
+    assert result.stdout == f"{expected[0]}:{expected[1]}"

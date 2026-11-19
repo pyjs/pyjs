@@ -13,6 +13,7 @@ from pyjs.android.testing import (
     by_text,
     launch,
     launch_intent,
+    press_back,
     recreate,
     run_on_main,
 )
@@ -28,6 +29,31 @@ pytestmark = [
     pytest.mark.pyjs_android_jvm,
     pytest.mark.pyjs_android_dependencies("androidx"),
 ]
+
+
+class DateTimePreviewResult(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and isinstance(view, TextView)
+        value = view.getText().to_string()
+        assert "Preview only · no reminder scheduled" in value
+        assert ":" in value
+
+
+def test_date_time_preview_cancels_each_stage_and_confirms_without_scheduling() -> None:
+    launch(NotesActivity)
+    by_id(104).click()
+    press_back()
+    by_id(104).assert_text("Selection cancelled · no reminder scheduled")
+    by_id(104).click()
+    by_id(16908313).in_dialog().click()
+    press_back()
+    by_id(104).assert_text("Selection cancelled · no reminder scheduled")
+    by_id(104).click()
+    by_id(16908313).in_dialog().click()
+    by_id(16908313).in_dialog().click()
+    by_id(104).check(DateTimePreviewResult())
+    recreate()
+    by_id(104).assert_text("Choose date and time · preview only")
 
 
 @jvm.native("android/util/Log", name="getStackTraceString")
