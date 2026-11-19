@@ -30,6 +30,16 @@ class SQLiteDoneException(SQLiteException):
     pass
 
 
+@jvm.native("android/database/sqlite/SQLiteDatabaseCorruptException")
+class SQLiteDatabaseCorruptException(SQLiteException):
+    def __init__(self, message: str) -> None: ...
+
+
+@jvm.native("android/database/DatabaseErrorHandler", interface=True)
+class DatabaseErrorHandler:
+    def onCorruption(self, database: SQLiteDatabase) -> None: ...
+
+
 @jvm.native("android/database/Cursor", interface=True)
 class Cursor:
     def moveToNext(self) -> bool: ...
@@ -59,6 +69,7 @@ class SQLiteStatement:
 
 @jvm.native("android/database/sqlite/SQLiteDatabase")
 class SQLiteDatabase:
+    def getPath(self) -> str: ...
     def execSQL(self, sql: str) -> None: ...
     def compileStatement(self, sql: str) -> SQLiteStatement: ...
     def rawQuery(self, sql: str, arguments: JVMArray[str] | None) -> Cursor: ...
@@ -72,6 +83,14 @@ class SQLiteDatabase:
 
 
 @jvm.native("android/database/sqlite/SQLiteDatabase", name="openOrCreateDatabase")
-def open_database(path: str, factory: CursorFactory | None = None) -> SQLiteDatabase:
-    """Open a writable database; ':memory:' creates a connection-local database."""
+def open_database(path: str, factory: CursorFactory | None = None,
+                  error_handler: DatabaseErrorHandler | None = None) -> SQLiteDatabase:
+    """Open/create a database; the default corruption handler may delete files.
+
+    Pass a DatabaseErrorHandler to choose recovery policy. Raising
+    SQLiteDatabaseCorruptException refuses opening without default deletion,
+    skips Android's retry and replaces the original diagnostic. A non-deleting
+    callback may instead return, allowing that retry and native error reporting.
+    ':memory:' creates a connection-local database.
+    """
     ...

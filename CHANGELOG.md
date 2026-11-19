@@ -21,6 +21,10 @@
   Unicode code-point widths. Negative widths leave text unchanged; widths
   exceeding JVM string capacity raise `MemoryError` before allocation.
 
+- Android SQLite callers can supply a native corruption handler instead of
+  accepting the platform default that may delete damaged database files.
+  Applications can refuse opening and retain those files for recovery.
+
 - JVM decimal integer parsing avoids regular-expression compilation for ASCII
   digits with an optional sign. Whitespace, underscores and Unicode digits
   retain their existing validation and signed 64-bit overflow behavior.

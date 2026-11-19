@@ -1203,6 +1203,14 @@ with `pyjs template`.
   database work should run on a worker, not the UI thread.
   Cursor rows are limited by Android's `CursorWindow`; use a statement's
   `simpleQueryForString()` for large scalar text instead of a cursor row.
+  Android's default corruption handler may delete the database and reopen an
+  empty file. Pass a `DatabaseErrorHandler` as `open_database`'s third argument
+  to choose recovery policy. Its `onCorruption(database)` callback can inspect
+  `database.getPath()` and raise `SQLiteDatabaseCorruptException(message)`
+  to refuse opening without that deletion. Raising prevents Android's retry
+  and replaces the original diagnostic. A non-deleting callback may instead
+  return, retaining native error reporting but allowing the open retry.
+  Neither policy repairs corruption or replaces independent backups.
 - JVM `sorted()` supports lists, strings, sets and dictionary keys with stable
   ordering, including `reverse=True`. It uses only `<`, leaves the input
   unchanged, and bounds comparisons to O(n log n). Key callbacks, other
