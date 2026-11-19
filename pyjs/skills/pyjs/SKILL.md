@@ -491,6 +491,19 @@ an explicit application policy. Android API 21+
 `context.get_no_backup_files_dir()` is for state excluded from auto backup;
 it does not encrypt data or make it portable. Keep native file I/O on workers.
 
+For Android SQLite storage, `open_database` from `pyjs.android.sqlite` uses
+Android's default corruption handler unless passed a custom third argument.
+The default can delete corrupt databases and reopen empty ones. For data that
+must remain available for recovery, subclass `DatabaseErrorHandler` with a
+non-deleting `onCorruption(database)`. Returning normally retains native error
+reporting but allows Android to retry an open. Raising
+`SQLiteDatabaseCorruptException(message)` prevents that retry and replaces
+the original diagnostic with the application's message.
+`database.getPath()` identifies the affected database. Keep the callback
+synchronous and small; do not reopen the failing database inside it. This
+does not repair data or guarantee that every corruption is detected. Retain
+independent backups and handle failed opens/queries in the application.
+
 For actual view bounds, implement `OnLayoutChangeListener` from `pyjs.android`
 and attach it with `view.addOnLayoutChangeListener(listener)`. Its
 `onLayoutChange` receives the view and new/old left, top, right and bottom

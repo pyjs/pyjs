@@ -2,15 +2,124 @@
 import pytest
 
 from pyjs.android.sqlite import (
+    DatabaseErrorHandler,
     SQLiteConstraintException,
+    SQLiteDatabase,
+    SQLiteDatabaseCorruptException,
     SQLiteDoneException,
+    SQLiteException,
     open_database,
 )
 from pyjs.android.testing import application_context
 from pyjs.java import JVMArray, i32
-from pyjs.java.io import create_temp_file
+from pyjs.java.io import RandomAccessFile, create_temp_file
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+class PreserveCorruptDatabase(DatabaseErrorHandler):
+    def __init__(self):
+        self.calls = 0
+        self.path = ""
+
+    def onCorruption(self, database: SQLiteDatabase) -> None:
+        self.calls += 1
+        self.path = database.getPath()
+        raise SQLiteDatabaseCorruptException("Preserved corrupt database")
+
+
+def test_corrupt_database_is_not_replaced_when_open_is_refused() -> None:
+    file = create_temp_file("sqlite-corruption", ".db", application_context().getFilesDir())
+    original = "Damaged database bytes retained for recovery. " * 128
+    try:
+        writer = RandomAccessFile(file.getPath(), "rw")
+        try:
+            writer.writeBytes(original)
+            writer.getFD().sync()
+        finally:
+            writer.close()
+        handler = PreserveCorruptDatabase()
+        for attempt in range(2):
+            rejected = False
+            try:
+                database = open_database(file.getPath(), None, handler)
+                database.close()
+            except SQLiteDatabaseCorruptException:
+                rejected = True
+            assert rejected, "A corrupt database must not be replaced by an empty one"
+            assert handler.calls == attempt + 1
+            assert handler.path == file.getPath()
+            assert file.length() == len(original)
+            reader = RandomAccessFile(file.getPath(), "r")
+            try:
+                assert reader.readLine() == original
+                assert reader.readLine() is None
+            finally:
+                reader.close()
+    finally:
+        assert file.delete()
+
+
+def test_custom_handler_keeps_healthy_creation_reopen_and_sql_errors() -> None:
+    file = create_temp_file("sqlite-handler", ".db", application_context().getFilesDir())
+    handler = PreserveCorruptDatabase()
+    try:
+        database = open_database(file.getPath(), None, handler)
+        try:
+            database.execSQL("CREATE TABLE records (value TEXT)")
+            database.execSQL("INSERT INTO records VALUES ('retained')")
+        finally:
+            database.close()
+        database = open_database(file.getPath(), None, handler)
+        try:
+            statement = database.compileStatement("SELECT value FROM records")
+            try:
+                assert statement.simpleQueryForString() == "retained"
+            finally:
+                statement.close()
+            failed = False
+            try:
+                database.execSQL("INSERT INTO missing_table VALUES ('rejected')")
+            except SQLiteException:
+                failed = True
+            assert failed and handler.calls == 0
+        finally:
+            database.close()
+    finally:
+        assert file.delete()
+
+
+def test_statement_corruption_uses_the_registered_handler_without_deleting_file() -> None:
+    file = create_temp_file("sqlite-query-corruption", ".db", application_context().getFilesDir())
+    handler = PreserveCorruptDatabase()
+    try:
+        database = open_database(file.getPath(), None, handler)
+        try:
+            database.execSQL("CREATE TABLE records (value TEXT)")
+            database.execSQL("INSERT INTO records VALUES ('retained')")
+            # A valid schema pointing beyond EOF fails when SQLite reads rows,
+            # not during open. This exercises the statement's corruption hook.
+            database.execSQL("PRAGMA writable_schema = ON")
+            database.execSQL("UPDATE sqlite_master SET rootpage = 999999 WHERE name = 'records'")
+            database.execSQL("PRAGMA writable_schema = OFF")
+            database.execSQL("PRAGMA schema_version = 2")
+            size = file.length()
+            statement = database.compileStatement("SELECT value FROM records")
+            try:
+                failed = False
+                try:
+                    statement.simpleQueryForString()
+                except SQLiteDatabaseCorruptException:
+                    failed = True
+                assert failed and handler.calls == 1
+                assert handler.path == file.getPath()
+                assert file.exists() and file.length() == size
+            finally:
+                statement.close()
+        finally:
+            database.close()
+    finally:
+        assert file.delete()
 
 
 def test_scalar_query_reads_values_larger_than_a_cursor_window() -> None:
