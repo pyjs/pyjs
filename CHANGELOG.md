@@ -61,7 +61,8 @@
   now use the same storage rules as ordinary typed dictionaries.
 
 - Android artifact downloads fall back to Google's Maven Central mirror when
-  both Central endpoints return 404, retaining locked checksum verification.
+  both Central endpoints return 404 or remain rate-limited after bounded
+  retries, retaining locked checksum verification.
 
 - Android text controls expose native input filters and `LengthFilter` for
   bounding future edits without rewriting existing text. Limits count UTF-16
@@ -83,9 +84,9 @@
   screens to defer native view restoration until their controls exist.
   Bundles support typed nested bundles for retaining pending saved state.
 
-- Locked Android artifacts retry a Maven Central 404 once through its other
-  supported HTTPS endpoint. Both downloads require the same pinned checksum;
-  local storage failures, authentication errors and rate limits do not trigger
+- Locked Android artifacts try Maven Central's other supported HTTPS endpoint
+  after a 404 or exhausted rate-limit retries. Downloads require the same pinned
+  checksum; local storage failures and authentication errors do not trigger
   endpoint fallback.
 
 - AndroidX window-insets controls expose software-keyboard show/hide requests

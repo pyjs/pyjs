@@ -114,13 +114,13 @@ class AndroidArtifactResolver:
                 urls.extend(repository + suffix for repository in (CENTRAL_ALTERNATE, CENTRAL_MIRROR))
             for index, url in enumerate(urls):
                 if index:
-                    self.progress(f"Retrying missing artifact: {url}")
+                    self.progress(f"Trying alternate artifact source: {url}")
                 try:
                     return cache.ensure(Artifact(url, artifact.sha256, artifact.filename))
                 except SDKError as error:
                     # sdkmgr retains the HTTP response on its chained download error.
                     response = getattr(error.__cause__, "response", None)
-                    if index == len(urls) - 1 or getattr(response, "status_code", None) != 404:
+                    if index == len(urls) - 1 or getattr(response, "status_code", None) not in {404, 429}:
                         raise
         except SDKError as error:
             raise RuntimeError(str(error)) from error
