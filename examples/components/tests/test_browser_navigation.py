@@ -46,11 +46,16 @@ async def check_standalone_panel_scroll_containment(page):
     panel = "document.querySelector('catalog-app').document_dialog.content"
     await page.set_viewport(1280, 800)
     await page.evaluate("scrollTo(0, 400)")
+    overflow = await page.evaluate("getComputedStyle(document.documentElement).overflow")
+    page_width = await page.evaluate("document.body.clientWidth")
     await page.evaluate(panel + ".show_modal()")
     await page.wait_for_frames()
     before = await page.evaluate("scrollY")
     assert before > 0
     assert await page.evaluate("document.body.style.overflow") == ""
+    assert await page.evaluate("getComputedStyle(document.documentElement).overflow") == "hidden"
+    assert await page.evaluate("document.documentElement.clientWidth === innerWidth")
+    assert await page.evaluate("document.body.clientWidth") == page_width
     bounds = await page.evaluate_json(panel + ".header.getBoundingClientRect().toJSON()")
 
     async def wheel(x, y, delta):
@@ -81,15 +86,41 @@ async def check_standalone_panel_scroll_containment(page):
     await wheel(bounds["x"] + 20, bounds["y"] + 20, 250)
     assert await page.evaluate("scrollY") == before
     await page.evaluate(panel + ".dialog_element.close()")
+    await page.wait_for_frames()
+    assert await page.evaluate("getComputedStyle(document.documentElement).overflow") == overflow
+    assert await page.evaluate("scrollY") == before
     await wheel(8, 8, 250)
     await page.wait_for(f"scrollY > {before}", "page scrolling after native close")
     await page.evaluate(panel + ".show_modal()")
     await page.evaluate(panel + ".remove()")
+    assert await page.evaluate("getComputedStyle(document.documentElement).overflow") == overflow
     before = await page.evaluate("scrollY")
     await wheel(8, 8, 250)
     await page.wait_for(f"scrollY > {before}", "page scrolling after modal removal")
     assert await page.evaluate("document.body.style.overflow") == ""
     await page.clear_viewport()
+
+
+async def check_short_page_modal_geometry(page):
+    geometry = await page.evaluate_json("""(() => {
+        const dialog = document.querySelector('catalog-app').document_dialog;
+        const panel = dialog.content;
+        panel.close();
+        document.body.replaceChildren(dialog);
+        dialog.append(panel);
+        document.body.style.minHeight = '0';
+        document.body.style.height = '100px';
+        return [false, true].map(wrapped => {
+            const before = document.body.clientWidth;
+            if (wrapped) dialog.open(); else panel.show_modal();
+            const opened = document.body.clientWidth;
+            if (wrapped) dialog.close(); else panel.close();
+            return {wrapped, before, opened, closed: document.body.clientWidth};
+        });
+    })()""")
+    for case in geometry:
+        assert case["opened"] == case["before"], case
+        assert case["closed"] == case["before"], case
 
 
 def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
@@ -108,7 +139,7 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
         )
         try:
             await wait_for_http(url, timeout=120)
-            async with Browser() as browser:
+            async with Browser(hide_scrollbars=False) as browser:
                 page = await browser.new_page(url)
                 await page.wait_for_selector("components-app")
                 await page.wait_for_selector("catalog-app")
@@ -126,9 +157,17 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                 ) == "Editable paragraph.\n" * 80
                 for width, height in [(1280, 800), (390, 844), (700, 360)]:
                     await page.set_viewport(width, height)
+                    page_width = await page.evaluate("document.body.clientWidth")
                     await page.evaluate("document.querySelector('catalog-app').document_dialog.open()")
                     panel = 'dialog[aria-label="Edit document"]'
                     await page.wait_for_attribute(panel, "open", "")
+                    assert await page.evaluate("document.body.clientWidth") == page_width
+                    if width < 768:
+                        await page.wait_for_frames()
+                        assert await page.evaluate("""(() => {
+                            const panel = document.querySelector('dialog[aria-label="Edit document"]');
+                            return panel.getBoundingClientRect().width === innerWidth;
+                        })()""")
                     await page.fill(panel + " textarea", "Edited after hydration\n" * 100)
                     await check_modal_actions(page, panel, tmp_path / f"document-menu-{width}.png")
                     await page.evaluate("""(() => {
@@ -380,6 +419,7 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                 await page.wait_for("document.querySelector('catalog-app')?._initialized === true",
                                     "the catalog to hydrate for standalone modal checks")
                 await check_standalone_panel_scroll_containment(page)
+                await check_short_page_modal_geometry(page)
                 assert page.exceptions == []
         finally:
             stop_process(server)

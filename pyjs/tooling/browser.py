@@ -654,11 +654,13 @@ class Browser:
         executable: str | None = None,
         headless: bool = True,
         webgpu: bool = False,
+        hide_scrollbars: bool = True,
         extra_arguments: Sequence[str] = (),
     ):
         self.executable = executable or browser_executable()
         self.headless = headless
         self.webgpu = webgpu
+        self.hide_scrollbars = hide_scrollbars
         try:
             environment_arguments = shlex.split(
                 os.environ.get("PYJS_CHROME_ARGS", "")
@@ -696,9 +698,10 @@ class Browser:
             [
                 f"--remote-debugging-port={self.debug_port}",
                 f"--user-data-dir={profile}",
-                "--hide-scrollbars",
             ]
         )
+        if self.hide_scrollbars:
+            arguments.append("--hide-scrollbars")
         arguments.extend(self.extra_arguments)
         arguments.append("about:blank")
         return arguments

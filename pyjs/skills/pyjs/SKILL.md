@@ -170,9 +170,12 @@ available for every released version.
   `DialogCloseRequest` and call `show_modal()`/`close()` after application
   save checks. It inserts no close button. A native modal escapes ancestor
   inertness: disable its `dialog_element` explicitly while replacing inputs.
-  Panel and backdrop scroll containment leave the page's overflow styles
-  unchanged. This prevents gesture scroll-through in current Chromium;
-  older browsers may not contain gestures on non-scrolling containers.
+  Standalone modal panels hide the page scrollbar without changing inline
+  overflow styles. Opening with `show_modal()` retains an existing page
+  gutter without adding one to short pages. The modal fills narrow viewports.
+  The lock follows native modal state, including close/removal and
+  nested panels; this requires CSS `:has()` support. Panel/backdrop gesture
+  containment additionally depends on support for non-scrolling containers.
 - Use `Textarea(auto_size=True)` from `pyjs.web.ui.textarea` for multiline
   fields that should fit their wrapped content. It fills its container's
   width and grows or shrinks from a touch-friendly row without input listeners.
@@ -613,6 +616,8 @@ directly; the repository's `scripts/capture_*_screenshot.py` scenarios and
 `wait_for_selector`, `wait_for_attribute`, `wait_for_text`, `wait_for_count`,
 `click`, `fill`, `submit`, `attribute`, `attributes`, `text`, and `texts` over
 embedding JavaScript for ordinary DOM interaction.
+Use `Browser(hide_scrollbars=False)` for scrollbar and viewport-layout checks;
+the default hides scrollbars to keep existing visual snapshots stable.
 
 Use `await browser.restart()` inside a `Browser` context to verify durable
 state across a real Chrome process restart. It closes existing pages and their
