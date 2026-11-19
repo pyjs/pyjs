@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Electron sessions expose typed permission check and request handlers for
+  Python-authored host policies. Callers can inspect requesting frame details
+  and explicitly allow selected capabilities while denying others.
+
 - Dropdown keyboard navigation follows current item order after items are
   added, removed or moved. Activation stays with the focused item instead of
   a stale index, including inside open submenus.

@@ -8,6 +8,49 @@ from pyjs.tooling.node import Node
 from pyjs.tooling.node_build import build_node
 
 
+def test_permission_handlers_preserve_frame_details_and_bound_policies(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
+    try:
+        module = importlib.import_module("permission_host")
+        bundle = build_node(module.main, tmp_path / "permissions.cjs", executable=False)
+    finally:
+        sys.modules.pop("permission_host", None)
+    script = r'''
+const assert = require('node:assert/strict');
+const checks = [], requests = [];
+require(process.argv[1]).main({
+  setPermissionCheckHandler: handler => checks.push(handler),
+  setPermissionRequestHandler: handler => requests.push(handler),
+});
+assert.equal(checks.length, 2);
+assert.equal(requests.length, 2);
+assert.equal(checks[0], null);
+assert.equal(requests[0], null);
+const url = 'https://example.test/editor';
+const contents = {getURL: () => url};
+for (const permission of ['clipboard-sanitized-write', 'clipboard-read', 'media', 'unknown']) {
+  for (const isMainFrame of [true, false]) {
+    for (const requestingUrl of [url, 'https://other.test/editor', undefined]) {
+      const details = {requestingUrl, isMainFrame};
+      const expected = permission === 'clipboard-sanitized-write' && isMainFrame && requestingUrl === url;
+      assert.equal(checks[1](contents, permission, 'https://example.test', details), expected);
+      assert.equal(checks[1](null, permission, 'https://example.test', details), false);
+      assert.equal(checks[1](contents, permission, 'https://other.test', details), false);
+      let calls = 0;
+      requests[1](contents, permission, allowed => {calls++; assert.equal(allowed, expected)}, details);
+      assert.equal(calls, 1);
+    }
+  }
+}
+const details = {requestingUrl: url, isMainFrame: true};
+assert.equal(checks[1]({getURL: () => 'https://other.test'}, 'clipboard-sanitized-write',
+  'https://example.test', details), false);
+'''
+    result = subprocess.run([str(Node().executable), "-e", script, bundle],
+                            text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 def test_session_host_callbacks_and_fetch(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
     try:

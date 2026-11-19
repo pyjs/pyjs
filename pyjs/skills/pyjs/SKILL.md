@@ -85,6 +85,13 @@ an intercepted request. `pyjs.electron.window` provides native menus and URL
 guards. Its `create_window` leaves navigation policy to the caller, unlike
 the blanket blocker in `context.createWindow`; install guards before loading
 content. `allow_requests` replaces the session's previous request filter.
+`deny_permissions` denies checks and requests. For selective access, install
+both `Session.setPermissionCheckHandler` and `setPermissionRequestHandler`;
+complete each request callback once. Check the permission and requesting
+frame origin/URL, not just the containing window. A check may have no
+WebContents or requesting URL. Passing `None` clears a handler and restores
+Electron's defaults; it does not deny access. The request details declaration
+currently covers common frame fields, not permission-specific extensions.
 Navigation/request predicate exceptions cancel before propagating to the host's
 error handler. Unset fetch options preserve the input Request's own modes.
 Build-time compilation preserves Python source maps and needs no Python at launch.

@@ -7,6 +7,7 @@ handlers is explicit, for forwarding intercepted requests without recursion.
 from collections.abc import Awaitable, Callable
 
 from pyjs import js
+from pyjs.electron import WebContents
 from pyjs.web.network import Request, Response
 
 
@@ -28,11 +29,48 @@ class FetchOptions:
 
 
 @js.native
+class PermissionCheckDetails:
+    def __init__(self):
+        self.requestingUrl: str | None = None
+        self.isMainFrame = False
+        self.embeddingOrigin: str | None = None
+        self.securityOrigin: str | None = None
+        self.mediaType: str | None = None
+
+
+@js.native
+class PermissionRequest:
+    def __init__(self):
+        self.requestingUrl = ""
+        self.isMainFrame = False
+
+
+@js.native
 class Session:
     def __init__(self):
         self.protocol: Protocol = Protocol()
 
     async def fetch(self, request: Request | str, options: FetchOptions | None = None) -> Response: ...
+
+    def setPermissionCheckHandler(self, handler: Callable[
+        [WebContents | None, str, str, PermissionCheckDetails], bool,
+    ] | None) -> None:
+        """Install a synchronous check policy; pair with a request handler.
+
+        Frame identity comes from the supplied origin/details, not just the
+        top-level WebContents. Passing None restores Electron's default policy.
+        """
+        ...
+
+    def setPermissionRequestHandler(self, handler: Callable[
+        [WebContents, str, Callable[[bool], None], PermissionRequest], None,
+    ] | None) -> None:
+        """Install a request policy that calls its completion callback once.
+
+        Passing None restores Electron's default policy, not deny-all.
+        Permission-specific detail extensions are not yet declared here.
+        """
+        ...
 
 
 @js.inline("require('electron').session.fromPartition({partition})")
