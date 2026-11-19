@@ -143,6 +143,9 @@ class Context:
 
     def getFilesDir(self) -> File: ...
 
+    @jvm.native("android/content/Context", name="getCacheDir", invocation="virtual")
+    def get_cache_dir(self) -> File: ...
+
     def getApplicationContext(self) -> Context: ...
 
     @jvm.native("android/content/Context", name="startActivity", invocation="virtual")
@@ -531,6 +534,12 @@ class Intent(Parcelable):
     @jvm.native("android/content/Intent", name="getFlags", invocation="virtual")
     def get_flags(self) -> i32:
         return i32(0)
+
+    @jvm.native("android/content/Intent", name="setClipData", invocation="virtual")
+    def set_clip_data(self, data: ClipData | None) -> None: ...
+
+    @jvm.native("android/content/Intent", name="getClipData", invocation="virtual")
+    def get_clip_data(self) -> ClipData | None: ...
 
     @jvm.native("android/content/Intent", name="getIntExtra", invocation="virtual")
     def get_int_extra(self, name: str, default: i32) -> i32:
@@ -968,7 +977,21 @@ class KeyEvent:
 
 @jvm.native("android/content/ClipData")
 class ClipData:
-    pass
+    @jvm.native("android/content/ClipData", name="getItemCount", invocation="virtual")
+    def get_item_count(self) -> i32: ...
+
+    @jvm.native("android/content/ClipData", name="getItemAt", invocation="virtual")
+    def get_item_at(self, index: i32) -> ClipDataItem: ...
+
+
+@jvm.native("android/content/ClipData$Item")
+class ClipDataItem:
+    @jvm.native("android/content/ClipData$Item", name="getUri", invocation="virtual")
+    def get_uri(self) -> Uri | None: ...
+
+
+@jvm.native("android/content/ClipData", name="newUri")
+def uri_clip_data(resolver: ContentResolver, label: CharSequence, uri: Uri) -> ClipData: ...
 
 
 @jvm.native("android/view/View$DragShadowBuilder")
@@ -1214,6 +1237,7 @@ __all__ = [
     "Button",
     "CharSequence",
     "ClipData",
+    "ClipDataItem",
     "ComponentName",
     "ContentResolver",
     "Context",
@@ -1259,4 +1283,5 @@ __all__ = [
     "Window",
     "dp",
     "parse_color",
+    "uri_clip_data",
 ]
