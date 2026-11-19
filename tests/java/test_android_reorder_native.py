@@ -85,6 +85,10 @@ class ReplayRelayout(ViewAssertion):
         native = NativeDrag()
         assert native.choose_drop_target(source, candidates, -10, -42) is target
         assert drag.choose_drop_target(source, candidates, -10, -42) is None
+        # The target was to the left, not above: vertical wobble cannot return it.
+        for y in [-40 + drag._swap_guard.slop, 0]:
+            assert native.choose_drop_target(source, candidates, -10, i32(y)) is target
+            assert drag.choose_drop_target(source, candidates, -10, i32(y)) is None
         source.item_view.layout(12, 12, 528, 421)
         target.item_view.layout(552, 12, 1068, 309)
         assert drag.choose_drop_target(source, candidates, 560, 12) is target
@@ -121,7 +125,47 @@ class ReplayDiagonalReturn(ViewAssertion):
             assert native.choose_drop_target(source, candidates, i32(x), -100) is target
             assert drag.choose_drop_target(source, candidates, i32(x), -100) is target
 
+        # A genuinely diagonal target permits a return on either target axis.
+        source.item_view.layout(0, 0, 100, 100)
+        target.item_view.layout(112, 112, 212, 212)
+        drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+        assert drag.choose_drop_target(source, candidates, 130, 130) is target
+        drag.on_moved(recycler, source, 0, target, 1, 130, 130)
+        source.item_view.layout(112, 112, 212, 212)
+        target.item_view.layout(0, 0, 100, 100)
+        assert native.choose_drop_target(source, candidates, -20, 130) is target
+        assert drag.choose_drop_target(source, candidates, -20, 130) is target
+        assert native.choose_drop_target(source, candidates, 130, -20) is target
+        assert drag.choose_drop_target(source, candidates, 130, -20) is target
+
 
 def test_diagonal_swap_allows_a_straight_vertical_return() -> None:
     launch(GreetingActivity)
     by_text("Hello from Python").check(ReplayDiagonalReturn())
+
+
+class ReplayHorizontalNoise(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        context = view.getContext()
+        recycler = RecyclerView(context)
+        recycler.set_layout_manager(StaggeredGridLayoutManager(2, 1))
+        source = Holder(TextView(context))
+        target = Holder(TextView(context))
+        source.item_view.layout(12, 12, 528, 112)
+        target.item_view.layout(12, 124, 528, 424)
+        candidates = candidate_list(target)
+        native = NativeDrag()
+        for x in [14, 400]:
+            drag = Drag()
+            drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+            assert drag.choose_drop_target(source, candidates, i32(x), 330) is target
+            drag.on_moved(recycler, source, 0, target, 1, i32(x), 330)
+            returning_x = i32(x - drag._swap_guard.slop)
+            assert native.choose_drop_target(source, candidates, returning_x, 340) is target
+            assert drag.choose_drop_target(source, candidates, returning_x, 340) is None
+
+
+def test_vertical_swap_ignores_unrelated_horizontal_reversal() -> None:
+    launch(GreetingActivity)
+    by_text("Hello from Python").check(ReplayHorizontalNoise())

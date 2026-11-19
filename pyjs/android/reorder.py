@@ -22,9 +22,10 @@ class _SwapGuard:
     def reset(self) -> None:
         self.target = None
 
-    def record(self, target: object, start_x: int, start_y: int, x: int, y: int) -> None:
-        dx = x - start_x
-        dy = y - start_y
+    def record(self, target: object, start_x: int, start_y: int, x: int, y: int,
+               horizontal: bool = True, vertical: bool = True) -> None:
+        dx = x - start_x if horizontal else 0
+        dy = y - start_y if vertical else 0
         if dx == 0 and dy == 0:
             self.reset()
             return
@@ -39,8 +40,8 @@ class _SwapGuard:
             return True
         dx = x - self.x
         dy = y - self.y
-        # AndroidX can select a target along either axis, even when the other
-        # displacement is larger. A return need not retrace that larger offset.
+        # Either target-facing axis can select a swap, regardless of which
+        # pointer displacement is larger. Ignore motion on unrelated axes.
         return ((self.dx > 0 and dx <= -self.slop)
                 or (self.dx < 0 and dx >= self.slop)
                 or (self.dy > 0 and dy <= -self.slop)
@@ -53,7 +54,7 @@ class StaggeredGridDragCallback(ItemTouchCallback):
     Subclasses provide movement flags, on_move and on_swiped as with
     ItemTouchCallback. Preserve super calls when overriding selection,
     target selection or post-move hooks. Another swap with the same holder
-    requires a touch-slop reversal along either preceding displacement axis.
+    requires a touch-slop reversal along an axis leading toward that target.
     Other targets still use native ItemTouchHelper selection immediately.
     """
 
@@ -83,5 +84,11 @@ class StaggeredGridDragCallback(ItemTouchCallback):
         # on_move may reject a target; only this successful-move hook arms the
         # guard. Staggered layout can retain the old column after notifyItemMoved.
         view = view_holder.item_view
-        self._swap_guard.record(target, int(view.getLeft()), int(view.getTop()), int(x), int(y))
+        other = target.item_view
+        left, top = int(view.getLeft()), int(view.getTop())
+        horizontal = ((x > left and other.getRight() > view.getRight())
+                      or (x < left and other.getLeft() < left))
+        vertical = ((y > top and other.getBottom() > view.getBottom())
+                    or (y < top and other.getTop() < top))
+        self._swap_guard.record(target, left, top, int(x), int(y), horizontal, vertical)
         super().on_moved(recycler_view, view_holder, from_position, target, to_position, x, y)

@@ -87,6 +87,22 @@ def test_target_comparison_uses_identity_not_equality():
     assert guard.allows(second, 101, 0)
 
 
+@pytest.mark.parametrize("horizontal", [True, False])
+@pytest.mark.parametrize("direction", [-1, 1])
+def test_only_target_facing_axes_allow_a_return(horizontal, direction):
+    guard = _SwapGuard()
+    guard.slop = 8
+    target = object()
+    position = direction * 100
+    reverse = position - direction * guard.slop
+    guard.record(target, 0, 0, position, position, horizontal, not horizontal)
+    assert guard.allows(target, reverse, position) is horizontal
+    assert guard.allows(target, position, reverse) is not horizontal
+    guard.record(target, 0, 0, position, position, False, False)
+    assert guard.target is None
+    assert guard.allows(target, position, position)
+
+
 def test_swap_guard_reference_identity_and_reversal_on_jvm(tmp_path):
     result = run_jvm('''
 from pyjs.android.reorder import _SwapGuard
@@ -112,6 +128,9 @@ def main() -> str:
     assert not guard.allows(first, 380, 310)
     assert guard.allows(first, 420, 309)
     assert guard.allows(first, 379, 350)
+    guard.record(first, 12, 12, 400, 330, False, True)
+    assert not guard.allows(first, 379, 350)
+    assert guard.allows(first, 420, 309)
     return "identity and reversal"
 ''', tmp_path)
     assert result.returncode == 0, result.stderr

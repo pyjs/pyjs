@@ -542,8 +542,9 @@ For staggered-grid drag reordering, subclass
 `pyjs.android.reorder.StaggeredGridDragCallback` instead of
 `ItemTouchCallback`. It keeps Android's target selection and scrolling but
 prevents a repeated swap with the same holder during transient relayout.
-Swapping back requires reversing by Android's touch slop along either axis
-that moved before the swap. Other targets remain immediately eligible. Implement
+Swapping back requires reversing by Android's touch slop along an axis leading
+toward the preceding target. Motion on unrelated axes does not release the
+guard. Other targets remain immediately eligible. Implement
 movement flags, `on_move`, and `on_swiped` normally; preserve `super()` calls
 when overriding selection, target selection, or `on_moved` hooks.
 
