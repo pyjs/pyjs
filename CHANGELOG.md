@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Generated web and Django documents request layout resizing when the software
+  keyboard opens, keeping viewport-sized editors and fixed actions above it
+  in supporting browsers. Browsers that ignore `interactive-widget` retain
+  their native keyboard policy.
+
 - JVM string `startswith()` and `endswith()` accept positional start/end
   bounds for a string prefix or suffix. Bounds count Unicode code points,
   including negative offsets and empty-needle edge cases.

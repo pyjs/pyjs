@@ -10,6 +10,7 @@ import pytest
 
 from pyjs import js
 from pyjs.javascript.transpiler import bundle
+from pyjs.server.rendering import page
 from pyjs.testing.android_browser import AndroidBrowser
 from pyjs.tooling.browser import Browser
 from pyjs.web.domx import div, ref, tag, tw
@@ -106,10 +107,7 @@ def chat_origin(tmp_path_factory):
     source, css = bundle(fixture_page, include_main=True, call_main=False)
     (path / 'app.js').write_text(source)
     (path / 'app.css').write_text(css)
-    (path / 'index.html').write_text('<!doctype html><meta name="viewport" '
-        'content="width=device-width,initial-scale=1,interactive-widget=resizes-content">'
-        '<link rel="stylesheet" href="app.css">' + render_html(fixture_page()) +
-        '<script type="module" src="app.js"></script>')
+    (path / 'index.html').write_text(page(fixture_page(), 'app.js', 'app.css'))
     (path / 'ssr.html').write_text((path / 'index.html').read_text().split('<script')[0])
     state_source, state_css = bundle(state_page, include_main=True, call_main=False)
     (path / 'state.js').write_text(state_source)

@@ -19,6 +19,18 @@ from pyjs.web.domx import tag
 from pyjs.web.ssr import raw_html, render_document, render_html
 
 
+def test_generated_page_requests_keyboard_layout_resizing():
+    assert page(tag("main", "Editor"), "app.js", "app.css") == (
+        '<!doctype html>\n<html><head><meta charset="utf-8"/>'
+        '<meta name="viewport" content="width=device-width, initial-scale=1, '
+        'interactive-widget=resizes-content"/>'
+        '<title></title><link rel="icon" href="data:,"/>'
+        '<link rel="stylesheet" href="app.css"/></head>'
+        '<body><main>Editor</main></body>'
+        '<script type="module" src="app.js"> </script></html>'
+    )
+
+
 def test_server_core_does_not_import_django():
     result = subprocess.run(
         [

@@ -22,7 +22,7 @@ from pyjs.server.application import (
     EntryPoint,
 )
 from pyjs.server.build import BuildStats
-from pyjs.server.rendering import navigation_fragment
+from pyjs.server.rendering import DEFAULT_VIEWPORT, navigation_fragment
 from pyjs.tooling.npm import ManagedNpmProject
 from pyjs.web.dom import Element
 from pyjs.web.domx import tag
@@ -272,7 +272,7 @@ class PyJSApplication:
                 tag(
                     "meta",
                     {
-                        "content": "width=device-width, initial-scale=1",
+                        "content": DEFAULT_VIEWPORT,
                         "name": "viewport",
                     },
                 ),
