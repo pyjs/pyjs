@@ -16,6 +16,11 @@
   of an internal compiler error. Wrapped iterator loop diagnostics retain the
   source location.
 
+- JVM list equality and inequality compare values in matching integer,
+  boolean and string storage, including nullable strings. Comparisons use
+  logical length rather than spare backing capacity. Unsupported item domains
+  receive a located diagnostic instead of falling through scalar lowering.
+
 - Android Activities can return a result code and optional Intent to their
   caller, supporting configuration and selection flows with explicit
   cancellation.

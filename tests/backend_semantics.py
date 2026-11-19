@@ -3294,6 +3294,29 @@ EMPTY_LITERAL_SUM_CONTRACT = _contract(
 )
 
 
+SCALAR_LIST_EQUALITY_CONTRACT = _contract(
+    "from pyjs import js",
+    "scalar_list_equality",
+    '''
+    strings = ["雪", "", "😀", "é"]
+    copied = list(strings)
+    integers = [0, -1, 9007199254740991]
+    flags = [True, False]
+    empty: list[str] = []
+    other_empty: list[str] = []
+    ''',
+    (
+        ("independent storage", "strings != copied or not (strings == copied)"),
+        ("reflexivity", "strings != strings"),
+        ("empty lists", "empty != other_empty or empty == strings"),
+        ("length and order", 'strings == ["雪"] or strings == ["", "雪", "😀", "é"]'),
+        ("exact text", 'strings == ["雪", "", "😀", "é"]'),
+        ("integer values", "integers != [0, -1, 9007199254740991] or integers == [0, -1, 42]"),
+        ("boolean values", "flags != [True, False] or flags == [False, True]"),
+    ),
+)
+
+
 STRING_LIST_MEMBERSHIP_CONTRACT = _contract(
     '''
     from pyjs import js

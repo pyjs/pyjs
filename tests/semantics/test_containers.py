@@ -4,11 +4,16 @@ from pyjs.testing.helpers import at
 from tests.backend_semantics import (
     INTEGER_LIST_MEMBERSHIP_CONTRACT,
     NULLABLE_STRING_LIST_MEMBERSHIP_CONTRACT,
+    SCALAR_LIST_EQUALITY_CONTRACT,
     STRING_DICTIONARY_MEMBERSHIP_CONTRACT,
     STRING_LIST_MEMBERSHIP_CONTRACT,
 )
 
 from .helpers import assert_semantics
+
+
+def test_shared_scalar_list_equality():
+    assert_semantics(SCALAR_LIST_EQUALITY_CONTRACT.print_source + "\nmain()\n")
 
 
 @pytest.mark.parametrize("contract", [INTEGER_LIST_MEMBERSHIP_CONTRACT, STRING_DICTIONARY_MEMBERSHIP_CONTRACT, STRING_LIST_MEMBERSHIP_CONTRACT])

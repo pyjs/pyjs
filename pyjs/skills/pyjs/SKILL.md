@@ -493,6 +493,12 @@ iterators such as `enumerate(array)` remain unsupported on JVM. Specialized
 helpers can consume arrays directly; for example, `set(array_of_strings)`
 works. Use an explicit loop for unsupported consumers.
 
+JVM lists support `==`, `!=`, `__eq__()` and `__ne__()` between lists with
+matching integer, boolean or string storage, including nullable strings.
+They compare item values and logical length, not backing capacity or identity.
+Floating, nested, erased-object and mismatched-storage list comparisons remain
+unsupported and receive compilation diagnostics.
+
 Resolve Android resources for configurable application package names with
 `context.get_resources().get_identifier(name, kind, package)`. Missing names
 return zero; check before constructing views. Prefer generated `R` bindings
