@@ -7,6 +7,7 @@ from tests.java.test_exceptions import run_jvm
     "cookie_attributes_and_store_replacement",
     "restored_cookies_follow_native_request_constraints",
     "invalid_native_cookie_names_and_versions_are_catchable",
+    "restoring_cookie_version_preserves_request_header_format",
 ])
 def test_native_cookie_state_on_jvm(case, tmp_path):
     result = run_jvm(f'''

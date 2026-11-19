@@ -105,3 +105,16 @@ def test_invalid_native_cookie_names_and_versions_are_catchable() -> None:
     except IllegalArgumentException:
         rejected = True
     assert rejected
+
+
+def test_restoring_cookie_version_preserves_request_header_format() -> None:
+    original = HttpCookie("session", "saved")
+    original.setVersion(i32(0))
+    original.setPath("/")
+    restored = HttpCookie(original.getName(), original.getValue())
+    restored.setPath(original.getPath())
+    manager = CookieManager()
+    manager.getCookieStore().add(URI("https://example.test/"), restored)
+    assert 'session="saved"' in cookie_header(manager, "https://example.test/notes")
+    restored.setVersion(original.getVersion())
+    assert cookie_header(manager, "https://example.test/notes") == "session=saved"

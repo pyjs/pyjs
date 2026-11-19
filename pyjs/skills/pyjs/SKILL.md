@@ -480,6 +480,9 @@ constructor and domain, path, security, HTTP-only, max-age, version, discard
 and port-list attributes. `CookieStore.getCookies()` includes cookies whose
 paths do not match the origin root. `CookieStore.add()` bypasses response
 acceptance policy: restore only validated records for the intended origin.
+Persist `getVersion()` and restore it with `setVersion()` as well. Constructed
+cookies default to version 1; retaining that default for a version 0 response
+cookie changes its outgoing header quoting and metadata.
 Use a private CookieManager per account and verify server identity before
 resuming authenticated work. Record absolute expiry when accepting cookies;
 `getMaxAge()` does not count down, and reusing it after a restart extends the

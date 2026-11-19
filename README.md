@@ -1010,6 +1010,8 @@ with `pyjs template`.
   origin and attributes before inserting. `getMaxAge()` is a duration, not a
   remaining lifetime; record an absolute expiry when accepting a cookie and
   restore only its remaining duration. Do not renew expiry on every launch.
+  Persist and restore `getVersion()` too: a constructed cookie defaults to
+  version 1, whose quoted header differs from a version 0 response cookie.
   Android API 21+ `context.get_no_backup_files_dir()` supplies private storage
   excluded from automatic backup, not encryption or protection from deletion.
 - JVM clients compile ordinary `API` query, mutation, and action methods into
