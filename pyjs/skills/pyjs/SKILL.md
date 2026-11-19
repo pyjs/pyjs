@@ -544,6 +544,19 @@ stream, including document-provider streams. Close owned outputs in `finally`;
 range/I/O failures propagate and can leave partial output. A successful write
 is not an atomic publication or a disk-synchronization guarantee.
 
+For native binary files, `FileInputStream(File(path))` from `pyjs.java.io`
+supports bounded `read(buffer)` and explicit `close()`. Missing or unreadable
+files raise native `IOException`. Use `ZipOutputStream(stream)` and
+`ZipEntry(name)` from `pyjs.java.zip` for streaming archives. Call
+`putNextEntry`, write byte ranges, and `closeEntry` for each member; `finish`
+writes the central directory without closing the underlying output.
+Closing the ZIP stream closes its underlying stream, including on failure.
+`ZipInputStream(stream).getNextEntry()` returns a native entry or `None`;
+`read(buffer)` returns -1 at that entry's end. It reads local headers rather
+than validating the complete central directory. Applications own worker
+execution, entry/decompressed-byte limits, safe extraction paths, and partial
+output handling. The bindings neither extract files nor provide encryption.
+
 For strict text input, wrap the owned stream in `InputStreamReader` from
 `pyjs.java.io` with `charset_for_name("UTF-8").newDecoder()` from
 `pyjs.java.charset`. Call `read(buffer, offset, length)` with a bounded
