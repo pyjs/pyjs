@@ -1,11 +1,16 @@
-"""Platform message digests for JVM and Android byte streams."""
+"""Platform security exceptions and message digests for JVM and Android."""
 from pyjs import int8, jvm
 from pyjs.java import JVMArray, i32
 
 
-@jvm.native("java/security/NoSuchAlgorithmException")
-class NoSuchAlgorithmException(Exception):
+@jvm.native("java/security/GeneralSecurityException")
+class GeneralSecurityException(Exception):
     def getMessage(self) -> str | None: ...
+
+
+@jvm.native("java/security/NoSuchAlgorithmException")
+class NoSuchAlgorithmException(GeneralSecurityException):
+    pass
 
 
 @jvm.native("java/security/MessageDigest")

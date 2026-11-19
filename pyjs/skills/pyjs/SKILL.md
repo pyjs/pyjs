@@ -500,8 +500,11 @@ a nonce for another encryption with that key. Decryption uses
 `init_parameters(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))`.
 Pass identical account/origin context bytes to `updateAAD` before `doFinal`.
 Both consume `JVMArray[int8]`; `doFinal` returns authenticated plaintext or
-raises `AEADBadTagException` on a mismatched tag. Native JCA setup failures
-can be caught as `GeneralSecurityException`. These APIs have no CPython shim.
+raises `AEADBadTagException` on a mismatched tag. Catch
+`GeneralSecurityException` around the entire stored-data decryption path,
+including initialization: malformed parameters and invalid keys can also make
+stored data unreadable. Recover without returning unauthenticated plaintext.
+These APIs have no CPython shim.
 Applications own bounded, atomic ciphertext storage and backup exclusions.
 Never replace a missing decryption key silently or treat device-bound
 ciphertext as a portable backup. Keep key work off the Android main thread.

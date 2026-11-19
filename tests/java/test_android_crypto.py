@@ -12,6 +12,7 @@ from pyjs.java.crypto import (
     key_generator,
     provider_key_generator,
 )
+from pyjs.java.security import NoSuchAlgorithmException, message_digest
 
 pytestmark = pytest.mark.pyjs_android_jvm
 
@@ -87,3 +88,27 @@ def test_unavailable_crypto_algorithms_and_providers_are_catchable() -> None:
         except GeneralSecurityException:
             rejected = True
         assert rejected
+
+
+def test_digest_failures_use_shared_security_exception_hierarchy() -> None:
+    rejected = False
+    try:
+        message_digest("pyjs-missing-digest")
+    except GeneralSecurityException as error:
+        assert isinstance(error, NoSuchAlgorithmException)
+        assert error.getMessage() is not None
+        rejected = True
+    assert rejected
+
+
+def test_invalid_decryption_parameters_are_catchable() -> None:
+    generator = key_generator("AES")
+    generator.init_bits(256)
+    key = generator.generateKey()
+    rejected = False
+    try:
+        decrypt = cipher("AES/GCM/NoPadding")
+        decrypt.init_parameters(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, JVMArray[int8](0)))
+    except GeneralSecurityException:
+        rejected = True
+    assert rejected

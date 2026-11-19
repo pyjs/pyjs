@@ -1,6 +1,12 @@
 import pytest
 
 from pyjs.android.api import AndroidAPI
+from pyjs.java.crypto import (
+    AEADBadTagException,
+    BadPaddingException,
+    GeneralSecurityException,
+)
+from pyjs.java.security import NoSuchAlgorithmException
 from tests.java.test_exceptions import run_jvm
 
 
@@ -8,6 +14,8 @@ from tests.java.test_exceptions import run_jvm
     "gcm_round_trip_empty_binary_and_associated_data",
     "gcm_rejects_changed_ciphertext_iv_context_and_key",
     "unavailable_crypto_algorithms_and_providers_are_catchable",
+    "digest_failures_use_shared_security_exception_hierarchy",
+    "invalid_decryption_parameters_are_catchable",
 ])
 def test_authenticated_ciphers_on_jvm(case, tmp_path):
     result = run_jvm(f'''
@@ -18,6 +26,12 @@ def main() -> str:
 ''', tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "ok"
+
+
+def test_security_exception_declarations_match_native_hierarchy():
+    assert issubclass(NoSuchAlgorithmException, GeneralSecurityException)
+    assert issubclass(AEADBadTagException, BadPaddingException)
+    assert issubclass(BadPaddingException, GeneralSecurityException)
 
 
 def test_crypto_bindings_match_android_sdk():

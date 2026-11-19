@@ -3,11 +3,7 @@ from typing import Annotated, ClassVar
 
 from pyjs import int8, jvm, uint16
 from pyjs.java import JVMArray, i32
-
-
-@jvm.native("java/security/GeneralSecurityException")
-class GeneralSecurityException(Exception):
-    def getMessage(self) -> str | None: ...
+from pyjs.java.security import GeneralSecurityException as GeneralSecurityException
 
 
 @jvm.native("javax/crypto/BadPaddingException")
