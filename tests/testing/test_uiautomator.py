@@ -17,6 +17,7 @@ def test_uiautomator_device_bridge_exposes_waiting_selectors():
     } == {
         ("get", "()Lorg/pyjs/testing/PyjsDevice;"),
         ("press_home", "()V"),
+        ("press_back", "()V"),
         ("current_package", "()Ljava/lang/String;"),
         (
             "findText",

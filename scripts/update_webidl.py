@@ -475,6 +475,13 @@ PUBLIC_MODULES = (
         global_instances={"Navigator": ("navigator",)},
     ),
     ModuleSpec(
+        "sharing",
+        ("web-share.idl",),
+        imports={"pyjs.web.files": ("File",)},
+        projections=("Navigator",),
+        global_instances={"Navigator": ("navigator",)},
+    ),
+    ModuleSpec(
         "webgpu",
         ("webgpu.idl",),
         imports={

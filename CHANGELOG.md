@@ -62,6 +62,10 @@
   in supporting browsers. Browsers that ignore `interactive-widget` retain
   their native keyboard policy.
 
+- `pyjs.web.sharing` exposes native Web Share data and navigator methods.
+  Android's `create_chooser()` wraps an Intent for the platform chooser.
+  Applications still handle capability checks, cancellation and URI grants.
+
 - Android browser tests tap the visible part of oversized or scroll-clipped
   controls, rejecting hidden or obstructed targets instead of touching elsewhere.
   Touch targeting follows browser clipping for fixed and top-layer content and

@@ -14,6 +14,7 @@ from pyjs.android import (
     TruncateAt,
     View,
     ViewGroup,
+    create_chooser,
     parse_color,
 )
 from pyjs.android.recyclerview import (
@@ -32,6 +33,16 @@ from .android_saves import BackgroundSaveDriver
 from .android_storage import OrderFile, OrderObserver, OrderSession
 
 
+class ShareNote(OnClickListener):
+    def __init__(self, text: str):
+        self.text = text
+
+    def onClick(self, view: View) -> None:
+        intent = (Intent().set_action(Intent.ACTION_SEND).set_type("text/plain")
+                  .put_string_extra(Intent.EXTRA_TEXT, self.text))
+        view.getContext().start_activity(create_chooser(intent))
+
+
 class NoteHolder(RecyclerViewViewHolder):
     def __init__(self, view: TextView) -> None:
         super().__init__(view)
@@ -40,6 +51,7 @@ class NoteHolder(RecyclerViewViewHolder):
         label = cast(TextView, self.item_view)
         label.setText(text)
         label.setContentDescription(text)
+        label.setOnClickListener(ShareNote(text))
 
         background = GradientDrawable()
         background.setColor(parse_color(color))
