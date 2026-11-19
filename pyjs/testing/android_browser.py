@@ -216,11 +216,41 @@ class AndroidBrowser:
             self.targets.discard(target)
 
     async def tap(self, page: BrowserPage, selector: str):
-        """Dispatch a real touch; DOM .click() does not reliably open the IME."""
-        await page.evaluate(f'document.querySelector({json.dumps(selector)}).scrollIntoView({{block:"nearest"}})')
+        """Touch a visible, unobstructed point; DOM clicks do not open the IME."""
+        target = json.dumps(selector)
+        await page.evaluate(f'''(() => {{
+            const element = document.querySelector({target});
+            if (!element) throw new Error('Could not find selector: ' + {target});
+            element.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        }})()''')
         await page.wait_for_frames()
-        box = await page._selector_bounds(selector)
-        point = {'x': box['x'] + box['width'] / 2, 'y': box['y'] + box['height'] / 2}
+        point = await page.evaluate(f'''(() => {{
+            const element = document.querySelector({target});
+            if (!element) throw new Error('Could not find selector: ' + {target});
+            const box = element.getBoundingClientRect();
+            const viewport = window.visualViewport;
+            let left = Math.max(box.left, viewport ? viewport.offsetLeft : 0);
+            let top = Math.max(box.top, viewport ? viewport.offsetTop : 0);
+            let right = Math.min(box.right, viewport ? viewport.offsetLeft + viewport.width : innerWidth);
+            let bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : innerHeight);
+            for (let parent = element.parentElement; parent; parent = parent.parentElement) {{
+                const style = getComputedStyle(parent);
+                const bounds = parent.getBoundingClientRect();
+                if (style.overflowX !== 'visible') {{
+                    left = Math.max(left, bounds.left + parent.clientLeft);
+                    right = Math.min(right, bounds.left + parent.clientLeft + parent.clientWidth);
+                }}
+                if (style.overflowY !== 'visible') {{
+                    top = Math.max(top, bounds.top + parent.clientTop);
+                    bottom = Math.min(bottom, bounds.top + parent.clientTop + parent.clientHeight);
+                }}
+            }}
+            if (right <= left || bottom <= top) throw new Error('No visible touch area: ' + {target});
+            const point = {{x: (left + right) / 2, y: (top + bottom) / 2}};
+            const hit = document.elementFromPoint(point.x, point.y);
+            if (!hit || !element.contains(hit)) throw new Error('Touch target is obscured: ' + {target});
+            return point;
+        }})()''')
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [point]})
         await page.session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
 

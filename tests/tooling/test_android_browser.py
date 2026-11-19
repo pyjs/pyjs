@@ -4,12 +4,14 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from urllib.parse import quote
 
 import pytest
 
 from pyjs.testing import android_browser as module
 from pyjs.testing.android_browser import AndroidBrowser
 from pyjs.tooling.android import AndroidDevice
+from pyjs.tooling.browser import Browser
 
 
 @pytest.fixture(autouse=True)
@@ -213,6 +215,49 @@ def test_unknown_keyboard_state_is_not_silently_accepted_as_hidden(tmp_path, mon
     monkeypatch.setattr(browser, 'adb', AsyncMock(return_value='unrecognized Android output'))
     with pytest.raises(RuntimeError, match='IME visibility'):
         asyncio.run(browser.wait_for_keyboard(False))
+
+
+def test_touch_targets_use_visible_area_and_reject_obstructions(tmp_path):
+    sdk, _, _, _ = sdk_at(tmp_path)
+    driver = AndroidBrowser('geometry-only', sdk=sdk)
+
+    async def scenario():
+        async with Browser() as browser:
+            markup = '''<style>
+                body { margin: 0; }
+                section { position: fixed; left: 40px; top: 80px;
+                          width: 250px; height: 180px; overflow: auto; }
+                textarea { display: block; box-sizing: border-box;
+                           width: 900px; height: 2000px; }
+                aside { position: fixed; inset: 0; background: white; }
+            </style><section><textarea></textarea></section>'''
+            page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.evaluate('''document.addEventListener('touchstart', event => {
+                window.touched = event.target.tagName;
+                window.touchPoint = [event.touches[0].clientX, event.touches[0].clientY];
+            })''')
+            await driver.tap(page, 'textarea')
+            assert await page.evaluate('window.touched') == 'TEXTAREA'
+            assert await page.evaluate("document.activeElement.tagName") == 'TEXTAREA'
+            assert await page.evaluate('''(() => {
+                const [x, y] = window.touchPoint;
+                return x > 40 && x < 290 && y > 80 && y < 260;
+            })()''')
+            await page.evaluate("document.body.append(document.createElement('aside')); window.touched = null")
+            with pytest.raises(RuntimeError, match='Touch target is obscured'):
+                await driver.tap(page, 'textarea')
+            assert await page.evaluate('window.touched') is None
+            await page.evaluate("document.querySelector('aside').remove(); document.querySelector('section').style.height = '0px'")
+            with pytest.raises(RuntimeError, match='No visible touch area'):
+                await driver.tap(page, 'textarea')
+            with pytest.raises(RuntimeError, match='Could not find selector'):
+                await driver.tap(page, '#missing')
+            await page.evaluate("document.body.replaceChildren(document.querySelector('textarea'))")
+            await driver.tap(page, 'textarea')
+            assert await page.evaluate('window.touched') == 'TEXTAREA'
+            assert not page.exceptions
+
+    asyncio.run(scenario())
 
 
 def test_real_android_browser_keyboard_and_owned_emulator_cleanup(tmp_path, pyjs_android_browser_avd):

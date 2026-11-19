@@ -365,9 +365,12 @@ async def check_chat(server_port, artifacts):
         await browser.dismiss_keyboard(page)
 ```
 
-`tap` dispatches touch, not DOM `.click()`. `wait_for_keyboard` checks Android
-IME inset visibility in WindowManager, waiting through inconsistent reports;
-separately wait for the layout change your application requires.
+`tap` dispatches touch, not DOM `.click()`. Targeting intersects the element
+with its scroll containers and visual viewport before dispatch, and rejects
+an obscured center point. It does not dismiss native Chrome prompts or find
+an alternate point around arbitrary overlays. `wait_for_keyboard` checks
+Android IME inset visibility in WindowManager, waiting through inconsistent
+reports; separately wait for the layout change your application requires.
 `dismiss_keyboard` blurs the owned page without risking a Back navigation.
 CDP text insertion does not test autocorrection or composition. Installed PWA
 and physical-device checks remain separate from Chrome-on-emulator acceptance.

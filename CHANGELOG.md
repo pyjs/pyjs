@@ -7,6 +7,9 @@
   in supporting browsers. Browsers that ignore `interactive-widget` retain
   their native keyboard policy.
 
+- Android browser tests tap the visible part of oversized or scroll-clipped
+  controls, rejecting hidden or obstructed targets instead of touching elsewhere.
+
 - JVM string `startswith()` and `endswith()` accept positional start/end
   bounds for a string prefix or suffix. Bounds count Unicode code points,
   including negative offsets and empty-needle edge cases.
