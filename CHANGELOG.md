@@ -2,8 +2,20 @@
 
 ## Unreleased
 
+- `Input.set_value()` and `Textarea.set_value()` now include initial values in
+  server-rendered HTML. Client updates still change only the live value, not
+  the form-reset default. Multiline values retain leading blank lines.
+
+- Standalone `DialogPanel` editors contain wheel/touch scroll chaining over
+  their fixed controls and backdrops without changing page overflow styles.
+  Browsers must support containment on non-scrolling containers; older
+  browsers retain native modal focus containment but may scroll the page.
+
 - JVM `list(text)` constructs independent, mutable lists of Unicode code points
   using the existing string iterator, without repeated prefix indexing.
+
+- `DialogPanel` provides native modal editors with fixed headers and footers,
+  a scrolling body, and a full-viewport layout on small screens.
 
 - JVM JSON decoding accepts required dictionaries containing integer, float,
   and Boolean values, including nested mappings. Generated codec annotations

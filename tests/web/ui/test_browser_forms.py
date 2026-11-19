@@ -8,7 +8,7 @@ from pyjs.testing.web import assert_render, wait_for_frames
 from pyjs.web.dom import document, window
 from pyjs.web.domx import button, div, tw
 from pyjs.web.events import Event
-from pyjs.web.html import HTMLElement, HTMLTextAreaElement
+from pyjs.web.html import HTMLElement, HTMLInputElement, HTMLTextAreaElement
 from pyjs.web.ui.checkbox import Checkbox
 from pyjs.web.ui.field import Field, FieldAccessory, FieldContent
 from pyjs.web.ui.input import Input
@@ -165,6 +165,8 @@ def test_native_form_controls_keep_state_on_the_dom():
 
     assert input_element.get_value() == "ada@example.com"
     assert textarea_element.get_value() == "First programmer"
+    assert cast(HTMLInputElement, input_element.element).defaultValue == ""
+    assert cast(HTMLTextAreaElement, textarea_element.element).defaultValue == ""
     assert checkbox.is_checked()
     assert not switch_control.is_checked()
     assert switch_control.element.getAttribute("role") == "switch"

@@ -68,6 +68,7 @@ from pyjs.web.ui.dialog import (
     DialogDescription,
     DialogFooter,
     DialogHeader,
+    DialogPanel,
     DialogTitle,
     DialogTrigger,
 )
@@ -1002,6 +1003,13 @@ class CatalogApp(Widget):
             )
         )
         self.save_button.addEventListener("click", self.save_profile)
+        document_text = Textarea("Document", auto_size=True)
+        document_text.set_value("Editable paragraph.\n" * 80)
+        document_text.element.setAttribute("aria-label", "Document")
+        document_panel = DialogPanel("Edit document", document_text)
+        tag(document_panel.header, DialogHeader(DialogTitle("Edit document")))
+        tag(document_panel.footer, DialogFooter(DialogClose("Done")))
+        self.document_dialog = ref(Dialog(DialogTrigger("Edit long document"), document_panel))
 
         sidebar = tag(
             "aside",
@@ -1178,7 +1186,7 @@ class CatalogApp(Widget):
                 "flex min-h-72 items-center justify-center rounded-lg border border-slate-200 "
                 "bg-white p-8"
             ),
-            div(tw("text-center"), self.dialog, self.status),
+            div(tw("space-y-4 text-center"), self.dialog, self.document_dialog, self.status),
         )
         source = (
             "Dialog(\n"
@@ -1224,6 +1232,7 @@ class CatalogApp(Widget):
                     "dismissal, and restores focus to the trigger.",
                     "Dialog(trigger: DialogTrigger, content: DialogContent)",
                     "DialogContent(label: str, *children, placement='center', scrollable=False)",
+                    "DialogPanel(label: str, *children): fixed header/footer, scrolling body",
                     "DialogTrigger(*children)",
                 ),
                 component_showcase(

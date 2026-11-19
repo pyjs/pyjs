@@ -10,6 +10,56 @@ from pyjs.tooling.browser import Browser, free_port, wait_for_http
 pytestmark = pytest.mark.pyjs_python
 
 
+async def check_standalone_panel_scroll_containment(page):
+    panel = "document.querySelector('catalog-app').document_dialog.content"
+    await page.set_viewport(1280, 800)
+    await page.evaluate("scrollTo(0, 400)")
+    await page.evaluate(panel + ".show_modal()")
+    await page.wait_for_frames()
+    before = await page.evaluate("scrollY")
+    assert before > 0
+    assert await page.evaluate("document.body.style.overflow") == ""
+    bounds = await page.evaluate_json(panel + ".header.getBoundingClientRect().toJSON()")
+
+    async def wheel(x, y, delta):
+        await page.session.send("Input.dispatchMouseEvent", {
+            "type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": delta,
+        })
+        await page.wait_for_frames()
+
+    for x, y in [(bounds["x"] + 20, bounds["y"] + 10), (8, 8)]:
+        await wheel(x, y, 250)
+        assert await page.evaluate("scrollY") == before
+    await page.evaluate("document.querySelector('catalog-app').dialog.open()")
+    await page.evaluate("document.querySelector('catalog-app').dialog.close()")
+    await wheel(8, 8, 250)
+    assert await page.evaluate("scrollY") == before
+    await page.evaluate(panel + ".body.scrollTop = 0")
+    geometry = await page.evaluate_json("""(() => {
+        const panel = document.querySelector('catalog-app').document_dialog.content;
+        return {height: panel.body.clientHeight, scroll: panel.body.scrollHeight,
+                text: panel.body.querySelector('textarea').value.length};
+    })()""")
+    assert geometry["scroll"] > geometry["height"], geometry
+    bounds = await page.evaluate_json(panel + ".body.getBoundingClientRect().toJSON()")
+    await wheel(bounds["x"] + 20, bounds["y"] + 20, 250)
+    await page.wait_for(panel + ".body.scrollTop > 0", "the modal body to scroll")
+    assert await page.evaluate("scrollY") == before
+    await page.evaluate(panel + ".body.scrollTop = 100000")
+    await wheel(bounds["x"] + 20, bounds["y"] + 20, 250)
+    assert await page.evaluate("scrollY") == before
+    await page.evaluate(panel + ".dialog_element.close()")
+    await wheel(8, 8, 250)
+    await page.wait_for(f"scrollY > {before}", "page scrolling after native close")
+    await page.evaluate(panel + ".show_modal()")
+    await page.evaluate(panel + ".remove()")
+    before = await page.evaluate("scrollY")
+    await wheel(8, 8, 250)
+    await page.wait_for(f"scrollY > {before}", "page scrolling after modal removal")
+    assert await page.evaluate("document.body.style.overflow") == ""
+    await page.clear_viewport()
+
+
 def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
     async def run():
         port = free_port()
@@ -39,6 +89,40 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                     "document.querySelector('catalog-app')._initialized === true",
                     "the editable field example to hydrate",
                 )
+                assert await page.evaluate(
+                    "document.querySelector('dialog[aria-label=\"Edit document\"] textarea').value"
+                ) == "Editable paragraph.\n" * 80
+                for width, height in [(1280, 800), (390, 844), (700, 360)]:
+                    await page.set_viewport(width, height)
+                    await page.evaluate("document.querySelector('catalog-app').document_dialog.open()")
+                    panel = 'dialog[aria-label="Edit document"]'
+                    await page.wait_for_attribute(panel, "open", "")
+                    await page.fill(panel + " textarea", "Edited after hydration\n" * 100)
+                    await page.evaluate("""(() => {
+                        const panel = document.querySelector('dialog[aria-label="Edit document"]');
+                        panel.querySelector('button').focus();
+                    })()""")
+                    await page.wait_for_frames()
+                    await page.screenshot(tmp_path / f"document-panel-{width}.png")
+                    assert await page.evaluate("""(() => {
+                        const button = document.querySelector('dialog[aria-label="Edit document"] button');
+                        const bounds = button.getBoundingClientRect();
+                        return bounds.top >= 0 && bounds.bottom <= innerHeight && bounds.height > 0;
+                    })()""")
+                    await page.session.send("Input.dispatchKeyEvent", {
+                        "type": "keyDown", "key": "Escape", "code": "Escape",
+                        "windowsVirtualKeyCode": 27,
+                    })
+                    await page.session.send("Input.dispatchKeyEvent", {
+                        "type": "keyUp", "key": "Escape", "code": "Escape",
+                        "windowsVirtualKeyCode": 27,
+                    })
+                    await page.wait_for("!document.querySelector('catalog-app').document_dialog.is_open",
+                                        "the document panel to close")
+                    assert await page.evaluate("document.activeElement === "
+                        "document.querySelector('catalog-app').document_dialog.trigger.element")
+                await page.clear_viewport()
+                assert page.exceptions == []
                 task = '#forms textarea[aria-label="Task"]'
                 initial_task = (
                     "Review the project notes and write down the next steps before the meeting.")
@@ -258,6 +342,11 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                     return [...viewer.querySelectorAll('review-card p')].map(node => node.textContent);
                 })()""")
                 assert owners == ["Owner: Publishing team"] * 3
+                assert page.exceptions == []
+                await page.navigate(url)
+                await page.wait_for("document.querySelector('catalog-app')?._initialized === true",
+                                    "the catalog to hydrate for standalone modal checks")
+                await check_standalone_panel_scroll_containment(page)
                 assert page.exceptions == []
         finally:
             stop_process(server)

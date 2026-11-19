@@ -237,6 +237,38 @@ class DialogContent(Widget):
 
 
 @js
+class DialogPanel(DialogContent):
+    """Viewport-bounded editor with fixed header/footer and a scrolling body.
+
+    Compose the public header, body and footer elements. Small screens use the
+    full viewport; larger screens show a centered panel. No close button is
+    inserted: use DialogClose, or handle DialogCloseRequest before saving.
+    Set padded_controls=False for toolbars that supply their own spacing.
+    """
+
+    def __init__(self, label: str, *children, close_on_backdrop: bool = True,
+                 padded_controls: bool = True):
+        super().__init__(label, show_close=False, close_on_backdrop=close_on_backdrop)
+        self.dialog_element.className = tw(
+            "fixed inset-0 z-50 m-0 h-dvh max-h-none w-full max-w-none overflow-hidden "
+            "overscroll-contain backdrop:overflow-hidden backdrop:overscroll-contain "
+            "border-0 bg-white p-0 text-slate-950 shadow-xl backdrop:bg-black/50 "
+            "md:inset-auto md:left-1/2 md:top-1/2 md:h-auto md:max-h-[min(48rem,calc(100dvh-4rem))] "
+            "md:w-[min(48rem,calc(100%-4rem))] md:-translate-x-1/2 md:-translate-y-1/2 "
+            "md:rounded-lg md:border md:border-slate-200 md:open:flex md:flex-col"
+        )["class"]
+        self.surface.className = tw(
+            "flex h-full min-h-0 flex-col md:h-auto md:flex-1")["class"]
+        controls_style = tw("shrink-0 px-6 py-4") if padded_controls else tw("shrink-0")
+        self.header = ref(div(controls_style, {"data-slot": "dialog-panel-header"}))
+        self.body = ref(div(
+            tw("min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4"),
+            {"data-slot": "dialog-panel-body"}, *children))
+        self.footer = ref(div(controls_style, {"data-slot": "dialog-panel-footer"}))
+        self.surface.replaceChildren(self.header, self.body, self.footer)
+
+
+@js
 class Dialog(Widget):
     def __init__(
         self,
