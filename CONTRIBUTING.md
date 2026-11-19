@@ -103,6 +103,8 @@ cache root and rehash bytes on lookup. Old coordinate-based downloads remain
 untouched and are not trusted via their checksum sidecars. The first build
 using the new layout may download its locked artifacts again. PyJS still owns
 dependency locks, AAR/classpath processing, and Android build/test execution.
+Missing or rate-limited Maven Central downloads try the existing alternate
+endpoints after sdkmgr's bounded retries, with the same locked checksum.
 
 ## Pull-request CI
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- JVM `for` loops can traverse native `JVMArray` values directly, including
+  primitive and nested arrays, while retaining their element representation.
+  Unsupported iterator-based membership reports a located diagnostic instead
+  of an internal compiler error. Wrapped iterator loop diagnostics retain the
+  source location.
+
 - Android Activities can return a result code and optional Intent to their
   caller, supporting configuration and selection flows with explicit
   cancellation.
@@ -55,7 +61,8 @@
   now use the same storage rules as ordinary typed dictionaries.
 
 - Android artifact downloads fall back to Google's Maven Central mirror when
-  both Central endpoints return 404, retaining locked checksum verification.
+  both Central endpoints return 404 or remain rate-limited after bounded
+  retries, retaining locked checksum verification.
 
 - Android text controls expose native input filters and `LengthFilter` for
   bounding future edits without rewriting existing text. Limits count UTF-16
@@ -77,9 +84,9 @@
   screens to defer native view restoration until their controls exist.
   Bundles support typed nested bundles for retaining pending saved state.
 
-- Locked Android artifacts retry a Maven Central 404 once through its other
-  supported HTTPS endpoint. Both downloads require the same pinned checksum;
-  local storage failures, authentication errors and rate limits do not trigger
+- Locked Android artifacts try Maven Central's other supported HTTPS endpoint
+  after a 404 or exhausted rate-limit retries. Downloads require the same pinned
+  checksum; local storage failures and authentication errors do not trigger
   endpoint fallback.
 
 - AndroidX window-insets controls expose software-keyboard show/hide requests

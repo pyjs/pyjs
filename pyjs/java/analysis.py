@@ -58,6 +58,13 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     def analyze_isinstance(self, call):
         return call.isinstance(validate_numeric=False)
 
+    def iterable_membership_comparison(self, node, left, operator, right, protocol):
+        # The shared fallback imports JavaScript's dynamic equality/iterator
+        # runtime, which has no JVM representation.
+        self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                  "JVM membership through __iter__ is not implemented",
+                  help="Use an explicit loop or define __contains__ on the collection.")
+
     def truth_test(self, node, test):
         if isinstance(test, ast.BoolOp):
             # A condition consumes only truth, not the operand-valued union.

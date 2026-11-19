@@ -5,6 +5,7 @@ import zipfile
 import httpx
 import pytest
 import sdkmgr.artifacts
+import sdkmgr.download
 
 from pyjs.tooling.android_artifacts import (
     AndroidArtifact,
@@ -85,22 +86,25 @@ def test_resolves_locked_jar_and_aar_classpath(tmp_path, explicit_artifacts):
 
 
 @pytest.mark.parametrize("alternate", ["valid", "missing", "corrupt", "mirror", "mirror-corrupt"])
-def test_central_missing_artifact_uses_verified_alternates(tmp_path, monkeypatch, alternate):
+@pytest.mark.parametrize("status", [404, 429])
+def test_central_unavailable_artifact_uses_verified_alternates(tmp_path, monkeypatch, alternate, status):
     content = b"locked artifact"
     artifact = AndroidArtifact("example", "runtime", "1", "jar", "central",
                                hashlib.sha256(content).hexdigest())
     urls = []
+    delays = []
 
     def download(request):
         urls.append(str(request.url))
-        if (len(urls) == 1 or alternate == "missing"
-                or len(urls) == 2 and alternate.startswith("mirror")):
-            return httpx.Response(404)
+        if (request.url.host == "repo.maven.apache.org" or alternate == "missing"
+                or request.url.host == "repo1.maven.org" and alternate.startswith("mirror")):
+            return httpx.Response(status)
         return httpx.Response(200, content=content if alternate in {"valid", "mirror"} else b"wrong content")
 
     client = httpx.Client
     monkeypatch.setattr(httpx, "Client", lambda **options:
                         client(transport=httpx.MockTransport(download), **options))
+    monkeypatch.setattr(sdkmgr.download.time, "sleep", delays.append)
     resolver = AndroidArtifactResolver(tmp_path)
     if alternate in {"valid", "mirror"}:
         path = resolver.resolve_artifacts([artifact]).jars[0]
@@ -114,11 +118,15 @@ def test_central_missing_artifact_uses_verified_alternates(tmp_path, monkeypatch
     expected = [artifact.url, "https://repo1.maven.org/maven2/example/runtime/1/runtime-1.jar"]
     if alternate in {"missing", "mirror", "mirror-corrupt"}:
         expected.append("https://maven-central.storage-download.googleapis.com/maven2/example/runtime/1/runtime-1.jar")
-    assert urls == expected
+    failures = len(expected) if alternate == "missing" else len(expected) - 1
+    attempts = 3 if status == 429 else 1
+    assert urls == [url for index, url in enumerate(expected)
+                    for _ in range(attempts if index < failures else 1)]
+    assert delays == ([0.5, 1.0] * failures if status == 429 else [])
 
 
 @pytest.mark.parametrize("repository, failure", [
-    ("google", 404), ("central", 401), ("central", 403), ("central", 429),
+    ("google", 404), ("google", 429), ("central", 401), ("central", 403), ("central", 500),
     ("central", "corrupt"), ("central", "disk"), ("central", "opaque"),
 ])
 @pytest.mark.parametrize("missing_primary", [False, True])
