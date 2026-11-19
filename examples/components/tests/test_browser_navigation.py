@@ -101,7 +101,7 @@ async def check_standalone_panel_scroll_containment(page):
     await page.clear_viewport()
 
 
-async def check_short_page_modal_geometry(page):
+async def check_page_gutter_modal_geometry(page):
     geometry = await page.evaluate_json("""(() => {
         const dialog = document.querySelector('catalog-app').document_dialog;
         const panel = dialog.content;
@@ -109,18 +109,24 @@ async def check_short_page_modal_geometry(page):
         document.body.replaceChildren(dialog);
         dialog.append(panel);
         document.body.style.minHeight = '0';
-        document.body.style.height = '100px';
-        return [false, true].map(wrapped => {
+        return ['auto', 'stable', 'stable both-edges'].flatMap(gutter => {
+          document.documentElement.style.scrollbarGutter = gutter;
+          return ['100px', '3000px'].flatMap(height => {
+           document.body.style.height = height;
+           return [false, true].map(wrapped => {
             const before = document.body.clientWidth;
             if (wrapped) dialog.open(); else panel.show_modal();
             const opened = document.body.clientWidth;
             if (wrapped) dialog.close(); else panel.close();
-            return {wrapped, before, opened, closed: document.body.clientWidth};
+            return {gutter, height, wrapped, before, opened, closed: document.body.clientWidth};
+           });
+          });
         });
     })()""")
     for case in geometry:
         assert case["opened"] == case["before"], case
         assert case["closed"] == case["before"], case
+    await page.evaluate("document.documentElement.style.scrollbarGutter = ''")
 
 
 def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
@@ -419,7 +425,7 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                 await page.wait_for("document.querySelector('catalog-app')?._initialized === true",
                                     "the catalog to hydrate for standalone modal checks")
                 await check_standalone_panel_scroll_containment(page)
-                await check_short_page_modal_geometry(page)
+                await check_page_gutter_modal_geometry(page)
                 assert page.exceptions == []
         finally:
             stop_process(server)

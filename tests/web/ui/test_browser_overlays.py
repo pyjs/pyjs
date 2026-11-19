@@ -4,11 +4,13 @@ import pytest
 
 from pyjs import js
 from pyjs.testing.web import wait_for_frames
-from pyjs.web.dom import document
+from pyjs.web.dom import document, window
+from pyjs.web.domx import button, div, tw
 from pyjs.web.events import Event, MouseEvent
 from pyjs.web.html import HTMLElement
 from pyjs.web.ui.combobox import Combobox, ComboboxItem
 from pyjs.web.ui.dialog import DialogPanel
+from pyjs.web.ui.floating import FloatingPanel
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
 from pyjs.web.ui.popover import Popover, PopoverClose, PopoverContent, PopoverTrigger
 from pyjs.web.ui.tooltip import Tooltip, TooltipContent, TooltipTrigger
@@ -22,6 +24,41 @@ from tests.web.ui.browser import (
 )
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+def test_floating_panels_preserve_css_defaults_and_allow_consumer_styles():
+    anchor = button("Open")
+    plain = FloatingPanel("Plain content")
+    choices = Combobox(ComboboxItem("small", "Small"))
+    themed = FloatingPanel(tw("bg-red-500 text-white overflow-auto w-40 h-20"), "Themed")
+    host = div(anchor, plain, choices, themed)
+    mount(host)
+    original = document.body.style.getPropertyValue("color")
+    document.body.style.setProperty("color", "rgb(200, 0, 0)")
+    try:
+        plain.open(anchor)
+        style = window.getComputedStyle(plain)
+        assert style.getPropertyValue("color") == "rgb(200, 0, 0)"
+        assert style.getPropertyValue("background-color") == "rgba(0, 0, 0, 0)"
+        assert style.getPropertyValue("overflow") == "visible"
+        choices.open()
+        style = window.getComputedStyle(choices.panel)
+        assert style.getPropertyValue("color") == "rgb(200, 0, 0)"
+        assert style.getPropertyValue("background-color") == "rgb(255, 255, 255)"
+        assert style.getPropertyValue("overflow") == "visible"
+        themed.open(anchor)
+        style = window.getComputedStyle(themed)
+        assert style.getPropertyValue("color") == "rgb(255, 255, 255)"
+        assert style.getPropertyValue("background-color") != "rgba(0, 0, 0, 0)"
+        assert style.getPropertyValue("overflow") == "auto"
+        assert style.getPropertyValue("width") == "160px"
+        assert style.getPropertyValue("height") == "80px"
+    finally:
+        plain.close()
+        choices.close()
+        themed.close()
+        document.body.style.setProperty("color", original)
 
 
 @js

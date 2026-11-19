@@ -92,6 +92,12 @@ async def test_dropdown_inside_modal_is_focusable_and_closes_with_its_dialog():
     panel.show_modal()
     await wait_for_frames()
     assert menu.is_open
+    bounds = item.element.getBoundingClientRect()
+    assert document.elementFromPoint(bounds.left + 5, bounds.top + 5) is item.element
+    cast(HTMLElement, item.element).click()
+    assert menu.selected_value == "history"
+    assert not menu.is_open
+    menu.open()
     panel.remove()
     assert not menu.is_open
     assert not menu.content.isConnected
@@ -303,6 +309,13 @@ async def test_modal_submenu_closes_after_selection_parent_close_and_removal():
         assert menu.submenu.panel.parentElement is panel.dialog_element
         assert document.activeElement is menu.nested_item.element
         if action == "select":
+            panel.close()
+            panel.show_modal()
+            await wait_for_frames()
+            bounds = menu.nested_item.element.getBoundingClientRect()
+            hit = document.elementFromPoint(bounds.left + 5, bounds.top + 5)
+            assert hit is not None and menu.nested_item.element.contains(hit)
+            cast(HTMLElement, menu.nested_item.element).focus()
             press_key(menu.nested_item.element, "Enter")
             assert selection.count == 1
             assert menu.selected_value == "nested"

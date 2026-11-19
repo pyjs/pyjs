@@ -10,6 +10,8 @@
   layer and remain interactive inside native modal dialogs. Closing or
   removing a containing dialog dismisses its floating controls. Dropdown
   keyboard activation now invokes item callbacks like pointer activation.
+  Floating panels retain theme styling and remain above rapidly reopened
+  dialogs; pre-reserved root scrollbar gutters are not reserved twice.
   These controls require browser support for the Popover API.
 
 - Modal `DialogPanel` editors hide the background page scrollbar through CSS

@@ -6,6 +6,7 @@ from pyjs.web.domx import tw
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLDialogElement
 from pyjs.web.ui import Widget
+from pyjs.web.ui.styles import Stylesheet
 
 
 @js
@@ -51,8 +52,13 @@ class FloatingModalListener:
 
     def handleEvent(self, event: Event):
         modal = self.panel.modal
-        # Native close leaves manual popovers open; a queued close may be stale.
-        if modal is not None and not modal.open:
+        if modal is None:
+            return
+        if modal.open:
+            # A reopened modal is above the surviving popover in the top layer.
+            self.panel.hidePopover()
+            self.panel.showPopover()
+        else:
             try:
                 self.panel.dismiss()
             finally:
@@ -67,8 +73,22 @@ class FloatingPanel(Widget):
         self.modal_listener = FloatingModalListener(self)
         self.dismiss: Callable[[], None] = self.close
         self.add(
+            Stylesheet('''
+@layer base {
+  :where([data-floating-panel]) {
+    color: inherit;
+    background-color: transparent;
+    overflow: visible;
+    width: auto;
+    height: auto;
+    border: 0;
+    padding: 0;
+  }
+}
+'''),
             tw("fixed z-50"),
             {
+                "data-floating-panel": "",
                 "data-state": "closed",
                 "popover": "manual",
                 "style": (

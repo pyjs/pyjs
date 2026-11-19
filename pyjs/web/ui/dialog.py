@@ -280,7 +280,10 @@ body:has([data-dialog-panel][data-page-gutter]:modal) {
 
     def show_modal(self):
         root = document.documentElement
-        page_gutter = root is not None and window.innerWidth > root.clientWidth
+        root_reserves_gutter = root is not None and "stable" in (
+            window.getComputedStyle(root).getPropertyValue("scrollbar-gutter"))
+        page_gutter = (not root_reserves_gutter and root is not None
+                       and window.innerWidth > root.clientWidth)
         if page_gutter or document.querySelector(
             "[data-dialog-panel][data-page-gutter]:modal"
         ) is not None:
