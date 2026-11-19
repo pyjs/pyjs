@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Native JVM/Android cookies can be constructed and inspected for explicit
+  session restoration. Cookie storage remains in memory unless the app saves
+  it. Android exposes its API 21+ no-backup directory for device-bound state;
+  applications still own encryption, expiry and account isolation.
+
 - Android views expose native layout-change listeners with previous and current
   bounds, including registration and removal for responsive containers.
 

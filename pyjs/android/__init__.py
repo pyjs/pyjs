@@ -146,6 +146,9 @@ class Context:
     @jvm.native("android/content/Context", name="getCacheDir", invocation="virtual")
     def get_cache_dir(self) -> File: ...
 
+    @jvm.native("android/content/Context", name="getNoBackupFilesDir", invocation="virtual")
+    def get_no_backup_files_dir(self) -> File: ...
+
     def getApplicationContext(self) -> Context: ...
 
     @jvm.native("android/content/Context", name="getSystemService", invocation="virtual")
