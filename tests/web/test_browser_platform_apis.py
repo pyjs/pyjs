@@ -104,6 +104,19 @@ def test_date_now_uses_native_epoch_milliseconds():
 
 
 @js
+def test_date_get_time_preserves_epoch_milliseconds_and_offsets():
+    assert Date(0).getTime() == 0
+    assert Date(-1).getTime() == -1
+    assert Date(253_402_300_799_999).getTime() == 253_402_300_799_999
+    assert Date("1969-12-31T23:59:59.999Z").getTime() == -1
+    assert Date("1970-01-01T05:45:00+05:45").getTime() == 0
+    assert Date("2026-11-01T01:30:00-04:00").getTime() == 1_793_511_000_000
+    assert Date("2026-11-01T01:30:00-05:00").getTime() == 1_793_514_600_000
+    invalid = Date("not a date").getTime()
+    assert invalid != invalid
+
+
+@js
 def test_date_local_formatting_preserves_seconds_and_date_without_changing_the_instant():
     date = Date("2026-11-01T12:34:56Z")
     later = Date("2026-11-01T12:34:57Z")

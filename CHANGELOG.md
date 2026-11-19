@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
+  inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
+
 - Electron sessions expose typed permission check and request handlers for
   Python-authored host policies. Callers can inspect requesting frame details
   and explicitly allow selected capabilities while denying others.

@@ -4,7 +4,7 @@ import json
 import random
 import time
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Self, TypedDict
 from urllib.parse import quote, unquote
 
@@ -507,11 +507,17 @@ class Date:
         elif isinstance(value, str):
             self._datetime = datetime.fromisoformat(value.replace("Z", "+00:00"))
         else:
-            self._datetime = datetime.fromtimestamp(value / 1_000, UTC)
+            self._datetime = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=value)
 
     @staticmethod
     def now() -> int:
         return time.time_ns() // 1_000_000
+
+    def getTime(self) -> float:
+        """Return epoch milliseconds; native JavaScript returns NaN for invalid dates."""
+        delta = self._datetime.astimezone(UTC) - datetime(1970, 1, 1, tzinfo=UTC)
+        return float((delta.days * 86_400 + delta.seconds) * 1_000
+                     + delta.microseconds // 1_000)
 
     def toISOString(self) -> str:
         return self._datetime.isoformat(timespec="milliseconds").replace("+00:00", "Z")
