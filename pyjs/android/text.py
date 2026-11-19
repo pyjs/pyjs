@@ -1,10 +1,17 @@
 """Native styled text; range offsets are UTF-16 code units."""
 
 from pyjs import jvm
-from pyjs.android import CharSequence, Editable
+from pyjs.android import CharSequence, Editable, InputFilter
 from pyjs.android import Spannable as Spannable
 from pyjs.android import Spanned as Spanned
 from pyjs.java import i32
+
+
+@jvm.native("android/text/InputFilter$LengthFilter")
+class LengthFilter(InputFilter):
+    def __init__(self, maximum: i32) -> None: ...
+
+    def getMax(self) -> i32: ...
 
 
 @jvm.native("android/text/SpannableString")

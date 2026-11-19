@@ -827,6 +827,11 @@ class MarginLayoutParams(LayoutParams):
         self.bottom_margin = bottom
 
 
+@jvm.native("android/text/InputFilter", interface=True)
+class InputFilter:
+    pass
+
+
 @jvm.native("android/widget/TextView")
 class TextView(View):
     def __init__(self, context: Context) -> None:
@@ -841,6 +846,10 @@ class TextView(View):
 
     def setHint(self, hint: CharSequence) -> None:
         pass
+
+    def setFilters(self, filters: JVMArray[InputFilter]) -> None: ...
+
+    def getFilters(self) -> JVMArray[InputFilter]: ...
 
     def setMinLines(self, lines: i32) -> None:
         pass

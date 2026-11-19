@@ -28,6 +28,10 @@
 - Android artifact downloads fall back to Google's Maven Central mirror when
   both Central endpoints return 404, retaining locked checksum verification.
 
+- Android text controls expose native input filters and `LengthFilter` for
+  bounding future edits without rewriting existing text. Limits count UTF-16
+  units and preserve complete surrogate pairs when truncating inserted text.
+
 - Android text views expose API 35's glyph-bounds width policy, allowing
   applications to select advance-based layout for expensive long lines
   without modifying their contents.
