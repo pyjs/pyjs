@@ -1,5 +1,7 @@
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
+from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.java.test_exceptions import run_jvm
 
 
@@ -107,3 +109,52 @@ def main() -> str:
 ''', tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "firstsecond0"
+
+
+@pytest.mark.parametrize("item_type,needle", [
+    ("i32", "i32(0)"), ("int", "0"), ("str", '"needle"'),
+])
+@pytest.mark.parametrize("operation", ["in", "not in"])
+def test_array_membership_has_a_located_unsupported_boundary(item_type, needle, operation):
+    source = ("from pyjs.java import JVMArray, i32\n"
+              "def main() -> bool:\n"
+              f"    values = JVMArray[{item_type}](2)\n"
+              f"    return {needle} {operation} values\n")
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm(source, filename="array_membership.py")
+    assert caught.value.lineno == 4
+    assert caught.value.diagnostic.code == "PYJS2001"
+    assert caught.value.diagnostic.message == (
+        "JVM membership through __iter__ is not implemented")
+    assert caught.value.diagnostic.help == (
+        "Use an explicit loop or define __contains__ on the collection.",)
+
+
+@pytest.mark.parametrize("source", ["JVMArray[int](2)", "[1, 2]"])
+@pytest.mark.parametrize("expression", ["enumerate(values)", "zip(values, values)"])
+def test_iterator_wrapper_boundary_points_to_the_source_expression(source, expression):
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm("from pyjs.java import JVMArray\n"
+                      "def main() -> int:\n"
+                      f"    values = {source}\n"
+                      f"    for pair in {expression}:\n"
+                      "        pass\n"
+                      "    return 0\n", filename="array_consumer.py")
+    assert str(caught.value) == (
+        "JVM cannot iterate over Iterator__tuple__int_int at line 4 "
+        "while compiling array_consumer.main")
+
+
+def test_array_of_strings_can_feed_a_specialized_iterable_helper(tmp_path):
+    result = run_jvm('''
+from pyjs.java import JVMArray
+def main() -> str:
+    values = JVMArray[str](3)
+    values[0] = "x"
+    values[1] = "y"
+    values[2] = "x"
+    unique = set(values)
+    return str(len(unique)) + str("x" in unique) + str("missing" in unique)
+''', tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "2TrueFalse"

@@ -3452,7 +3452,8 @@ class JVMEmitter:
         if list_type.generic_name != "list":
             raise JVMUnsupported(
                 f"JVM cannot iterate over {list_type.name}",
-                node,
+                node.iterable,
+                fragment=self.current_function.source_fragment,
             )
         item_value_type = next(iter(list_type.generic_types.values()))
         return (

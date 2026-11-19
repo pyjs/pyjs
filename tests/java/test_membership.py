@@ -1,5 +1,6 @@
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
 from pyjs.java.classpath import read_jvm_class
 from tests.backend_semantics import (
@@ -235,3 +236,18 @@ def main() -> int:
     assert int8(127) not in small
     return 42
 ''', tmp_path)
+
+
+def test_iterator_only_membership_does_not_import_javascript_runtime():
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm('''from collections.abc import Iterator
+class Values:
+    def __iter__(self) -> Iterator[int]:
+        return iter([1, 2])
+def main() -> bool:
+    return 2 in Values()
+''')
+    assert caught.value.lineno == 6
+    assert caught.value.diagnostic.code == "PYJS2001"
+    assert caught.value.diagnostic.message == (
+        "JVM membership through __iter__ is not implemented")

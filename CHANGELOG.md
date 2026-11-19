@@ -4,6 +4,9 @@
 
 - JVM `for` loops can traverse native `JVMArray` values directly, including
   primitive and nested arrays, while retaining their element representation.
+  Unsupported iterator-based membership reports a located diagnostic instead
+  of an internal compiler error. Wrapped iterator loop diagnostics retain the
+  source location.
 
 - Android Activities can return a result code and optional Intent to their
   caller, supporting configuration and selection flows with explicit
