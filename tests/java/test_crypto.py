@@ -15,6 +15,8 @@ from tests.java.test_exceptions import run_jvm
     "gcm_rejects_changed_ciphertext_iv_context_and_key",
     "unavailable_crypto_algorithms_and_providers_are_catchable",
     "digest_failures_use_shared_security_exception_hierarchy",
+    "caught_native_subclass_inherits_message_access",
+    "caught_crypto_base_inherits_message_access",
     "invalid_decryption_parameters_are_catchable",
 ])
 def test_authenticated_ciphers_on_jvm(case, tmp_path):
@@ -32,6 +34,42 @@ def test_security_exception_declarations_match_native_hierarchy():
     assert issubclass(NoSuchAlgorithmException, GeneralSecurityException)
     assert issubclass(AEADBadTagException, BadPaddingException)
     assert issubclass(BadPaddingException, GeneralSecurityException)
+
+
+def test_caught_digest_subclass_calls_inherited_native_method(tmp_path):
+    result = run_jvm('''
+from pyjs.java.security import NoSuchAlgorithmException, message_digest
+def main() -> str:
+    try:
+        message_digest("pyjs-missing-digest")
+    except NoSuchAlgorithmException as error:
+        return "message:" + str(error.getMessage() is not None)
+    return "not caught"
+''', tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "message:True"
+
+
+@pytest.mark.parametrize("caught", ["BadPaddingException", "AEADBadTagException"])
+def test_caught_crypto_subclass_calls_inherited_native_method(tmp_path, caught):
+    result = run_jvm(f'''
+from pyjs import int8
+from pyjs.java import JVMArray
+from pyjs.java.crypto import {caught}, Cipher, GCMParameterSpec, cipher, key_generator
+def main() -> str:
+    generator = key_generator("AES")
+    generator.init_bits(256)
+    decrypt = cipher("AES/GCM/NoPadding")
+    decrypt.init_parameters(Cipher.DECRYPT_MODE, generator.generateKey(),
+                            GCMParameterSpec(128, JVMArray[int8](12)))
+    try:
+        decrypt.doFinal(JVMArray[int8](16))
+    except {caught} as error:
+        return "message:" + str(error.getMessage() is not None)
+    return "not caught"
+''', tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "message:True"
 
 
 def test_crypto_bindings_match_android_sdk():

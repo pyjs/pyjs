@@ -6705,16 +6705,23 @@ class JVMEmitter:
                 ):
                     return True
                 layout = self.classes.get(actual_type) or self.native_layouts.get(actual_type)
-                if layout is None:
+                if layout is not None:
+                    actual_type = layout.base
+                elif (exception_type(actual_type) is not None
+                      and is_declaration(actual_type.py_obj, "jvm")):
+                    # Catch-only native declarations have no ClassIR layout,
+                    # but inherited method receivers still widen to their bases.
+                    actual_type = actual_type.super
+                else:
                     break
-                actual_type = layout.base
                 if (
                     actual_type in self.classes
                     and self.class_descriptor(actual_type) == expected
                 ):
                     return True
                 if (
-                    actual_type in self.native_classes
+                    actual_type is not None
+                    and is_declaration(actual_type.py_obj, "jvm")
                     and f"L{self.native_class_name(actual_type)};" == expected
                 ):
                     return True

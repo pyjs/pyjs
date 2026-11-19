@@ -5,6 +5,7 @@ from pyjs.java import JVMArray
 from pyjs.java.base64 import base64_decoder, base64_encoder
 from pyjs.java.crypto import (
     AEADBadTagException,
+    BadPaddingException,
     Cipher,
     GCMParameterSpec,
     GeneralSecurityException,
@@ -70,7 +71,8 @@ def test_gcm_rejects_changed_ciphertext_iv_context_and_key() -> None:
         rejected = False
         try:
             decrypt.doFinal(data)
-        except AEADBadTagException:
+        except AEADBadTagException as error:
+            assert error.getMessage() is not None
             rejected = True
         assert rejected, "Unauthenticated plaintext must not be returned"
 
@@ -96,6 +98,31 @@ def test_digest_failures_use_shared_security_exception_hierarchy() -> None:
         message_digest("pyjs-missing-digest")
     except GeneralSecurityException as error:
         assert isinstance(error, NoSuchAlgorithmException)
+        assert error.getMessage() is not None
+        rejected = True
+    assert rejected
+
+
+def test_caught_native_subclass_inherits_message_access() -> None:
+    rejected = False
+    try:
+        message_digest("pyjs-missing-digest")
+    except NoSuchAlgorithmException as error:
+        assert error.getMessage() is not None
+        rejected = True
+    assert rejected
+
+
+def test_caught_crypto_base_inherits_message_access() -> None:
+    generator = key_generator("AES")
+    generator.init_bits(256)
+    decrypt = cipher("AES/GCM/NoPadding")
+    decrypt.init_parameters(Cipher.DECRYPT_MODE, generator.generateKey(),
+                            GCMParameterSpec(128, JVMArray[int8](12)))
+    rejected = False
+    try:
+        decrypt.doFinal(JVMArray[int8](16))
+    except BadPaddingException as error:
         assert error.getMessage() is not None
         rejected = True
     assert rejected
