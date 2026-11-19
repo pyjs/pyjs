@@ -1165,6 +1165,12 @@ with `pyjs template`.
   unsupported names raise its native `NoSuchAlgorithmException`.
   `update(bytes)` accumulates input, `digest()` returns bytes and resets the
   instance, and `reset()` discards pending input without producing a digest.
+- `pyjs.java.crypto` exposes native JCA keys, ciphers and key stores.
+  `pyjs.android.keystore` provides API 23+ key-generation parameters for
+  non-exportable Android keys. AES-GCM authenticates ciphertext and associated
+  context; a changed value or wrong key rejects decryption. These bindings
+  do not implement credential storage or backup policy. Android Keystore
+  availability requires a device/emulator, not a desktop JVM provider.
 - `pyjs.java.concurrent` provides native `Runnable` and `Thread`;
   `pyjs.android.dispatch` provides `Handler` and `main_looper()`.
   `Handler.post()` reports queue acceptance, not completed or durable work.
