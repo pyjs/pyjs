@@ -17,7 +17,8 @@ stable IDs, recycled-holder rebinding, colors, long-press reordering, and
 recoverable local storage failures.
 `StaggeredGridDragCallback` prevents a completed swap from immediately
 reversing while staggered layout still has the cards in their old columns.
-Dragging back by the platform touch threshold allows an intentional return.
+Dragging back by the platform touch threshold along either preceding movement
+axis allows an intentional return, including after a diagonal swap.
 Its search header is decorative. Search, editable notes/checklists,
 pinned sections, navigation, and note actions are not implemented in this
 example.

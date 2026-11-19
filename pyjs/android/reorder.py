@@ -15,8 +15,8 @@ class _SwapGuard:
         self.target: object | None = None
         self.x = 0
         self.y = 0
-        self.horizontal = True
-        self.positive = True
+        self.dx = 0
+        self.dy = 0
         self.slop = 1
 
     def reset(self) -> None:
@@ -31,14 +31,20 @@ class _SwapGuard:
         self.target = target
         self.x = x
         self.y = y
-        self.horizontal = abs(dx) >= abs(dy)
-        self.positive = dx > 0 if self.horizontal else dy > 0
+        self.dx = dx
+        self.dy = dy
 
     def allows(self, target: object, x: int, y: int) -> bool:
         if self.target is None or target is not self.target:
             return True
-        delta = x - self.x if self.horizontal else y - self.y
-        return delta <= -self.slop if self.positive else delta >= self.slop
+        dx = x - self.x
+        dy = y - self.y
+        # AndroidX can select a target along either axis, even when the other
+        # displacement is larger. A return need not retrace that larger offset.
+        return ((self.dx > 0 and dx <= -self.slop)
+                or (self.dx < 0 and dx >= self.slop)
+                or (self.dy > 0 and dy <= -self.slop)
+                or (self.dy < 0 and dy >= self.slop))
 
 
 class StaggeredGridDragCallback(ItemTouchCallback):
@@ -47,7 +53,7 @@ class StaggeredGridDragCallback(ItemTouchCallback):
     Subclasses provide movement flags, on_move and on_swiped as with
     ItemTouchCallback. Preserve super calls when overriding selection,
     target selection or post-move hooks. Another swap with the same holder
-    requires a touch-slop reversal along the preceding swap's dominant axis.
+    requires a touch-slop reversal along either preceding displacement axis.
     Other targets still use native ItemTouchHelper selection immediately.
     """
 

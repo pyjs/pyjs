@@ -39,6 +39,30 @@ def test_captured_staggered_relayout_does_not_arm_a_second_swap():
     assert guard.allows(target, 539, 12)
 
 
+@pytest.mark.parametrize("dx,dy", [(400, 300), (300, 400), (-400, 300),
+                                   (400, -300), (-300, -400)])
+def test_diagonal_swap_can_return_along_either_axis(dx, dy):
+    guard = _SwapGuard()
+    guard.slop = 8
+    target = object()
+    guard.record(target, 0, 0, dx, dy)
+    sx, sy = (1 if dx > 0 else -1), (1 if dy > 0 else -1)
+    assert not guard.allows(target, dx - 7 * sx, dy - 7 * sy)
+    assert guard.allows(target, dx - 8 * sx, dy + 20 * sy)
+    assert guard.allows(target, dx + 20 * sx, dy - 8 * sy)
+
+
+def test_unmoved_axis_cannot_release_the_guard():
+    guard = _SwapGuard()
+    target = object()
+    guard.record(target, 0, 0, 100, 0)
+    assert not guard.allows(target, 100, -100)
+    assert not guard.allows(target, 100, 100)
+    guard.record(target, 0, 0, 0, -100)
+    assert not guard.allows(target, -100, -100)
+    assert not guard.allows(target, 100, -100)
+
+
 def test_other_target_and_zero_displacement_replace_the_previous_guard():
     guard = _SwapGuard()
     first, second = object(), object()
@@ -84,6 +108,10 @@ def main() -> str:
     assert guard.allows(first, 539, 12)
     guard.reset()
     assert guard.allows(first, 570, 12)
+    guard.record(first, 12, 12, 400, 330)
+    assert not guard.allows(first, 380, 310)
+    assert guard.allows(first, 420, 309)
+    assert guard.allows(first, 379, 350)
     return "identity and reversal"
 ''', tmp_path)
     assert result.returncode == 0, result.stderr

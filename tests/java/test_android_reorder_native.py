@@ -96,3 +96,32 @@ class ReplayRelayout(ViewAssertion):
 def test_relayout_keeps_the_swap_but_allows_a_deliberate_return() -> None:
     launch(GreetingActivity)
     by_text("Hello from Python").check(ReplayRelayout())
+
+
+class ReplayDiagonalReturn(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        context = view.getContext()
+        recycler = RecyclerView(context)
+        recycler.set_layout_manager(StaggeredGridLayoutManager(2, 1))
+        source = Holder(TextView(context))
+        target = Holder(TextView(context))
+        source.item_view.layout(12, 12, 528, 112)
+        target.item_view.layout(12, 124, 528, 424)
+        candidates = candidate_list(target)
+        drag = Drag()
+        drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+        # AndroidX selects the lower card vertically despite greater x offset.
+        assert drag.choose_drop_target(source, candidates, 400, 330) is target
+        drag.on_moved(recycler, source, 0, target, 1, 400, 330)
+        target.item_view.layout(12, 12, 528, 312)
+        source.item_view.layout(12, 324, 528, 424)
+        native = NativeDrag()
+        for x in [400, 420]:
+            assert native.choose_drop_target(source, candidates, i32(x), -100) is target
+            assert drag.choose_drop_target(source, candidates, i32(x), -100) is target
+
+
+def test_diagonal_swap_allows_a_straight_vertical_return() -> None:
+    launch(GreetingActivity)
+    by_text("Hello from Python").check(ReplayDiagonalReturn())
