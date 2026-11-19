@@ -569,6 +569,10 @@ enabled/visible state; either listener can be set to `None` to detach it.
 Use `finish()` to close a completed capture Activity; `is_finishing()` reports
 whether finishing was requested, not whether content was saved. Wait for a
 durable save acknowledgement before closing a form that promises persistence.
+For caller-owned selection or widget configuration, set a cancellation default
+with `set_result(Activity.RESULT_CANCELED)`. After successful completion, call
+`set_result(Activity.RESULT_OK, result_intent)` before `finish()`. Result data
+may be omitted or `None`; the caller receives it in `on_activity_result()`.
 Keep application Activities in modules imported by the selected test module so
 the device packager can preserve Android's target/instrumentation APK boundary.
 Add `pytest.mark.pyjs_android_dependencies("androidx")` when the target uses

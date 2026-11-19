@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android Activities can return a result code and optional Intent to their
+  caller, supporting configuration and selection flows with explicit
+  cancellation.
+
 - Generated web and Django documents request layout resizing when the software
   keyboard opens, keeping viewport-sized editors and fixed actions above it
   in supporting browsers. Browsers that ignore `interactive-widget` retain
