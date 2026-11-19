@@ -16,6 +16,7 @@ def emit_string_helpers(class_file: ClassFile, required: set[str], throw_python)
         ("length", string_length_method),
         ("getitem", partial(string_getitem_method, throw_python=throw_python)),
         ("repeat", partial(string_repeat_method, throw_python=throw_python)),
+        ("zfill", partial(string_zfill_method, throw_python=throw_python)),
         ("strip", string_strip_method),
         ("int", partial(string_int_method, throw_python=throw_python)),
         ("printable", string_printable_method),
@@ -1007,6 +1008,98 @@ def string_affix_method(class_file: ClassFile, *, suffix: bool) -> Method:
     return Method(
         0x0009, name, "(Ljava/lang/String;Ljava/lang/String;)Z", code.render(), 3, 2,
     )
+
+
+def string_zfill_method(class_file: ClassFile, *, throw_python) -> Method:
+    code = Bytecode()
+
+    def call(owner, name, descriptor, opcode=0xB6):
+        code.emit(opcode, class_file.method_reference(owner, name, descriptor).to_bytes(2, "big"))
+
+    code.local(0x19, 0)
+    call("java/lang/String", "length", "()I")
+    code.local(0x36, 3)
+    code.local(0x19, 0)
+    code.emit(0x03)
+    code.local(0x15, 3)
+    call("java/lang/String", "codePointCount", "(II)I")
+    code.local(0x36, 4)
+    # Compare before subtracting so Long.MIN_VALUE remains a no-op width.
+    code.local(0x16, 1)
+    code.local(0x15, 4)
+    code.emit(0x85)
+    code.emit(0x94)
+    code.branch(0x9D, "zfill.pad")
+    code.local(0x19, 0)
+    code.emit(0xB0)
+    code.mark("zfill.pad")
+    code.local(0x16, 1)
+    code.local(0x15, 4)
+    code.emit(0x85)
+    code.emit(0x65)
+    code.local(0x37, 1)
+    # Capacity uses UTF-16 units even though the requested width counts points.
+    code.local(0x16, 1)
+    code.emit(0x14, class_file.constants.long(2147483647).to_bytes(2, "big"))
+    code.local(0x15, 3)
+    code.emit(0x85)
+    code.emit(0x65)
+    code.emit(0x94)
+    code.branch(0x9E, "zfill.allocate")
+    throw_python("MemoryError", "zero-filled string is too long", code, class_file)
+    code.mark("zfill.allocate")
+    code.emit(0xBB, class_file.constants.class_("java/lang/StringBuilder").to_bytes(2, "big"))
+    code.emit(0x59)
+    code.local(0x16, 1)
+    code.emit(0x88)
+    code.local(0x15, 3)
+    code.emit(0x60)
+    call("java/lang/StringBuilder", "<init>", "(I)V", 0xB7)
+    code.local(0x3A, 5)
+    code.emit(0x03)
+    code.local(0x36, 4)
+    code.local(0x15, 3)
+    code.branch(0x99, "zfill.zeros")
+    code.local(0x19, 0)
+    code.emit(0x03)
+    call("java/lang/String", "charAt", "(I)C")
+    code.local(0x36, 6)
+    for sign in (43, 45):
+        code.local(0x15, 6)
+        code.emit(0x10, bytes((sign,)))
+        code.branch(0x9F, "zfill.sign")
+    code.branch(0xA7, "zfill.zeros")
+    code.mark("zfill.sign")
+    code.local(0x19, 5)
+    code.local(0x15, 6)
+    call("java/lang/StringBuilder", "append", "(C)Ljava/lang/StringBuilder;")
+    code.emit(0x57)
+    code.emit(0x04)
+    code.local(0x36, 4)
+    code.mark("zfill.zeros")
+    code.local(0x16, 1)
+    code.emit(0x09)
+    code.emit(0x94)
+    code.branch(0x99, "zfill.suffix")
+    code.local(0x19, 5)
+    code.emit(0x10, bytes((48,)))
+    call("java/lang/StringBuilder", "append", "(C)Ljava/lang/StringBuilder;")
+    code.emit(0x57)
+    code.local(0x16, 1)
+    code.emit(0x0A)
+    code.emit(0x65)
+    code.local(0x37, 1)
+    code.branch(0xA7, "zfill.zeros")
+    code.mark("zfill.suffix")
+    code.local(0x19, 5)
+    code.local(0x19, 0)
+    code.local(0x15, 4)
+    code.local(0x15, 3)
+    call("java/lang/StringBuilder", "append", "(Ljava/lang/CharSequence;II)Ljava/lang/StringBuilder;")
+    call("java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
+    code.emit(0xB0)
+    return Method(0x0009, "pyjs_string_zfill", "(Ljava/lang/String;J)Ljava/lang/String;",
+                  code.render(), 6, 7)
 
 
 def string_repeat_method(class_file: ClassFile, *, throw_python) -> Method:

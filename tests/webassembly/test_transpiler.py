@@ -335,6 +335,12 @@ def test_bytes_construction_keeps_the_wasm_binary_boundary():
         transpile_webassembly(BYTES_CONSTRUCTION_CONTRACT.source)
 
 
+def test_string_zfill_keeps_the_wasm_string_boundary():
+    from tests.backend_semantics import STRING_ZFILL_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
+        transpile_webassembly(STRING_ZFILL_CONTRACT.source)
+
+
 @pytest.mark.parametrize("expression", ["range(Index())", "enumerate([1], Index())"])
 def test_index_constructors_keep_the_wasm_iteration_boundary(expression):
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly numeric conversion is not implemented"):

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM and Android support `str.zfill(width)` with sign-aware padding and
+  Unicode code-point widths. Negative widths leave text unchanged; widths
+  exceeding JVM string capacity raise `MemoryError` before allocation.
+
 - JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
   inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
 

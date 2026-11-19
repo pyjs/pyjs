@@ -514,6 +514,10 @@ iterators such as `enumerate(array)` remain unsupported on JVM. Specialized
 helpers can consume arrays directly; for example, `set(array_of_strings)`
 works. Use an explicit loop for unsupported consumers.
 
+JVM strings support `str.zfill(width)` with an integer or boolean positional
+width. Padding counts Unicode code points and follows a leading ASCII sign.
+Widths beyond JVM string capacity raise `MemoryError` before allocation.
+
 JVM lists support `==`, `!=`, `__eq__()` and `__ne__()` between lists with
 matching integer, boolean or string storage, including nullable strings.
 They compare item values and logical length, not backing capacity or identity.
