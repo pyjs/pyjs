@@ -34,6 +34,10 @@
   `UnboundLocalError`, including after a suppressed context-manager exception
   or an empty loop, instead of producing invalid bytecode or a default value.
 
+- JVM numeric `and` and `or` expressions return the selected operand and
+  short-circuit unused operands. Integer operands must share integer storage;
+  floating operands must share floating storage.
+
 - Android broadcast receivers can retain a delivery with `go_async()` while a
   short background task runs, then release it with `finish()` on the pending
   result. Context bindings support app-scoped dynamic and ordered broadcasts.

@@ -2814,6 +2814,21 @@ SCALAR_NUMERIC_CONTRACT = _contract(
 )
 
 
+NUMERIC_SHORT_CIRCUIT_CONTRACT = _contract(
+    "from pyjs import js",
+    "numeric_short_circuit",
+    "zero = 0\nvalue = -7\nreal = 2.5",
+    (("integer fallback", "(zero or value) != -7"),
+     ("integer first", "(value or 9) != -7"),
+     ("integer and", "(zero and value) != 0 or (value and 9) != 9"),
+     ("integer chain", "(zero or zero or value) != -7"),
+     ("floating fallback", "(0.0 or real) != 2.5"),
+     ("floating first", "(real or 9.0) != 2.5"),
+     ("floating and", "(0.0 and real) != 0.0 or (real and 9.0) != 9.0"),
+     ("floating chain", "(real and 3.0 and 4.0) != 4.0")),
+)
+
+
 BOOLEAN_NUMERIC_CONTRACT = _contract(
     "from pyjs import js",
     "boolean_numeric_contract",

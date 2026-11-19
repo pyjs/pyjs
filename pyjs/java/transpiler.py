@@ -1551,6 +1551,19 @@ class JVMEmitter:
             return result
         if isinstance(node, ast.BoolOp):
             result_type = self.expression_type(node)
+            if result_type in {"J", "D"}:
+                done = self.new_label("bool.numeric.done")
+                for value in node.values[:-1]:
+                    if self.expression(value) != result_type:
+                        raise JVMUnsupported("JVM numeric boolean operands must have matching types", value)
+                    self.code.emit(0x5C)
+                    self.scalar_truth(result_type, value)
+                    self.code.branch(0x99 if isinstance(node.op, ast.And) else 0x9A, done)
+                    self.code.emit(0x58)
+                if self.expression(node.values[-1]) != result_type:
+                    raise JVMUnsupported("JVM numeric boolean operands must have matching types", node.values[-1])
+                self.code.mark(done)
+                return result_type
             if result_type == "Ljava/lang/String;":
                 matched = self.new_label("bool.string.matched")
                 done = self.new_label("bool.string.done")
