@@ -108,6 +108,7 @@ from .exceptions import (
     nullable_exception,
     strict_formatter_bridge,
 )
+from .local_state import checked_locals
 from .primitives import Reference, run_sync
 from .reporting import format_exception
 from .string_runtime import emit_string_helpers
@@ -319,6 +320,7 @@ class JVMEmitter:
         self.code = Bytecode()
         self.slots = {}
         self.slot_types = {}
+        self.local_bound_flags = {}
         self.object_argument_slots = {}
         self.list_classes = {}
         self.tuple_classes = {}
@@ -757,6 +759,22 @@ class JVMEmitter:
             _numeric_descriptor(function.return_numeric_format) or self.return_type
         )
         self.code = Bytecode()
+        self.local_bound_flags = {}
+        for name in sorted(checked_locals(blocks, dict(parameters), self.slots)):
+            storage = self.slot_types[name]
+            constant, store = {
+                "J": (0x09, 0x37), "D": (0x0E, 0x39), "F": (0x0B, 0x38),
+                "B": (0x03, 0x36), "C": (0x03, 0x36), "S": (0x03, 0x36),
+                "I": (0x03, 0x36), "Z": (0x03, 0x36),
+            }.get(storage, (0x01, 0x3A))
+            # Typed defaults satisfy verification; the independent flag keeps
+            # those defaults from becoming observable Python values.
+            self.code.emit(constant)
+            self.code.local(store, self.slots[name])
+            self.local_bound_flags[name] = self.local_count
+            self.code.emit(0x03)
+            self.code.local(0x36, self.local_count)
+            self.local_count += 1
         self.inherited_context_slot = None
         if any(isinstance(statement, ExceptionCatch) for block in blocks for statement in block.body):
             self.context_call("current", "()Ljava/lang/Throwable;")
@@ -4896,6 +4914,15 @@ class JVMEmitter:
                         mapping[name] = value
 
     def load(self, name: str) -> str:
+        if name in self.local_bound_flags:
+            assigned = self.new_label("local.bound")
+            self.code.local(0x15, self.local_bound_flags[name])
+            self.code.branch(0x9A, assigned)
+            self.throw_python(
+                "UnboundLocalError",
+                f"cannot access local variable '{name}' where it is not associated with a value",
+            )
+            self.code.mark(assigned)
         value_type = self.slot_types[name]
         opcode = (
             0x16
@@ -4949,6 +4976,10 @@ class JVMEmitter:
             else 0x3A
         )
         self.code.local(opcode, self.slots[name])
+
+        if name in self.local_bound_flags:
+            self.code.emit(0x04)
+            self.code.local(0x36, self.local_bound_flags[name])
 
     def allocate_temporary(self, value_type: str, base: str) -> str:
         name = self.new_label(base)

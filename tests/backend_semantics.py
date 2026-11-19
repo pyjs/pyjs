@@ -2121,6 +2121,16 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
     from pyjs import int8, js
 
     @js
+    def guarded_branch(flag: bool, value: str | None) -> int8:
+        if flag:
+            if value is None:
+                return int8(0)
+            copied = int8(127)
+        else:
+            copied = int8(1)
+        return copied + int8(1)
+
+    @js
     def guarded_width(value: str | None) -> int8:
         try:
             if value is None:
@@ -2265,6 +2275,7 @@ EXCEPTION_CONTROL_FLOW_CONTRACT = _contract(
         ("guarded declarations survive cleanup", 'guarded_copy("copied") != "COPIED"'),
         ("guarded declarations retain numeric representation", 'guarded_width("present") != -128'),
         ("guarded handler declarations survive joining", 'guarded_handler("kept") + guarded_handler(None) != "KEPTempty"'),
+        ("guarded branch joins retain widths", 'guarded_branch(True, "present") != -128 or guarded_branch(False, None) != 2 or guarded_branch(True, None) != 0'),
     ),
 )
 
@@ -2738,6 +2749,14 @@ def optional_entry(value: bool | None) -> str:
         else:
             events.append("false")
     return "|".join(events)
+
+@js
+def guarded_entry(value: str | None, events: list[str]) -> str:
+    with Scope(events, "guarded", False):
+        if value is None:
+            return "empty"
+        copied = value.upper()
+    return copied
 ''',
     "context_manager_contract",
     '''
@@ -2745,6 +2764,8 @@ def optional_entry(value: bool | None) -> str:
     value = leave(events)
     with Scope(events, "suppress", True):
         raise ValueError("expected")
+    guarded_events: list[str] = []
+    guarded_result = guarded_entry("copy", guarded_events) + guarded_entry(None, guarded_events)
     ''',
     (("captured return", 'value != "inner"'),
      ("reverse cleanup and suppression", '"|".join(events) != "enter:outer|enter:inner|exit:inner|exit:outer|enter:suppress|exit:suppress"'),
@@ -2752,7 +2773,9 @@ def optional_entry(value: bool | None) -> str:
      ("only true suppresses the active exception", 'decision(None, True) + decision(False, True) + decision(True, True) != "raisedraiseddone"'),
      ("nullable enter binds None", 'optional_entry(None) != "enter|none|exit"'),
      ("nullable enter binds false", 'optional_entry(False) != "enter|false|exit"'),
-     ("nullable enter binds true", 'optional_entry(True) != "enter|true|exit"')),
+     ("nullable enter binds true", 'optional_entry(True) != "enter|true|exit"'),
+     ("guarded with-body declarations survive cleanup", 'guarded_result != "COPYempty"'),
+     ("guarded returns still clean up", '"|".join(guarded_events) != "enter:guarded|exit:guarded|enter:guarded|exit:guarded"')),
 )
 
 
