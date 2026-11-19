@@ -409,6 +409,11 @@ Python text shim does not model Java string inheritance.
 
 Native text controls expose `setHorizontallyScrolling()` without modifying
 their contents.
+Use `LengthFilter` from `pyjs.android.text` in a `JVMArray[InputFilter]` with
+`TextView.setFilters()` to bound future input. `InputFilter` comes from
+`pyjs.android`. Limits count UTF-16 units, not displayed characters. Installing
+a filter does not shorten existing content; an empty array removes filters.
+Set filters before initial text when the initial value must also be bounded.
 On API 35+, `setUseBoundsForWidth()` and `getUseBoundsForWidth()` select
 glyph bounds instead of character advances for layout. Guard calls with
 `BuildVersion.SDK_INT >= 35`. Glyph bounds help avoid clipping overhanging
