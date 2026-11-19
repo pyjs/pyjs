@@ -10,6 +10,13 @@
 - Android views expose native layout-change listeners with previous and current
   bounds, including registration and removal for responsive containers.
 
+- JVM and Android expose platform authenticated ciphers, key generators and
+  key stores. Android API 23+ can generate app-scoped, non-exportable AES keys
+  with Keystore parameters. Applications own encrypted storage, key lifecycle
+  and recovery policy; no password or session persistence is added implicitly.
+  Caught native exception subclasses retain inherited method access, including
+  exception messages.
+
 - JVM and Android support `str.zfill(width)` with sign-aware padding and
   Unicode code-point widths. Negative widths leave text unchanged; widths
   exceeding JVM string capacity raise `MemoryError` before allocation.

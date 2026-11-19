@@ -500,6 +500,31 @@ layout-affecting work after the current pass when required by the container.
 Remove the same listener with `removeOnLayoutChangeListener` when its owner
 stops observing. There is no host-side layout simulation for these bindings.
 
+For native encrypted state, use `pyjs.java.crypto` with Android API 23+
+parameters from `pyjs.android.keystore`. Create a key with
+`provider_key_generator("AES", "AndroidKeyStore")`, then `init_parameters`
+with a `KeyGenParameterSpecBuilder` configured for encrypt/decrypt, 256 bits,
+GCM and NoPadding. The block modes and paddings are `JVMArray[str]` values.
+Serialize alias creation; generating another key for an existing alias can
+make earlier ciphertext unreadable. `key_store("AndroidKeyStore").load(None)`
+opens the app's store; `getKey(alias, None)` returns a native key or `None`.
+Keys are non-exportable; do not assume every device provides hardware backing.
+
+Use a fresh `cipher("AES/GCM/NoPadding")` for each operation. Encryption uses
+`init_key(Cipher.ENCRYPT_MODE, key)` and its generated `getIV()`; never reuse
+a nonce for another encryption with that key. Decryption uses
+`init_parameters(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))`.
+Pass identical account/origin context bytes to `updateAAD` before `doFinal`.
+Both consume `JVMArray[int8]`; `doFinal` returns authenticated plaintext or
+raises `AEADBadTagException` on a mismatched tag. Catch
+`GeneralSecurityException` around the entire stored-data decryption path,
+including initialization: malformed parameters and invalid keys can also make
+stored data unreadable. Recover without returning unauthenticated plaintext.
+These APIs have no CPython shim.
+Applications own bounded, atomic ciphertext storage and backup exclusions.
+Never replace a missing decryption key silently or treat device-bound
+ciphertext as a portable backup. Keep key work off the Android main thread.
+
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
 in `finally`. It may return `None` or raise a native I/O or permission error.
