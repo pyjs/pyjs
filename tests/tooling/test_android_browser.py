@@ -233,6 +233,7 @@ def test_touch_targets_use_visible_area_and_reject_obstructions(tmp_path, doctyp
                 aside { position: fixed; inset: 0; background: white; }
             </style><section><textarea></textarea></section>'''
             page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.wait_for_selector('textarea')
             await page.evaluate('''document.addEventListener('touchstart', event => {
                 window.touched = event.target.tagName;
                 window.touchPoint = [event.touches[0].clientX, event.touches[0].clientY];
@@ -322,6 +323,7 @@ def test_touch_rejects_target_outside_its_containing_block_clip(tmp_path, positi
             markup = f'''<!DOCTYPE html><div style="height:40px;overflow:clip;{containing_block}">
                 <button id="target" style="position:{position};top:200px">Tap</button></div>'''
             page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.wait_for_selector('#target')
             await page.evaluate('''window.touched = null;
                 document.addEventListener('touchstart', event => { window.touched = event.target.id })''')
             with pytest.raises(RuntimeError, match='No visible touch area'):
@@ -345,6 +347,7 @@ def test_touch_dispatch_uses_panned_visual_viewport_coordinates(tmp_path):
                 for row in range(16) for column in range(8)
             )
             page = await browser.new_page('data:text/html,' + quote(markup))
+            await page.wait_for_selector('#cell-12-5')
             await page.set_viewport(400, 800, mobile=True)
             await page.session.send('Emulation.setPageScaleFactor', {'pageScaleFactor': 2})
             await page.evaluate('''document.addEventListener('touchstart', event => {
@@ -369,6 +372,7 @@ def test_real_android_browser_keyboard_and_owned_emulator_cleanup(tmp_path, pyjs
             page = await browser.new_page('data:text/html,<meta name="viewport" '
                 'content="width=device-width,initial-scale=1,interactive-widget=resizes-content">'
                 '<textarea style="position:fixed;bottom:0;font-size:16px"></textarea>')
+            await page.wait_for_selector('textarea')
             await browser.dismiss_keyboard(page)
             height = await page.evaluate('visualViewport.height')
             await browser.tap(page, 'textarea')
