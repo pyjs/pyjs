@@ -500,6 +500,22 @@ when the package is fixed. `RemoteViews.apply(context, parent)` inflates the
 widget layout and applies its actions for a local preview; `parent` may be
 `None`. Publishing to a launcher still uses `AppWidgetManager`.
 
+For short background work started by a `BroadcastReceiver`, call `go_async()`
+inside `on_receive()` and transfer the returned `BroadcastPendingResult` to
+the worker. It may be `None` outside a delivery or after detaching it already.
+Call `finish()` exactly once in `finally`, including when the work fails; if
+starting the worker fails, finish it on the receiving thread. This retains the
+delivery, not an unlimited execution window: keep work well below ten seconds
+and schedule longer work separately. A bare thread is not protected after the
+receiver returns. Keep blocking I/O off the main thread.
+`Context.register_receiver(receiver, IntentFilter(action), flags)` uses the
+API 26 overload. `Context.RECEIVER_NOT_EXPORTED` requires API 33; use it for
+app-private dynamic receivers and unregister them with their owning lifecycle.
+`Intent.set_package()` restricts a broadcast's destination package.
+`send_ordered_broadcast()` accepts a final receiver and optional Handler;
+`pending.set_result_data()` and `receiver.get_result_data()` carry ordered
+delivery results. Do not use result data on an unordered broadcast.
+
 For direct-JVM Android UI tests, mark module-level functions with
 `pytest.mark.pyjs_android_jvm` and use `pyjs.android.testing`. Run the fast
 AndroidJUnit4, Robolectric, and Espresso tier with

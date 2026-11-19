@@ -9,6 +9,7 @@ from pyjs.java.io import File, InputStream, OutputStream
 from pyjs.java.primitives import Reference
 
 from .api import AndroidAPI, AndroidAvailability, AndroidNullability
+from .dispatch import Handler
 from .graphics import Canvas
 from .motion import MotionEvent
 
@@ -138,6 +139,8 @@ def _apply_dimension(unit: i32, value: f32, metrics: DisplayMetrics) -> f32:
 
 @jvm.native("android/content/Context")
 class Context:
+    RECEIVER_NOT_EXPORTED: ClassVar[Annotated[i32, jvm.field(writable=False)]] = 4
+
     def getFilesDir(self) -> File: ...
 
     def getApplicationContext(self) -> Context: ...
@@ -173,6 +176,19 @@ class Context:
     )
     def get_resources(self) -> Resources:
         return Resources()
+
+    @jvm.native("android/content/Context", name="registerReceiver", invocation="virtual")
+    def register_receiver(self, receiver: BroadcastReceiver, filter: IntentFilter,
+                          flags: i32) -> Intent | None: ...
+
+    @jvm.native("android/content/Context", name="unregisterReceiver", invocation="virtual")
+    def unregister_receiver(self, receiver: BroadcastReceiver) -> None: ...
+
+    @jvm.native("android/content/Context", name="sendOrderedBroadcast", invocation="virtual")
+    def send_ordered_broadcast(self, intent: Intent, permission: str | None,
+                               result_receiver: BroadcastReceiver | None, scheduler: Handler | None,
+                               initial_code: i32, initial_data: str | None,
+                               initial_extras: Bundle | None) -> None: ...
 
 
 def dp(context: Context, value: int) -> i32:
@@ -469,6 +485,9 @@ class Intent(Parcelable):
     def set_action(self, action: str | None) -> Intent:
         return self
 
+    @jvm.native("android/content/Intent", name="setPackage", invocation="virtual")
+    def set_package(self, package: str | None) -> Intent: ...
+
     @jvm.native("android/content/Intent", name="setClassName", invocation="virtual")
     def set_class_name(self, package_name: str, class_name: str) -> Intent:
         return self
@@ -583,6 +602,19 @@ class ComponentName:
         return ""
 
 
+@jvm.native("android/content/IntentFilter")
+class IntentFilter:
+    def __init__(self, action: str) -> None: ...
+
+
+@jvm.native("android/content/BroadcastReceiver$PendingResult")
+class BroadcastPendingResult:
+    def finish(self) -> None: ...
+
+    @jvm.native("android/content/BroadcastReceiver$PendingResult", name="setResultData", invocation="virtual")
+    def set_result_data(self, value: str | None) -> None: ...
+
+
 @jvm.native("android/content/BroadcastReceiver")
 class BroadcastReceiver:
     def __init__(self) -> None:
@@ -595,6 +627,14 @@ class BroadcastReceiver:
     )
     def on_receive(self, context: Context, intent: Intent) -> None:
         pass
+
+    @jvm.native("android/content/BroadcastReceiver", name="goAsync", invocation="virtual")
+    def go_async(self) -> BroadcastPendingResult | None:
+        """Detach the current delivery; finish it promptly, even on failure."""
+        return None
+
+    @jvm.native("android/content/BroadcastReceiver", name="getResultData", invocation="virtual")
+    def get_result_data(self) -> str | None: ...
 
 
 @jvm.native("android/view/View$OnClickListener", interface=True)
@@ -1165,6 +1205,8 @@ __all__ = [
     "AndroidAvailability",
     "AndroidNullability",
     "BroadcastReceiver",
+    "BroadcastPendingResult",
+    "IntentFilter",
     "BuildVersion",
     "Bundle",
     "Button",
