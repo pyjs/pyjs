@@ -612,6 +612,24 @@ permission is not persistent ownership, and the claimed MIME type is not
 content validation. Copy accepted bytes into app-owned storage before
 acknowledging a durable import. These bindings do not copy bytes or grant
 permissions themselves.
+
+For outgoing files, subclass `pyjs.android.files.FileProvider` and register
+the generated subclass in a manifest overlay with `exported="false"` and
+`grantUriPermissions="true"`. Its `android.support.FILE_PROVIDER_PATHS`
+metadata must reference a paths XML resource with a narrow sharing directory,
+for example `<cache-path name="copies" path="outgoing/" />`. Do not expose
+the whole cache, files directory, or filesystem. Include the AndroidX runtime.
+Prepare a unique copy under `context.get_cache_dir()` with Java `File` and
+`FileOutputStream`, closing the writer before handoff. Perform large writes
+off the UI thread. `uri_for_file(context, authority, file)` returns the URI;
+attach it as `Intent.EXTRA_STREAM` and as
+`uri_clip_data(context.get_content_resolver(), label, uri)` using
+`intent.set_clip_data(...)`. This setter returns `None`. Add only
+`Intent.FLAG_GRANT_READ_URI_PERMISSION` for read-only copies. Large contents
+belong in the file, not another text extra. Keep copies available while a
+recipient may be reading them; chooser dismissal is not proof of delivery
+or completion. Applications own bounded cache retention and failure UI.
+
 For anchored actions, use `pyjs.android.menus.PopupMenu(context, anchor)`.
 Add entries through `get_menu().add(group_id, item_id, order, title)`, then
 attach an `OnMenuItemClickListener` and call `show()`. Return whether the

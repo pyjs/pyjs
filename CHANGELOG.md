@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Android apps can share large files through restricted AndroidX
+  `FileProvider` content URIs, URI `ClipData`, and temporary Intent grants.
+  Cache-directory and Java file-output bindings support preparing copies
+  without placing their contents in Binder extras.
+
 - Dropdown keyboard navigation follows current item order after items are
   added, removed or moved. Activation stays with the focused item instead of
   a stale index, including inside open submenus.
