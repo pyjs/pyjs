@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android views expose native layout-change listeners with previous and current
+  bounds, including registration and removal for responsive containers.
+
 - JVM and Android support `str.zfill(width)` with sign-aware padding and
   Unicode code-point widths. Negative widths leave text unchanged; widths
   exceeding JVM string capacity raise `MemoryError` before allocation.
