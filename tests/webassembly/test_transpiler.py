@@ -314,10 +314,12 @@ def test_bounded_text_search_keeps_a_focused_wasm_boundary():
         transpile_webassembly(BOUNDED_TEXT_SEARCH_CONTRACT.source)
 
 
-def test_string_find_keeps_a_focused_wasm_boundary():
-    from tests.backend_semantics import STRING_FIND_CONTRACT
+@pytest.mark.parametrize("affix", [False, True], ids=["find", "affixes"])
+def test_string_search_keeps_a_focused_wasm_boundary(affix):
+    from tests.backend_semantics import STRING_AFFIX_BOUNDS_CONTRACT, STRING_FIND_CONTRACT
+    contract = STRING_AFFIX_BOUNDS_CONTRACT if affix else STRING_FIND_CONTRACT
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly value type str is not implemented"):
-        transpile_webassembly(STRING_FIND_CONTRACT.source)
+        transpile_webassembly(contract.source)
 
 
 def test_bytes_construction_keeps_the_wasm_binary_boundary():
