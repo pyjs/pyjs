@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- JVM `for` loops can traverse native `JVMArray` values directly, including
+  primitive and nested arrays, while retaining their element representation.
+
 - Android Activities can return a result code and optional Intent to their
   caller, supporting configuration and selection flows with explicit
   cancellation.

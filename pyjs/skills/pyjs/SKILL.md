@@ -483,6 +483,12 @@ truncated bytes raise `IOException`. Close the reader in `finally`; it closes
 the underlying stream too. The caller still enforces total/record-size limits
 before accumulating content and publishes imported data only after validation.
 
+Use ordinary `for value in array` loops with native `JVMArray[T]` values.
+The source expression is evaluated once; later element mutations are visible
+when reached. Primitive widths and nested array layouts are preserved, so
+loop values can be passed directly to matching native arguments. Native arrays
+have fixed length. This does not provide a first-class Python iterator object.
+
 Resolve Android resources for configurable application package names with
 `context.get_resources().get_identifier(name, kind, package)`. Missing names
 return zero; check before constructing views. Prefer generated `R` bindings

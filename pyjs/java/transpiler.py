@@ -323,6 +323,7 @@ class JVMEmitter:
         self.list_classes = {}
         self.tuple_classes = {}
         self.iterators = {}
+        self.array_iterator_formats = {}
         self.next_label = 0
         self.async_call_depth = 0
         self.string_helpers = set()
@@ -825,6 +826,7 @@ class JVMEmitter:
         }
         self.object_argument_slots = {}
         self.iterators = {}
+        self.array_iterator_formats = {}
         self.local_count = 0
         object_index = 0
 
@@ -938,6 +940,15 @@ class JVMEmitter:
                 elif isinstance(statement, IteratorCreate):
                     descriptor = self.iterator_descriptor(statement)
                     self.iterators[statement.name] = descriptor
+                    if descriptor[0] == "array":
+                        representation = analyzed_representation(statement.iterable)
+                        item_representation = (
+                            representation.arguments[0]
+                            if representation is not None and representation.arguments else None
+                        )
+                        self.array_iterator_formats[statement.name] = (
+                            item_representation.numeric if item_representation is not None else None
+                        )
                     if descriptor[0] == "range":
                         for part in ("current", "stop", "step"):
                             add(f"{statement.name}.{part}", "J")
@@ -957,6 +968,8 @@ class JVMEmitter:
                             self.target_name(statement.target),
                             _numeric_descriptor(storage_format),
                         )
+                    elif descriptor[0] == "array" and isinstance(statement.target, (ast.Name, ast.arg)):
+                        add(self.target_name(statement.target), descriptor[1])
                     else:
                         self.add_iterator_target(
                             add,
@@ -3418,6 +3431,10 @@ class JVMEmitter:
         list_type = analyzed_value_type(node.iterable)
         if isinstance(list_type, LiteralClass):
             list_type = list_type.super
+        if self.is_jvm_array_type(list_type):
+            abi, semantic = self.jvm_array_item_types(list_type, node.iterable)
+            item = next(iter(list_type.generic_types.values()))
+            return ("array", semantic, f"[{abi}", item)
         if list_type.generic_name == "str":
             return ("str", "Ljava/lang/String;", "Ljava/lang/String;", list_type)
         if list_type.generic_name == "KeysView":
@@ -3746,7 +3763,9 @@ class JVMEmitter:
         self.load(index)
         if source_type.startswith("["):
             self.code.emit(0x88)
-            self.code.emit(0x32)
+            abi = source_type[1:]
+            self.code.emit(self.array_load_opcode(abi))
+            self.convert_abi_result(abi, item_type, self.array_iterator_formats.get(node.iterator))
         else:
             get = self.class_file.method_reference(owner, "get", f"(J){item_type}")
             self.code.emit(0xB6, get.to_bytes(2, "big"))

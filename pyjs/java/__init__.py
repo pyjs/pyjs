@@ -2,6 +2,7 @@
 
 import math
 import time as _time
+from collections.abc import Iterator
 
 from pyjs import jvm, uint16
 from pyjs.decorators import preserves_numeric_format
@@ -48,6 +49,9 @@ class JVMArray[T]:
         pass
 
     def __len__(self) -> int:
+        pass
+
+    def __iter__(self) -> Iterator[T]:
         pass
 
     @preserves_numeric_format
