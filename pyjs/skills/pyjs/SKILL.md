@@ -577,6 +577,10 @@ process state restarts between batches, but stored files and databases remain;
 tests must initialize their own state. Within a batch, JUnit controls order.
 Without the option, the existing single-suite execution is unchanged.
 Robolectric and host-driven tests do not use this device-only option.
+For shadow-based checks, add `pytest.mark.pyjs_android_robolectric` alongside
+`pyjs_android_jvm`. Those functions are excluded from device compilation;
+Robolectric classes must not be imported by device-reachable test helpers.
+Do not combine this marker with `pyjs_android_device`.
 Device timeouts retain completed results and fail unfinished tests with the
 last started test and bounded output. A timeout after all results were reported
 fails the last reported test to expose incomplete instrumentation teardown.
@@ -609,6 +613,30 @@ Keep large documents in durable storage rather than saved instance state;
 `setSaveEnabled(False)`, explicitly retain any required focus, selection and
 viewport metadata. `View.scroll_to(x, y)` dispatches to the native view;
 subclasses may clamp offsets to their content bounds.
+
+For Android reminders, obtain `"alarm"` or `"notification"` through
+`Context.get_system_service()` and check the returned object's type against
+`AlarmManager` from `pyjs.android.alarms` or `NotificationManager` from
+`pyjs.android.notifications`. Services may be unavailable.
+Use `NotificationChannel` and `NotificationBuilder` on API 26+. Channel
+importance and global notification permission are separate; inspect both
+`manager.are_notifications_enabled()` and `channel.get_importance()`.
+On API 33+, declare `android.permission.POST_NOTIFICATIONS` and request it
+from a user action with `Activity.request_permissions(JVMArray[str], code)`.
+Handle `on_request_permissions_result`; an empty results array is possible.
+Do not interpret a permission request or `notify()` return as visible delivery.
+
+Alarm times use epoch milliseconds for `RTC`/`RTC_WAKEUP` and elapsed realtime
+for the other clock types. Inexact `set_and_allow_while_idle()` may be delayed.
+On API 31+, check `can_schedule_exact_alarms()` before using
+`set_exact_and_allow_while_idle()`, and configure the required special app
+access separately; ordinary runtime permission requests do not grant it.
+Even after a positive check, handle a scheduling permission failure.
+Use explicit immutable PendingIntents and distinct identities for unrelated
+schedules. Extras alone do not distinguish PendingIntents. Cancel stale
+operations and verify the current durable schedule before posting a reminder.
+Apps own rescheduling after reboot, permission changes and account switches;
+these declarations do not persist or reconcile schedules automatically.
 
 Use `launch_intent(intent)` for share/deep-link startup tests. Build an explicit
 intent with `Intent().set_class(application_context(), YourActivity)` and add

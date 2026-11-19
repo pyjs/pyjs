@@ -358,6 +358,10 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
+        "pyjs_android_robolectric: require Robolectric instead of AndroidJUnitRunner",
+    )
+    config.addinivalue_line(
+        "markers",
         "pyjs_android_dependencies(*sets): package application dependency sets",
     )
     config._pyjs_web_results = BrowserResults()
@@ -404,10 +408,12 @@ def is_android_jvm_test(item: pytest.Item) -> bool:
 
 
 def is_android_jvm_test_for_runtime(item: pytest.Item, runtime: str) -> bool:
-    return is_android_jvm_test(item) and (
-        runtime == "device"
-        or item.get_closest_marker("pyjs_android_device") is None
-    )
+    device_only = item.get_closest_marker("pyjs_android_device") is not None
+    robolectric_only = item.get_closest_marker("pyjs_android_robolectric") is not None
+    if device_only and robolectric_only:
+        raise pytest.UsageError("Android test cannot require both device and Robolectric runtimes")
+    return (is_android_jvm_test(item) and (not device_only or runtime == "device")
+            and (not robolectric_only or runtime == "robolectric"))
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
@@ -422,12 +428,17 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     android_test = item.get_closest_marker("pyjs_android") is not None
     android_jvm_test = is_android_jvm_test(item)
     android_runtime = item.config.getoption("--pyjs-android-runtime") or "host"
+    if android_jvm_test:
+        is_android_jvm_test_for_runtime(item, android_runtime)
     if (
         target == "android"
         and android_runtime == "robolectric"
         and item.get_closest_marker("pyjs_android_device") is not None
     ):
         pytest.skip("device-only Android test")
+    if (target == "android" and android_runtime == "device"
+            and item.get_closest_marker("pyjs_android_robolectric") is not None):
+        pytest.skip("Robolectric-only Android test")
     if target == "android" and android_runtime == "host" and not android_test:
         pytest.skip("not a host-driven Android test")
     if target == "android" and android_runtime != "host" and not android_jvm_test:

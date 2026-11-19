@@ -63,6 +63,34 @@ def main() -> int:
     assert base.declared_methods("onCreate")[0].descriptor == "()V"
 
 
+def test_permission_callback_keeps_native_array_descriptor_and_override():
+    compilation = transpile_jvm('''
+from pyjs.android import Activity, Bundle
+from pyjs.java import JVMArray, i32
+class PermissionActivity(Activity):
+    def onCreate(self, state: Bundle | None) -> None:
+        super().onCreate(state)
+        permissions = JVMArray[str](1)
+        permissions[0] = "android.permission.POST_NOTIFICATIONS"
+        if self.check_self_permission(permissions[0]) != 0:
+            if not self.should_show_permission_rationale(permissions[0]):
+                self.request_permissions(permissions, i32(7))
+    def on_request_permissions_result(self, request_code: i32,
+                                      permissions: JVMArray[str],
+                                      grant_results: JVMArray[i32]) -> None:
+        super().on_request_permissions_result(request_code, permissions, grant_results)
+        self.setTitle("Allowed" if len(grant_results) > 0 and grant_results[0] == 0 else "Denied")
+def main() -> int:
+    activity = PermissionActivity()
+    return 0
+''')
+    metadata = read_jvm_class(compilation.classes["PyjsProgram$PermissionActivity"])
+    callbacks = metadata.declared_methods("onRequestPermissionsResult")
+    assert len(callbacks) == 1
+    assert callbacks[0].descriptor == "(I[Ljava/lang/String;[I)V"
+    assert callbacks[0].access & 1
+
+
 def test_cast_only_application_owner_retains_its_field_and_native_callback():
     compilation = transpile_jvm('''
 from typing import cast

@@ -229,25 +229,32 @@ def test_robolectric_target_selects_compiled_android_tests():
     pytest_runtest_setup(item)
 
 
-def test_robolectric_skips_device_only_compiled_android_tests():
+@pytest.mark.parametrize("required,runtime", [("device", "robolectric"), ("robolectric", "device")])
+def test_android_runtime_excludes_incompatible_compiled_tests(required, runtime):
     item = SimpleNamespace(
         config=SimpleNamespace(
             getoption=lambda name: {
                 "--pyjs-target": "android",
-                "--pyjs-android-runtime": "robolectric",
+                "--pyjs-android-runtime": runtime,
             }.get(name)
         ),
         get_closest_marker=lambda name: (
             object()
-            if name in {"pyjs_android_jvm", "pyjs_android_device"}
+            if name in {"pyjs_android_jvm", "pyjs_android_" + required}
             else None
         ),
     )
 
-    assert not is_android_jvm_test_for_runtime(item, "robolectric")
-    assert is_android_jvm_test_for_runtime(item, "device")
-    with pytest.raises(pytest.skip.Exception, match="device-only Android test"):
+    assert not is_android_jvm_test_for_runtime(item, runtime)
+    assert is_android_jvm_test_for_runtime(item, required)
+    with pytest.raises(pytest.skip.Exception, match="-only Android test"):
         pytest_runtest_setup(item)
+
+
+def test_android_runtime_rejects_contradictory_requirements():
+    item = SimpleNamespace(get_closest_marker=lambda name: object())
+    with pytest.raises(pytest.UsageError, match="cannot require both"):
+        is_android_jvm_test_for_runtime(item, "device")
 
 
 def test_pytest_reports_cached_robolectric_results():

@@ -5,6 +5,12 @@
 - JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
   inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
 
+- Android exposes alarm scheduling, notification channels and publication,
+  system-service lookup, and runtime permission requests with native callbacks.
+  Applications retain control of timing policy, permissions and persistence.
+  Compiled Android tests can use `pyjs_android_robolectric` for shadow-based
+  checks that must not enter device builds.
+
 - Electron sessions expose typed permission check and request handlers for
   Python-authored host policies. Callers can inspect requesting frame details
   and explicitly allow selected capabilities while denying others.

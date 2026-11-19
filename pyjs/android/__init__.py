@@ -148,6 +148,12 @@ class Context:
 
     def getApplicationContext(self) -> Context: ...
 
+    @jvm.native("android/content/Context", name="getSystemService", invocation="virtual")
+    def get_system_service(self, name: str) -> object | None: ...
+
+    @jvm.native("android/content/Context", name="checkSelfPermission", invocation="virtual")
+    def check_self_permission(self, permission: str) -> i32: ...
+
     @jvm.native("android/content/Context", name="startActivity", invocation="virtual")
     def start_activity(self, intent: Intent) -> None: ...
 
@@ -1167,6 +1173,16 @@ class Activity(Context):
         pass
 
     def onDestroy(self) -> None: ...
+
+    @jvm.native("android/app/Activity", name="requestPermissions", invocation="virtual")
+    def request_permissions(self, permissions: JVMArray[str], request_code: i32) -> None: ...
+
+    @jvm.native("android/app/Activity", name="shouldShowRequestPermissionRationale", invocation="virtual")
+    def should_show_permission_rationale(self, permission: str) -> bool: ...
+
+    @jvm.native("android/app/Activity", name="onRequestPermissionsResult", invocation="virtual")
+    def on_request_permissions_result(self, request_code: i32, permissions: JVMArray[str],
+                                      grant_results: JVMArray[i32]) -> None: ...
 
     def onBackPressed(self) -> None:
         pass
