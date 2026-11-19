@@ -1129,6 +1129,11 @@ class Activity(Context):
     def start_activity_for_result(self, intent: Intent, request_code: i32) -> None:
         pass
 
+    @jvm.native("android/app/Activity", name="setResult", invocation="virtual")
+    def set_result(self, result_code: i32, data: Intent | None = None) -> None:
+        """Set the result returned to the caller when this Activity finishes."""
+        pass
+
     @jvm.native("android/app/Activity", name="startActivity", invocation="virtual")
     def start_activity(self, intent: Intent) -> None:
         pass
