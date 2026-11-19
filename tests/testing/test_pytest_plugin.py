@@ -373,6 +373,21 @@ def test_device_partial_results_do_not_poison_completed_tests_or_restart_the_sui
     assert run.call_count == 1
 
 
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_invalid_device_batch_size_is_rejected_before_sdk_setup(monkeypatch, batch_size):
+    from pyjs.tooling.android import AndroidSDK
+
+    setup = Mock()
+    monkeypatch.setattr(AndroidSDK, "__init__", setup)
+    config = SimpleNamespace(getoption=lambda name: {
+        "--pyjs-android-api": 35, "--pyjs-android-timeout": 120,
+        "--pyjs-android-batch-size": batch_size,
+    }[name])
+    with pytest.raises(pytest.UsageError, match="pyjs_android_batch_size"):
+        pytest_plugin.run_android_device_target(config, [], "invalid")
+    setup.assert_not_called()
+
+
 def test_pytest_plugin_does_not_load_android_compilers_until_selected():
     result = subprocess.run(
         [

@@ -5,7 +5,8 @@ import re
 import subprocess
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from pyjs.java import JVMCompilation
@@ -332,32 +333,59 @@ class AndroidDeviceTestRunner:
         packages: AndroidTestPackages,
         *,
         timeout: float = 120,
+        batch_size: int | None = None,
+        progress: Callable[[str], None] | None = None,
     ) -> dict[str, AndroidTestResult]:
+        if not compilation.tests:
+            raise ValueError("Android device execution requires selected tests")
+        if batch_size is not None and (type(batch_size) is not int or batch_size < 1):
+            raise ValueError("Android device batch size must be a positive integer")
+        size = len(compilation.tests) if batch_size is None else batch_size
         self.sdk.install(self.device, packages.target)
         self.sdk.install(self.device, packages.tests)
         self.sdk.prepare_for_tests(self.device)
-        command = [
-            self.sdk.adb, "-s", self.device.identifier,
-            "shell", "am", "instrument", "-w", "-r", "-e", "class",
-            ",".join(dict.fromkeys(
-                test.class_name.replace("/", ".").replace("$", r"\$")
-                for test in compilation.tests
-            )),
-            f"{TEST_PACKAGE}/{RUNNER}",
-        ]
-        try:
-            completed = self.sdk.runner.run(
-                command, environment=self.sdk.environment(), capture_output=True,
-                check=False, timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as error:
-            output = _output_text(error.stdout) + "\n" + _output_text(error.stderr)
-            failure = f"Android instrumentation timed out after {timeout:g} seconds."
-            failure += self._stop_packages()
-            return self._results(compilation, output, failure=failure)
-        failure = (f"Android instrumentation exited with status {completed.returncode}."
-                   if completed.returncode else None)
-        return self._results(compilation, completed.stdout + completed.stderr, failure=failure)
+        results = {}
+        total = (len(compilation.tests) + size - 1) // size
+        for offset in range(0, len(compilation.tests), size):
+            batch = replace(compilation, tests=compilation.tests[offset:offset + size])
+            if progress is not None:
+                progress(f"Android device batch {offset // size + 1}/{total}: "
+                         f"{len(batch.tests)} tests, {timeout:g}s execution limit")
+            selectors = [test.class_name.replace("/", ".").replace("$", r"\$")
+                         + ("#" + test.method_name if batch_size is not None else "")
+                         for test in batch.tests]
+            command = [
+                self.sdk.adb, "-s", self.device.identifier,
+                "shell", "am", "instrument", "-w", "-r", "-e", "class",
+                ",".join(dict.fromkeys(selectors)),
+                f"{TEST_PACKAGE}/{RUNNER}",
+            ]
+            cleanup = ""
+            try:
+                completed = self.sdk.runner.run(
+                    command, environment=self.sdk.environment(), capture_output=True,
+                    check=False, timeout=timeout,
+                )
+                output = completed.stdout + completed.stderr
+                failure = (f"Android instrumentation exited with status {completed.returncode}."
+                           if completed.returncode else None)
+            except subprocess.TimeoutExpired as error:
+                output = _output_text(error.stdout) + "\n" + _output_text(error.stderr)
+                failure = f"Android instrumentation timed out after {timeout:g} seconds."
+                cleanup = self._stop_packages()
+                failure += cleanup
+            except OSError as error:
+                output = ""
+                failure = f"Could not execute Android instrumentation: {error}"
+                cleanup = self._stop_packages()
+                failure += cleanup
+            results.update(self._results(batch, output, failure=failure))
+            if cleanup:
+                for test in compilation.tests[offset + size:]:
+                    results[test.nodeid] = AndroidTestResult(
+                        "failed", "Android batch not started because cleanup failed." + cleanup)
+                break
+        return results
 
     def _stop_packages(self) -> str:
         errors = []
