@@ -475,6 +475,19 @@ results must still verify their binding before updating a reused holder.
 Restore or schedule any detached resources when the holder reattaches;
 rebinding is not guaranteed, and loading can still wait for viewport visibility.
 
+For native HTTP session restoration, `pyjs.java.net.HttpCookie` exposes its
+constructor and domain, path, security, HTTP-only, max-age, version, discard
+and port-list attributes. `CookieStore.getCookies()` includes cookies whose
+paths do not match the origin root. `CookieStore.add()` bypasses response
+acceptance policy: restore only validated records for the intended origin.
+Use a private CookieManager per account and verify server identity before
+resuming authenticated work. Record absolute expiry when accepting cookies;
+`getMaxAge()` does not count down, and reusing it after a restart extends the
+local lifetime. Do not persist session-only or discard-marked cookies without
+an explicit application policy. Android API 21+
+`context.get_no_backup_files_dir()` is for state excluded from auto backup;
+it does not encrypt data or make it portable. Keep native file I/O on workers.
+
 For actual view bounds, implement `OnLayoutChangeListener` from `pyjs.android`
 and attach it with `view.addOnLayoutChangeListener(listener)`. Its
 `onLayoutChange` receives the view and new/old left, top, right and bottom

@@ -8,6 +8,24 @@ from pyjs.java.io import File, FileOutputStream, OutputStreamWriter, create_temp
 pytestmark = pytest.mark.pyjs_android_jvm
 
 
+def test_no_backup_directory_is_private_persistent_storage_not_cache() -> None:
+    context = application_context()
+    directory = context.get_no_backup_files_dir()
+    assert directory.getPath() != context.getFilesDir().getPath()
+    assert directory.getPath() != context.get_cache_dir().getPath()
+    file = create_temp_file("no-backup-test-", ".txt", directory)
+    try:
+        writer = OutputStreamWriter(FileOutputStream(file), "UTF-8")
+        try:
+            writer.write("private")
+        finally:
+            writer.close()
+        reopened = File(context.get_no_backup_files_dir().getPath() + "/" + file.getName())
+        assert reopened.length() == 7
+    finally:
+        assert file.delete()
+
+
 def test_cache_file_writer_and_directory_metadata() -> None:
     context = application_context()
     directory = create_temp_file("share-test-", ".dir", context.get_cache_dir())

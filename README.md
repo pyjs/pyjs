@@ -1004,6 +1004,14 @@ with `pyjs template`.
   installed rather than mix its credentials with the transport's private jar.
   Cookie persistence, cancellation, and lifecycle-aware delivery remain
   application responsibilities.
+  Native `HttpCookie` construction and attribute access plus
+  `CookieStore.getCookies()`/`add()` support explicit restoration. Direct
+  insertion bypasses response-cookie acceptance policy: validate the original
+  origin and attributes before inserting. `getMaxAge()` is a duration, not a
+  remaining lifetime; record an absolute expiry when accepting a cookie and
+  restore only its remaining duration. Do not renew expiry on every launch.
+  Android API 21+ `context.get_no_backup_files_dir()` supplies private storage
+  excluded from automatic backup, not encryption or protection from deletion.
 - JVM clients compile ordinary `API` query, mutation, and action methods into
   typed remote operations, including nested API children and inherited methods.
   Pass an absolute HTTP(S) API root and a finite `timeout_ms`; there is no
