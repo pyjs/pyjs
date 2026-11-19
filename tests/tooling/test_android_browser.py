@@ -295,6 +295,7 @@ def test_touch_follows_browser_clipping_not_dom_ancestry(tmp_path, markup, setup
             page = await browser.new_page('data:text/html,' + quote(
                 '<!DOCTYPE html><meta name="viewport" content="width=device-width">' + markup,
             ))
+            await page.wait_for_selector('#target')
             await page.set_viewport(400, 800, mobile=True)
             if setup:
                 await page.evaluate(setup)
