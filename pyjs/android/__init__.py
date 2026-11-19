@@ -673,6 +673,14 @@ class OnClickListener:
         pass
 
 
+@jvm.native("android/view/View$OnLayoutChangeListener", interface=True)
+class OnLayoutChangeListener:
+    def onLayoutChange(
+        self, view: View, left: i32, top: i32, right: i32, bottom: i32,
+        old_left: i32, old_top: i32, old_right: i32, old_bottom: i32,
+    ) -> None: ...
+
+
 @jvm.native("android/view/ViewParent", interface=True)
 class ViewParent:
     def requestDisallowInterceptTouchEvent(self, disallow: bool) -> None: ...
@@ -698,6 +706,8 @@ class View:
     def onTouchEvent(self, event: MotionEvent) -> bool: ...
 
     def dispatchTouchEvent(self, event: MotionEvent) -> bool: ...
+
+    def layout(self, left: i32, top: i32, right: i32, bottom: i32) -> None: ...
 
     def performClick(self) -> bool: ...
 
@@ -772,6 +782,10 @@ class View:
 
     def setOnClickListener(self, listener: OnClickListener) -> None:
         self.listener = listener
+
+    def addOnLayoutChangeListener(self, listener: OnLayoutChangeListener) -> None: ...
+
+    def removeOnLayoutChangeListener(self, listener: OnLayoutChangeListener) -> None: ...
 
     def setOnKeyListener(self, listener: OnKeyListener | None) -> None:
         pass
@@ -1291,6 +1305,7 @@ __all__ = [
     "OnDragListener",
     "OnEditorActionListener",
     "OnKeyListener",
+    "OnLayoutChangeListener",
     "OnLongClickListener",
     "Parcelable",
     "Point",

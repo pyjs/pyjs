@@ -475,6 +475,15 @@ results must still verify their binding before updating a reused holder.
 Restore or schedule any detached resources when the holder reattaches;
 rebinding is not guaranteed, and loading can still wait for viewport visibility.
 
+For actual view bounds, implement `OnLayoutChangeListener` from `pyjs.android`
+and attach it with `view.addOnLayoutChangeListener(listener)`. Its
+`onLayoutChange` receives the view and new/old left, top, right and bottom
+coordinates in pixels relative to the parent. This is a layout notification,
+not a completed-frame or visibility signal. Keep callbacks small; schedule
+layout-affecting work after the current pass when required by the container.
+Remove the same listener with `removeOnLayoutChangeListener` when its owner
+stops observing. There is no host-side layout simulation for these bindings.
+
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
 in `finally`. It may return `None` or raise a native I/O or permission error.
