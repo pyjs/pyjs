@@ -531,6 +531,10 @@ JVM value-returning `and` and `or` support matching integer or floating
 operands, preserving the selected value and skipping unused expressions.
 Mixed integer/floating result unions remain unsupported.
 
+JVM `min()` and `max()` accept two or more positional operands with matching
+integer or floating storage. Floating ties and unordered NaN comparisons
+retain the earlier operand. Iterable and `key` forms remain unsupported.
+
 JVM lists support `==`, `!=`, `__eq__()` and `__ne__()` between lists with
 matching integer, boolean or string storage, including nullable strings.
 They compare item values and logical length, not backing capacity or identity.

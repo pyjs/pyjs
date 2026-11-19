@@ -1956,15 +1956,37 @@ class JVMEmitter:
         }:
             if len(node.args) < 2 or node.keywords:
                 raise JVMUnsupported(
-                    "JVM min and max require at least two positional integer arguments",
+                    "JVM min and max require at least two positional numeric arguments",
                     node,
                 )
-            if self.expression(node.args[0]) != "J":
+            result_type = self.expression(node.args[0])
+            if result_type not in {"J", "D"}:
                 raise JVMUnsupported(
-                    "JVM min and max currently require integer arguments",
+                    "JVM min and max require matching integer or floating arguments",
                     node,
                 )
             name = "min" if target.py_func is native_builtins._min else "max"
+            if result_type == "D":
+                selected = self.allocate_temporary("D", "extrema.selected")
+                candidate = self.allocate_temporary("D", "extrema.candidate")
+                self.store(selected, "D")
+                for argument in node.args[1:]:
+                    if self.expression(argument) != "D":
+                        raise JVMUnsupported(
+                            "JVM min and max require matching integer or floating arguments", node)
+                    self.store(candidate, "D")
+                    self.load(candidate)
+                    self.load(selected)
+                    # Python keeps the earlier operand on ties and unordered
+                    # comparisons, unlike Java Math.min/max for NaN and -0.0.
+                    self.code.emit(0x98 if name == "min" else 0x97)
+                    keep = self.new_label("extrema.keep")
+                    self.code.branch(0x9C if name == "min" else 0x9E, keep)
+                    self.load(candidate)
+                    self.store(selected, "D")
+                    self.code.mark(keep)
+                self.load(selected)
+                return "D"
             reference = self.class_file.method_reference(
                 "java/lang/Math",
                 name,
@@ -1972,7 +1994,8 @@ class JVMEmitter:
             )
             for argument in node.args[1:]:
                 if self.expression(argument) != "J":
-                    raise JVMUnsupported("JVM min and max currently require integer arguments", node)
+                    raise JVMUnsupported(
+                        "JVM min and max require matching integer or floating arguments", node)
                 self.code.emit(0xB8, reference.to_bytes(2, "big"))
             return "J"
         if (isinstance(node.func, ast.Attribute) and isinstance(target, Function)
