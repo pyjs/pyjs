@@ -535,11 +535,21 @@ Long-click and custom touch handlers remain independent.
 Use `isClickable()` to inspect that state; disabled and nonclickable views are
 not interchangeable for touch dispatch.
 `--pyjs-android-timeout` bounds the entire compiled suite, not each test.
+For large device suites, `--pyjs-android-batch-size=40` compiles and installs
+once, then selects at most 40 tests per instrumentation process. The timeout
+applies separately to each batch; compilation and installation are outside
+that limit. Batches run sequentially and print their progress. Application
+process state restarts between batches, but stored files and databases remain;
+tests must initialize their own state. Within a batch, JUnit controls order.
+Without the option, the existing single-suite execution is unchanged.
+Robolectric and host-driven tests do not use this device-only option.
 Device timeouts retain completed results and fail unfinished tests with the
 last started test and bounded output. A timeout after all results were reported
 fails the last reported test to expose incomplete instrumentation teardown.
 The runner stops its test packages on the selected device after a timeout;
-the emulator remains running for reuse. Cleanup errors remain in the report.
+later batches still run if cleanup succeeds. Cleanup errors fail remaining
+unstarted tests without launching another batch. The emulator remains running
+for reuse. No failed or timed-out test is retried automatically.
 
 After `background()`, `resume()` waits for the Activity's resumed lifecycle
 and, on API 29+, Android's window/input transaction barrier. This prevents a

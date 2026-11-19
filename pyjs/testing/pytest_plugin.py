@@ -232,7 +232,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--pyjs-android-timeout",
         type=float,
         default=120,
-        help="Seconds allowed for one compiled Android test suite.",
+        help="Seconds allowed for one compiled Android suite or device batch.",
+    )
+    group.addoption(
+        "--pyjs-android-batch-size",
+        type=int,
+        default=None,
+        help="Maximum compiled device tests per instrumentation run; build and install once.",
     )
     group.addoption(
         "--pyjs-daemon-port",
@@ -662,6 +668,9 @@ def run_android_device_target(
         "pyjs_android_timeout",
         config.getoption("--pyjs-android-timeout"),
     )
+    batch_size = config.getoption("--pyjs-android-batch-size")
+    if batch_size is not None:
+        batch_size = positive_int("pyjs_android_batch_size", batch_size)
     project_root = Path(str(config.rootpath)).resolve()
     cache = Path(str(config.cache.mkdir("pyjs"))).resolve()
     shared_cache = Path(
@@ -709,6 +718,8 @@ def run_android_device_target(
         compilation,
         packages,
         timeout=timeout,
+        batch_size=batch_size,
+        progress=progress,
     )
 
 

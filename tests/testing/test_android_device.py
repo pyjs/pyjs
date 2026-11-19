@@ -24,15 +24,20 @@ def instrumentation_status(method, code, *, class_name="Tests$Suite", details=""
             f"INSTRUMENTATION_STATUS_CODE: {code}\n")
 
 
-def device_runner(compilation, outcome, *cleanup):
-    command = Mock(side_effect=[outcome, *cleanup])
+def make_device_runner(*outcomes):
+    command = Mock(side_effect=outcomes)
     sdk = SimpleNamespace(adb=Path("adb"), runner=SimpleNamespace(run=command),
                           install=Mock(), prepare_for_tests=Mock(),
                           environment=lambda: {"ANDROID_HOME": "sdk"})
     runner = AndroidDeviceTestRunner(sdk, AndroidDevice("emulator-5566", "device"))
+    return runner, sdk
+
+
+def device_runner(compilation, outcome, *cleanup, batch_size=None):
+    runner, sdk = make_device_runner(outcome, *cleanup)
     results = runner.run(compilation, AndroidTestPackages(Path("app.apk"), Path("tests.apk")),
-                         timeout=7)
-    return results, command
+                         timeout=7, batch_size=batch_size)
+    return results, sdk.runner.run
 
 
 @pytest.fixture
@@ -40,6 +45,101 @@ def three_tests():
     return JVMCompilation("Tests", {}, tuple(
         JVMCompiledTest(f"test_notes.py::test_{name}", "Tests$Suite", f"test_{name}")
         for name in ["save", "open", "close"]))
+
+
+@pytest.mark.parametrize("batch_size", [None, 1, 2, 10])
+def test_batches_select_each_method_once_and_install_packages_once(three_tests, batch_size):
+    size = batch_size or 3
+    batches = [three_tests.tests[index:index + size] for index in range(0, 3, size)]
+    responses = [subprocess.CompletedProcess([], 0, "".join(
+        instrumentation_status(test.method_name, 0) for test in batch), "") for batch in batches]
+    runner, sdk = make_device_runner(*responses)
+    progress = []
+    packages = AndroidTestPackages(Path("app.apk"), Path("tests.apk"))
+    results = runner.run(three_tests, packages, timeout=7, batch_size=batch_size,
+                         progress=progress.append)
+    assert results == {test.nodeid: AndroidTestResult("passed") for test in three_tests.tests}
+    assert [call.args for call in sdk.install.call_args_list] == [
+        (runner.device, packages.target), (runner.device, packages.tests)]
+    sdk.prepare_for_tests.assert_called_once_with(runner.device)
+    assert len(sdk.runner.run.call_args_list) == len(batches)
+    for index, (call, batch) in enumerate(zip(sdk.runner.run.call_args_list, batches, strict=True), 1):
+        selection = (r"Tests\$Suite" if batch_size is None else
+                     ",".join(r"Tests\$Suite#" + test.method_name for test in batch))
+        assert call.args[0] == [
+            Path("adb"), "-s", "emulator-5566", "shell", "am", "instrument", "-w", "-r",
+            "-e", "class", selection,
+            f"{TEST_PACKAGE}/{RUNNER}"]
+        assert call.kwargs["timeout"] == 7
+        assert progress[index - 1] == (
+            f"Android device batch {index}/{len(batches)}: {len(batch)} tests, 7s execution limit")
+
+
+@pytest.mark.parametrize("batch_size", [0, -1, True, 1.5])
+def test_invalid_batch_size_fails_before_installing(three_tests, batch_size):
+    runner, sdk = make_device_runner()
+    with pytest.raises(ValueError, match="batch size must be a positive integer"):
+        runner.run(three_tests, AndroidTestPackages(Path("app.apk"), Path("tests.apk")),
+                   batch_size=batch_size)
+    sdk.install.assert_not_called()
+
+
+def test_empty_device_selection_fails_before_installing():
+    runner, sdk = make_device_runner()
+    with pytest.raises(ValueError, match="requires selected tests"):
+        runner.run(JVMCompilation("Tests", {}),
+                   AndroidTestPackages(Path("app.apk"), Path("tests.apk")))
+    sdk.install.assert_not_called()
+
+
+@pytest.mark.parametrize("last_code", [0, 1])
+def test_timed_out_batch_retains_results_and_continues_after_stopping_its_processes(three_tests, last_code):
+    output = instrumentation_status("test_save", 0) + instrumentation_status("test_open", last_code)
+    stopped = subprocess.CompletedProcess([], 0, "", "")
+    results, command = device_runner(
+        three_tests, subprocess.TimeoutExpired("adb", 7, output=output), stopped, stopped,
+        subprocess.CompletedProcess([], 0, instrumentation_status("test_close", 0), ""),
+        batch_size=2)
+    assert results["test_notes.py::test_save"] == AndroidTestResult("passed")
+    assert results["test_notes.py::test_close"] == AndroidTestResult("passed")
+    error = results["test_notes.py::test_open"].error
+    assert "timed out after 7 seconds" in error
+    assert f"Completed: {2 if last_code == 0 else 1}/2" in error
+    assert command.call_count == 4
+    assert command.call_args_list[-1].args[0][-2] == r"Tests\$Suite#test_close"
+
+
+def test_failed_batch_cleanup_does_not_start_another_instrumentation_process(three_tests):
+    output = instrumentation_status("test_save", 0)
+    results, command = device_runner(
+        three_tests, subprocess.TimeoutExpired("adb", 7, output=output),
+        OSError("offline"), subprocess.CompletedProcess([], 0, "", ""), batch_size=2)
+    assert results["test_notes.py::test_save"] == AndroidTestResult("passed")
+    assert results["test_notes.py::test_open"].outcome == "failed"
+    assert results["test_notes.py::test_close"].outcome == "failed"
+    assert "batch not started because cleanup failed" in results["test_notes.py::test_close"].error
+    assert "offline" in results["test_notes.py::test_close"].error
+    assert command.call_count == 3
+
+
+@pytest.mark.parametrize("outcome", [
+    subprocess.CompletedProcess([], 1, "", "disconnected"),
+    subprocess.CompletedProcess([], 0, "INSTRUMENTATION_FAILED: process crashed", ""),
+    subprocess.CompletedProcess([], 0, "", ""),
+    OSError("cannot start adb"),
+])
+def test_failed_batch_does_not_replace_earlier_or_later_results(three_tests, outcome):
+    stopped = subprocess.CompletedProcess([], 0, "", "")
+    cleanup = [stopped, stopped] if isinstance(outcome, OSError) else []
+    results, _ = device_runner(
+        three_tests,
+        subprocess.CompletedProcess([], 0, instrumentation_status("test_save", 0), ""),
+        outcome, *cleanup,
+        subprocess.CompletedProcess([], 0, instrumentation_status("test_close", 0), ""),
+        batch_size=1)
+    assert results["test_notes.py::test_save"] == AndroidTestResult("passed")
+    assert results["test_notes.py::test_open"].outcome == "failed"
+    assert results["test_notes.py::test_close"] == AndroidTestResult("passed")
 
 
 @pytest.mark.parametrize("as_bytes", [False, True])
