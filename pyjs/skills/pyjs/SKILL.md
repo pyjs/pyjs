@@ -615,7 +615,13 @@ permissions themselves.
 
 For outgoing files, subclass `pyjs.android.files.FileProvider` and register
 the generated subclass in a manifest overlay with `exported="false"` and
-`grantUriPermissions="true"`. Its `android.support.FILE_PROVIDER_PATHS`
+`grantUriPermissions="true"`. Keep the subclass reachable by constructing it
+in `main()`, for example `SharingProvider()`. A manifest entry does not retain
+a compiled class. Android constructs its own provider instance; do not define
+a Python `__init__`, including on a Python base class. APK packaging rejects
+missing generated provider classes and Python-initialized providers before
+resource linking. External library providers are resolved by Android's tools.
+Its `android.support.FILE_PROVIDER_PATHS`
 metadata must reference a paths XML resource with a narrow sharing directory,
 for example `<cache-path name="copies" path="outgoing/" />`. Do not expose
 the whole cache, files directory, or filesystem. Include the AndroidX runtime.

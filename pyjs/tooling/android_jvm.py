@@ -343,6 +343,7 @@ class AndroidJVMBuilder:
                 cache=Path.home() / ".cache" / "pyjs" / "android-manifest",
                 runner=self.sdk.runner,
             )
+            self._validate_manifest_providers(application, compilation, manifest)
             unaligned = build / "unaligned.apk"
             dependency_classes = self._link_resources(
                 application,
@@ -393,6 +394,33 @@ class AndroidJVMBuilder:
                 package,
             )
         return package
+
+    @staticmethod
+    def _validate_manifest_providers(
+        application: AndroidJVMApplication,
+        compilation: JVMCompilation,
+        manifest: Path,
+    ) -> None:
+        root = ElementTree.parse(manifest).getroot()
+        for provider in root.findall("./application/provider"):
+            name = provider.get("{http://schemas.android.com/apk/res/android}name", "")
+            if name.startswith("."):
+                name = application.app_id + name
+            elif "." not in name:
+                name = application.app_id + "." + name
+            owner = name.replace(".", "/")
+            if not owner.startswith(application.jvm_class + "$"):
+                continue
+            if owner not in compilation.classes:
+                raise ValueError(
+                    f"Android provider {name} is not reachable from main(); "
+                    "retain its constructor in the application entry point"
+                )
+            if owner in compilation.python_initialized_classes:
+                raise ValueError(
+                    f"Android constructs provider {name} without calling Python __init__; "
+                    "do not define Python initializers, including inherited state"
+                )
 
     def _link_resources(
         self,

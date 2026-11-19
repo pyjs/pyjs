@@ -2,11 +2,6 @@
 
 ## Unreleased
 
-- Android apps can share large files through restricted AndroidX
-  `FileProvider` content URIs, URI `ClipData`, and temporary Intent grants.
-  Cache-directory and Java file-output bindings support preparing copies
-  without placing their contents in Binder extras.
-
 - Dropdown keyboard navigation follows current item order after items are
   added, removed or moved. Activation stays with the focused item instead of
   a stale index, including inside open submenus.
@@ -18,6 +13,13 @@
 - Android broadcast receivers can retain a delivery with `go_async()` while a
   short background task runs, then release it with `finish()` on the pending
   result. Context bindings support app-scoped dynamic and ordered broadcasts.
+
+- Android apps can share large files through restricted AndroidX
+  `FileProvider` content URIs, URI `ClipData`, and temporary Intent grants.
+  Cache-directory and Java file-output bindings support preparing copies
+  without placing their contents in Binder extras. APK packaging rejects
+  generated providers missing from the compiled classes or requiring Python
+  initialization, instead of producing an app that cannot start correctly.
 
 - Compiled Android device tests can run in sequential bounded batches with
   `--pyjs-android-batch-size`, reusing one compilation and APK installation.
