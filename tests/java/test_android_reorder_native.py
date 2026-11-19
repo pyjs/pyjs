@@ -14,7 +14,7 @@ from pyjs.android.recyclerview import (
 from pyjs.android.reorder import StaggeredGridDragCallback
 from pyjs.android.testing import NoMatchingViewException, ViewAssertion, by_text, launch
 from pyjs.java import i32
-from pyjs.java.collections import JavaList
+from pyjs.java.collections import JavaArrayList, JavaList
 
 from .android_robolectric_app import GreetingActivity
 
@@ -100,6 +100,39 @@ class ReplayRelayout(ViewAssertion):
 def test_relayout_keeps_the_swap_but_allows_a_deliberate_return() -> None:
     launch(GreetingActivity)
     by_text("Hello from Python").check(ReplayRelayout())
+
+
+class ContinueForward(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        context = view.getContext()
+        recycler = RecyclerView(context)
+        recycler.set_layout_manager(StaggeredGridLayoutManager(2, 1))
+        source = Holder(TextView(context))
+        previous = Holder(TextView(context))
+        following = Holder(TextView(context))
+        source.item_view.layout(0, 200, 100, 300)
+        previous.item_view.layout(0, 100, 100, 200)
+        following.item_view.layout(0, 0, 100, 100)
+        drag = Drag()
+        drag.on_selected_changed(source, ItemTouchHelper.ACTION_STATE_DRAG)
+        assert drag.choose_drop_target(source, candidate_list(previous), 0, 90) is previous
+        drag.on_moved(recycler, source, 2, previous, 1, 0, 90)
+        for reverse in [False, True]:
+            candidates = JavaArrayList()
+            candidates.add(following if reverse else previous)
+            candidates.add(previous if reverse else following)
+            native = NativeDrag()
+            assert native.choose_drop_target(source, candidates, 0, -50) is previous
+            assert drag.choose_drop_target(source, candidates, 0, -50) is following
+            assert candidates.size() == 2
+            assert candidates.get(0) is (following if reverse else previous)
+            assert candidates.get(1) is (previous if reverse else following)
+
+
+def test_guarded_partner_does_not_hide_another_forward_drop_target() -> None:
+    launch(GreetingActivity)
+    by_text("Hello from Python").check(ContinueForward())
 
 
 class ReplayDiagonalReturn(ViewAssertion):

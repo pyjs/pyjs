@@ -19,7 +19,8 @@
 
 - Android's `StaggeredGridDragCallback` stabilizes repeated swaps while
   staggered cards are relaying out, while retaining native target selection
-  and scrolling. The Notes example uses it for long-press reordering.
+  and scrolling. Guarding a previous swap partner does not hide another
+  eligible target. The Notes example uses it for long-press reordering.
 
 - JVM and Android support `str.zfill(width)` with sign-aware padding and
   Unicode code-point widths. Negative widths leave text unchanged; widths

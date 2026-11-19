@@ -7,7 +7,7 @@ from pyjs.android.recyclerview import (
     RecyclerViewViewHolder,
 )
 from pyjs.java import i32
-from pyjs.java.collections import JavaList
+from pyjs.java.collections import JavaArrayList, JavaList
 
 
 class _SwapGuard:
@@ -74,7 +74,13 @@ class StaggeredGridDragCallback(ItemTouchCallback):
                            targets: JavaList, x: i32, y: i32) -> RecyclerViewViewHolder | None:
         target = super().choose_drop_target(selected, targets, x, y)
         if target is not None and not self._swap_guard.allows(target, int(x), int(y)):
-            return None
+            # Android may rank the guarded partner ahead of another crossed card.
+            remaining = JavaArrayList()
+            for index in range(targets.size()):
+                candidate = targets.get(i32(index))
+                if candidate is not target:
+                    remaining.add(candidate)
+            return super().choose_drop_target(selected, remaining, x, y)
         return target
 
     def on_moved(self, recycler_view: RecyclerView,
