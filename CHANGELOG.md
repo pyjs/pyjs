@@ -13,6 +13,13 @@
 - Locals declared after type-narrowing guards remain available when their
   enclosing control-flow region joins, including after `try/finally` cleanup.
   Their storage types are retained without leaking conditional field proofs.
+  Guarded branches also participate in type and numeric-representation joins;
+  incompatible combinations previously accepted can now produce diagnostics.
+
+- JVM locals read after a potentially skipped assignment now verify correctly.
+  Successful assignments retain their values; a missing assignment raises
+  `UnboundLocalError`, including after a suppressed context-manager exception
+  or an empty loop, instead of producing invalid bytecode or a default value.
 
 - Android broadcast receivers can retain a delivery with `go_async()` while a
   short background task runs, then release it with `finish()` on the pending
