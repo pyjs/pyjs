@@ -8,6 +8,7 @@ from pyjs.web.dom import document
 from pyjs.web.domx import button
 from pyjs.web.events import Event
 from pyjs.web.html import HTMLElement
+from pyjs.web.ui.dialog import DialogPanel
 from pyjs.web.ui.dropdown_menu import (
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -31,6 +32,69 @@ from tests.web.ui.browser import (
 )
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+class MenuSelectionCounter:
+    def __init__(self):
+        self.count = 0
+
+    def selected(self, event: Event):
+        self.count += 1
+
+
+@js
+def test_dropdown_keyboard_activation_invokes_item_callback_once():
+    selection = MenuSelectionCounter()
+    item = DropdownMenuItem("history", "History")
+    item.on_select(selection.selected)
+    menu = DropdownMenu(DropdownMenuTrigger("Actions"), DropdownMenuContent(item))
+    mount(menu)
+    for key in ["Enter", " "]:
+        press_key(menu.trigger.element, "ArrowDown")
+        before = selection.count
+        press_key(item.element, key)
+        assert selection.count == before + 1
+        assert menu.selected_value == "history"
+        assert not menu.is_open
+    menu.open()
+    cast(HTMLElement, item.element).click()
+    assert selection.count == 3
+
+
+@js
+async def test_dropdown_inside_modal_is_focusable_and_closes_with_its_dialog():
+    item = DropdownMenuItem("history", "Version history")
+    menu = DropdownMenu(DropdownMenuTrigger("More actions"), DropdownMenuContent(item))
+    panel = DialogPanel("Edit document")
+    panel.header.append(menu)
+    mount(panel)
+    panel.show_modal()
+    press_key(menu.trigger.element, "ArrowDown")
+    assert document.activeElement is item.element
+    assert menu.content.matches(":popover-open")
+    assert menu.content.parentElement is panel.dialog_element
+    bounds = item.element.getBoundingClientRect()
+    hit = document.elementFromPoint(bounds.left + 5, bounds.top + 5)
+    assert hit is item.element
+    press_key(item.element, "Escape")
+    assert not menu.is_open
+    assert panel.dialog_element.open
+    assert document.activeElement is menu.trigger.element
+    menu.open()
+    panel.dialog_element.close()
+    await wait_for_frames()
+    assert not menu.is_open
+    assert not menu.content.isConnected
+    panel.show_modal()
+    menu.open()
+    panel.dialog_element.close()
+    panel.show_modal()
+    await wait_for_frames()
+    assert menu.is_open
+    panel.remove()
+    assert not menu.is_open
+    assert not menu.content.isConnected
 
 
 @js
@@ -221,6 +285,38 @@ class SubmenuDemo(DropdownMenu):
         content = DropdownMenuContent(self.profile_item, self.submenu)
         super().__init__(trigger, content)
         place_element(self.trigger.element, 48, 36)
+
+
+@js
+async def test_modal_submenu_closes_after_selection_parent_close_and_removal():
+    menu = SubmenuDemo()
+    selection = MenuSelectionCounter()
+    menu.nested_item.on_select(selection.selected)
+    panel = DialogPanel("Nested actions")
+    panel.header.append(menu)
+    mount(panel)
+    panel.show_modal()
+    for action in ["select", "close", "remove"]:
+        menu.open()
+        press_key(menu.sub_trigger.element, "ArrowRight")
+        assert menu.submenu.panel.matches(":popover-open")
+        assert menu.submenu.panel.parentElement is panel.dialog_element
+        assert document.activeElement is menu.nested_item.element
+        if action == "select":
+            press_key(menu.nested_item.element, "Enter")
+            assert selection.count == 1
+            assert menu.selected_value == "nested"
+        elif action == "close":
+            panel.close()
+            await wait_for_frames()
+        else:
+            panel.remove()
+        assert not menu.is_open
+        assert not menu.submenu.is_sub_open()
+        assert not menu.content.isConnected
+        assert not menu.submenu.panel.isConnected
+        if action == "close":
+            panel.show_modal()
 
 
 @js
@@ -423,6 +519,7 @@ async def test_hydrated_submenu_nested_click_selects():
     panel.setAttribute("data-slot", "dropdown-menu-sub-content")
     panel.setAttribute("id", "hydrated-sub-panel")
     panel.setAttribute("role", "menu")
+    panel.setAttribute("popover", "manual")
     panel.append(nested)
     sub = cast(DropdownMenuSub, document.createElement("dropdown-menu-sub"))
     sub.setAttribute("data-self-id", "hydrated-sub")
@@ -433,6 +530,7 @@ async def test_hydrated_submenu_nested_click_selects():
     content.setAttribute("data-slot", "dropdown-menu-content")
     content.setAttribute("id", "hydrated-dropdown-content")
     content.setAttribute("role", "menu")
+    content.setAttribute("popover", "manual")
     content.append(profile, sub)
     menu.append(trigger, content)
     mount(menu)

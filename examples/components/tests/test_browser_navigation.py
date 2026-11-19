@@ -10,6 +10,38 @@ from pyjs.tooling.browser import Browser, free_port, wait_for_http
 pytestmark = pytest.mark.pyjs_python
 
 
+async def check_modal_actions(page, panel, screenshot):
+    trigger = panel + ' [data-slot="dropdown-menu-trigger"]'
+    item = panel + ' [role="menuitem"]'
+    status = panel + ' [data-testid="document-action-status"]'
+    async def click_visible(selector):
+        bounds = await page.evaluate_json(
+            f"document.querySelector('{selector}').getBoundingClientRect().toJSON()")
+        assert bounds["width"] > 0 and bounds["height"] > 0
+        x, y = bounds["x"] + bounds["width"] / 2, bounds["y"] + bounds["height"] / 2
+        for kind in ["mousePressed", "mouseReleased"]:
+            await page.session.send("Input.dispatchMouseEvent", {
+                "type": kind, "x": x, "y": y, "button": "left", "clickCount": 1,
+            })
+
+    await click_visible(trigger)
+    await page.screenshot(screenshot)
+    await click_visible(item)
+    await page.wait_for_frames()
+    assert page.exceptions == []
+    assert await page.text(status) == "2300 characters"
+    await page.fill(panel + " textarea", "New details")
+    await page.evaluate(f"document.querySelector('{trigger}').focus()")
+    for key, code, number in [("ArrowDown", "ArrowDown", 40), ("Enter", "Enter", 13)]:
+        for kind in ["keyDown", "keyUp"]:
+            await page.session.send("Input.dispatchKeyEvent", {
+                "type": kind, "key": key, "code": code, "windowsVirtualKeyCode": number,
+            })
+    await page.wait_for_text(status, "11 characters")
+    assert await page.attribute(trigger, "aria-expanded") == "false"
+    await page.fill(panel + " textarea", "Edited after hydration\n" * 100)
+
+
 async def check_standalone_panel_scroll_containment(page):
     panel = "document.querySelector('catalog-app').document_dialog.content"
     await page.set_viewport(1280, 800)
@@ -98,6 +130,7 @@ def test_components_preserves_its_shell_during_partial_navigation(tmp_path):
                     panel = 'dialog[aria-label="Edit document"]'
                     await page.wait_for_attribute(panel, "open", "")
                     await page.fill(panel + " textarea", "Edited after hydration\n" * 100)
+                    await check_modal_actions(page, panel, tmp_path / f"document-menu-{width}.png")
                     await page.evaluate("""(() => {
                         const panel = document.querySelector('dialog[aria-label="Edit document"]');
                         panel.querySelector('button').focus();

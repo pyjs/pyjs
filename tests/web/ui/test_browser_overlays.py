@@ -3,9 +3,12 @@ from typing import cast
 import pytest
 
 from pyjs import js
+from pyjs.testing.web import wait_for_frames
 from pyjs.web.dom import document
 from pyjs.web.events import Event, MouseEvent
 from pyjs.web.html import HTMLElement
+from pyjs.web.ui.combobox import Combobox, ComboboxItem
+from pyjs.web.ui.dialog import DialogPanel
 from pyjs.web.ui.hover_card import HoverCard, HoverCardContent, HoverCardTrigger
 from pyjs.web.ui.popover import Popover, PopoverClose, PopoverContent, PopoverTrigger
 from pyjs.web.ui.tooltip import Tooltip, TooltipContent, TooltipTrigger
@@ -19,6 +22,34 @@ from tests.web.ui.browser import (
 )
 
 pytestmark = pytest.mark.pyjs_web
+
+
+@js
+async def test_modal_popover_and_combobox_reset_after_native_close():
+    choices = Combobox(ComboboxItem("small", "Small"), ComboboxItem("large", "Large"))
+    popover = Popover(PopoverTrigger("Preferences"), PopoverContent(choices))
+    panel = DialogPanel("Edit preferences", popover)
+    mount(panel)
+    panel.show_modal()
+    for attempt in range(2):
+        popover.open()
+        choices.input.focus()
+        choices.open()
+        assert document.activeElement is choices.input
+        assert popover.content.matches(":popover-open")
+        assert choices.panel.matches(":popover-open")
+        assert choices.panel.parentElement is panel.dialog_element
+        if attempt == 0:
+            panel.dialog_element.close()
+            await wait_for_frames()
+        else:
+            panel.remove()
+        assert not popover.is_open
+        assert not choices.is_open
+        assert not popover.content.isConnected
+        assert not choices.panel.isConnected
+        if attempt == 0:
+            panel.show_modal()
 
 
 @js

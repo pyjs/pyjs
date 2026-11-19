@@ -253,7 +253,7 @@ class Combobox(Widget):
             return
         self.is_open = True
         self.input.setAttribute("aria-expanded", "true")
-        self.panel.open(self.input, side="bottom", align="start")
+        self.panel.open(self.input, side="bottom", align="start", on_dismiss=self.close)
         document.addEventListener("click", self.click_listener)
         self.filter_items()
         self.highlight(0)

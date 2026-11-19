@@ -178,6 +178,14 @@ available for every released version.
   width and grows or shrinks from a touch-friendly row without input listeners.
   Do not set a fixed height. Browsers without CSS field sizing retain native
   scrolling and vertical resizing; callers still own Enter/submit semantics.
+- Floating controls (dropdowns, popovers, tooltips and comboboxes) use native
+  manual popovers. Inside a modal dialog they remain in its DOM subtree for
+  focus and inertness, while the top layer escapes clipping. Closing or
+  removing the dialog resets the controls. This requires the Popover API.
+  Custom `FloatingPanel` owners can pass `on_dismiss` to `open()` to reset
+  their own state/listeners when a containing dialog closes or is removed.
+  Use `DropdownMenuItem.on_select()` for pointer and keyboard actions; keep
+  server-rendered controls in `ref()` fields when binding their callbacks.
 - Add `FilePasteController` from `pyjs.web.ui.file_paste` to an existing
   editor or composer. Connect it during client initialization/reconnection
   and disconnect it on removal. Listen on its host for `files-paste`, cast

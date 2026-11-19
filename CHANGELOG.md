@@ -6,6 +6,12 @@
   bounds for a string prefix or suffix. Bounds count Unicode code points,
   including negative offsets and empty-needle edge cases.
 
+- Floating menus, popovers, tooltips and comboboxes use the browser's popover
+  layer and remain interactive inside native modal dialogs. Closing or
+  removing a containing dialog dismisses its floating controls. Dropdown
+  keyboard activation now invokes item callbacks like pointer activation.
+  These controls require browser support for the Popover API.
+
 - `Input.set_value()` and `Textarea.set_value()` now include initial values in
   server-rendered HTML. Client updates still change only the live value, not
   the form-reset default. Multiline values retain leading blank lines.

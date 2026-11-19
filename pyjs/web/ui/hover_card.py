@@ -102,6 +102,7 @@ class HoverCard(Widget):
             side=resolved_side,
             align=resolved_align,
             side_offset=resolved_side_offset,
+            on_dismiss=self.close,
         )
         self.is_open = True
         self.setAttribute("data-state", "open")
