@@ -451,6 +451,34 @@ def test_date_construction_and_accessors_have_cpython_fallbacks():
     assert release.toLocaleDateString()
 
 
+@pytest.mark.parametrize(("value", "expected"), [
+    (0, 0), (-1, -1), (253_402_300_799_999, 253_402_300_799_999),
+    ("1969-12-31T23:59:59.999Z", -1),
+    ("1970-01-01T05:45:00+05:45", 0),
+    ("2026-11-01T01:30:00-04:00", 1_793_511_000_000),
+    ("2026-11-01T01:30:00-05:00", 1_793_514_600_000),
+])
+def test_date_get_time_returns_exact_epoch_milliseconds(value, expected):
+    assert Date(value).getTime() == expected
+
+
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="Process time zone override needs tzset")
+@pytest.mark.parametrize(("zone", "value", "expected"), [
+    ("NPT-5:45", "1970-01-01T05:45:00", 0),
+    ("EST5", "1969-12-31T19:00:00", 0),
+    ("EST5EDT,M3.2.0/2,M11.1.0/2", "2026-11-01T01:30:00", 1_793_511_000_000),
+    ("EST5EDT,M3.2.0/2,M11.1.0/2", "2026-03-08T02:30:00", 1_772_955_000_000),
+])
+def test_date_get_time_interprets_local_wall_clock(monkeypatch, zone, value, expected):
+    try:
+        with monkeypatch.context() as context:
+            context.setenv("TZ", zone)
+            time.tzset()
+            assert Date(value).getTime() == expected
+    finally:
+        time.tzset()
+
+
 @pytest.mark.parametrize("value", [0, 1793539800000, "2026-11-01T01:30:00-04:00",
                                   "2026-11-01T01:30:00-05:00"])
 def test_date_local_datetime_and_time_use_the_process_locale(value):
