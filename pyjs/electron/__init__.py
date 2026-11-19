@@ -44,6 +44,7 @@ class WebContents:
         self.mainFrame: Frame = Frame()
         self.debugger: Debugger = Debugger()
     def send(self, channel: str, message: str) -> None: ...
+    def getURL(self) -> str: ...
 
 
 @js.native
