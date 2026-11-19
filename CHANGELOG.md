@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Android broadcast receivers can retain a delivery with `go_async()` while a
+  short background task runs, then release it with `finish()` on the pending
+  result. Context bindings support app-scoped dynamic and ordered broadcasts.
+
 - JVM `for` loops can traverse native `JVMArray` values directly, including
   primitive and nested arrays, while retaining their element representation.
   Unsupported iterator-based membership reports a located diagnostic instead
