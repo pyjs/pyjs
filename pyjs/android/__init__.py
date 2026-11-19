@@ -145,6 +145,9 @@ class Context:
 
     def getApplicationContext(self) -> Context: ...
 
+    @jvm.native("android/content/Context", name="startActivity", invocation="virtual")
+    def start_activity(self, intent: Intent) -> None: ...
+
     @jvm.native(
         "android/content/Context",
         name="getSharedPreferences",
@@ -1204,9 +1207,8 @@ __all__ = [
     "AndroidAPI",
     "AndroidAvailability",
     "AndroidNullability",
-    "BroadcastReceiver",
     "BroadcastPendingResult",
-    "IntentFilter",
+    "BroadcastReceiver",
     "BuildVersion",
     "Bundle",
     "Button",
@@ -1226,6 +1228,7 @@ __all__ = [
     "GridLayout",
     "InputFilter",
     "Intent",
+    "IntentFilter",
     "JavaCharSequence",
     "KeyEvent",
     "LayoutParams",
