@@ -463,6 +463,9 @@ by default (`timeout_ms`); this timer is independent of the native call but
 still needs the host event loop to run. Up to 128 live alerts and 128 requests
 are allowed per service. Duplicate live keys reject. Click callbacks take no
 arguments; closing an alert revokes its callback before awaiting dismissal.
+Native expiry/dismissal events release the alert's key and capacity slot.
+Request overload rejects only the new request. A busy `close()` still revokes
+clicks; retry closing after capacity becomes available to dismiss that alert.
 Linux uses `<application_id>.desktop`; pass `desktop_name` to the factory when
 the installed desktop-entry filename differs.
 
@@ -471,7 +474,9 @@ and revokes all its click callbacks. The next request starts a fresh helper.
 This cannot retract an uncertain alert from OS notification history; retrying
 can duplicate it. `dispose()` permanently stops the service without waiting
 for native dismissal. Await `close()` for each alert before disposing if native
-cleanup is needed. App exit also terminates helpers. This API requires the
+cleanup is needed. Normal app quit terminates helpers and waits up to two
+seconds for temporary-profile cleanup, including after disposal. Forced exit
+or unavailable storage can leave temporary files. This API requires the
 generated Electron bootstrap; it does not work in standalone Node bundles.
 Linux has real native acceptance coverage; macOS signing and Windows installed
 application identity still need deployment validation.

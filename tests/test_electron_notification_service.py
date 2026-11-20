@@ -25,10 +25,13 @@ const assert = require('node:assert/strict');
 const {EventEmitter} = require('node:events');
 const Module = require('node:module'), original = Module._load;
 const children = [], profiles = new Set();
+const removals = [];
 const app = new EventEmitter();
 app.getAppPath = () => '/packaged/app';
 app.commandLine = {hasSwitch: () => false};
 let mode = 'normal', boot = 'ready', clicks = 0, count = 0;
+let holdCleanup = false, quitCalls = 0;
+app.quit = () => quitCalls++;
 const options = {title: 'Example', body: 'Open the app'};
 class Child extends EventEmitter {
     send(message, callback) {
@@ -44,14 +47,17 @@ class Child extends EventEmitter {
     kill(signal) {
         assert.equal(signal, 'SIGKILL');
         this.killed = true;
-        queueMicrotask(() => this.emit('close'));
+        queueMicrotask(() => {this.emit('exit'); this.emit('close')});
     }
 }
 Module._load = function(name, ...args) {
     if (name === 'electron') return {app};
     if (name === 'node:fs') return {
         mkdtempSync: () => {const path = '/owned-profile-' + count++; profiles.add(path); return path},
-        rm: (path, options, done) => {assert(profiles.delete(path)); done()},
+        rm: (path, options, done) => {
+            const finish = () => {assert(profiles.delete(path)); done()};
+            if (holdCleanup) removals.push(finish); else finish();
+        },
     };
     if (name === 'node:child_process') return {spawn: (executable, args, options) => {
         assert.equal(executable, process.execPath);
@@ -90,6 +96,15 @@ const main = require(process.argv[1]).main;
     await service.show('one', options, () => clicks++);
     first.emit('message', {event:'click', id:show.id, key:'one'});
     assert.equal(clicks, 1, 'reused keys reject stale handle events');
+    first.emit('message', {event:'closed', id:show.id, key:'one'});
+    await assert.rejects(service.show('one', options, () => {}), /already active/);
+    for (let i = 0; i < 140; i++) {
+        await service.show('expired', options, () => clicks++);
+        const active = first.messages.at(-1);
+        first.emit('message', {event:'closed', key:'expired', id:active.id});
+        first.emit('message', {event:'click', key:'expired', id:active.id});
+    }
+    assert.equal(clicks, 1, 'native close revokes callbacks and releases slots');
     mode = 'wait';
     const started = Date.now();
     const stalled = service.show('stalled', options, () => clicks++);
@@ -137,13 +152,52 @@ const main = require(process.argv[1]).main;
     for (let i = 0; i < 128; i++) await retry.show(String(i), options, () => {});
     await assert.rejects(retry.show('overflow', options, () => {}), /full/);
     await retry.close('0');
-    await retry.show('replacement', options, () => {});
+    await retry.show('replacement', options, () => clicks++);
+    const last = children.at(-1), replacement = last.messages.at(-1);
+    await retry.close('1');
     mode = 'wait';
     const queued = Array.from({length:128}, () => retry.supported());
-    await assert.rejects(retry.supported(), /busy/);
     const settled = Promise.allSettled(queued);
+    await assert.rejects(retry.supported(), /busy/);
+    await assert.rejects(retry.show('busy', options, () => {}), /busy/);
+    await assert.rejects(retry.close('replacement'), /busy/);
+    last.emit('message', {event:'click', key:'replacement', id:replacement.id});
+    assert.equal(clicks, 1, 'even a rejected close revokes its callback');
+    assert(!last.killed, 'overload must not invalidate unrelated alerts or requests');
     retry.dispose();
     assert((await settled).every(result => result.status === 'rejected'));
+    assert.equal(profiles.size, 0);
+    assert.equal(app.listenerCount('will-quit'), 0);
+    assert.equal(process.listenerCount('exit'), listeners);
+    mode = 'normal';
+    holdCleanup = true;
+    for (const dispose of [false, true]) {
+        const cleanup = main(40);
+        await cleanup.supported();
+        if (dispose) cleanup.dispose();
+        let prevented = 0;
+        const before = quitCalls;
+        app.emit('will-quit', {preventDefault: () => prevented++});
+        app.emit('will-quit', {preventDefault: () => prevented++});
+        assert.equal(prevented, 2);
+        await assert.rejects(cleanup.supported(), /disposed/);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(quitCalls, before, 'quit waits for asynchronous profile cleanup');
+        assert.equal(removals.length, 1, 'exit plus close must clean each profile once');
+        removals.shift()();
+        assert.equal(quitCalls, before + 1);
+        assert.equal(profiles.size, 0);
+        assert.equal(app.listenerCount('will-quit'), 0);
+        assert.equal(process.listenerCount('exit'), listeners);
+    }
+    const slowCleanup = main(40);
+    await slowCleanup.supported();
+    const before = quitCalls;
+    app.emit('will-quit', {preventDefault: () => {}});
+    await new Promise(resolve => setTimeout(resolve, 2100));
+    assert.equal(quitCalls, before + 1, 'broken cleanup cannot prevent application exit');
+    removals.shift()();
+    assert.equal(quitCalls, before + 1, 'late cleanup cannot trigger another quit');
     assert.equal(profiles.size, 0);
     assert.equal(app.listenerCount('will-quit'), 0);
     assert.equal(process.listenerCount('exit'), listeners);
@@ -154,7 +208,8 @@ const main = require(process.argv[1]).main;
     assert result.returncode == 0, result.stderr
 
 
-def test_packaged_isolated_notifications_on_private_bus(tmp_path):
+@pytest.mark.parametrize('dispose', [False, True])
+def test_packaged_isolated_notifications_on_private_bus(tmp_path, dispose):
     runtime = os.environ.get('PYJS_ELECTRON_RUNTIME')
     if sys.platform != 'linux' or not runtime:
         pytest.skip('Set PYJS_ELECTRON_RUNTIME to opt into packaged Linux notifications')
@@ -176,6 +231,10 @@ def test_packaged_isolated_notifications_on_private_bus(tmp_path):
         sys.modules.pop('isolated_notification_acceptance', None)
     environment = os.environ.copy()
     environment.pop('ELECTRON_RUN_AS_NODE', None)
+    scratch = tmp_path / 'temporary-profiles'
+    scratch.mkdir()
+    environment['TMPDIR'] = str(scratch)
+    environment['PYJS_NOTIFICATION_DISPOSE'] = '1' if dispose else '0'
     process = subprocess.Popen([
         'dbus-run-session', '--', '/usr/bin/python3', fixtures / 'notification_service.py',
         executable, '--ozone-platform=headless', '--disable-gpu',
@@ -190,6 +249,7 @@ def test_packaged_isolated_notifications_on_private_bus(tmp_path):
             process.wait(timeout=5)
     assert process.returncode == 0, output
     for expected in ['isolated-responsive', 'isolated-clicked', 'isolated-retryable',
-                     'close: 2']:
+                     'close: 2', 'native-slots-released']:
         assert expected in output, output
     assert output.count('notify: Native example') == 1, output
+    assert not list(scratch.glob('pyjs-notifications-*')), output

@@ -1,7 +1,7 @@
 from pyjs import js
 from pyjs.electron import HostContext
 from pyjs.electron.notifications import NotificationOptions, notification_service
-from pyjs.node import Timer, clear_timeout, set_timeout, sleep
+from pyjs.node import Timer, clear_timeout, environment, set_timeout, sleep
 
 
 @js
@@ -35,6 +35,20 @@ class Check:
             assert self.clicked
             print('isolated-clicked')
             await service.close('click')
+            for title in ['Expired example', 'Dismissed example']:
+                await service.show('released', NotificationOptions(title), self.click)
+                replaced = False
+                for _ in range(300):
+                    await sleep(10)
+                    try:
+                        await service.show('released', NotificationOptions('Delayed example'), self.click)
+                        replaced = True
+                        break
+                    except Exception as error:
+                        assert str(error) == 'Notification key is already active'
+                assert replaced
+                await service.close('released')
+            print('native-slots-released')
             try:
                 await service.show('failure', NotificationOptions('Failure example'), self.click)
                 raise AssertionError('Native failure must reject')
@@ -44,7 +58,8 @@ class Check:
             print('isolated-retryable')
         finally:
             clear_timeout(self.timer)
-            service.dispose()
+            if environment('PYJS_NOTIFICATION_DISPOSE') == '1':
+                service.dispose()
 
 
 @js

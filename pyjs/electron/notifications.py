@@ -28,6 +28,9 @@ class NotificationService:
     operations and invalidates all handles; the next request starts a worker.
     An uncertain OS alert may remain visible and retries may duplicate it.
     dispose() is final and revokes callbacks without waiting for the OS.
+    Native close events release keys. A busy close revokes clicks but retains
+    the native handle for a later close retry. Normal app quit waits up to two
+    seconds for helper profile cleanup; forced exit may leave temporary files.
     """
     async def supported(self) -> bool: ...
     async def show(self, key: str, options: NotificationOptions, clicked: Callable[[], None]) -> None: ...
@@ -61,7 +64,19 @@ if (!application_id || !name || application_id.length > 256 || name.length > 256
     throw new Error('Notification application identity is required and must fit 256 characters');
 }
 let worker = null, ready = false, disposed = false, next = 0;
-const pending = new Map(), items = new Map();
+let quitting = false, quitTimer = null;
+const pending = new Map(), items = new Map(), children = new Set();
+function unhook() {
+    app.removeListener('will-quit', stop);
+    process.removeListener('exit', exit);
+}
+function finishQuit() {
+    if (!quitting) return;
+    quitting = false;
+    clearTimeout(quitTimer);
+    unhook();
+    app.quit();
+}
 function fail(error) {
     const child = worker;
     worker = null;
@@ -96,11 +111,23 @@ function start() {
         throw error;
     }
     worker = child;
+    children.add(child);
     child.on('error', error => {if (child === worker) fail(error)});
-    child.on('close', () => {
+    let cleaning = false;
+    const cleanup = () => {
+        if (cleaning) return;
+        cleaning = true;
         if (child === worker) fail(new Error('Notification worker exited'));
-        fs.rm(profile, {recursive: true, force: true, maxRetries: 3, retryDelay: 100}, () => {});
-    });
+        fs.rm(profile, {recursive: true, force: true, maxRetries: 3, retryDelay: 100}, () => {
+            children.delete(child);
+            if (disposed && !children.size) {
+                unhook();
+                finishQuit();
+            }
+        });
+    };
+    child.once('exit', cleanup);
+    child.once('close', cleanup);
     child.on('message', message => {
         if (child !== worker || !message || typeof message !== 'object') return;
         if (message.event === 'ready') {
@@ -109,6 +136,9 @@ function start() {
             send(child, {operation: 'identity', application_id, name,
                          desktop_name: desktop_name || application_id + '.desktop'});
             for (const request of pending.values()) send(child, request.message);
+        } else if (message.event === 'closed') {
+            const item = items.get(message.key);
+            if (item && item.id === message.id) items.delete(message.key);
         } else if (message.event === 'click') {
             const item = items.get(message.key);
             if (item && item.id === message.id) item.clicked();
@@ -135,9 +165,18 @@ function request(operation, key = '', options = null, id = ++next) {
         } catch (error) {fail(error)}
     });
 }
-const stop = () => fail(new Error('Application is exiting'));
+const exit = () => fail(new Error('Application is exiting'));
+const stop = event => {
+    disposed = true;
+    fail(new Error('Application is exiting'));
+    if (!children.size) {unhook(); return}
+    event.preventDefault();
+    if (quitting) return;
+    quitting = true;
+    quitTimer = setTimeout(finishQuit, 2000);
+};
 app.on('will-quit', stop);
-process.on('exit', stop);
+process.on('exit', exit);
 return {
     supported: () => request('support'),
     async show(key, options, clicked) {
@@ -145,6 +184,7 @@ return {
         if (items.has(key)) throw new Error('Notification key is already active');
         if (items.size >= 128) throw new Error('Notification service is full');
         if (JSON.stringify(options).length > 65536) throw new Error('Notification options are too large');
+        if (pending.size >= 128) throw new Error('Notification service is busy');
         const id = ++next, item = {id, clicked};
         items.set(key, item);
         try {await request('show', key, options, id)}
@@ -157,7 +197,10 @@ return {
         }
     },
     async close(key) {
-        if (!items.has(key)) return;
+        const item = items.get(key);
+        if (!item) return;
+        item.clicked = () => {};
+        if (pending.size >= 128) throw new Error('Notification service is busy');
         items.delete(key);
         try {await request('close', key)}
         catch (error) {fail(error); throw error}
@@ -165,9 +208,8 @@ return {
     dispose() {
         if (disposed) return;
         disposed = true;
-        app.removeListener('will-quit', stop);
-        process.removeListener('exit', stop);
         fail(new Error('Notification service is disposed'));
+        if (!children.size) unhook();
     },
 };
 """)

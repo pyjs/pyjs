@@ -47,6 +47,10 @@ process.on('message', message => {
                 if (!item.shown) reply(message.id, null, error || 'Notification publication failed');
             });
             notification.on('close', () => {
+                if (items.get(message.key) !== item) return;
+                items.delete(message.key);
+                notification.removeAllListeners();
+                send({event: 'closed', key: message.key, id: item.id});
                 if (!item.shown) reply(message.id, null, 'Notification closed before publication');
             });
             notification.on('click', () => send({event: 'click', key: message.key, id: message.id}));
