@@ -6,6 +6,9 @@
   `pyjs.java.concurrent.sleep(milliseconds)` instead of busy polling. Native
   interruption remains catchable as `pyjs.java.errors.InterruptedException`.
 
+- JVM diagnostics for invalid `__bool__` results point to the original source
+  line, including branch, loop, assertion and conditional-expression uses.
+
 - JVM and Android JSON model decoding validates skipped strings without
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.
