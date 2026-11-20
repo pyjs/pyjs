@@ -3,6 +3,46 @@ import pytest
 from tests.java.test_exceptions import assert_matches_python, run_jvm
 
 
+def test_thread_sleep_accepts_milliseconds_and_preserves_argument_errors(tmp_path):
+    result = run_jvm('''
+        from pyjs.java.concurrent import sleep
+        from pyjs.java.errors import IllegalArgumentException
+        def main() -> int:
+            sleep(0)
+            sleep(1)
+            rejected = 0
+            for milliseconds in [-1, -4294967296]:
+                try:
+                    sleep(milliseconds)
+                except IllegalArgumentException:
+                    rejected += 1
+            return 42 if rejected == 2 else 1
+    ''', tmp_path)
+    assert result.returncode == 42, result.stderr
+
+
+def test_thread_sleep_propagates_interruption_and_clears_the_native_flag(tmp_path):
+    result = run_jvm('''
+        from pyjs import jvm
+        from pyjs.java.concurrent import sleep
+        from pyjs.java.errors import InterruptedException
+        @jvm.native("java/lang/Thread")
+        class NativeThread:
+            def interrupt(self) -> None: ...
+        @jvm.native("java/lang/Thread", name="currentThread")
+        def current_thread() -> NativeThread: ...
+        def main() -> int:
+            current_thread().interrupt()
+            try:
+                sleep(0)
+            except InterruptedException:
+                sleep(0)
+                return 42
+            return 1
+    ''', tmp_path)
+    assert result.returncode == 42, result.stderr
+
+
 def test_atomic_completion_flag_publishes_worker_result(tmp_path):
     result = run_jvm('''
         from pyjs.java.concurrent import AtomicBoolean, Runnable, Thread
