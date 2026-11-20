@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM and Android JSON model decoding validates skipped strings without
+  constructing their decoded values, reducing temporary allocations while
+  indexing nested fields. Escape validation and error positions are unchanged.
+
 - JavaScript model validation avoids constructing speculative exceptions for
   valid optional fields, reducing bulk validation work while preserving
   coercion and invalid-input diagnostics.

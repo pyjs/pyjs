@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from pyjs.java import json as java_json
 from pyjs.java import transpile_jvm
 from pyjs.java.json import JSONReader, quote
 from tests.java.test_context_managers import assert_text_matches_python
@@ -71,6 +72,34 @@ def test_skip_rejects_invalid_documents(document):
         reader.finish()
 
 
+def test_skip_validates_strings_without_building_decoded_values(monkeypatch):
+    def unexpected_builder():
+        raise AssertionError("Skipping JSON must not construct decoded strings")
+
+    monkeypatch.setattr(java_json, "StringBuilder", unexpected_builder)
+    for document in DOCUMENTS:
+        reader = JSONReader(document)
+        reader.skip()
+        reader.finish()
+    for document in INVALID:
+        reader = JSONReader(document)
+        with pytest.raises(ValueError):
+            reader.skip()
+            reader.finish()
+
+
+@pytest.mark.parametrize("token", [token for token in INVALID if token.startswith('"')])
+def test_skipped_string_errors_keep_decoding_diagnostics_and_positions(token):
+    decoded = JSONReader(token)
+    skipped = JSONReader(token)
+    with pytest.raises(ValueError) as expected:
+        decoded.string()
+    with pytest.raises(ValueError) as actual:
+        skipped.skip()
+    assert str(actual.value) == str(expected.value)
+    assert skipped.position == decoded.position
+
+
 def test_jvm_json_corpus_matches_python(tmp_path):
     # One compilation runs the complete corpus instead of one JVM per token.
     checks = []
@@ -80,6 +109,10 @@ def test_jvm_json_corpus_matches_python(tmp_path):
         checks += [
             f"    reader = JSONReader({token!r})",
             f"    assert quote(reader.string()) == {json.dumps(json.loads(token))!r}",
+            "    reader.finish()",
+            f"    reader = JSONReader({(token + ' true')!r})",
+            "    reader.skip()",
+            "    assert reader.boolean()",
             "    reader.finish()",
         ]
     for token in NUMBERS:
