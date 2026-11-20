@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Packaged Electron hosts can isolate native notifications in a helper
+  process so a stalled Linux notification daemon does not block editing or
+  other main-process work. The service bounds requests, revokes stale clicks,
+  releases expired alerts, and restarts after worker failure without disabling
+  sandboxing. Normal app quit allows bounded temporary-profile cleanup.
+
 - Electron hosts can await `session.cookies.flushStore()` to request an
   immediate cookie-store flush. Electron does not reliably report disk write
   failures, so completion is not a durability acknowledgement.

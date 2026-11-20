@@ -33,6 +33,9 @@ class Notifications(dbus.service.Object):
         if title == "Delayed example":
             time.sleep(0.2)
             return 2
+        if title in ["Expired example", "Dismissed example"]:
+            GLib.timeout_add(50, self.finish, 4, 1 if title == "Expired example" else 2)
+            return 4
         if title != "Native example" or body != "Body 🐍":
             raise AssertionError("Unexpected native notification payload")
         GLib.timeout_add(50, self.activate)
@@ -40,6 +43,10 @@ class Notifications(dbus.service.Object):
 
     def activate(self):
         self.ActionInvoked(1, "default")
+        return False
+
+    def finish(self, identifier, reason):
+        self.NotificationClosed(identifier, reason)
         return False
 
     @dbus.service.method(INTERFACE, in_signature="u", out_signature="")

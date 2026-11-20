@@ -444,6 +444,45 @@ main event loop. The helper can resolve after `timeout_ms` or fail only at the
 native timeout (observed around 25 seconds); it is not a hard wall-clock
 deadline. Other main-process work and IPC are delayed during that call.
 
+Packaged hosts can isolate these calls from editing and other host work:
+
+```python
+from pyjs.electron.notifications import NotificationOptions, notification_service
+
+alerts = notification_service("org.example.notes", "Example Notes")
+if await alerts.supported():
+    await alerts.show("reminder-1", NotificationOptions("Review notes"), open_note)
+await alerts.close("reminder-1")
+alerts.dispose()
+```
+
+Create the service after app readiness. It lazily starts one Electron helper
+with a separate temporary profile and unchanged sandboxing. Native capability,
+publication and dismissal calls run there. Requests time out after 5 seconds
+by default (`timeout_ms`); this timer is independent of the native call but
+still needs the host event loop to run. Up to 128 live alerts and 128 requests
+are allowed per service. Duplicate live keys reject. Click callbacks take no
+arguments; closing an alert revokes its callback before awaiting dismissal.
+Native expiry/dismissal events release the alert's key and capacity slot.
+Request overload rejects only the new request. A busy `close()` still revokes
+clicks; retry closing after capacity becomes available to dismiss that alert.
+Linux uses `<application_id>.desktop`; pass `desktop_name` to the factory when
+the installed desktop-entry filename differs.
+
+A timeout or worker failure terminates the helper, rejects pending requests
+and revokes all its click callbacks. The next request starts a fresh helper.
+This cannot retract an uncertain alert from OS notification history; retrying
+can duplicate it. `dispose()` permanently stops the service without waiting
+for native dismissal. Await `close()` for each alert before disposing if native
+cleanup is needed. Normal app quit terminates helpers and waits up to two
+seconds for temporary-profile cleanup, including after disposal. Forced exit
+or unavailable storage can leave temporary files. Cleanup reissues `app.quit()`,
+so host `before-quit` and `will-quit` handlers must tolerate repeated calls;
+guard one-time confirmation or save operations. This API requires the
+generated Electron bootstrap; it does not work in standalone Node bundles.
+Linux has real native acceptance coverage; macOS signing and Windows installed
+application identity still need deployment validation.
+
 Presenter support and a returning `show()` do not prove publication; wait for
 the native event, subject to these timeout limits. Publication is not proof
 that the user saw an alert. Signing, OS permission and Windows application
@@ -456,8 +495,14 @@ not schedule delivery after the application exits. Electron 45 does not
 implement persistent service-worker notifications.
 
 The native Linux notification acceptance test is opt-in. Set
-`PYJS_ELECTRON_RUNTIME` to an installed Electron distribution and run
-`pytest tests/test_electron_notifications.py`. It uses a private D-Bus session
+`PYJS_ELECTRON_RUNTIME` to an installed Electron distribution and run:
+
+```bash
+pytest tests/test_electron_notifications.py \
+  tests/test_electron_notification_service.py
+```
+
+This uses a private D-Bus session
 and a test notification service, not the user's desktop notification daemon.
 It requires `dbus-run-session`, system Python with `dbus` and `gi`, and a working
 Electron sandbox. The default Node contract tests do not require Electron.

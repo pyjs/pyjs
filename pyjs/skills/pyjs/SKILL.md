@@ -110,6 +110,19 @@ The timer cannot preempt synchronous native calls. Electron 45 on Linux uses
 blocking libnotify/D-Bus publication, which stalls the main event loop and IPC
 if the daemon is slow. Publication can succeed after `timeout_ms` or fail at
 the native timeout (observed around 25 seconds). This is not a hard deadline.
+For packaged hosts needing responsive main-process work, prefer
+`notification_service(application_id, name, timeout_ms=5000)` from the same
+module. After app readiness, await `service.supported()` and
+`service.show(key, NotificationOptions(...), clicked)`; `clicked` takes no
+arguments. Unique live keys identify at most 128 alerts per service. The lazy
+Electron helper isolates native calls with a temporary profile and ordinary
+sandboxing. `await service.close(key)` revokes clicks immediately, then waits
+for dismissal. Timeout or worker failure rejects pending requests and revokes
+all handles; another request starts a fresh worker. Uncertain OS alerts may
+remain and retries can duplicate them. Await closes before `service.dispose()`
+if dismissal is needed; disposal is immediate and permanent. Requires the
+generated Electron bootstrap, not a standalone Node bundle. Native integration
+is verified on Linux; other OS deployment identity/signing remains unverified.
 `close()` dismisses the owned alert. IDs/groups apply only on macOS/Windows;
 Windows limits each to 64 UTF-16 units. Linux cannot guarantee replacement
 across process restarts. Apps own consent, signing/OS setup, durable scheduling,
