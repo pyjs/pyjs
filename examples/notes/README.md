@@ -42,6 +42,7 @@ card order across activity recreation; successfully saved order also survives
 process restarts. No backend is required.
 
 Tap an Android sample card to send its text through the system Sharesheet.
+Cards use native ripple feedback over their rounded backgrounds.
 Cancelling leaves its content and position unchanged; long-press still drags
 the card. The example shares text only, without a hosted link or account.
 

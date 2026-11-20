@@ -95,7 +95,16 @@ def test_drawing_surface_matches_installed_android_sdk():
             ("setStrokeWidth", "(F)V"), ("setStyle", "(Landroid/graphics/Paint$Style;)V"),
             ("measureText", "(Ljava/lang/String;)F"),
         },
+        "android/content/res/ColorStateList": {
+            ("valueOf", "(I)Landroid/content/res/ColorStateList;"),
+            ("getDefaultColor", "()I"),
+        },
+        "android/graphics/drawable/Drawable": {("isStateful", "()Z")},
+        "android/graphics/drawable/RippleDrawable": {
+            ("<init>", "(Landroid/content/res/ColorStateList;Landroid/graphics/drawable/Drawable;Landroid/graphics/drawable/Drawable;)V"),
+        },
         "android/view/View": {
+            ("getBackground", "()Landroid/graphics/drawable/Drawable;"),
             ("layout", "(IIII)V"),
             ("invalidate", "()V"), ("onDraw", "(Landroid/graphics/Canvas;)V"),
             ("onTouchEvent", "(Landroid/view/MotionEvent;)Z"), ("performClick", "()Z"),

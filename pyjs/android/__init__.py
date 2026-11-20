@@ -218,7 +218,7 @@ def dp(context: Context, value: int) -> i32:
 
 @jvm.native("android/graphics/drawable/Drawable")
 class Drawable:
-    pass
+    def isStateful(self) -> bool: ...
 
 
 @jvm.native("android/graphics/drawable/GradientDrawable")
@@ -767,6 +767,8 @@ class View:
 
     def setBackground(self, background: Drawable) -> None:
         pass
+
+    def getBackground(self) -> Drawable | None: ...
 
     def setElevation(self, elevation: f32) -> None:
         pass
