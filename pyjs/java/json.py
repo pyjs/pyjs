@@ -138,38 +138,43 @@ class JSONReader:
         return result
 
     def string(self) -> str:
+        return self._string(True)
+
+    def _string(self, capture: bool) -> str:
         self.expect('"')
-        output = StringBuilder()
+        # Schema indexing validates every token before decoding final field
+        # values. Skipped strings need validation, not decoded allocations.
+        output = StringBuilder() if capture else None
         start = self.position
         while self.position < self.length:
             code = int(self.source.unit(i32(self.position)))
             if code == 34:
-                if start < self.position:
+                if output is not None and start < self.position:
                     output.append(self.source.slice(i32(start), i32(self.position)))
                 self.position += 1
-                return output.to_string()
+                return output.to_string() if output is not None else ""
             if code < 32:
                 raise ValueError("Unescaped JSON control character at " + str(self.position))
             if code != 92:
                 self.position += 1
                 continue
-            if start < self.position:
+            if output is not None and start < self.position:
                 output.append(self.source.slice(i32(start), i32(self.position)))
             self.position += 1
             escaped = self._peek()
             self.position += 1
             if escaped == '"' or escaped == "\\" or escaped == "/":
-                output.append(escaped)
+                decoded = escaped
             elif escaped == "b":
-                output.append("\b")
+                decoded = "\b"
             elif escaped == "f":
-                output.append("\f")
+                decoded = "\f"
             elif escaped == "n":
-                output.append("\n")
+                decoded = "\n"
             elif escaped == "r":
-                output.append("\r")
+                decoded = "\r"
             elif escaped == "t":
-                output.append("\t")
+                decoded = "\t"
             elif escaped == "u":
                 code = self._hex()
                 if 55296 <= code <= 56319:
@@ -181,9 +186,11 @@ class JSONReader:
                             code = 65536 + (code - 55296) * 1024 + low - 56320
                         else:
                             self.position = saved
-                output.append(chr(code))
+                decoded = chr(code) if capture else ""
             else:
                 raise ValueError("Invalid JSON escape at " + str(self.position - 1))
+            if output is not None:
+                output.append(decoded)
             start = self.position
         raise ValueError("Unterminated JSON string")
 
@@ -251,14 +258,14 @@ class JSONReader:
         self._space()
         value = self._peek()
         if value == '"':
-            self.string()
+            self._string(False)
         elif self.take("{"):
             if max_depth == 0:
                 raise ValueError("JSON nesting limit exceeded")
             if self.take("}"):
                 return
             while True:
-                self.string()
+                self._string(False)
                 self.expect(":")
                 self.skip(max_depth - 1)
                 if self.take("}"):
