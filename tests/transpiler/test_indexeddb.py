@@ -28,11 +28,11 @@ def test_typed_store_preserves_request_results_without_runtime_wrappers():
 
         export async function main(store) {
             var notes = store;
-            var value = await new Promise((resolve, reject) => {const request = notes.get('one');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            var values = await new Promise((resolve, reject) => {const request = notes.getAll();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var value = await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (notes.get('one')));
+            var values = await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (notes.getAll()));
             console.log((value != null ? value + '!' : 'missing'));
             console.log($get_list_item(values, 0) + '!');
-            await new Promise((resolve, reject) => {const request = notes.clear();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (notes.clear()));
         }
         """,
     )
@@ -77,7 +77,7 @@ def test_typed_request_can_validate_data_before_resolving():
 
         export async function main(store) {
             var notes = store;
-            var value = await new Promise((resolve, reject) => {const request = notes.get('one');const validate = require_text;request.addEventListener('success', () => {try{resolve(validate(request.result))}catch(error){reject(error)}}, {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var value = await ((getRequest, getValidator) => new Promise((resolve, reject) => {const request = getRequest();const validate = getValidator();request.addEventListener('success', () => {try{resolve(validate(request.result))}catch(error){reject(error)}}, {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (notes.get('one')), () => (require_text));
             if (value != null) {
                 console.log(value + '!');
             }
@@ -106,10 +106,10 @@ def test_request_result_preserves_indexeddb_operation_result_types():
         """,
         """
         export async function main(factory, store) {
-            var cleared = await new Promise((resolve, reject) => {const request = store.clear();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            var count = await new Promise((resolve, reject) => {const request = store.count();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            await new Promise((resolve, reject) => {const request = store.delete('one');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            await new Promise((resolve, reject) => {const request = factory.deleteDatabase('notes');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var cleared = await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (store.clear()));
+            var count = await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (store.count()));
+            await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (store.delete('one')));
+            await ((getRequest) => new Promise((resolve, reject) => {const request = getRequest();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => (factory.deleteDatabase('notes')));
         }
         """,
     )
