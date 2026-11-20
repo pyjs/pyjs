@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Electron hosts can await `session.cookies.flushStore()` to persist pending
+  cookie changes before acknowledging an authentication transition.
+
 - Android Canvas supports circles and arcs with native paint styles, sweep
   angles and optional center closure for custom controls and diagrams.
 

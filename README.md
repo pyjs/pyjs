@@ -403,6 +403,11 @@ process. Existing JavaScript hosts with `main.cjs` exporting `async start(contex
 remain supported; their files are copied unchanged. If both main files exist,
 Python takes precedence.
 
+Electron buffers cookie writes. Await `session.cookies.flushStore()` when a
+host needs to persist a login or logout before acknowledging it. This uses
+the selected session's native cookie store, preserves cookie expiry, and
+propagates write failures; it does not make in-memory partitions persistent.
+
 Use `pyjs.electron.window.on_close(window, callback)` to handle a native
 close request. Calling `event.preventDefault()` synchronously keeps the
 window open while the application saves state. `window.close()` requests a
