@@ -1389,12 +1389,14 @@ def attribute_default(type_name: str) -> str:
 def render_interface(definition: Definition, definitions: dict[str, Definition]) -> ast.ClassDef:
     body = [ast.Expr(ast.Constant(definition_docstring(definition)))]
     members = sorted(definition.members, key=member_sort_key)
-    attributes = [member for member in members if member.kind == "attribute"]
+    attributes = [member for member in members if member.kind == "attribute" and not member.static]
     constructor = next((member for member in members if member.kind == "constructor"), None)
 
     for member in members:
         if member.kind == "constant":
             body.extend(ast.parse(f"{member.name} = {member.value}").body)
+        elif member.kind == "attribute" and member.static:
+            body.extend(ast.parse(f"{member.name}: {member.type} = {attribute_default(member.type)}").body)
     if attributes or constructor is not None:
         constructor_arguments = constructor.arguments if constructor is not None else []
         arguments = render_arguments(constructor_arguments)

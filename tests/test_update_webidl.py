@@ -646,6 +646,44 @@ def test_render_interface_initializes_attributes_per_instance():
     assert isinstance(assignment.value, ast.List)
 
 
+def test_render_interface_keeps_static_attributes_out_of_instances():
+    definition = Definition("interface", "PermissionDevice", members=[
+        Member("attribute", "permission", "str", static=True),
+        Member("attribute", "encodings", "list[str]", static=True),
+        Member("attribute", "enabled", "bool"),
+    ])
+    rendered = render_interface(definition, {"PermissionDevice": definition})
+    assert [ast.unparse(node) for node in rendered.body[1:]] == [
+        "encodings: list[str] = []", "permission: str = ''",
+        "def __init__(self):\n    self.enabled: bool = False",
+    ]
+
+
+def test_synchronize_preserves_static_attribute_customizations_and_is_stable():
+    definition = Definition("interface", "PermissionDevice", members=[
+        Member("attribute", "permission", "str", static=True),
+        Member("attribute", "enabled", "bool"),
+    ])
+    existing = ast.parse('''
+@js.native
+class PermissionDevice:
+    permission: str = "default"
+    def __init__(self):
+        self.enabled: bool = True
+''')
+
+    def generated():
+        return ast.Module(body=[render_interface(definition, {})], type_ignores=[])
+
+    result = synchronize(existing, generated())
+    cls = class_node(result, "PermissionDevice")
+    assert [ast.unparse(node) for node in cls.body[1:]] == [
+        "permission: str = 'default'", "def __init__(self):\n    self.enabled: bool = True",
+    ]
+    before = ast.unparse(result)
+    assert ast.unparse(synchronize(result, generated())) == before
+
+
 def test_render_interface_preserves_dictionary_parameters():
     definition = Definition(
         "interface",

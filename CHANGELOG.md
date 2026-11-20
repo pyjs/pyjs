@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Browser notification permission and action limits are accessible on
+  `Notification`, and push encodings on `PushManager`, matching the browser's
+  static APIs. Native JavaScript declarations retain annotated reference-valued
+  class fields, including empty collection placeholders. Reading capabilities
+  does not request permission or display a notification.
+
 - Native JVM/Android cookies can be constructed and inspected for explicit
   session restoration. Cookie storage remains in memory unless the app saves
   it. Android exposes its API 21+ no-backup directory for device-bound state;

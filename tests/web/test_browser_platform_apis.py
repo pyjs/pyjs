@@ -28,7 +28,7 @@ from pyjs.web.indexeddb import (
     request_result,
 )
 from pyjs.web.network import RequestInit, Response, fetch
-from pyjs.web.serviceworker import caches, navigator
+from pyjs.web.serviceworker import Notification, PushManager, caches, navigator
 from pyjs.web.sharing import ShareData
 from pyjs.web.sharing import navigator as sharing_navigator
 from pyjs.web.storage import navigator as storage_navigator
@@ -83,6 +83,13 @@ async def test_text_encoding_and_sha256_digest_use_native_browser_apis():
 def test_document_visibility_api_is_available():
     assert document.visibilityState == "visible"
     assert document.hidden is False
+
+
+@js
+def test_notification_capabilities_read_without_prompting_or_posting():
+    assert Notification.permission in ["default", "denied", "granted"]
+    assert Notification.maxActions >= 0
+    assert "aes128gcm" in PushManager.supportedContentEncodings
 
 
 @js
