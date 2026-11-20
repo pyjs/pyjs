@@ -3993,8 +3993,9 @@ def _reversed(call):
 @_reversed.inline
 def _reversed(values, _arg_types, **kwargs):
     return (
-        "(function*(values){const items=Array.from(values);"
-        "for(let index=items.length-1;index>=0;index--)yield items[index];})"
+        "(function(values){const items=Array.isArray(values)?values:Array.from(values);"
+        "let index=items.length-1;return(function*(){"
+        "while(index>=0&&index<items.length)yield items[index--];})();})"
         f"({iterable_source(values, _arg_types[0])})"
     )
 

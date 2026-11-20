@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- JVM and Android support direct `for` loops over `reversed(list)`, retaining
+  item identity, live element updates and Python's initial reverse index.
+  Stored reverse iterators and other builtin reverse sources remain unsupported.
+  JavaScript reverse-list iterators also retain live items instead of taking a
+  detached copy, and capture the starting index when constructed.
+
 - `CheckboxTarget` gives standalone web checkboxes a larger native activation
   area while retaining input focus, keyboard, disabled and form behavior.
 
