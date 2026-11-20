@@ -569,6 +569,13 @@ through `DialogCancelListener` from `pyjs.android.dialogs`. Retain drafts
 outside dialogs and dismiss owned dialogs when their Activity is destroyed.
 Notes demonstrates a two-step preview without scheduling notifications.
 
+For labels, use `format_date_time(context, epoch_milliseconds, flags)` from
+`pyjs.android.dates`. Combine `DateFormatFlags.SHOW_DATE`, `SHOW_YEAR`,
+`SHOW_TIME` and optionally `ABBREV_MONTH`. Android uses the default locale and
+time zone; omitting `HOUR_12`/`HOUR_24` respects the device clock preference.
+Reformat after configuration changes rather than persisting the display text.
+These native bindings do not parse input or change the stored instant.
+
 `pyjs.java.time` exposes `local_date_time`, `system_zone` and zoned/instant
 conversion on Android API 26+ and the JVM. `LocalDateTime.atZone()` follows
 Java's policy: a nonexistent local time moves forward by the clock gap, and

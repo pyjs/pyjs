@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android exposes localized date/time labels through `format_date_time` and
+  `DateFormatFlags`, following the default time zone and device clock setting.
+
 - Browser notification permission and action limits are accessible on
   `Notification`, and push encodings on `PushManager`, matching the browser's
   static APIs. Native JavaScript declarations retain annotated reference-valued
