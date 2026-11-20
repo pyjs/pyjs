@@ -4,10 +4,12 @@ from urllib.parse import quote
 import pytest
 
 from examples.components.catalog import CatalogForm
+from pyjs import js
+from pyjs.javascript.transpiler import bundle
 from pyjs.tooling.browser import Browser
 from pyjs.web.domx import tag
 from pyjs.web.ssr import render_html
-from pyjs.web.ui.checkbox import Checkbox
+from pyjs.web.ui.checkbox import Checkbox, CheckboxTarget
 from pyjs.web.ui.field import (
     Field,
     FieldAccessory,
@@ -106,6 +108,79 @@ def test_horizontal_field_accessory_preserves_native_controls():
     assert content.children[0] is control.element
     assert "min-w-0" in content.getAttribute("class").split()
     assert accessory.getAttribute("tabindex") is None
+
+
+@js
+def checkbox_target_form():
+    checkbox = Checkbox("complete", True)
+    checkbox.element.setAttribute("aria-label", "Complete task")
+    return tag("form", Field(
+        FieldAccessory(CheckboxTarget(checkbox)), FieldContent(Textarea("Task")),
+        orientation="horizontal",
+    ), tag("button", {"type": "reset"}, "Reset"))
+
+
+@pytest.mark.pyjs_python
+def test_checkbox_target_retains_native_pointer_keyboard_and_form_behavior():
+    _source, css = bundle(checkbox_target_form, include_main=True, call_main=False)
+    markup = "<style>" + css + "</style>" + render_html(checkbox_target_form())
+
+    async def run():
+        async with Browser() as browser:
+            page = await browser.new_page("data:text/html;charset=utf-8," + quote(markup))
+            await page.set_viewport(320, 640, mobile=True)
+            await page.evaluate("""(() => {
+                window.changes = [];
+                document.querySelector('input').addEventListener('change', event => {
+                    window.changes.push([event.target.checked, event.isTrusted]);
+                });
+            })()""")
+            area = await page.selector_clip('[data-slot="checkbox-target"]')
+            box = await page.selector_clip('input')
+            assert area["width"] == area["height"] == 36
+            assert box["width"] == box["height"] == 16
+            accessibility = await page.session.send("Accessibility.getFullAXTree")
+            controls = [node for node in accessibility["nodes"]
+                        if node.get("role", {}).get("value") == "checkbox"]
+            assert len(controls) == 1
+            assert controls[0]["name"]["value"] == "Complete task"
+            point = {"x": area["x"] + 2, "y": area["y"] + 18}
+            assert point["x"] < box["x"]
+            assert await page.evaluate(
+                "document.querySelector('[data-slot=checkbox-target]').tabIndex") == -1
+            for kind in ("mousePressed", "mouseReleased"):
+                await page.session.send("Input.dispatchMouseEvent", {
+                    "type": kind, **point, "button": "left", "clickCount": 1,
+                })
+            assert await page.evaluate("window.changes") == [[False, True]]
+            assert await page.evaluate("document.activeElement === document.querySelector('input')")
+            await page.session.send("Input.dispatchTouchEvent", {
+                "type": "touchStart", "touchPoints": [point],
+            })
+            await page.session.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            await page.wait_for("window.changes.length === 2", "native touch toggles once")
+            assert await page.evaluate("window.changes") == [[False, True], [True, True]]
+            for key, code, number in [(" ", "Space", 32), ("Tab", "Tab", 9)]:
+                for kind in ("keyDown", "keyUp"):
+                    await page.session.send("Input.dispatchKeyEvent", {
+                        "type": kind, "key": key, "code": code, "windowsVirtualKeyCode": number,
+                    })
+            assert await page.evaluate("window.changes") == [[False, True], [True, True], [False, True]]
+            assert await page.evaluate("document.activeElement.tagName") == "TEXTAREA"
+            await page.click('button[type="reset"]')
+            assert await page.evaluate("document.querySelector('input').checked")
+            assert await page.evaluate("new FormData(document.querySelector('form')).get('complete')") == "on"
+            await page.evaluate("document.querySelector('input').disabled = true")
+            for kind in ("mousePressed", "mouseReleased"):
+                await page.session.send("Input.dispatchMouseEvent", {
+                    "type": kind, **point, "button": "left", "clickCount": 1,
+                })
+            assert await page.evaluate("window.changes.length") == 3
+            assert await page.evaluate("document.querySelector('input').checked")
+            assert await page.evaluate("new FormData(document.querySelector('form')).has('complete')") is False
+            assert not page.exceptions, page.exceptions
+
+    asyncio.run(run())
 
 
 @pytest.mark.pyjs_python

@@ -95,7 +95,9 @@ def test_catalog_growing_field_clear_action_keeps_checkbox_state():
     field = cast(HTMLTextAreaElement, row.querySelector("textarea"))
     checkbox = cast(HTMLElement, row.querySelector("input"))
     action = cast(HTMLElement, row.querySelector("button"))
-    checkbox.click()
+    target = cast(HTMLElement, row.querySelector('[data-slot="checkbox-target"]'))
+    assert target.getBoundingClientRect().width == 36
+    target.click()
     assert field.value != ""
     action.click()
     assert field.value == ""
