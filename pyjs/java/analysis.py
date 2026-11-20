@@ -98,6 +98,13 @@ class JVMInferenceVisitor(IRInferenceVisitor):
                 raise JVMUnsupported("JVM branch conditions must be bool", node)
         return result
 
+    def visit_truth_condition(self, node):
+        result = super().visit_truth_condition(node)
+        if not is_builtin_class(analyzed_value_type(result), "bool"):
+            raise JVMUnsupported("JVM branch conditions must be bool", node,
+                                 fragment=self.func.source_fragment)
+        return result
+
     def visit_FunctionDef(self, node):
         result = super().visit_FunctionDef(node)
         if not self.pending_flow_widenings:
