@@ -91,11 +91,12 @@ class Lambda(ast.Lambda):
 class Comprehension(ast.expr):
     """Bind source once; a generator body receives its eagerly made iterator."""
 
-    _fields = ("source", "function")
+    _fields = ("source", "function", "captures")
 
     def __init__(self, source, function):
         self.source = source
         self.function = function
+        self.captures = []
         self.obj = function.obj.return_type
 
 
@@ -318,6 +319,7 @@ class IRLoweringTransformer(ast.NodeTransformer):
         # The outer source executes in this expression; only the independent
         # loop CFG is already lowered. Never revisit that deferred body here.
         node.source = self.visit(node.source)
+        node.captures = [self.visit(value) for value in node.captures]
         return node
 
     @staticmethod

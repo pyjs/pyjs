@@ -12,6 +12,28 @@ def test_shared_generator_contract():
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
+def test_generator_filter_keeps_a_narrowed_outer_capture(tmp_path, optimize):
+    LLVM().assert_matches_python('''
+        from collections.abc import Iterator
+        from pyjs.native import gc_collect
+
+        def labels(label: str | None) -> Iterator[str]:
+            return (label.upper() for index in [1, 2] if label is not None)
+
+        def main() -> str:
+            empty = labels(None)
+            present = labels("value:" + str(3))
+            gc_collect()
+            result: list[str] = []
+            for value in empty:
+                result.append(value)
+            for value in present:
+                result.append(value)
+            return ",".join(result)
+    ''', directory=tmp_path, optimize=optimize, sanitizers=("address", "undefined"))
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
 def test_inferred_object_yields_box_concrete_payloads_without_losing_identity(optimize):
     comparison = LLVM().assert_matches_python('''
         from pyjs.native import gc_collect, gc_set_threshold

@@ -695,6 +695,14 @@ input order. Sorting does not mutate the input, though callbacks can. Fixed-widt
 item representations, tuple keys, arbitrary iterators and union containers
 are unsupported.
 
+JVM eager list, dictionary and set comprehensions use isolated loop scopes.
+They support filters, nested comprehensions and outer-variable reads without
+leaking loop targets. Empty or fully filtered iterations do not read unused
+outer bindings. Collection and item types retain the ordinary JVM storage
+limits. Outermost `range()` sources and represented numeric items are not yet
+supported; inner range loops use the existing loop support. Generator
+expressions and capturing lambdas are separate unsupported features.
+
 JVM lists support `==`, `!=`, `__eq__()` and `__ne__()` between lists with
 matching integer, boolean or string storage, including nullable strings.
 They compare item values and logical length, not backing capacity or identity.
