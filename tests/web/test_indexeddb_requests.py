@@ -23,6 +23,93 @@ def create_store(database: IDBDatabase, old: int, new: int | None,
 
 
 @js
+async def test_open_database_preserves_caller_bindings_and_upgrade():
+    resolve = "open-capture-" + crypto.randomUUID()
+    reject = 1
+    upgrade = create_store
+    database = await open_database(resolve, reject, upgrade)
+    try:
+        store = database.transaction("records", "readwrite").objectStore("records")
+        assert await request_result(store.put("saved", "one")) == "one"
+    finally:
+        database.close()
+    database = await open_database(resolve, reject)
+    try:
+        store = database.transaction("records").objectStore("records")
+        assert await request_result(store.get("one")) == "saved"
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(resolve))
+    request = create_store
+    resolve += "-request"
+    database = await open_database(resolve, reject, request)
+    try:
+        assert database.objectStoreNames.contains("records")
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(resolve))
+    getRequest = "open-factory-" + crypto.randomUUID()
+    getUpgrade = create_store
+    database = await open_database(getRequest, 1, getUpgrade)
+    try:
+        assert database.objectStoreNames.contains("records")
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(getRequest))
+
+
+@js
+def database_name(events: list[str]) -> str:
+    events.append("name")
+    return "open-order-" + crypto.randomUUID()
+
+
+@js
+def database_version(events: list[str]) -> int:
+    events.append("version")
+    return 1
+
+
+@js
+def database_upgrade(events: list[str]) -> callable:
+    events.append("upgrade")
+    return create_store
+
+
+@js
+async def test_open_arguments_evaluate_once_before_returning_the_promise():
+    events: list[str] = []
+    pending = open_database(database_name(events), database_version(events), database_upgrade(events))
+    assert events == ["name", "version", "upgrade"]
+    database = await pending
+    name = database.name
+    try:
+        assert database.objectStoreNames.contains("records")
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(name))
+
+
+@js
+def invalid_database_name() -> str:
+    raise ValueError("Name lookup failed")
+
+
+@js
+async def test_open_argument_errors_reject_without_evaluating_later_arguments():
+    events: list[str] = []
+    pending = open_database(invalid_database_name(), database_version(events), database_upgrade(events))
+    assert len(events) == 0
+    rejected = False
+    try:
+        await pending
+    except ValueError as error:
+        assert str(error) == "Name lookup failed"
+        rejected = True
+    assert rejected
+
+
+@js
 async def test_request_helpers_do_not_capture_caller_variable_names():
     name = "request-capture-" + crypto.randomUUID()
     database = await open_database(name, 1, create_store)

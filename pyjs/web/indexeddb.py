@@ -484,7 +484,7 @@ async def open_database(
 def open_database(_arg_strs, **kwargs):
     name, version = _arg_strs[:2]
     upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
-    return f"new Promise((resolve, reject) => {{const request = indexedDB.open({name}, {version});const upgrade = {upgrade};if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
+    return f"((getRequest, getUpgrade) => new Promise((resolve, reject) => {{const request = getRequest();const upgrade = getUpgrade();if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}}))(() => indexedDB.open({name}, {version}), () => ({upgrade}))"
 
 
 @js.inline(_rewrite_request_result)

@@ -10,9 +10,9 @@
   valid optional fields, reducing bulk validation work while preserving
   coercion and invalid-input diagnostics.
 
-- IndexedDB request helpers preserve caller variables named `request`,
-  `resolve`, `reject`, or `validate` instead of shadowing them inside their
-  generated promise callbacks.
+- IndexedDB open and request-result helpers preserve caller variables named
+  `request`, `resolve`, `reject`, `upgrade`, or `validate` instead of shadowing
+  them inside their generated promise callbacks.
 
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;

@@ -1,6 +1,29 @@
 from pyjs.testing.helpers import at
 
 
+def test_open_database_keeps_arguments_outside_generated_callback_scope():
+    at(
+        """
+        from pyjs.web.indexeddb import open_database
+
+        async def main(request: str, resolve: int, upgrade: callable):
+            database = await open_database(request, resolve, upgrade)
+            database.close()
+        """,
+        """
+        async def main(request: str, resolve: int, upgrade: callable) -> None:
+            database: IDBDatabase = await open_database(request, resolve, upgrade)
+            database.[IDBDatabase]close()
+        """,
+        """
+        export async function main(request, resolve, upgrade) {
+            var database = await ((getRequest, getUpgrade) => new Promise((resolve, reject) => {const request = getRequest();const upgrade = getUpgrade();if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {once: true});request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});}))(() => indexedDB.open(request, resolve), () => (upgrade));
+            database.close();
+        }
+        """,
+    )
+
+
 def test_typed_store_preserves_request_results_without_runtime_wrappers():
     at(
         """
