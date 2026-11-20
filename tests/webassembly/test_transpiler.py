@@ -107,7 +107,7 @@ def test_dictionary_pop_keeps_explicit_wasm_boundary():
 def test_local_collections_keep_explicit_wasm_boundary():
     from tests.backend_semantics import LOCAL_COLLECTION_CONTRACT
 
-    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly value type str is not implemented$"):
+    with pytest.raises(WebAssemblyUnsupported, match="^WebAssembly union value storage is not implemented$"):
         transpile_webassembly(LOCAL_COLLECTION_CONTRACT.source)
 
 

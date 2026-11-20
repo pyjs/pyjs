@@ -4243,7 +4243,13 @@ RECEIVER_DOMAIN_CONTRACTS = {
 
 
 LOCAL_COLLECTION_CONTRACT = _contract(
-    "from pyjs import js",
+    '''
+from pyjs import js
+
+@js
+def collection_optional_labels(label: str | None) -> list[str]:
+    return [label.upper() for index in [1, 2] if label is not None]
+''',
     "local_collection_result",
     '''
     values = ["z", "a", "a", "雪", "😀", "\\ue000"]
@@ -4282,6 +4288,8 @@ LOCAL_COLLECTION_CONTRACT = _contract(
         ("dictionary comprehension retains keyed values", "len(lengths) != 4 or lengths['aa'] != 2 or lengths['d'] != 1"),
         ("set comprehension retains unique values", "len(unique_words) != 2 or 'b' not in unique_words"),
         ("dependent inner loops and filters retain order", "','.join(pairs) != 'aa0,aa2,cc0,cc2'"),
+        ("filters capture nullable outer bindings",
+         "len(collection_optional_labels(None)) != 0 or ','.join(collection_optional_labels('yes')) != 'YES,YES'"),
     ),
 )
 

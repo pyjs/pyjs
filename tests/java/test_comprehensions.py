@@ -2,6 +2,7 @@ import ast
 
 import pytest
 
+from pyjs.analysis.diagnostics import CompilationError
 from pyjs.analysis.ir import Comprehension
 from pyjs.analysis.lifetime import lambda_captures
 from pyjs.analysis.source import analyze_source
@@ -33,6 +34,59 @@ def test_comprehension_ir_keeps_source_and_capture_state_outside_loop_scope():
         assert function.obj.return_type.name == "list__int"
         assert lambda_captures(function) == {}
         assert "n" not in analysis.entry_point.scope.names
+
+
+def test_comprehension_ir_captures_outer_bindings_narrowed_by_filters():
+    source = '''def main(value: int | None) -> int:
+    return len([n for n in [1] if value is not None])
+'''
+    with analyze_source(source, wrap=False, environment=JVM_ENVIRONMENT) as analysis:
+        node, = [node for block in analysis.entry_point.ir.blocks for node in ast.walk(block)
+                 if isinstance(node, Comprehension)]
+        assert [value.id for value in node.captures] == ["value"]
+        assert node.function.local_names == {"n", "__comprehension_source", "__comprehension_result"}
+        assert node.function.jvm_capture_flags == {"value": "__capture_bound"}
+
+
+@pytest.mark.parametrize("expression", [
+    "[n for n in values if value is not None]",
+    "[n + value for n in values if value]",
+    "{str(n): n + value for n in values if value is not None}",
+    "{str(n + value) for n in values if value is not None}",
+    "[[n + value for n in values if value is not None] for other in values]",
+])
+def test_comprehension_filters_narrow_outer_captures(tmp_path, expression):
+    assert_text_matches_python(f'''
+def collect(value: int | None, values: list[int]) -> str:
+    result = {expression}
+    return str(len(result))
+def main() -> str:
+    empty: list[int] = []
+    return (collect(None, empty) + collect(None, [1, 2]) + collect(0, [1, 2])
+            + collect(3, [1, 2]) + collect(3, empty))
+''', tmp_path)
+
+
+def test_rebound_comprehension_target_has_backend_neutral_diagnostic():
+    with pytest.raises(CompilationError) as caught:
+        transpile_jvm('def main() -> int:\n    return len([x for x in [1] for x in ["a"]])\n')
+    assert caught.value.diagnostic.message == "comprehension targets cannot change type or representation"
+
+
+def test_nullable_capture_is_checked_only_when_a_filter_reads_it(tmp_path):
+    assert_text_matches_python('''
+def collect(bound: bool, values: list[int]) -> str:
+    if bound:
+        value: int | None = 3
+    try:
+        result = [value + n for n in values if value is not None]
+        return str(result[0]) if result else "empty"
+    except UnboundLocalError:
+        return "unbound"
+def main() -> str:
+    empty: list[int] = []
+    return collect(False, empty) + collect(False, [1]) + collect(True, [1])
+''', tmp_path)
 
 
 @pytest.mark.parametrize("expression, result", [

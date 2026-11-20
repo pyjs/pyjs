@@ -27,6 +27,8 @@
 - JVM and Android lower eager list, dictionary and set comprehensions through
   shared loop IR. Nested scopes, filters and outer bindings retain Python
   evaluation order, including deferred errors for unread unbound captures.
+  Filters that narrow nullable outer bindings preserve their captures, including
+  in LLVM generator expressions.
   Outermost sources must have a supported first-class JVM representation;
   outer `range()` sources and represented numeric items remain unsupported.
 

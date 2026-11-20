@@ -38,7 +38,7 @@ def lower(visitor, analyzed, source, *, retain=None, unpack=None):
                 if previous is not None and (not same_analyzer_type(previous[0], layout[0])
                                              or representations_conflict((previous, layout))):
                     visitor.fail(source, DiagnosticCode.UNSUPPORTED_SYNTAX,
-                                 "native comprehension targets cannot change type or representation",
+                                 "comprehension targets cannot change type or representation",
                                  help="Use distinct loop-variable names for different item types.")
                 bindings[target.id] = layout
     ir = FunctionIR()
@@ -48,6 +48,7 @@ def lower(visitor, analyzed, source, *, retain=None, unpack=None):
     )
     ir.enter(ir.new_block("entry"))
     scope = analyzed.scope
+    analyzed_names = set(scope.names)
     # Expansion snapshots and generated loops belong to this body, never the
     # enclosing frame. Share its inferred bindings but not its CFG or temps.
     body_visitor = type(visitor)(visitor.func, scope)
@@ -142,9 +143,9 @@ def lower(visitor, analyzed, source, *, retain=None, unpack=None):
                          vararg=None, kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[])
     function = Lambda(args, value, ir, scope)
     function.is_generator = lazy
-    # Flow scopes after filters may hold only narrowed bindings. Every loop
-    # target is still a local even when its binding lives in an earlier scope.
-    function.local_names = {*scope.names, *bindings}
+    # Filters can narrow outer bindings without declaring locals. Only loop
+    # targets and temporaries introduced during lowering belong to this frame.
+    function.local_names = set(bindings) | (scope.names.keys() - analyzed_names)
     function.obj = CallableClass((source_type,), value_type, BUILTINS.search("callable"),
                                  (source_representation,), representation)
     ast.copy_location(function, source)
