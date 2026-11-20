@@ -15,6 +15,14 @@ The web application demonstrates:
 The Android example currently demonstrates variable-height masonry cards,
 stable IDs, recycled-holder rebinding, colors, long-press reordering, and
 recoverable local storage failures.
+`StaggeredGridDragCallback` prevents a completed swap from immediately
+reversing while staggered layout still has the cards in their old columns.
+Dragging back by the platform touch threshold along an axis that passed the
+previous target's edge allows an intentional return, including diagonal swaps.
+Motion on an axis that did not pass the target does not release the guard.
+The callback preserves the viewport while cards change adapter positions,
+including when the first visible card moves. Android still performs native
+layout and continuous edge scrolling.
 Its search header is decorative. Search, editable notes/checklists,
 pinned sections, navigation, and note actions are not implemented in this
 example.

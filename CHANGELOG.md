@@ -17,6 +17,13 @@
   Caught native exception subclasses retain inherited method access, including
   exception messages.
 
+- Android's `StaggeredGridDragCallback` stabilizes repeated swaps while
+  staggered cards are relaying out, while retaining native target selection
+  and scrolling. Guarding a previous swap partner does not hide another
+  eligible target, and moving the first visible card no longer anchors its new
+  position at the old screen offset. The Notes example uses it for long-press
+  reordering.
+
 - JVM and Android support `str.zfill(width)` with sign-aware padding and
   Unicode code-point widths. Negative widths leave text unchanged; widths
   exceeding JVM string capacity raise `MemoryError` before allocation.

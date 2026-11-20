@@ -236,21 +236,18 @@ class NoteOrder(ViewAssertion):
     ) -> None:
         assert error is None
         assert view is not None
+        snapshot = StaggeredGridSnapshot(cast(RecyclerView, view))
         adapter = cast(RecyclerView, view).get_adapter()
         assert adapter is not None, "Notes grid has no adapter"
         if adapter is not None:
             assert adapter.get_item_count() == len(self.expected)
-            order = ""
-            for index in range(adapter.get_item_count()):
-                order += str(adapter.get_item_id(index)) + " "
             for index in range(len(self.expected)):
                 actual = adapter.get_item_id(index)
                 expected = self.expected[index]
                 assert actual == expected, (
                     f"{self.phase}: card {index}: expected ID {expected}, "
-                    f"got {actual}; order: {order}"
+                    f"got {actual}; grid: {snapshot.to_json()}"
                 )
-        snapshot = StaggeredGridSnapshot(cast(RecyclerView, view))
         assert snapshot.stable_ids
         assert not snapshot.pending_updates
         assert len(snapshot.children) > 0

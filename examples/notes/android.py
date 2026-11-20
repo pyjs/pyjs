@@ -18,7 +18,6 @@ from pyjs.android import (
     parse_color,
 )
 from pyjs.android.recyclerview import (
-    ItemTouchCallback,
     ItemTouchHelper,
     RecyclerView,
     RecyclerViewAdapter,
@@ -27,6 +26,7 @@ from pyjs.android.recyclerview import (
     StaggeredGridLayoutManager,
     make_movement_flags,
 )
+from pyjs.android.reorder import StaggeredGridDragCallback
 from pyjs.java import f32, i32
 
 from .android_saves import BackgroundSaveDriver
@@ -171,7 +171,7 @@ class StorageStatus(OrderObserver):
         self.adapter.restore_order()
 
 
-class NotesTouch(ItemTouchCallback):
+class NotesTouch(StaggeredGridDragCallback):
     def __init__(self, adapter: NotesAdapter) -> None:
         super().__init__()
         self.adapter = adapter

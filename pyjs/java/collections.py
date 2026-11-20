@@ -17,6 +17,13 @@ class JavaList:
     def get(self, index: i32) -> object: ...
 
 
+@jvm.native("java/util/ArrayList")
+class JavaArrayList(JavaList):
+    def __init__(self) -> None: ...
+
+    def add(self, value: object) -> bool: ...
+
+
 @jvm.native("java/util/Map", interface=True)
 class JavaMap:
     def get(self, key: object) -> object | None: ...

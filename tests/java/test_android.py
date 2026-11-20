@@ -286,6 +286,16 @@ def test_android_notes_compiles_recycler_view_callbacks(tmp_path):
         "(Landroidx/recyclerview/widget/RecyclerView$ViewHolder;)F"
     )
     assert touch.declared_methods("isLongPressDragEnabled")[0].descriptor == "()Z"
+    stabilized = read_jvm_class(compilation.classes[touch.super_name])
+    assert stabilized.super_name == "androidx/recyclerview/widget/ItemTouchHelper$Callback"
+    holder_descriptor = "Landroidx/recyclerview/widget/RecyclerView$ViewHolder;"
+    assert stabilized.declared_methods("chooseDropTarget")[0].descriptor == (
+        f"({holder_descriptor}Ljava/util/List;II){holder_descriptor}"
+    )
+    assert stabilized.declared_methods("onMoved")[0].descriptor == (
+        f"(Landroidx/recyclerview/widget/RecyclerView;{holder_descriptor}I"
+        f"{holder_descriptor}III)V"
+    )
 
 
 def test_android_widget_compiles_provider_callbacks_and_resource_references():
