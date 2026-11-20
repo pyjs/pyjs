@@ -52,24 +52,35 @@ class AssertionRewriter(ast.NodeTransformer):
         return deferred(node.msg)
 
     def visit_Assert(self, node: ast.Assert):
-        if (
-            isinstance(node.test, ast.Call)
-            and isinstance(node.test.func, ast.Name)
-            and node.test.func.id == "isinstance"
-        ):
-            return [node, self.rewrite_condition(node)]
-
         if isinstance(node.test, ast.Compare) and len(node.test.ops) == 1:
-            return self.rewrite_comparison(node)
+            comparison = node.test
+            left, right = comparison.left, comparison.comparators[0]
+            operator = comparison.ops[0]
+            narrows = any(
+                isinstance(subject, (ast.Name, ast.Attribute))
+                and isinstance(literal, ast.Constant)
+                and ((isinstance(operator, (ast.Is, ast.IsNot)) and literal.value is None)
+                     or (isinstance(operator, (ast.Eq, ast.NotEq)) and isinstance(literal.value, str)))
+                for subject, literal in ((left, right), (right, left))
+            )
+            if not narrows:
+                return self.rewrite_comparison(node)
 
-        return self.rewrite_condition(node)
+        # Preserve the original condition for the analyzer's successful-edge
+        # narrowing. Reporting must not evaluate it again (including isinstance
+        # arguments and custom truth protocols), nor eagerly evaluate a message.
+        failed = self.rewrite_condition(node, False)
+        passed = self.rewrite_condition(node, True)
+        passed.value.args[-1] = ast.Constant(value=None)
+        assertion = ast.Assert(test=node.test, msg=failed.value)
+        return [ast.copy_location(assertion, node), passed]
 
-    def rewrite_condition(self, node: ast.Assert) -> ast.Expr:
+    def rewrite_condition(self, node: ast.Assert, result: bool) -> ast.Expr:
         replacement = ast.Expr(
             value=ast.Call(
                 func=ast.Name(id=ASSERT_ALIAS, ctx=ast.Load()),
                 args=[
-                    node.test,
+                    ast.Constant(value=result),
                     ast.Constant(value=self.expression_text(node.test)),
                     self.message(node),
                 ],

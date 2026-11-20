@@ -10,6 +10,12 @@
   dictionary-valued fields and function results. Empty dictionaries are false;
   the truth of their keys and values does not affect the result.
 
+- Browser tests retain type narrowing from assertions, including optional
+  values, compound conditions and literal guards. Assertion reporting no
+  longer evaluates `isinstance` arguments a second time. Empty containers
+  correctly fail truth assertions. Comparisons that cannot narrow a value
+  retain detailed operand reporting.
+
 - Packaged Electron hosts can isolate native notifications in a helper
   process so a stalled Linux notification daemon does not block editing or
   other main-process work. The service bounds requests, revokes stale clicks,
