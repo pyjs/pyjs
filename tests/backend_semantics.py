@@ -6890,6 +6890,56 @@ OPTIONAL_STRING_CONTRACT = _contract(
 )
 
 
+DICT_BOOL_CONTRACT = _contract(
+    '''
+    from pyjs import js
+
+    @js
+    class MappingBox:
+        def __init__(self):
+            self.values: dict[int, int] = {}
+
+    @js
+    def create(events: list[int], full: bool) -> dict[int, int]:
+        events.append(1)
+        return {0: 0} if full else {}
+
+    @js
+    def truth(values: dict[int, int]) -> bool:
+        return bool(values)
+    ''',
+    "dict_bool_result",
+    '''
+    box = MappingBox()
+    before = bool(box.values)
+    branch_before = 1 if box.values else 0
+    box.values[0] = 0
+    after = bool(box.values)
+    branch_after = 1 if box.values else 0
+    iterations = 0
+    while box.values:
+        iterations += 1
+        del box.values[0]
+    events: list[int] = []
+    empty_call = bool(create(events, False))
+    full_call = bool(create(events, True))
+    direct_call = 1 if create(events, True) else 0
+    flags = {0: False}
+    texts = {0: ""}
+    ''',
+    (
+        ("empty and populated fields", "before or not after"),
+        ("conditional fields use their current size", "branch_before != 0 or branch_after != 1"),
+        ("loop observes mutation", "iterations != 1 or bool(box.values)"),
+        ("empty and populated calls", "empty_call or not full_call or direct_call != 1"),
+        ("receivers evaluate once", "len(events) != 3"),
+        ("zero key and value still form a populated mapping", "not truth({0: 0})"),
+        ("false values do not determine truth", "not bool(flags) or not bool(texts)"),
+        ("negated conversion preserves boolean grouping", "not bool({0: 0}) or bool(box.values) != False"),
+    ),
+)
+
+
 LIST_BOOL_CONTRACT = _contract(
     '''
     from pyjs import js

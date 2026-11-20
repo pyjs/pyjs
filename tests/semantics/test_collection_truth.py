@@ -1,11 +1,12 @@
 import pytest
 
-from tests.backend_semantics import LIST_BOOL_CONTRACT
+from tests.backend_semantics import DICT_BOOL_CONTRACT, LIST_BOOL_CONTRACT
 from tests.semantics.helpers import assert_semantics
 
 
-def test_shared_list_bool_contract():
-    assert_semantics(LIST_BOOL_CONTRACT.print_source + "\nmain()\n")
+@pytest.mark.parametrize("contract", [LIST_BOOL_CONTRACT, DICT_BOOL_CONTRACT], ids=["list", "dict"])
+def test_shared_collection_bool_contract(contract):
+    assert_semantics(contract.print_source + "\nmain()\n")
 
 
 @pytest.mark.parametrize(("annotation", "empty", "full"), [

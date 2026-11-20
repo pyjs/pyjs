@@ -1515,6 +1515,14 @@ def test_negated_list_bool_preserves_expression_grouping():
     )
 
 
+def test_negated_dict_bool_preserves_expression_grouping():
+    at(
+        "def main(values: dict[int, int]) -> bool:\n    return not bool(values)\n",
+        "def main(values: dict__int_int) -> bool:\n    return not bool(values)\n",
+        "export function main(values) {\n    return !((values).size!==0);\n}",
+    )
+
+
 def test_bool_and_isinstance_use_python_primitive_relationships():
     at(
         """

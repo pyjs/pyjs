@@ -1,7 +1,7 @@
 import pytest
 
 from pyjs.java import JVMUnsupported, transpile_jvm
-from tests.backend_semantics import LIST_BOOL_CONTRACT
+from tests.backend_semantics import DICT_BOOL_CONTRACT, LIST_BOOL_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
     assert_compiles_to_android_dex,
@@ -9,17 +9,20 @@ from tests.java.test_exceptions import (
 )
 
 
-def test_list_bool_matches_python(tmp_path):
-    assert_matches_python(LIST_BOOL_CONTRACT.source, tmp_path)
+@pytest.mark.parametrize("contract", [LIST_BOOL_CONTRACT, DICT_BOOL_CONTRACT], ids=["list", "dict"])
+def test_collection_bool_matches_python(tmp_path, contract):
+    assert_matches_python(contract.source, tmp_path)
 
 
-def test_list_bool_android_dex(tmp_path):
-    assert_compiles_to_android_dex(LIST_BOOL_CONTRACT.source, tmp_path)
+@pytest.mark.parametrize("contract", [LIST_BOOL_CONTRACT, DICT_BOOL_CONTRACT], ids=["list", "dict"])
+def test_collection_bool_android_dex(tmp_path, contract):
+    assert_compiles_to_android_dex(contract.source, tmp_path)
 
 
-def test_nullable_list_bool_still_requires_a_presence_guard():
+@pytest.mark.parametrize("annotation", ["list[int]", "dict[int, int]"])
+def test_nullable_collection_bool_still_requires_a_presence_guard(annotation):
     with pytest.raises(JVMUnsupported) as caught:
-        transpile_jvm('''def truth(values: list[int] | None) -> bool:
+        transpile_jvm(f'''def truth(values: {annotation} | None) -> bool:
     return bool(values)
 def main() -> bool:
     return truth(None)
@@ -30,7 +33,7 @@ def main() -> bool:
     )
 
 
-@pytest.mark.parametrize("name", ["list", "set"])
+@pytest.mark.parametrize("name", ["list", "set", "dict"])
 @pytest.mark.parametrize("generic", [False, True])
 @pytest.mark.parametrize("field", ["value", "length"])
 def test_collection_namesakes_keep_the_custom_bool_boundary(name, generic, field):
@@ -71,6 +74,25 @@ def main() -> str:
             results.append("no")
         results.append("full" if create(events, full) else "empty")
     return str(len(events)) + ":" + "|".join(results)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("expression", ["value", "not value", "bool(value)", "not bool(value)"])
+def test_dictionary_condition_evaluates_its_receiver_once(tmp_path, expression):
+    condition = expression.replace("value", "create(events, full)")
+    assert_text_matches_python(f'''
+def create(events: list[int], full: bool) -> dict[int, int]:
+    events.append(1)
+    return {{0: 0}} if full else {{}}
+def main() -> str:
+    events: list[int] = []
+    result = ""
+    for full in [False, True]:
+        if {condition}:
+            result += "yes"
+        else:
+            result += "no"
+    return str(len(events)) + ":" + result
 ''', tmp_path)
 
 

@@ -1780,6 +1780,8 @@ class JVMEmitter:
                 elif is_builtin_class(value_type, "set"):
                     sets.invoke(self, "size", "()I")
                     self.comparison(0x9A)
+                elif is_builtin_class(value_type, "dict"):
+                    self.dictionary_truth()
                 else:
                     self.scalar_truth(descriptor, node)
             else:
@@ -3178,6 +3180,11 @@ class JVMEmitter:
             self.code.emit(0x57)
         return "Ljava/util/HashMap;"
 
+    def dictionary_truth(self) -> None:
+        reference = self.class_file.method_reference("java/util/HashMap", "size", "()I")
+        self.code.emit(0xB6, reference.to_bytes(2, "big"))
+        self.comparison(0x9A)
+
     def dictionary_call(
         self,
         node: ast.Call,
@@ -3191,6 +3198,9 @@ class JVMEmitter:
         key_type, value_descriptor = self.dictionary_types(value_type, node)
         if target.name == "setdefault" and node.keywords:
             raise JVMUnsupported("JVM dict.setdefault requires positional arguments", node)
+        if target.name == "__bool__" and not node.args and not node.keywords:
+            self.dictionary_truth()
+            return "Z"
         if target.name == "copy" and not node.args and not node.keywords:
             original = self.allocate_temporary(receiver_type, "dict.copy.source")
             self.store(original, receiver_type)
