@@ -7,6 +7,7 @@ from tests.backend_semantics import (
     ASSERT_CAPTURE_CONTRACT,
     ASSERT_FAILURE_CONTRACT,
     ASSERT_NARROWING_CONTRACT,
+    CALLABLE_IDENTITY_CONTRACT,
     CALLABLE_VALUE_CONTRACT,
     CLASS_DECLARED_FIELD_ASSIGNMENT_CONTRACT,
     COLLECTION_NAME_CONTRACT,
@@ -676,6 +677,10 @@ def test_async_union_call_preserves_awaited_result(expression, members):
 
 def test_shared_callable_values():
     assert_semantics(CALLABLE_VALUE_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_shared_callable_identity():
+    assert_semantics(CALLABLE_IDENTITY_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_generic_forwarded_callbacks_keep_numeric_representations():

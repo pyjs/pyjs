@@ -335,7 +335,7 @@ class ClassFile:
             ]
         )
 
-    def render_method(self, method: Method) -> bytes:
+    def render_code(self, method: Method) -> bytes:
         code = method.code
         # Valid loops preserve entry depth; each instruction adds at most two
         # slots, and handlers enter with one exception. A byte-length bound
@@ -379,11 +379,19 @@ class ClassFile:
                 *code_attributes,
             ]
         )
-        attributes = [
+        return (
             _u2(self.constants.utf8("Code"))
             + _u4(len(code_body))
             + code_body
-        ]
+        )
+
+    def render_method(self, method: Method) -> bytes:
+        if method.access & 0x0400:
+            if method.code or method.exception_handlers or method.line_numbers:
+                raise ValueError("abstract JVM methods cannot contain code")
+            attributes = []
+        else:
+            attributes = [self.render_code(method)]
         if method.annotations:
             attributes.append(self.render_annotations(method.annotations))
         if method.type_annotations:

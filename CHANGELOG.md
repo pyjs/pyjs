@@ -17,6 +17,12 @@
   Publication waits have an event timeout, not a hard deadline: Electron's
   Linux notification calls can block the main process on a slow native daemon.
 
+- JVM and Android support fixed-signature Python function callbacks and
+  non-capturing lambdas, including stable `sorted(..., key=..., reverse=...)`.
+  Sorting materializes the source before evaluating each key exactly once.
+  Callback defaults, captures, represented numeric signatures and signature
+  adaptation remain explicit compilation boundaries.
+
 - Native JVM/Android cookies can be constructed and inspected for explicit
   session restoration. Cookie storage remains in memory unless the app saves
   it. Android exposes its API 21+ no-backup directory for device-bound state;

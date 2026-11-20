@@ -4,11 +4,15 @@ import pytest
 
 from pyjs.native.llvm import LLVMUnsupported, transpile_llvm
 from pyjs.tooling.llvm import LLVM
-from tests.backend_semantics import CALLABLE_VALUE_CONTRACT
+from tests.backend_semantics import CALLABLE_IDENTITY_CONTRACT, CALLABLE_VALUE_CONTRACT
 
 
 def test_shared_callable_values():
     LLVM().assert_matches_python(CALLABLE_VALUE_CONTRACT.source)
+
+
+def test_shared_callable_identity():
+    LLVM().assert_matches_python(CALLABLE_IDENTITY_CONTRACT.source)
 
 
 def test_generic_opaque_callback_consumers_require_concrete_native_signatures():

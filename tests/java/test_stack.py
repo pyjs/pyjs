@@ -1,9 +1,10 @@
 import subprocess
+from dataclasses import replace
 
 import pytest
 
 from pyjs.java import transpile_jvm
-from pyjs.java.classfile import Bytecode, ClassFile, ExceptionHandler, Method
+from pyjs.java.classfile import Annotation, Bytecode, ClassFile, ExceptionHandler, Method
 from pyjs.java.stack import descriptor_slots, stack_bound
 from tests.backend_semantics import RANGE_LOOP_CONTRACT
 from tests.java.test_jvm import java
@@ -15,6 +16,29 @@ from tests.java.test_jvm import java
 ])
 def test_descriptor_slot_widths(descriptor, expected):
     assert descriptor_slots(descriptor) == expected
+
+
+def test_abstract_methods_omit_code_but_preserve_annotations():
+    cls = ClassFile("Callback", access=0x0601)
+    method = Method(0x0401, "call", "(J)J", b"", None, 0)
+    assert cls.render_method(method) == bytes.fromhex("0401000100020000")
+    assert ("utf8", "Code") not in cls.constants.indexes
+    method = replace(method, annotations=(Annotation("Ljava/lang/Deprecated;"),))
+    annotated = cls.render_method(method)
+    assert int.from_bytes(annotated[6:8]) == 1
+    assert ("utf8", "RuntimeVisibleAnnotations") in cls.constants.indexes
+    assert ("utf8", "Code") not in cls.constants.indexes
+
+
+@pytest.mark.parametrize("fields", [
+    {"code": b"\xb1"}, {"line_numbers": ((0, 1),)},
+    {"exception_handlers": (ExceptionHandler(0, 1, 0),)},
+])
+def test_abstract_methods_reject_code_metadata(fields):
+    method = Method(0x0401, "call", "()V", b"", None, 0)
+    method = replace(method, **fields)
+    with pytest.raises(ValueError, match="abstract JVM methods cannot contain code"):
+        ClassFile("Callback", access=0x0601).render_method(method)
 
 
 def test_stack_bound_counts_wide_values_calls_fields_and_arrays():

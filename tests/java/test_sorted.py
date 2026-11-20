@@ -95,15 +95,95 @@ def main() -> str:
 ''', tmp_path)
 
 
-def test_key_callback_has_a_located_boundary():
+def test_key_callback_matches_python(tmp_path):
     source = '''def key(value: int) -> int:
     return value
 def main() -> int:
     return sorted([2, 1], key=key)[0]
 '''
-    with pytest.raises(CompilationError, match=r"JVM sorted\(\) key callbacks") as error:
-        transpile_jvm(source, filename="sort_boundary.py")
-    assert error.value.lineno == 4
+    assert_matches_python(source, tmp_path)
+
+
+@pytest.mark.parametrize("keywords", [
+    "key=select_key(events), reverse=descending(events)",
+    "reverse=descending(events), key=select_key(events)",
+])
+def test_keyed_sort_evaluates_arguments_in_order_and_keys_once(tmp_path, keywords):
+    assert_text_matches_python(f'''
+from collections.abc import Callable
+class Row:
+    def __init__(self, rank: int, label: str, events: list[str]):
+        self.rank = rank
+        self.label = label
+        self.events = events
+def rank(row: Row) -> int:
+    row.events.append(row.label)
+    return row.rank
+def rows(events: list[str]) -> list[Row]:
+    events.append("rows")
+    return [Row(2, "a", events), Row(1, "b", events),
+            Row(2, "c", events), Row(1, "d", events)]
+def select_key(events: list[str]) -> Callable[[Row], int]:
+    events.append("key")
+    return rank
+def descending(events: list[str]) -> bool:
+    events.append("reverse")
+    return True
+def main() -> str:
+    events: list[str] = []
+    result = ""
+    for row in sorted(rows(events), {keywords}):
+        result += row.label
+    return result + ":" + ",".join(events)
+''', tmp_path)
+
+
+@pytest.mark.parametrize("count, failure", [(0, -1), (1, -1), (4, -1), (4, 2)])
+def test_keyed_sort_materializes_before_keys_and_preserves_failure_source(tmp_path, count, failure):
+    assert_text_matches_python(f'''
+class Row:
+    def __init__(self, rank: int, source: list[Row], events: list[str]):
+        self.rank = rank
+        self.source = source
+        self.events = events
+def key(row: Row) -> int:
+    row.events.append(str(row.rank))
+    if row.rank == {failure}:
+        raise ValueError("key failed")
+    while row.source:
+        row.source.pop()
+    return -row.rank
+def main() -> str:
+    source: list[Row] = []
+    events: list[str] = []
+    for rank in range({count}):
+        source.append(Row(rank, source, events))
+    original = source.copy()
+    result = ""
+    try:
+        for row in sorted(source, key=key):
+            result += str(row.rank)
+    except ValueError as error:
+        result = str(error)
+    return result + ":" + ",".join(events) + ":" + str(len(original)) + ":" + str(len(source))
+''', tmp_path)
+
+
+@pytest.mark.parametrize("key", [
+    "lambda value: -value", "lambda value: value / 2.0",
+    "lambda value: value > 1", "lambda value: str(value)",
+])
+def test_key_types_and_stability_match_python(tmp_path, key):
+    assert_text_matches_python(f'''def main() -> str:
+    values = [2, -1, 12, 1, 2]
+    result = ""
+    for value in sorted(values, key={key}):
+        result += str(value) + ","
+    result += ":"
+    for value in sorted(values, key={key}, reverse=True):
+        result += str(value) + ","
+    return result
+''', tmp_path)
 
 
 def test_unmaterialized_range_has_a_located_boundary():
@@ -168,3 +248,15 @@ def main() -> int:
         return 42
     return 1
 ''', tmp_path)
+
+
+def test_tuple_key_diagnostic_points_at_sorted_call():
+    with pytest.raises(CompilationError) as error:
+        transpile_jvm('''def main() -> int:
+    values = [2, 1]
+    return sorted(values, key=lambda value: (value, value))[0]
+''')
+    diagnostic = error.value.diagnostic
+    assert diagnostic.code.value == "PYJS2001"
+    assert diagnostic.message == "JVM sorted() tuple keys are not implemented"
+    assert error.value.lineno == 3

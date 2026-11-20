@@ -27,6 +27,7 @@ from pyjs.analysis.ir import (
     IteratorCreate,
     IteratorNext,
     Jump,
+    Lambda,
     ListAppend,
     ObjectNew,
     ProgramIR,
@@ -71,7 +72,7 @@ from pyjs.decorators import JVMField, backend_metadata, is_declaration
 from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
-from . import list_equality, list_slices, sets
+from . import callables, list_equality, list_slices, sets
 from .analysis import JVM_ENVIRONMENT
 from .boxed import SCALAR_BOXES, box, emit_equality, emit_key_guard, unbox_scalar
 from .classfile import (
@@ -315,6 +316,9 @@ class JVMEmitter:
         self.native_classes: set[Class] = set()
         self.native_interfaces: set[Class] = set()
         self.static_interface_bridges = {}
+        self.callback_interfaces = {}
+        self.callback_adapters = {}
+        self.lambdas = {}
         self.native_layouts: dict[Class, ClassIR] = {}
         self.native_exception_types: dict[str, Class] = {}
         self.code = Bytecode()
@@ -383,6 +387,7 @@ class JVMEmitter:
         if program.entry_point not in functions:
             raise JVMUnsupported("the JVM entry point has no analyzable body")
         self.functions = set(functions)
+        callables.prepare(self, functions)
         self.validate_method_contracts(classes, functions)
         for function in functions:
             if function.cls is None:
@@ -925,6 +930,9 @@ class JVMEmitter:
                         # A None initializer still needs the declared exception
                         # storage; the rendered annotation has unbound names.
                         semantic = self.value_type(declared)
+                    elif ((declared in self.classes and declared.generic_types)
+                          or getattr(declared, "generic_name", None) in {"callable", "Callable"}):
+                        semantic = self.value_type(declared)
                     else:
                         semantic = (
                             self.expression_type(statement.value)
@@ -1292,6 +1300,7 @@ class JVMEmitter:
     def expression(self, node, *, expected: str | None = None) -> str:
         result = self._expression(node)
         if expected is not None:
+            callables.check_conversion(self, result, expected, node)
             result = self.refine_reference(node, result, expected)
         if getattr(node, "jvm_truth_length", False) and result != "Z":
             if result != "J":
@@ -1464,7 +1473,7 @@ class JVMEmitter:
         if isinstance(node, ast.Name):
             target = analyzed_value_object(node)
             if isinstance(target, Function):
-                raise JVMUnsupported("JVM function values are not implemented", node)
+                return callables.reference(self, node, target)
             if isinstance(target, Class) and (
                 target in self.classes or target in self.native_classes
                 or exception_type(target) is not None
@@ -1491,6 +1500,8 @@ class JVMEmitter:
                 return self.expression(target.static_value)
             if isinstance(target, Instance) and isinstance(target.container, Module):
                 raise JVMUnsupported("JVM module collection state is not implemented", node)
+        if isinstance(node, Lambda):
+            return callables.reference(self, node, self.lambdas[node])
         if isinstance(node, (ast.Name, BlockArgument)):
             name = node.id if isinstance(node, ast.Name) else node.name
             result = self.load(name)
@@ -1653,6 +1664,12 @@ class JVMEmitter:
             self.convert_abi_result(field_type, semantic_type, storage_format)
             return semantic_type
         if isinstance(node, ast.Attribute):
+            method_value = analyzed_value_object(node)
+            if isinstance(method_value, Function) and method_value.cls is not None:
+                raise JVMUnsupported(
+                    "JVM bound-method callbacks are not implemented", node,
+                    fragment=self.current_function.source_fragment,
+                )
             getters = getattr(node, "property_getters", ())
             target = getters[0] if getters and all(getter is getters[0] for getter in getters) else None
             if isinstance(target, Function):
@@ -2955,6 +2972,8 @@ class JVMEmitter:
             self.load("self")
             return self.slot_types["self"]
         if isinstance(target, (Class, GenericClass)):
+            if getattr(target, "generic_name", None) in {"callable", "Callable"}:
+                return callables.invoke(self, node, target)
             if (getattr(target, "generic_name", None) == "list"
                     and target.container.scope.is_builtins
                     and len(node.args) == 1 and not node.keywords
@@ -2997,28 +3016,8 @@ class JVMEmitter:
             # for their runtime type would create a late type[T] dependency.
             raise JVMUnsupported(f"JVM constructor {target.name} is not implemented", node)
         target_type = analyzed_value_type(node.func)
-        if target_type.generic_name in {"callable", "Callable"}:
-            if node.args or node.keywords:
-                raise JVMUnsupported(
-                    "JVM callbacks currently take no arguments",
-                    node,
-                )
-            receiver = self.expression(node.func)
-            if receiver != "Ljava/lang/Runnable;":
-                raise JVMUnsupported(
-                    "JVM callback has an incompatible runtime type",
-                    node,
-                )
-            reference = self.class_file.interface_method_reference(
-                "java/lang/Runnable",
-                "run",
-                "()V",
-            )
-            self.code.emit(
-                0xB9,
-                reference.to_bytes(2, "big") + b"\x01\x00",
-            )
-            return "V"
+        if getattr(target_type, "generic_name", None) in {"callable", "Callable"}:
+            return callables.invoke(self, node, target_type)
         raise JVMUnsupported("JVM indirect calls are not implemented", node)
 
     def static_interface_bridge(self, owner: str, name: str, target: Function) -> tuple[str, str]:
@@ -6087,6 +6086,7 @@ class JVMEmitter:
         *,
         fragment=None,
     ) -> None:
+        callables.check_conversion(self, actual, expected, node)
         actual = self.refine_reference(node, actual, expected)
         if actual == "N" and _is_reference_descriptor(expected):
             return
@@ -6375,7 +6375,7 @@ class JVMEmitter:
         if value_type.generic_name == "type":
             return "Ljava/lang/Class;"
         if value_type.generic_name in {"callable", "Callable"}:
-            return "Ljava/lang/Runnable;"
+            return callables.value_type(self, value_type)
         if value_type in self.classes:
             return self.class_descriptor(value_type)
         if value_type in self.native_classes:
