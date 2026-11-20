@@ -53,6 +53,7 @@ def test_native_date_time_uses_locale_zone_and_preserves_long_timestamps() -> No
         set_locale(locale_for_tag("en-US"))
         set_zone(time_zone("UTC"))
         assert format_date_time(context, at, date_flags) == "February 29, 2044"
+        assert format_date_time(context, at, DateFormatFlags.SHOW_WEEKDAY) == "Monday"
         assert format_date_time(context, at, date_flags | DateFormatFlags.ABBREV_MONTH) == "Feb 29, 2044"
         assert format_date_time(context, at, date_flags | DateFormatFlags.NUMERIC_DATE) == "2/29/2044"
         set_zone(time_zone("America/New_York"))
