@@ -3500,7 +3500,23 @@ class JVMEmitter:
         )
         self.code.emit(0xB6, reference.to_bytes(2, "big"))
 
+    @staticmethod
+    def reversed_source(iterable):
+        if (isinstance(iterable, ast.Call)
+                and getattr(iterable.func.obj, "py_obj", None) is native_builtins._reversed
+                and len(iterable.args) == 1 and not iterable.keywords):
+            return iterable.args[0]
+        return None
+
     def iterator_descriptor(self, node: IteratorCreate):
+        reversed_source = self.reversed_source(node.iterable)
+        if reversed_source is not None:
+            source = analyzed_value_type(reversed_source)
+            if not is_builtin_class(source, "list"):
+                raise JVMUnsupported("JVM reversed iteration requires a list", node.iterable)
+            item = next(iter(source.generic_types.values()))
+            return ("reversed-list", self.list_item_type(source),
+                    f"L{self.list_class_name(source)};", item)
         if (
             isinstance(node.iterable, ast.Call)
             and isinstance(node.iterable.func, ast.Name)
@@ -3610,10 +3626,19 @@ class JVMEmitter:
             self.throw_python("ValueError", "range() arg 3 must not be zero")
             self.code.mark(valid)
             return
-        if self.expression(node.iterable) != source_type:
+        iterable = self.reversed_source(node.iterable) if kind == "reversed-list" else node.iterable
+        if self.expression(iterable) != source_type:
             raise JVMUnsupported("JVM list iterator has incompatible source", node)
         self.store(f"{node.name}.source", source_type)
-        self.long_constant(0)
+        if kind == "reversed-list":
+            self.load(f"{node.name}.source")
+            length = self.class_file.field_reference(source_type[1:-1], "length", "I")
+            self.code.emit(0xB4, length.to_bytes(2, "big"))
+            self.code.emit(0x85)
+            self.long_constant(1)
+            self.code.emit(0x65)
+        else:
+            self.long_constant(0)
         self.store(f"{node.name}.index", "J")
 
     def iterator_next(self, node: IteratorNext) -> None:
@@ -3830,6 +3855,12 @@ class JVMEmitter:
     ) -> None:
         source = f"{node.iterator}.source"
         index = f"{node.iterator}.index"
+        reverse = self.iterators[node.iterator][0] == "reversed-list"
+        if reverse:
+            self.load(index)
+            self.long_constant(0)
+            self.code.emit(0x94)
+            self.code.branch(0x9B, self.block_label(node.exhausted))
         self.load(index)
         self.load(source)
         owner = source_type[1:-1]
@@ -3857,7 +3888,7 @@ class JVMEmitter:
         self.assign_iterator_target(node, item_type, semantic_item)
         self.load(index)
         self.long_constant(1)
-        self.code.emit(0x61)
+        self.code.emit(0x65 if reverse else 0x61)
         self.store(index, "J")
         self.code.branch(0xA7, self.block_label(node.body))
 

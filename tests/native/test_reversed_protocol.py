@@ -8,7 +8,7 @@ from pyjs.native.llvm import transpile_llvm
 from pyjs.python.native import reversed_result
 from pyjs.tooling.llvm import LLVM
 from pyjs.webassembly.transpiler import transpile_webassembly
-from tests.backend_semantics import REVERSED_PROTOCOL_CONTRACT
+from tests.backend_semantics import REVERSED_LIST_CONTRACT, REVERSED_PROTOCOL_CONTRACT
 from tests.semantics.helpers import run_javascript
 
 
@@ -19,6 +19,16 @@ def test_shared_reversed_protocol_contract(tmp_path, optimize):
         sanitizers=("address", "undefined"),
     )
     assert result.native.returncode == 0, REVERSED_PROTOCOL_CONTRACT.failure(result.native.returncode)
+    assert not result.native.stderr
+
+
+@pytest.mark.parametrize("optimize", [0, 2])
+def test_shared_reversed_list_contract(tmp_path, optimize):
+    result = LLVM().assert_matches_python(
+        REVERSED_LIST_CONTRACT.source, directory=tmp_path, optimize=optimize,
+        sanitizers=("address", "undefined"),
+    )
+    assert result.native.returncode == 0, REVERSED_LIST_CONTRACT.failure(result.native.returncode)
     assert not result.native.stderr
 
 

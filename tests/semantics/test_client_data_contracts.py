@@ -11,6 +11,7 @@ from tests.backend_semantics import (
     RECEIVER_DOMAIN_CONTRACTS,
     REPLACED_ATTRIBUTE_CONTRACT,
     REPLACED_RECEIVER_CONTRACTS,
+    REVERSED_LIST_CONTRACT,
 )
 from tests.semantics.helpers import assert_semantics
 
@@ -41,6 +42,34 @@ def test_narrowed_receivers_and_arguments_keep_their_refined_type():
 
 def test_replaced_attributes_do_not_keep_stale_refinements():
     assert_semantics(REPLACED_ATTRIBUTE_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_reversed_list_contract():
+    assert_semantics(REVERSED_LIST_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_reversed_list_captures_initial_index_and_stays_exhausted():
+    assert_semantics('''
+from pyjs import js
+@js
+def main() -> None:
+    values = [1, 2, 3]
+    backwards = reversed(values)
+    values.append(4)
+    values[2] = 7
+    print(next(backwards))
+    values.pop()
+    values.pop()
+    values.pop()
+    print(next(backwards, -1))
+    values.extend([8, 9, 10])
+    print(next(backwards, -1))
+    empty: list[int] = []
+    backwards = reversed(empty)
+    empty.append(11)
+    print(next(backwards, -1))
+main()
+''')
 
 
 @pytest.mark.parametrize("contract", REPLACED_RECEIVER_CONTRACTS.values(), ids=REPLACED_RECEIVER_CONTRACTS)

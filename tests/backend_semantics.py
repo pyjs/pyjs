@@ -2951,6 +2951,37 @@ RANGE_NUMERIC_LOOKUP_CONTRACT = _contract(
 )
 
 
+REVERSED_LIST_CONTRACT = _contract(
+    """
+    from builtins import reversed as reverse
+    from pyjs import js
+    @js
+    def backwards(values: list[int]) -> str:
+        result = ""
+        for value in reverse(values):
+            result += str(value)
+        return result
+    @js
+    def changing() -> str:
+        values = [1, 2, 3]
+        result = ""
+        for value in reversed(values):
+            result += str(value)
+            values[0] = 7
+            values.append(9)
+        return result
+    """,
+    "reversed_list_contract",
+    "values = [1, 2, 3]",
+    (
+        ("reverse iteration", 'backwards(values) != "321"'),
+        ("empty input", 'backwards([]) != ""'),
+        ("source order unchanged", 'values[0] != 1 or values[2] != 3'),
+        ("live values and initial length", 'changing() != "327"'),
+    ),
+)
+
+
 REVERSED_PROTOCOL_CONTRACT = _contract(
     """
     from builtins import reversed as reverse
