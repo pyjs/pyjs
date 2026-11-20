@@ -838,10 +838,8 @@ def test_jvm_binary_power_contract(tmp_path):
     test_jvm_runs_shared_numeric_contracts(tmp_path, BINARY_POWER_CONTRACT)
 
 
-def test_generic_operator_contract_retains_jvm_type_boundary():
-    # Generic inherited construction is not a supported JVM runtime shape yet.
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
-        transpile_jvm(GENERIC_OPERATOR_CONTRACT.source)
+def test_generic_operator_contract(tmp_path):
+    test_jvm_runs_shared_numeric_contracts(tmp_path, GENERIC_OPERATOR_CONTRACT)
 
 
 def test_assert_narrowing_retains_the_jvm_union_storage_boundary():

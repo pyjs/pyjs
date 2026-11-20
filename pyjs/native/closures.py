@@ -7,12 +7,12 @@ pointers. Typed tracing retains closure cycles without tracing numeric cells.
 """
 
 import ast
-from copy import copy
 from dataclasses import dataclass
 
 from pyjs.analysis.ir import Lambda
+from pyjs.analysis.lambdas import lift_lambda
 from pyjs.analysis.lifetime import infer_lifetimes, lambda_captures
-from pyjs.analysis.objects import Function, Module
+from pyjs.analysis.objects import Function
 from pyjs.analysis.type_relations import is_subclass
 from pyjs.analysis.value_representation import analyzed_numeric_format
 
@@ -62,28 +62,7 @@ def prepare(emitter, functions):
                     if args.defaults or args.kw_defaults or args.kwonlyargs or args.vararg or args.kwarg:
                         raise LLVMUnsupported("LLVM lambdas require fixed positional parameters without defaults", node)
                     callables.signature(emitter, node.obj, node)
-                    module = owner.container if isinstance(owner.container, Module) else owner.container.container
-                    function = Function(owner.py_func, module)
-                    function.name = f"lambda.{len(emitter.module.lambdas)}"
-                    function.cls = None
-                    function.scope = node.scope
-                    function.ir = node.ir
-                    function.original_node = node
-                    function.lineno = owner.lineno
-                    function.return_type = node.obj.return_type
-                    function.is_generator = getattr(node, "is_generator", False)
-                    function.set_return_representation(node.obj.return_representation)
-                    for parameter, value_type, representation in zip(
-                        (*args.posonlyargs, *args.args), node.obj.parameter_types,
-                        node.obj.parameter_representations, strict=True,
-                    ):
-                        parameter = copy(parameter)
-                        parameter.annotation = value_type.annotation
-                        # Lifted parameters already have a resolved type. Keep
-                        # it instead of re-resolving synthetic annotation names.
-                        parameter.annotation.obj = value_type
-                        parameter.representation = representation
-                        function.params.append(parameter)
+                    function = lift_lambda(owner, node, f"lambda.{len(emitter.module.lambdas)}")
                     captures = {}
                     for name, source in lambda_captures(node).items():
                         # A closure shares its owner's cell, not the narrowed

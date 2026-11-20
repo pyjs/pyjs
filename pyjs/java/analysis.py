@@ -8,6 +8,7 @@ from pyjs.analysis.analyzer import (
     CallGraphVisitor,
     analyzed_representation,
     analyzed_value_type,
+    callable_value_type,
     field_owner,
 )
 from pyjs.analysis.diagnostics import DiagnosticCode
@@ -22,6 +23,7 @@ from pyjs.analysis.lifetime import refine_lifetimes
 from pyjs.analysis.objects import (
     AnalyzedExpression,
     BoolOp,
+    CallableClass,
     Class,
     Function,
     Instance,
@@ -174,12 +176,10 @@ class JVMInferenceVisitor(IRInferenceVisitor):
             ast.Attribute(value=call, attr="result", ctx=ast.Load()), source_node))
 
     def sorted_call(self, node, source_node):
-        from .sorting import Sorted
+        from .sorting import KeyedSorted, Sorted
 
         key = next((value.value for value in node.keywords if value.arg == "key"), None)
-        if key is not None and not (isinstance(key, ast.Constant) and key.value is None):
-            self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
-                      "JVM sorted() key callbacks are not implemented")
+        keyed = key is not None and not (isinstance(key, ast.Constant) and key.value is None)
         if analyzed_representation(node.args[0]) is not None:
             self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                       "JVM sorted() fixed-width item representations are not implemented")
@@ -192,11 +192,19 @@ class JVMInferenceVisitor(IRInferenceVisitor):
             self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                       "JVM sorted() requires a list, string, set, or dictionary key collection")
         item = analyzed_value_type(node).generic_types["V"]
-        helper = resolve_imported(Sorted, self.module, "Sorted")(source, item)
+        if keyed:
+            key_type = callable_value_type(key)
+            if not isinstance(key_type, CallableClass):
+                self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "JVM sorted() key requires a fixed callable signature")
+            helper = resolve_imported(KeyedSorted, self.module, "KeyedSorted")(
+                source, item, key_type.return_type)
+        else:
+            helper = resolve_imported(Sorted, self.module, "Sorted")(source, item)
         call = ast.Call(func=AnalyzedExpression(Name(helper)),
                         args=[AnalyzedExpression(value) for value in node.args],
                         keywords=[ast.keyword(arg=value.arg, value=AnalyzedExpression(value.value))
-                                  for value in node.keywords if value.arg != "key"])
+                                  for value in node.keywords if keyed or value.arg != "key"])
         expression = ast.Attribute(value=call, attr="result", ctx=ast.Load())
         return self.visit(ast.fix_missing_locations(ast.copy_location(expression, source_node)))
 

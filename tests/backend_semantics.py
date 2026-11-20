@@ -4205,6 +4205,9 @@ LOCAL_COLLECTION_CONTRACT = _contract(
     seen.discard("a")
     seen.discard("missing")
     seen.clear()
+    words = ["aa", "b", "cc", "d"]
+    keyed = sorted(words, key=lambda word: len(word))
+    reversed_keys = sorted(words, key=lambda word: len(word), reverse=True)
     ''',
     (
         ("sort uses Python Unicode order", "ordered[0] != 'a' or ordered[5] != '😀'"),
@@ -4212,6 +4215,9 @@ LOCAL_COLLECTION_CONTRACT = _contract(
         ("sort and copy leave input unchanged", "values[0] != 'z' or len(values) != 6 or len(copied) != 7"),
         ("sets retain unique items and copy independently", "len(retained) != 2 or 'a' not in retained"),
         ("cleared set is false", "bool(seen)"),
+        ("keyed sorting is stable", "','.join(keyed) != 'b,d,aa,cc'"),
+        ("reverse keyed sorting retains ties", "','.join(reversed_keys) != 'aa,cc,b,d'"),
+        ("keyed sorting leaves its input unchanged", "','.join(words) != 'aa,b,cc,d'"),
     ),
 )
 

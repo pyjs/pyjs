@@ -64,7 +64,7 @@ def test_bounded_text_search_keeps_a_focused_jvm_boundary():
 
 def test_extracted_union_result_reaches_the_jvm_callable_boundary():
     from tests.backend_semantics import UNION_CALLBACK_RESULT_CONTRACT
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="JVM callbacks with represented parameters or results are not implemented"):
         transpile_jvm(UNION_CALLBACK_RESULT_CONTRACT.source)
 
 
@@ -78,7 +78,7 @@ def test_union_result_keeps_the_jvm_mixed_layout_boundary(contract):
 
 def test_callable_iterable_views_reach_a_focused_jvm_boundary():
     from tests.backend_semantics import CALLABLE_ITERABLE_CONTRACT
-    with pytest.raises(JVMUnsupported, match="function values are not implemented|unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="unsupported JVM value type Iterable__int"):
         transpile_jvm(CALLABLE_ITERABLE_CONTRACT.source)
 
 
@@ -89,22 +89,21 @@ def test_nested_literal_context_reaches_the_jvm_iterable_boundary():
 
 
 def test_callback_input_views_reach_the_jvm_callable_boundary():
-    with pytest.raises(JVMUnsupported, match="unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="JVM callback signature adaptation is not implemented"):
         transpile_jvm(CALLABLE_INPUT_CONTRACT.source)
 
 
 def test_default_callable_views_reach_the_jvm_callable_boundary():
     from tests.backend_semantics import CALLABLE_DEFAULT_CONTRACT
-    with pytest.raises(JVMUnsupported, match="function values are not implemented|unsupported JVM type annotation"):
+    with pytest.raises(JVMUnsupported, match="JVM callbacks require fixed positional parameters"):
         transpile_jvm(CALLABLE_DEFAULT_CONTRACT.source)
 
 
-@pytest.mark.parametrize("parameter", ["int", "int | None"])
-def test_named_function_values_have_a_located_jvm_diagnostic(parameter):
-    with pytest.raises(JVMUnsupported, match=r"JVM function values are not implemented at line 2 while compiling .*factory"):
-        transpile_jvm(f'''
+def test_adapted_function_values_have_a_located_jvm_diagnostic():
+    with pytest.raises(JVMUnsupported, match=r"JVM callback signature adaptation is not implemented at line 2 while compiling .*factory"):
+        transpile_jvm('''
             from collections.abc import Callable
-            def broad(value: {parameter}) -> int:
+            def broad(value: int | None) -> int:
                 return 7
             def factory() -> Callable[[int], int]:
                 return broad

@@ -1,5 +1,7 @@
 """Stable sorting through the JVM's existing generic-class specialization."""
 
+from collections.abc import Callable
+
 
 class Sorted[Source, Item]:
     """O(n log n) comparisons, O(n) auxiliary storage, and bounded stack depth.
@@ -40,3 +42,27 @@ class Sorted[Source, Item]:
             output = previous
             width *= 2
         self.result = values
+
+
+class SortEntry[Item, Key]:
+    def __init__(self, value: Item, key: Key):
+        self.value = value
+        self.key = key
+
+    def __lt__(self, other: SortEntry[Item, Key]) -> bool:
+        return self.key < other.key
+
+
+class KeyedSorted[Source, Item, Key]:
+    def __init__(self, source: Source, key: Callable[[Item], Key], reverse: bool = False):
+        values: list[Item] = []
+        for value in source:
+            values.append(value)
+        decorated: list[SortEntry[Item, Key]] = []
+        for value in values:
+            decorated.append(SortEntry[Item, Key](value, key(value)))
+        ordered = Sorted[list[SortEntry[Item, Key]], SortEntry[Item, Key]](decorated, reverse)
+        result: list[Item] = []
+        for entry in ordered.result:
+            result.append(entry.value)
+        self.result = result

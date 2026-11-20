@@ -675,6 +675,19 @@ JVM `min()` and `max()` accept two or more positional operands with matching
 integer or floating storage. Floating ties and unordered NaN comparisons
 retain the earlier operand. Iterable and `key` forms remain unsupported.
 
+JVM callbacks support emitted module functions and non-capturing lambdas with
+fixed positional `Callable[[...], ...]` signatures. They can be passed, stored
+and returned; callback exceptions propagate through ordinary Python handlers.
+Defaults, bound methods, captures, represented numeric signatures and adaptation
+between different runtime signatures remain unsupported. Inline-only builtins
+cannot be passed as values unless they have a backend value implementation.
+
+JVM `sorted()` accepts a list, string, set or dictionary key collection, with
+optional `key` callbacks and `reverse`. It is stable in either direction,
+materializes the source before calling keys, and evaluates each key once in
+input order. Sorting does not mutate the input, though callbacks can. Fixed-width
+item representations, arbitrary iterators and union containers are unsupported.
+
 JVM lists support `==`, `!=`, `__eq__()` and `__ne__()` between lists with
 matching integer, boolean or string storage, including nullable strings.
 They compare item values and logical length, not backing capacity or identity.
