@@ -46,9 +46,17 @@ class PermissionRequest:
 
 
 @js.native
+class Cookies:
+    async def flushStore(self) -> None:
+        """Request a cookie-store flush; completion does not confirm disk writes."""
+        ...
+
+
+@js.native
 class Session:
     def __init__(self):
         self.protocol: Protocol = Protocol()
+        self.cookies: Cookies = Cookies()
 
     async def fetch(self, request: Request | str, options: FetchOptions | None = None) -> Response: ...
 

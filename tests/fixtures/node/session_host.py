@@ -3,6 +3,7 @@ from pyjs import js
 from pyjs.electron import HostContext, WebPreferences, WindowOptions
 from pyjs.electron.session import (
     FetchOptions,
+    Session,
     allow_requests,
     deny_permissions,
     from_partition,
@@ -16,6 +17,12 @@ from pyjs.electron.window import (
     set_application_menu,
 )
 from pyjs.web.network import Request, Response
+
+
+@js
+async def flush(session: Session) -> str:
+    await session.cookies.flushStore()
+    return "flushed"
 
 
 @js

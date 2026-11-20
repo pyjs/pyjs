@@ -8,6 +8,42 @@ from pyjs.tooling.node import Node
 from pyjs.tooling.node_build import build_node
 
 
+def test_cookie_flush_waits_for_completion_and_propagates_failure(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
+    try:
+        module = importlib.import_module("session_host")
+        bundle = build_node(module.flush, tmp_path / "flush.cjs", executable=False)
+    finally:
+        sys.modules.pop("session_host", None)
+    script = r'''
+const assert = require('node:assert/strict');
+const {main: flush} = require(process.argv[1]);
+(async () => {
+  for (const fail of [false, true]) {
+    let complete, reject, calls = 0, settled = false;
+    const error = new Error('cookie store unavailable');
+    const cookies = {flushStore() {
+      assert.equal(this, cookies);
+      calls++;
+      return new Promise((resolve, refuse) => {complete = resolve; reject = refuse});
+    }};
+    const pending = flush({cookies});
+    const checked = fail ? assert.rejects(pending, value => value === error)
+                         : pending.then(value => assert.equal(value, 'flushed'));
+    checked.then(() => {settled = true});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 1);
+    assert.equal(settled, false);
+    if (fail) reject(error); else complete();
+    await checked;
+  }
+})().catch(error => {console.error(error); process.exitCode = 1});
+'''
+    result = subprocess.run([str(Node().executable), "-e", script, bundle],
+                            text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 def test_permission_handlers_preserve_frame_details_and_bound_policies(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
     try:
