@@ -414,6 +414,47 @@ and returns an unsubscribe function. Removing a subscription does not remove
 other listeners. Expose fixed-channel callbacks through `expose`; the listener
 adapter deliberately does not forward the Electron event into the renderer.
 
+`pyjs.electron.notifications` exposes native main-process notifications. After
+app readiness, check `is_supported()`, construct `NotificationOptions(title,
+body=...)`, and call `create_notification(options)`. Retain the returned object,
+register `notification.on("show", callback)` and `on_failed(notification,
+callback)` before `show()`, and handle `"click"` and `"close"` as needed.
+Ordinary event callbacks receive an Electron `Event`; `on_failed` forwards only
+the error string and returns an unsubscribe function. For ordinary listeners,
+retain the callback passed to `on` and pass it to `removeListener` for removal.
+`close()` dismisses the owned notification.
+
+To await native publication with an asynchronous event timeout, use
+`await show_notification(notification, timeout_ms=5000)`. It dismisses the
+object's previous alert before subscribing, then resolves on `show` or rejects
+on failure, early close, timeout or a synchronous exception. It removes only
+its own listeners; click handlers remain. Do not show the same object
+concurrently. After rejection, close any uncertain alert before retrying.
+
+The timer cannot interrupt synchronous native work. Electron 45 on Linux uses
+blocking libnotify/D-Bus publication: a slow notification daemon stalls the
+main event loop. The helper can resolve after `timeout_ms` or fail only at the
+native timeout (observed around 25 seconds); it is not a hard wall-clock
+deadline. Other main-process work and IPC are delayed during that call.
+
+Presenter support and a returning `show()` do not prove publication; wait for
+the native event, subject to these timeout limits. Publication is not proof
+that the user saw an alert. Signing, OS permission and Windows application
+registration remain deployment responsibilities. Optional `id` and `groupId`
+are supported on macOS/Windows, with a 64-UTF-16-unit Windows limit, but not on
+Linux. Reusing the same object replaces its previous alert; cross-process
+deduplication is not guaranteed on Linux. Applications own consent, durable
+schedules, retry receipts, account isolation and click routing. This API does
+not schedule delivery after the application exits. Electron 45 does not
+implement persistent service-worker notifications.
+
+The native Linux notification acceptance test is opt-in. Set
+`PYJS_ELECTRON_RUNTIME` to an installed Electron distribution and run
+`pytest tests/test_electron_notifications.py`. It uses a private D-Bus session
+and a test notification service, not the user's desktop notification daemon.
+It requires `dbus-run-session`, system Python with `dbus` and `gi`, and a working
+Electron sandbox. The default Node contract tests do not require Electron.
+
 Build standalone Node programs from an importable Python module with:
 
 ```bash

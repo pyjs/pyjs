@@ -94,6 +94,28 @@ Electron's defaults; it does not deny access. The request details declaration
 currently covers common frame fields, not permission-specific extensions.
 Navigation/request predicate exceptions cancel before propagating to the host's
 error handler. Unset fetch options preserve the input Request's own modes.
+For native main-process alerts, use `pyjs.electron.notifications`:
+`is_supported()`, `NotificationOptions(title, body=...)` and
+`create_notification(options)`. Create after app readiness, retain the object,
+and register `on("show", callback)` and `on_failed(notification, callback)`
+before `show()`. Ordinary callbacks receive an Electron Event; the failure
+helper passes the error string and returns an owned unsubscriber. Keep the
+original callback for ordinary `removeListener` cleanup. Handle missing
+publication events: support and a returning `show()` do not prove delivery.
+`await show_notification(notification, timeout_ms=5000)` dismisses the previous
+alert, subscribes before showing, and resolves on native publication. Failure,
+early close, timeout and synchronous errors reject with owned listeners removed.
+Do not show the same object concurrently; close uncertain alerts after rejection.
+The timer cannot preempt synchronous native calls. Electron 45 on Linux uses
+blocking libnotify/D-Bus publication, which stalls the main event loop and IPC
+if the daemon is slow. Publication can succeed after `timeout_ms` or fail at
+the native timeout (observed around 25 seconds). This is not a hard deadline.
+`close()` dismisses the owned alert. IDs/groups apply only on macOS/Windows;
+Windows limits each to 64 UTF-16 units. Linux cannot guarantee replacement
+across process restarts. Apps own consent, signing/OS setup, durable scheduling,
+retry/account policy and click routing. Do not expose unrestricted notification
+creation to a renderer. Electron 45 persistent service-worker notifications
+are not implemented; these main-process APIs do not run after the app exits.
 Build-time compilation preserves Python source maps and needs no Python at launch.
 `pyjs build my_service:main --target node -o dist/service.cjs` builds a standalone
 Node program. Mark Python-authored Node tests with `pytest.mark.pyjs_node` and

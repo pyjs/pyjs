@@ -8,6 +8,12 @@
   class fields, including empty collection placeholders. Reading capabilities
   does not request permission or display a notification.
 
+- Python-authored Electron hosts can create native desktop notifications,
+  observe publication/click/close events and handle publication failures.
+  Applications retain ownership of consent, scheduling and retry policy.
+  Publication waits have an event timeout, not a hard deadline: Electron's
+  Linux notification calls can block the main process on a slow native daemon.
+
 - Native JVM/Android cookies can be constructed and inspected for explicit
   session restoration. Cookie storage remains in memory unless the app saves
   it. Android exposes its API 21+ no-backup directory for device-bound state;
