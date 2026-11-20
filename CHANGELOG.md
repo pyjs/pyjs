@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JVM and Android workers and instrumentation tests can pause with
+  `pyjs.java.concurrent.sleep(milliseconds)` instead of busy polling. Native
+  interruption remains catchable as `pyjs.java.errors.InterruptedException`.
+
 - JVM and Android JSON model decoding validates skipped strings without
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.

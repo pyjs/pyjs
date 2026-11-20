@@ -3,6 +3,15 @@
 from pyjs import jvm
 
 
+@jvm.native("java/lang/Thread", name="sleep")
+def sleep(milliseconds: int) -> None:
+    """Pause the calling thread; native interruption and argument errors propagate.
+
+    Use on worker or instrumentation threads, never the Android UI thread.
+    """
+    ...
+
+
 @jvm.native("java/lang/Runnable", interface=True)
 class Runnable:
     def run(self) -> None: ...
