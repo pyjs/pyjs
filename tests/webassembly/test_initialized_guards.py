@@ -14,7 +14,7 @@ from tests.backend_semantics import (
     (INITIALIZED_GUARD_CONTRACT,
      "WebAssembly call target isinstance is not implemented at line 3"),
     (INITIALIZED_TRUTH_GUARD_CONTRACT,
-     "WebAssembly call target __dynamic_bool__ is not implemented"),
+     "WebAssembly call target __dynamic_bool__ is not implemented at line 3"),
     (INITIALIZED_ITERABLE_CONTRACT,
      "WebAssembly union value storage is not implemented"),
 ])

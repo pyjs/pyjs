@@ -122,14 +122,21 @@ def main() -> str:
 ''', tmp_path)
 
 
-def test_non_boolean_bool_result_is_not_treated_as_length():
+@pytest.mark.parametrize("condition", [
+    "if Invalid():\n        return 1",
+    "if not Invalid():\n        return 1",
+    "if Invalid() and True:\n        return 1",
+    "while Invalid():\n        return 1",
+    "return 1 if Invalid() else 0",
+    "assert Invalid()",
+])
+def test_non_boolean_bool_result_is_not_treated_as_length(condition):
     with pytest.raises(JVMUnsupported, match="branch conditions must be bool"):
-        transpile_jvm('''
+        transpile_jvm(f'''
 class Invalid:
     def __bool__(self) -> int:
         return 2
 def main() -> int:
-    if Invalid():
-        return 1
+    {condition}
     return 0
 ''')

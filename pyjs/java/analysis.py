@@ -88,9 +88,14 @@ class JVMInferenceVisitor(IRInferenceVisitor):
             return ast.copy_location(BoolOp(JVM_ENVIRONMENT.builtins.search("bool"),
                                            op=test.op, values=values), node)
         result = super().truth_test(node, test)
-        if (isinstance(result, ast.Call)
-                and getattr(getattr(result.func, "obj", None), "name", None) == "__len__"):
-            result.jvm_truth_length = True
+        if isinstance(result, ast.Call):
+            method = getattr(getattr(result.func, "obj", None), "name", None)
+            if method == "__len__":
+                result.jvm_truth_length = True
+            elif method == "__bool__" and not is_builtin_class(analyzed_value_type(result), "bool"):
+                # Do not let condition normalization truth-test an invalid
+                # __bool__ result as though it came from the length protocol.
+                raise JVMUnsupported("JVM branch conditions must be bool", node)
         return result
 
     def visit_FunctionDef(self, node):
