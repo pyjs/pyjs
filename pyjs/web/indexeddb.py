@@ -7,19 +7,24 @@ from pyjs.web.html import DOMStringList
 
 
 def _request_promise(expression: str, validator: str = "null") -> str:
+    """Keep caller scope while evaluating inside the rejecting executor."""
+    parameters = "getRequest"
+    arguments = f"() => ({expression})"
     if validator == "null":
         resolve = "resolve(request.result)"
         setup = ""
     else:
         resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
-        setup = f"const validate = {validator};"
+        setup = "const validate = getValidator();"
+        parameters += ", getValidator"
+        arguments += f", () => ({validator})"
     return "".join(
         [
-            "new Promise((resolve, reject) => {",
-            f"const request = {expression};{setup}",
+            f"(({parameters}) => new Promise((resolve, reject) => {{",
+            f"const request = getRequest();{setup}",
             f"request.addEventListener('success', () => {resolve}, {{once: true}});",
             "request.addEventListener('error', () => reject(request.error), ",
-            "{once: true});})",
+            f"{{once: true}});}}))({arguments})",
         ]
     )
 
@@ -479,7 +484,7 @@ async def open_database(
 def open_database(_arg_strs, **kwargs):
     name, version = _arg_strs[:2]
     upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
-    return f"new Promise((resolve, reject) => {{const request = indexedDB.open({name}, {version});const upgrade = {upgrade};if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
+    return f"((getRequest, getUpgrade) => new Promise((resolve, reject) => {{const request = getRequest();const upgrade = getUpgrade();if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}}))(() => indexedDB.open({name}, {version}), () => ({upgrade}))"
 
 
 @js.inline(_rewrite_request_result)
