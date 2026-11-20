@@ -1156,6 +1156,20 @@ with `pyjs template`.
   and I/O errors propagate; close owned streams in `finally` and do not report
   a completed export before close succeeds. A failed write can leave partial
   output; this API does not provide atomic replacement or disk synchronization.
+- `pyjs.java.io.FileInputStream(File(path))` reads local binary files through
+  the existing bounded `read(buffer)` API. `pyjs.java.zip` provides native
+  `ZipEntry`, `ZipOutputStream`, `ZipInputStream` and `ZipException` on JVM and
+  Android. Open each output entry with `putNextEntry`, write byte ranges, then
+  `closeEntry`. `finish` writes the central directory without closing the
+  destination; a successful ZIP close closes the underlying stream too.
+  Close the ZIP wrapper once in an inner `finally` and the owned underlying
+  stream in an outer `finally`: a failed ZIP close can leave it open.
+  Input `read` returns -1 at the current entry's end; `getNextEntry` returns
+  `None` after the last entry. These are blocking primitives, not filesystem
+  extraction helpers. Bound entry counts and decompressed bytes, validate
+  paths before extraction, and handle I/O failures and partial output.
+  `ZipInputStream` reads local headers, not the central directory; completing
+  its entries is not validation of the entire archive structure.
 - `pyjs.java.io.InputStreamReader(stream, decoder)` reads native character
   chunks with `read(buffer, offset, length)`. Obtain a strict UTF-8 decoder
   with `pyjs.java.charset.charset_for_name("UTF-8").newDecoder()`. Malformed

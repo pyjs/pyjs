@@ -90,6 +90,11 @@ class FileOutputStream(OutputStream):
     def __init__(self, file: File) -> None: ...
 
 
+@jvm.native("java/io/FileInputStream")
+class FileInputStream(InputStream):
+    def __init__(self, file: File) -> None: ...
+
+
 @jvm.native("java/io/File", name="createTempFile")
 def create_temp_file(prefix: str, suffix: str, directory: File) -> File: ...
 

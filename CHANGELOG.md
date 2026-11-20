@@ -43,6 +43,10 @@
 - JavaScript `Date.getTime()` exposes epoch milliseconds for local date/time
   inputs and offset-bearing timestamps, with a CPython fallback for valid dates.
 
+- JVM and Android expose native streaming ZIP entries and binary file-input
+  streams. Applications can build or read archives with bounded byte buffers
+  while retaining ownership of paths, size limits and I/O failure handling.
+
 - Android exposes alarm scheduling, notification channels and publication,
   system-service lookup, and runtime permission requests with native callbacks.
   Applications retain control of timing policy, permissions and persistence.
