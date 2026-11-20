@@ -3,6 +3,7 @@ from typing import cast
 import pytest
 from pyjs import JS, jvm
 from pyjs.android import Intent, TextView, View
+from pyjs.android.dates import DateFormatFlags, format_date_time
 from pyjs.android.pickers import DatePickerDialog, TimePickerDialog
 from pyjs.android.recycler_testing import StaggeredGridSnapshot
 from pyjs.android.recyclerview import RecyclerView
@@ -22,7 +23,7 @@ from pyjs.android.uiautomator import device, find_resource, find_text
 from pyjs.java import format_exception, i32
 from pyjs.java.concurrent import Runnable, Thread
 from pyjs.java.io import File, RandomAccessFile
-from pyjs.java.time import system_zone
+from pyjs.java.time import local_date_time, system_zone
 from pyjs_examples.notes.android import NotesActivity, NotesAdapter, NotesApplication, StorageStatus
 from pyjs_examples.notes.android_datetime import DateTimePreview
 from pyjs_examples.notes.android_saves import BackgroundSaveDriver
@@ -80,7 +81,11 @@ def test_date_time_preview_cancels_each_stage_and_confirms_without_scheduling() 
     by_id(16908313).in_dialog().click()
     run_on_main(SelectPreview(owner, False))
     by_id(16908313).in_dialog().click()
-    by_id(104).assert_text("2024-02-29 13:07 " + system_zone().getId()
+    at = local_date_time(2024, 2, 29, 13, 7).atZone(system_zone()).toInstant().toEpochMilli()
+    label = format_date_time(application_context(), at, DateFormatFlags.SHOW_DATE
+                             | DateFormatFlags.SHOW_YEAR | DateFormatFlags.SHOW_TIME
+                             | DateFormatFlags.ABBREV_MONTH)
+    by_id(104).assert_text(label + " " + system_zone().getId()
                            + "\nPreview only · no reminder scheduled")
     recreate()
     by_id(104).assert_text("Choose date and time · preview only")

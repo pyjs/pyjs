@@ -1,4 +1,5 @@
 from pyjs.android import OnClickListener, TextView, View
+from pyjs.android.dates import DateFormatFlags, format_date_time
 from pyjs.android.dialogs import AlertDialog, DialogCancelListener, DialogInterface
 from pyjs.android.pickers import (
     DatePicker,
@@ -73,5 +74,8 @@ class PreviewTime(TimeSetListener):
         if resolved.toLocalDateTime().toString() != local.toString():
             self.preview.output.setText("That time does not exist here. Choose another time.")
         else:
-            self.preview.output.setText(local.toString().replace("T", " ") + " " + zone.getId()
+            label = format_date_time(view.getContext(), resolved.toInstant().toEpochMilli(),
+                                     DateFormatFlags.SHOW_DATE | DateFormatFlags.SHOW_YEAR
+                                     | DateFormatFlags.SHOW_TIME | DateFormatFlags.ABBREV_MONTH)
+            self.preview.output.setText(label + " " + zone.getId()
                                         + "\nPreview only · no reminder scheduled")
