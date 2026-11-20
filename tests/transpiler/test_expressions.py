@@ -1816,7 +1816,7 @@ def test_common_iterable_builtins_preserve_types_and_emit_complete_lowering():
 
         export function main() {
             var values = $sort_values(Array.from([3, 1, 2]),null,true);
-            var backwards = (function*(values){const items=Array.from(values);for(let index=items.length-1;index>=0;index--)yield items[index];})(values);
+            var backwards = (function(values){const items=Array.isArray(values)?values:Array.from(values);let index=items.length-1;return(function*(){while(index>=0&&index<items.length)yield items[index--];})();})(values);
             var complete = ((values)=>{for(const value of values){if($truthy(value)!==true)return false;}return true;})([true, false]);
             var present = ((values)=>{for(const value of values){if($truthy(value)===true)return true;}return false;})([false, true]);
         }
