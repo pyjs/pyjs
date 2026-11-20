@@ -28,6 +28,7 @@ DOCUMENTS = STRING_TOKENS + NUMBERS + [
 INVALID = [
     "", " ", "true false", "nullx", "True", "NaN", "Infinity", "-Infinity",
     "+1", "01", "-01", "1.", ".1", "1e", "1e+", "--1", "-", "1_0",
+    "١", "1٢", "１２", "1０", "1e٢", "nul", "tru", "fals",
     "[", "[1,]", "[1 2]", "[,1]", "{", '{"a"}', '{"a":}', '{"a":1,}',
     '{"a":1 "b":2}', '{1:2}', "[1}", '{"a":1]',
     '"unterminated', '"raw\nline"', '"\\"', '"\\q"', '"\\u123"',
@@ -54,6 +55,49 @@ def test_number_tokens_keep_range_and_precision_for_schema_validation(token):
     reader = JSONReader(token)
     assert reader.number() == token
     reader.finish()
+
+
+def test_punctuation_lookahead_and_digit_scanning_do_not_allocate_strings(monkeypatch):
+    def unexpected_string(*args):
+        raise AssertionError("Scalar token scanning must not construct strings")
+
+    monkeypatch.setattr(java_json, "chr", unexpected_string, raising=False)
+    monkeypatch.setattr(java_json._UTF16, "slice", unexpected_string)
+    reader = JSONReader(" \t{ ]\r\n")
+    assert reader.take("{") and reader.position == 3
+    assert not reader.take("}") and reader.position == 4
+    assert reader.take("]") and reader.position == 5
+    reader.finish()
+    assert not reader.take("]")
+    reader = JSONReader("12345!")
+    reader._digits()
+    assert reader.position == 5
+
+
+TAKE_BOUNDARIES = '''
+from pyjs.java.json import JSONReader
+def main() -> str:
+    reader = JSONReader(" \\t{雪😀null}\\r\\n")
+    assert reader.take("{") and reader.position == 3
+    assert not reader.take("x") and reader.position == 3
+    assert reader.take("雪") and reader.position == 4
+    assert not reader.take("😀x") and reader.position == 4
+    assert reader.take("😀") and reader.position == 6
+    assert not reader.take("nullable") and reader.position == 6
+    assert reader.take("null") and reader.position == 10
+    assert reader.take("}") and reader.position == 11
+    assert not reader.take("}") and reader.position == 13
+    try:
+        reader.take("")
+    except ValueError as error:
+        assert str(error) == "JSON token must not be empty"
+        return "ok"
+    return "empty token accepted"
+'''
+
+
+def test_token_lookahead_keeps_utf16_positions_and_failed_match_semantics(tmp_path):
+    assert_text_matches_python(TAKE_BOUNDARIES, tmp_path)
 
 
 @pytest.mark.parametrize("document", DOCUMENTS)
