@@ -4,6 +4,7 @@ from pyjs import jvm
 from pyjs.android import Intent
 from pyjs.android.json import JsonWriter
 from pyjs.java.io import OutputStream, OutputStreamWriter, StringWriter
+from pyjs.java.json import JSONReader
 
 pytestmark = pytest.mark.pyjs_android_jvm
 
@@ -44,6 +45,26 @@ def test_utf8_stream_writer_flushes_and_closes_complete_document() -> None:
     write_document(writer)
     writer.close()
     assert stream.toString("UTF-8") == expected_document()
+
+
+def test_native_strings_decode_with_the_shared_reader() -> None:
+    destination = StringWriter()
+    writer = JsonWriter(destination)
+    writer.begin_object()
+    writer.name("plain").string("é雪😀")
+    writer.name("escaped").string('prefix"\n雪😀 suffix')
+    writer.end_object().close()
+    reader = JSONReader(destination.toString())
+    reader.expect("{")
+    assert reader.string() == "plain"
+    reader.expect(":")
+    assert reader.string() == "é雪😀"
+    reader.expect(",")
+    assert reader.string() == "escaped"
+    reader.expect(":")
+    assert reader.string() == 'prefix"\n雪😀 suffix'
+    reader.expect("}")
+    reader.finish()
 
 
 def test_document_picker_title_uses_standard_extra() -> None:
