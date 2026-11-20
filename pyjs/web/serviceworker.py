@@ -237,6 +237,9 @@ class Notification(EventTarget):
 
     Browser support: Chrome 20, Safari 7"""
 
+    permission: str = ""
+    maxActions: int = 0
+
     def __init__(
         self,
         title: str,
@@ -266,13 +269,11 @@ class Notification(EventTarget):
         self.icon: str = icon
         self.image: str = image
         self.lang: str = lang
-        self.maxActions: int = 0
         self.navigate: str = navigate
         self.onclick: callable = None
         self.onclose: callable = None
         self.onerror: callable = None
         self.onshow: callable = None
-        self.permission: str = ""
         self.renotify: bool = renotify
         self.requireInteraction: bool = requireInteraction
         self.silent: bool | None = silent
@@ -369,8 +370,7 @@ class PushManager:
 
     Browser support: Chrome 42, Safari 16"""
 
-    def __init__(self):
-        self.supportedContentEncodings: list[str] = []
+    supportedContentEncodings: list[str] = []
 
     async def getSubscription(self) -> PushSubscription | None: ...
 

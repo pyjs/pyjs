@@ -268,6 +268,12 @@ available for every released version.
   is unavailable; do not silently copy after cancellation. `ShareData` accepts
   `title`, `text`, `url` and `files`; omitted fields remain absent.
 
+- `Notification.permission` and `Notification.maxActions` in
+  `pyjs.web.serviceworker` are native class properties, as is
+  `PushManager.supportedContentEncodings`. Capability reads do not request
+  permission or post notifications. Keep permission requests in an explicit
+  user action and handle denied permission without blocking ordinary app use.
+
 ## Django applications
 
 - Use `PyJSApplication`, `ApplicationSection`, and `ApplicationPage` from
