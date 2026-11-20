@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android Canvas supports circles and arcs with native paint styles, sweep
+  angles and optional center closure for custom controls and diagrams.
+
 - JVM and Android support direct `for` loops over `reversed(list)`, retaining
   item identity, live element updates and Python's initial reverse index.
   Stored reverse iterators and other builtin reverse sources remain unsupported.

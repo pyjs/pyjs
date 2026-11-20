@@ -28,6 +28,9 @@ class Drawing(View):
         self.paint.setStyle(PaintStyle.STROKE)
         canvas.scale(f32(2.0), f32(2.0))
         canvas.drawLine(f32(0.0), f32(0.0), f32(10.0), f32(10.0), self.paint)
+        canvas.drawCircle(12.0, 12.0, 4.0, self.paint)
+        canvas.drawArc(2.0, 3.0, 20.0, 21.0, -90.0, 180.0, False, self.paint)
+        canvas.drawArc(2.0, 3.0, 20.0, 21.0, 0.0, -90.0, True, self.paint)
         canvas.restoreToCount(saved)
     def onTouchEvent(self, event: MotionEvent) -> bool:
         self.detector.onTouchEvent(event)
@@ -87,6 +90,8 @@ def test_drawing_surface_matches_installed_android_sdk():
             ("save", "()I"), ("restoreToCount", "(I)V"), ("translate", "(FF)V"),
             ("scale", "(FF)V"), ("drawColor", "(I)V"),
             ("drawLine", "(FFFFLandroid/graphics/Paint;)V"),
+            ("drawCircle", "(FFFLandroid/graphics/Paint;)V"),
+            ("drawArc", "(FFFFFFZLandroid/graphics/Paint;)V"),
             ("drawRoundRect", "(FFFFFFLandroid/graphics/Paint;)V"),
             ("drawText", "(Ljava/lang/String;FFLandroid/graphics/Paint;)V"),
         },
