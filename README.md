@@ -414,6 +414,34 @@ and returns an unsubscribe function. Removing a subscription does not remove
 other listeners. Expose fixed-channel callbacks through `expose`; the listener
 adapter deliberately does not forward the Electron event into the renderer.
 
+`pyjs.electron.notifications` exposes native main-process notifications. After
+app readiness, check `is_supported()`, construct `NotificationOptions(title,
+body=...)`, and call `create_notification(options)`. Retain the returned object,
+register `notification.on("show", callback)` and `on_failed(notification,
+callback)` before `show()`, and handle `"click"` and `"close"` as needed.
+Ordinary event callbacks receive an Electron `Event`; `on_failed` forwards only
+the error string and returns an unsubscribe function. For ordinary listeners,
+retain the callback passed to `on` and pass it to `removeListener` for removal.
+`close()` dismisses the owned notification.
+
+Presenter support and a returning `show()` do not prove publication; wait for
+the native event with an application-owned timeout. Publication is not proof
+that the user saw an alert. Signing, OS permission and Windows application
+registration remain deployment responsibilities. Optional `id` and `groupId`
+are supported on macOS/Windows, with a 64-UTF-16-unit Windows limit, but not on
+Linux. Reusing the same object replaces its previous alert; cross-process
+deduplication is not guaranteed on Linux. Applications own consent, durable
+schedules, retry receipts, account isolation and click routing. This API does
+not schedule delivery after the application exits. Electron 45 does not
+implement persistent service-worker notifications.
+
+The native Linux notification acceptance test is opt-in. Set
+`PYJS_ELECTRON_RUNTIME` to an installed Electron distribution and run
+`pytest tests/test_electron_notifications.py`. It uses a private D-Bus session
+and a test notification service, not the user's desktop notification daemon.
+It requires `dbus-run-session`, system Python with `dbus` and `gi`, and a working
+Electron sandbox. The default Node contract tests do not require Electron.
+
 Build standalone Node programs from an importable Python module with:
 
 ```bash

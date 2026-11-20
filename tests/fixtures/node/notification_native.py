@@ -1,0 +1,54 @@
+from pyjs import js
+from pyjs.electron import App, Event, HostContext
+from pyjs.electron.notifications import (
+    Notification,
+    NotificationOptions,
+    create_notification,
+    is_supported,
+    on_failed,
+)
+from pyjs.node import Timer, clear_timeout, set_timeout
+
+
+@js
+class Delivery:
+    def __init__(self, app: App):
+        self.app = app
+        self.notification: Notification | None = None
+        self.timer: Timer | None = None
+
+    def start(self) -> None:
+        assert is_supported()
+        self.timer = set_timeout(self.timeout, 5000)
+        notification = create_notification(NotificationOptions("Native example", "Body 🐍"))
+        self.notification = notification
+        notification.on("show", self.shown)
+        notification.on("click", self.clicked)
+        notification.show()
+
+    def shown(self, event: Event) -> None:
+        print("native-shown")
+
+    def clicked(self, event: Event) -> None:
+        print("native-clicked")
+        notification = self.notification
+        if notification is not None:
+            notification.close()
+        notification = create_notification(NotificationOptions("Failure example"))
+        self.notification = notification
+        on_failed(notification, self.failed)
+        notification.show()
+
+    def failed(self, error: str) -> None:
+        print("native-failed")
+        clear_timeout(self.timer)
+        self.app.quit()
+
+    def timeout(self) -> None:
+        print("native-timeout")
+        self.app.quit()
+
+
+@js
+async def main(context: HostContext) -> None:
+    Delivery(context.app).start()
