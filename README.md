@@ -893,6 +893,10 @@ with `pyjs template`.
   native pinch recognition. Callbacks inherited through native superclasses
   are retained without explicit Python calls. Canvas coordinates are physical
   pixels; use display density when sharing logical-pixel geometry with web UI.
+  `Canvas.drawCircle(cx, cy, radius, paint)` and
+  `drawArc(left, top, right, bottom, start_angle, sweep_angle, use_center, paint)`
+  use the paint's fill or stroke style. Arc angles are degrees; positive sweeps
+  run clockwise, and `use_center=True` closes the arc through the oval's center.
   Synthetic motion events use `uptime_millis()`, not wall-clock time, and must
   be recycled after dispatch. Pointer IDs remain stable when indexes change.
 - `AndroidJVMApplication.permissions` explicitly requests manifest permissions
