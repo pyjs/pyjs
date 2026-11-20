@@ -476,7 +476,9 @@ can duplicate it. `dispose()` permanently stops the service without waiting
 for native dismissal. Await `close()` for each alert before disposing if native
 cleanup is needed. Normal app quit terminates helpers and waits up to two
 seconds for temporary-profile cleanup, including after disposal. Forced exit
-or unavailable storage can leave temporary files. This API requires the
+or unavailable storage can leave temporary files. Cleanup reissues `app.quit()`,
+so host `before-quit` and `will-quit` handlers must tolerate repeated calls;
+guard one-time confirmation or save operations. This API requires the
 generated Electron bootstrap; it does not work in standalone Node bundles.
 Linux has real native acceptance coverage; macOS signing and Windows installed
 application identity still need deployment validation.

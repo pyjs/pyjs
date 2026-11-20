@@ -31,6 +31,7 @@ class NotificationService:
     Native close events release keys. A busy close revokes clicks but retains
     the native handle for a later close retry. Normal app quit waits up to two
     seconds for helper profile cleanup; forced exit may leave temporary files.
+    Cleanup reissues app.quit(), so host quit handlers must tolerate repetition.
     """
     async def supported(self) -> bool: ...
     async def show(self, key: str, options: NotificationOptions, clicked: Callable[[], None]) -> None: ...
@@ -191,7 +192,9 @@ return {
         catch (error) {
             if (items.get(key) === item) {
                 items.delete(key);
-                try {await request('close', key)} catch (cleanupError) {fail(cleanupError)}
+                const child = worker;
+                try {await request('close', key)}
+                catch (cleanupError) {if (child === worker) fail(cleanupError)}
             }
             throw error;
         }
@@ -202,8 +205,9 @@ return {
         item.clicked = () => {};
         if (pending.size >= 128) throw new Error('Notification service is busy');
         items.delete(key);
+        const child = worker;
         try {await request('close', key)}
-        catch (error) {fail(error); throw error}
+        catch (error) {if (child === worker) fail(error); throw error}
     },
     dispose() {
         if (disposed) return;

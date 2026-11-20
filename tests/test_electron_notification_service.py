@@ -39,9 +39,10 @@ class Child extends EventEmitter {
         callback();
         this.messages.push(message);
         if (message.operation === 'identity' || mode === 'wait') return;
+        if (mode === 'cleanup-wait' && message.operation !== 'show') return;
         queueMicrotask(() => this.emit('message', {
             event:'reply', id:message.id, value:message.operation === 'support',
-            error:mode === 'error' ? 'native failure' : '',
+            error:mode === 'error' || mode === 'cleanup-wait' ? 'native failure' : '',
         }));
     }
     kill(signal) {
@@ -169,6 +170,30 @@ const main = require(process.argv[1]).main;
     assert.equal(profiles.size, 0);
     assert.equal(app.listenerCount('will-quit'), 0);
     assert.equal(process.listenerCount('exit'), listeners);
+    for (const operation of ['close', 'show']) {
+        mode = 'normal';
+        const race = main(40);
+        await race.show('active', options, () => {});
+        const old = children.at(-1), countBefore = children.length;
+        mode = operation === 'close' ? 'wait' : 'cleanup-wait';
+        const restarted = race.supported().catch(() => {
+            mode = 'normal';
+            return race.supported();
+        });
+        const failing = operation === 'close' ? race.close('active')
+            : race.show('failed', options, () => {});
+        const [retryResult, failedResult] = await Promise.allSettled([restarted, failing]);
+        assert.equal(failedResult.status, 'rejected');
+        assert.match(failedResult.reason.message, operation === 'close' ? /timed out/ : /native failure/);
+        assert(old.killed);
+        assert.equal(children.length, countBefore + 1);
+        assert(!children.at(-1).killed, operation + ' cleanup must not kill an immediate retry');
+        assert.deepEqual(retryResult, {status: 'fulfilled', value: true});
+        await race.show('active', options, () => {});
+        race.dispose();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(profiles.size, 0);
+    }
     mode = 'normal';
     holdCleanup = true;
     for (const dispose of [false, true]) {
