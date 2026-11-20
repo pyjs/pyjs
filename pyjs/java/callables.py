@@ -6,6 +6,7 @@ from pyjs.analysis.analyzer import callable_value_type
 from pyjs.analysis.ir import Lambda
 from pyjs.analysis.lambdas import lift_lambda
 from pyjs.analysis.lifetime import lambda_captures
+from pyjs.analysis.objects import CallableClass
 
 from .classfile import Bytecode, ClassFile, Method
 from .diagnostics import JVMUnsupported
@@ -33,7 +34,10 @@ def prepare(emitter, functions):
 def signature(emitter, value_type, node=None):
     parameters = getattr(value_type, "parameter_types", None)
     if parameters is None:
-        raise JVMUnsupported("JVM callbacks require explicit parameter types", node)
+        if isinstance(value_type, CallableClass):
+            raise JVMUnsupported("JVM callbacks require explicit parameter types", node)
+        # Existing Android listener storage uses bare callable for Runnable.
+        return "java/lang/Runnable", "run", [], "V", "()V"
     representations = value_type.parameter_representations or (None,) * len(parameters)
     if value_type.return_representation is not None or any(representations):
         raise JVMUnsupported("JVM callbacks with represented parameters or results are not implemented", node)
@@ -56,8 +60,6 @@ def signature(emitter, value_type, node=None):
 
 
 def value_type(emitter, value_type):
-    if getattr(value_type, "parameter_types", None) is None:
-        return "Ljava/lang/Runnable;"
     owner, _name, _arguments, _result, _descriptor = signature(emitter, value_type)
     return f"L{owner};"
 

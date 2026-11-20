@@ -128,8 +128,9 @@ def main() -> int:
 ''')
 
 
-def test_void_and_mixed_width_callback_slots(tmp_path):
-    assert_text_matches_python('''
+@pytest.mark.parametrize("listener_type", ["Callable[[], None]", "callable"])
+def test_void_and_mixed_width_callback_slots(tmp_path, listener_type):
+    assert_text_matches_python(f'''
 from collections.abc import Callable
 def record(values: list[int], value: int, factor: float, accept: bool) -> None:
     if accept:
@@ -141,7 +142,7 @@ def apply(callback: Callable[[list[int], int, float, bool], None]) -> int:
     return values[0]
 def noop() -> None:
     pass
-def run(callback: Callable[[], None]) -> None:
+def run(callback: {listener_type}) -> None:
     callback()
 def main() -> str:
     run(noop)
