@@ -14,6 +14,9 @@ ELECTRON_VERSION = "45.0.0"
 
 MAIN = r'''const {app, BrowserWindow} = require('electron');
 const path = require('node:path');
+if (app.commandLine.hasSwitch('pyjs-notification-worker') && process.send) {
+  require('./notification-worker.cjs').main();
+} else {
 const renderer = path.join(__dirname, 'renderer', __HTML__);
 function createWindow(options = {}) {
   const window = new BrowserWindow({width: 1280, height: 900, ...options,
@@ -28,6 +31,7 @@ app.whenReady().then(async () => {
   __START__
 }).catch(error => {console.error(error); app.exit(1);});
 app.on('window-all-closed', () => app.quit());
+}
 '''
 
 
@@ -124,6 +128,9 @@ def build_application(
             raise ValueError("Electron runtime already contains resources/app or app.asar")
         app.mkdir(parents=True)
         renderer.rename(app / "renderer")
+        from pyjs.electron._notification_worker import main as notification_worker
+        from pyjs.tooling.node_build import build_node
+        build_node(notification_worker, app / "notification-worker.cjs", executable=False)
         start = "const window = createWindow(); await window.loadFile(renderer);"
         if host is not None:
             if (host / "main.py").is_file():
