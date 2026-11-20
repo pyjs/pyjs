@@ -7,19 +7,24 @@ from pyjs.web.html import DOMStringList
 
 
 def _request_promise(expression: str, validator: str = "null") -> str:
+    """Keep caller scope while evaluating inside the rejecting executor."""
+    parameters = "getRequest"
+    arguments = f"() => ({expression})"
     if validator == "null":
         resolve = "resolve(request.result)"
         setup = ""
     else:
         resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
-        setup = f"const validate = {validator};"
+        setup = "const validate = getValidator();"
+        parameters += ", getValidator"
+        arguments += f", () => ({validator})"
     return "".join(
         [
-            "new Promise((resolve, reject) => {",
-            f"const request = {expression};{setup}",
+            f"(({parameters}) => new Promise((resolve, reject) => {{",
+            f"const request = getRequest();{setup}",
             f"request.addEventListener('success', () => {resolve}, {{once: true}});",
             "request.addEventListener('error', () => reject(request.error), ",
-            "{once: true});})",
+            f"{{once: true}});}}))({arguments})",
         ]
     )
 
