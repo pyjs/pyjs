@@ -95,7 +95,8 @@ class JVMInferenceVisitor(IRInferenceVisitor):
             elif method == "__bool__" and not is_builtin_class(analyzed_value_type(result), "bool"):
                 # Do not let condition normalization truth-test an invalid
                 # __bool__ result as though it came from the length protocol.
-                raise JVMUnsupported("JVM branch conditions must be bool", node)
+                raise JVMUnsupported("JVM branch conditions must be bool", node,
+                                     fragment=self.func.source_fragment)
         return result
 
     def visit_truth_condition(self, node):

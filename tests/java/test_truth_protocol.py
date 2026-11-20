@@ -131,7 +131,7 @@ def main() -> str:
     "assert Invalid()",
 ])
 def test_non_boolean_bool_result_is_not_treated_as_length(condition):
-    with pytest.raises(JVMUnsupported, match="branch conditions must be bool"):
+    with pytest.raises(JVMUnsupported) as caught:
         transpile_jvm(f'''
 class Invalid:
     def __bool__(self) -> int:
@@ -140,3 +140,4 @@ def main() -> int:
     {condition}
     return 0
 ''')
+    assert str(caught.value) == "JVM branch conditions must be bool at line 6"
