@@ -9,6 +9,9 @@
 - JVM and Android JSON model decoding validates skipped strings without
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.
+  Scalar scanning also avoids temporary lookahead strings for whitespace,
+  digits and single-unit punctuation; skipped values dispatch from their first
+  character. Token wrappers and decoded values still allocate normally.
 
 - Branch and loop conditions short-circuit each truth test without re-testing
   the selected object. Mixed collection/boolean guards compile on JVM without

@@ -94,8 +94,8 @@ class JSONReader:
 
     def _space(self) -> None:
         while self.position < self.length:
-            value = self._peek()
-            if value != " " and value != "\t" and value != "\r" and value != "\n":
+            code = int(self.source.unit(i32(self.position)))
+            if code != 32 and code != 9 and code != 13 and code != 10:
                 return
             self.position += 1
 
@@ -104,8 +104,15 @@ class JSONReader:
         self._space()
         if token == "":
             raise ValueError("JSON token must not be empty")
-        end = self.position + int(_UTF16(token).length())
-        if end > self.length or self.source.slice(i32(self.position), i32(end)) != token:
+        units = _UTF16(token)
+        size = int(units.length())
+        end = self.position + size
+        if end > self.length:
+            return False
+        if size == 1:
+            if self.source.unit(i32(self.position)) != units.unit(i32(0)):
+                return False
+        elif self.source.slice(i32(self.position), i32(end)) != token:
             return False
         self.position = end
         return True
@@ -227,7 +234,10 @@ class JSONReader:
 
     def _digits(self) -> None:
         start = self.position
-        while "0" <= self._peek() <= "9":
+        while self.position < self.length:
+            code = int(self.source.unit(i32(self.position)))
+            if code < 48 or code > 57:
+                break
             self.position += 1
         if self.position == start:
             raise ValueError("Expected JSON digit at " + str(self.position))
@@ -259,7 +269,8 @@ class JSONReader:
         value = self._peek()
         if value == '"':
             self._string(False)
-        elif self.take("{"):
+        elif value == "{":
+            self.position += 1
             if max_depth == 0:
                 raise ValueError("JSON nesting limit exceeded")
             if self.take("}"):
@@ -271,7 +282,8 @@ class JSONReader:
                 if self.take("}"):
                     return
                 self.expect(",")
-        elif self.take("["):
+        elif value == "[":
+            self.position += 1
             if max_depth == 0:
                 raise ValueError("JSON nesting limit exceeded")
             if self.take("]"):
@@ -281,5 +293,7 @@ class JSONReader:
                 if self.take("]"):
                     return
                 self.expect(",")
-        elif not (self.take("null") or self.take("true") or self.take("false")):
+        elif not (value == "n" and self.take("null")
+                  or value == "t" and self.take("true")
+                  or value == "f" and self.take("false")):
             self.number()
