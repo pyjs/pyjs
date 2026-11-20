@@ -216,6 +216,10 @@ available for every released version.
   width and grows or shrinks from a touch-friendly row without input listeners.
   Do not set a fixed height. Browsers without CSS field sizing retain native
   scrolling and vertical resizing; callers still own Enter/submit semantics.
+- Wrap a standalone `Checkbox` in `CheckboxTarget` from `pyjs.web.ui.checkbox`
+  for a 36px native activation area beside editable content. Keep its
+  accessible name on the input. The target is a label, not an extra focus
+  stop; do not nest it in another label or add other interactive children.
 - Floating controls (dropdowns, popovers, tooltips and comboboxes) use native
   manual popovers. Inside a modal dialog they remain in its DOM subtree for
   focus and inertness, while the top layer escapes clipping. Closing or

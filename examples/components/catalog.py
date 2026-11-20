@@ -50,7 +50,7 @@ from pyjs.web.ui.card import (
 )
 from pyjs.web.ui.carousel import Carousel, CarouselItem
 from pyjs.web.ui.chart import BarChart, LineChart
-from pyjs.web.ui.checkbox import Checkbox
+from pyjs.web.ui.checkbox import Checkbox, CheckboxTarget
 from pyjs.web.ui.collapsible import Collapsible, CollapsibleContent, CollapsibleTrigger
 from pyjs.web.ui.combobox import Combobox, ComboboxItem
 from pyjs.web.ui.command import Command, CommandItem
@@ -840,7 +840,7 @@ class GrowingFieldExample(Widget):
         self.clear = ref(Button("Clear", variant="ghost"))
         self.clear.on_click(self.clear_task)
         self.add(Field(
-            FieldAccessory(complete),
+            FieldAccessory(CheckboxTarget(complete)),
             FieldContent(self.task),
             FieldAccessory(self.clear),
             orientation="horizontal",

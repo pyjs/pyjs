@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `CheckboxTarget` gives standalone web checkboxes a larger native activation
+  area while retaining input focus, keyboard, disabled and form behavior.
+
 - Android exposes localized date/time labels through `format_date_time` and
   `DateFormatFlags`, following the default time zone and device clock setting.
 

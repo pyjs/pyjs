@@ -1,7 +1,7 @@
 from typing import cast
 
 from pyjs import js
-from pyjs.web.domx import ProxyElement, input, tw
+from pyjs.web.domx import ProxyElement, input, tag, tw
 from pyjs.web.html import HTMLInputElement
 
 
@@ -32,3 +32,20 @@ class Checkbox(ProxyElement):
 
     def on_change(self, callback: callable):
         self.element.addEventListener("change", callback)
+
+
+@js
+def CheckboxTarget(checkbox: Checkbox):
+    """Give an unlabelled standalone checkbox a 36px native activation area.
+
+    The input remains the sole focusable control and owns checked, disabled,
+    form and change-event semantics. Set its accessible name separately. Do
+    not nest this target in another label or add other interactive children.
+    """
+    return tag(
+        "label",
+        tw("inline-flex size-9 shrink-0 items-center justify-center cursor-pointer "
+           "has-disabled:cursor-not-allowed"),
+        {"data-slot": "checkbox-target"},
+        checkbox,
+    )
