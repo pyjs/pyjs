@@ -424,6 +424,13 @@ the error string and returns an unsubscribe function. For ordinary listeners,
 retain the callback passed to `on` and pass it to `removeListener` for removal.
 `close()` dismisses the owned notification.
 
+For bounded asynchronous publication, use
+`await show_notification(notification, timeout_ms=5000)`. It dismisses the
+object's previous alert before subscribing, then resolves on `show` or rejects
+on failure, early close, timeout or a synchronous exception. It removes only
+its own listeners; click handlers remain. Do not show the same object
+concurrently. After rejection, close any uncertain alert before retrying.
+
 Presenter support and a returning `show()` do not prove publication; wait for
 the native event with an application-owned timeout. Publication is not proof
 that the user saw an alert. Signing, OS permission and Windows application

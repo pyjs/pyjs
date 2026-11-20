@@ -50,3 +50,43 @@ def on_failed(notification: Notification, callback: Callable[[str], None]) -> Ca
     applications must bound their wait and retain retryable work.
     """
     ...
+
+
+@js
+async def show_notification(notification: Notification, timeout_ms: int = 5000) -> None:
+    """Wait for native publication, not user viewing; keep the object for clicks.
+
+    Dismiss the object's previous alert before observing a new publication.
+    Failure, early close, timeout and synchronous errors reject. Only this
+    call's listeners are removed. The caller owns closing an uncertain alert
+    after rejection and must not concurrently show the same object.
+    """
+    ...
+
+
+show_notification.source("""
+if (!Number.isSafeInteger(timeout_ms) || timeout_ms < 1 || timeout_ms > 2147483647) {
+    throw new RangeError('Notification timeout must be 1..2147483647 milliseconds');
+}
+notification.close();
+await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (success, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        notification.removeListener('show', shown);
+        notification.removeListener('failed', failed);
+        notification.removeListener('close', closed);
+        if (success) resolve(); else reject(error);
+    };
+    const shown = () => finish(true);
+    const failed = (_event, error) => finish(false, new Error(error || 'Notification publication failed'));
+    const closed = () => finish(false, new Error('Notification closed before publication'));
+    const timer = setTimeout(() => finish(false, new Error('Notification publication timed out')), timeout_ms);
+    notification.on('show', shown);
+    notification.on('failed', failed);
+    notification.on('close', closed);
+    try { notification.show(); } catch (error) { finish(false, error); }
+});
+""")

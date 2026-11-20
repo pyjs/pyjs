@@ -68,6 +68,68 @@ assert.throws(main, /show failed/);
     assert result.returncode == 0, result.stderr
 
 
+def test_async_publication_is_bounded_and_releases_only_owned_listeners(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
+    try:
+        module = importlib.import_module("notification_async")
+        bundle = build_node(module.main, tmp_path / "notifications.cjs", executable=False)
+    finally:
+        sys.modules.pop("notification_async", None)
+    script = r'''
+const assert = require('node:assert/strict');
+const {EventEmitter} = require('node:events');
+const {main} = require(process.argv[1]);
+(async () => {
+    for (const scenario of ['sync-show', 'async-show', 'failed', 'empty-error',
+                            'close', 'timeout', 'throw', 'late-failure']) {
+        const notification = new EventEmitter();
+        const external = () => {};
+        for (const event of ['show', 'failed', 'close']) notification.on(event, external);
+        // Native show() dismisses an earlier alert synchronously on some OSes.
+        notification.close = () => notification.emit('close', {});
+        notification.show = () => {
+            if (scenario === 'sync-show') notification.emit('show', {});
+            if (scenario === 'async-show') setImmediate(() => notification.emit('show', {}));
+            if (scenario === 'failed') notification.emit('failed', {}, 'service failed');
+            if (scenario === 'empty-error') notification.emit('failed', {}, '');
+            if (scenario === 'close') notification.emit('close', {});
+            if (scenario === 'throw') throw new Error('synchronous failure');
+            if (scenario === 'late-failure') {
+                notification.emit('show', {});
+                notification.emit('failed', {}, 'too late');
+            }
+        };
+        if (['sync-show', 'async-show', 'late-failure'].includes(scenario)) {
+            await main(notification, 1000);
+        } else {
+            const message = {failed:'service failed', 'empty-error':'Notification publication failed',
+                close:'Notification closed before publication',
+                timeout:'Notification publication timed out', throw:'synchronous failure'}[scenario];
+            await assert.rejects(main(notification, scenario === 'timeout' ? 10 : 1000), {message});
+        }
+        for (const event of ['show', 'failed', 'close']) {
+            assert.deepEqual(notification.listeners(event), [external], scenario);
+            notification.emit(event, {}, 'after settlement');
+        }
+    }
+    for (const timeout of [0, -1, 0.5, NaN, Infinity, 2147483648]) {
+        const notification = new EventEmitter();
+        notification.show = () => assert.fail('must validate timeout before showing');
+        await assert.rejects(main(notification, timeout), /Notification timeout must be/);
+        assert.deepEqual(notification.eventNames(), []);
+    }
+    const notification = new EventEmitter();
+    notification.close = () => {};
+    notification.show = () => {throw null};
+    await assert.rejects(main(notification, 1000), error => error === null);
+    assert.deepEqual(notification.eventNames(), []);
+})().catch(error => {console.error(error); process.exitCode = 1});
+'''
+    result = subprocess.run([str(Node().executable), "-e", script, bundle],
+                            text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 def test_linux_native_notification_lifecycle_on_private_bus(tmp_path, monkeypatch):
     runtime = os.environ.get("PYJS_ELECTRON_RUNTIME")
     if sys.platform != "linux" or not runtime:
@@ -107,7 +169,7 @@ def test_linux_native_notification_lifecycle_on_private_bus(tmp_path, monkeypatc
             process.wait(timeout=5)
     assert process.returncode == 0, output
     assert "native-timeout" not in output, output
-    for expected in ("notify: Native example Body 🐍", "native-shown",
+    for expected in ("notify: Native example Body 🐍", "native-shown", "native-acknowledged",
                      "native-clicked", "close: 1", "notify: Failure example",
                      "native-failed"):
         assert expected in output, output

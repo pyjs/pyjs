@@ -102,6 +102,10 @@ before `show()`. Ordinary callbacks receive an Electron Event; the failure
 helper passes the error string and returns an owned unsubscriber. Keep the
 original callback for ordinary `removeListener` cleanup. Bound the wait for
 publication events: support and a returning `show()` do not prove delivery.
+`await show_notification(notification, timeout_ms=5000)` dismisses the previous
+alert, subscribes before showing, and resolves on native publication. Failure,
+early close, timeout and synchronous errors reject with owned listeners removed.
+Do not show the same object concurrently; close uncertain alerts after rejection.
 `close()` dismisses the owned alert. IDs/groups apply only on macOS/Windows;
 Windows limits each to 64 UTF-16 units. Linux cannot guarantee replacement
 across process restarts. Apps own consent, signing/OS setup, durable scheduling,
