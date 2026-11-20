@@ -1663,7 +1663,7 @@ class IRInferenceVisitor(InferenceVisitor):
         return self.visit_FunctionDef(node)
 
     def visit_If(self, node):
-        test = self.truth_test(node.test, self.visit(node.test))
+        test = self.visit_truth_condition(node.test)
         body_visitor = self.branch_visitor(node.test, True)
         orelse_visitor = self.branch_visitor(node.test, False)
         body_block = self.ir.new_block("if_true")
@@ -1699,7 +1699,7 @@ class IRInferenceVisitor(InferenceVisitor):
         # locally, as they already do for boolean operators.
         if self.expression_depth > 1:
             return super().visit_IfExp(node)
-        test = self.truth_test(node.test, self.visit(node.test))
+        test = self.visit_truth_condition(node.test)
         body_visitor = self.narrow_for_condition(node.test, True)
         orelse_visitor = self.narrow_for_condition(node.test, False)
         body_block = self.ir.new_block("conditional_true")
@@ -1784,7 +1784,7 @@ class IRInferenceVisitor(InferenceVisitor):
 
         self.ir.enter(test_block)
         entry = self.loop_entry(node)
-        test = entry.truth_test(node.test, entry.visit(node.test))
+        test = entry.visit_truth_condition(node.test)
         body_visitor = entry.branch_visitor(node.test, True)
         zero_visitor = entry.branch_visitor(node.test, False)
         break_exits = []

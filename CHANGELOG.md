@@ -6,6 +6,10 @@
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.
 
+- Branch and loop conditions short-circuit each truth test without re-testing
+  the selected object. Mixed collection/boolean guards compile on JVM without
+  requiring a stored union value; stateful truth methods keep Python behavior.
+
 - JavaScript model validation avoids constructing speculative exceptions for
   valid optional fields, reducing bulk validation work while preserving
   coercion and invalid-input diagnostics.

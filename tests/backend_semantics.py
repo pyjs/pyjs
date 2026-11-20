@@ -175,6 +175,86 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
     from pyjs import js
 
     @js
+    class ChangingCondition:
+        def __init__(self, present: bool):
+            self.present = present
+            self.calls = 0
+
+        def __bool__(self) -> bool:
+            self.calls += 1
+            return self.present if self.calls == 1 else not self.present
+
+    @js
+    def changing_condition(present: bool, kind: int) -> int:
+        value = ChangingCondition(present)
+        result = 0
+        if kind == 0:
+            if value or False:
+                result = 1
+        elif kind == 1:
+            if value and True:
+                result = 1
+        elif kind == 2:
+            if not (value or False):
+                result = 1
+        elif kind == 3:
+            while value and value.calls < 2:
+                result += 1
+        elif kind == 4:
+            result = 1 if value or False else 0
+        else:
+            if value if value or False else False:
+                result = 1
+        return result * 10 + value.calls
+
+    @js
+    def collection_condition(values: list[int], flags: dict[str, int]) -> int:
+        result = 0
+        if values and len(values) == 1:
+            result += 1
+        if flags or False:
+            result += 2
+        count = 0
+        while values and count < 1:
+            result += 4
+            count += 1
+        return result + (8 if flags and True else 0)
+
+    @js
+    class ChangingLength:
+        def __init__(self):
+            self.calls = 0
+
+        def __len__(self) -> int:
+            self.calls += 1
+            return 1 if self.calls == 1 else 0
+
+    @js
+    def length_condition(loop: bool) -> int:
+        value = ChangingLength()
+        result = 0
+        if loop:
+            while value and True:
+                result += 10
+        elif value or False:
+            result = 10
+        return result + value.calls
+
+    @js
+    def no_condition(events: list[int]) -> None:
+        events.append(1)
+
+    @js
+    def none_condition(present: bool) -> int:
+        events: list[int] = []
+        result = 0
+        if present or no_condition(events):
+            result = 10
+        while no_condition(events):
+            result = 99
+        return result + len(events)
+
+    @js
     def record(events: list[int], value: int) -> bool:
         events.append(value)
         if value == 99:
@@ -217,6 +297,15 @@ MIXED_TRUTH_CONDITION_CONTRACT = _contract(
         ("loop and nested conditions", "count != 2 or nested != 9"),
         ("optional string fallback in every condition context", 'optional_truth(None, "fallback") != 11 or optional_truth("", "fallback") != 11 or optional_truth("yes", "") != 11'),
         ("absent and empty strings remain false", 'optional_truth(None, "") != 4 or optional_truth("", "") != 4'),
+        ("mixed list and boolean branches need no union value", 'collection_condition([0], {"flag": 0}) != 15 or collection_condition([], {}) != 0'),
+        ("if or consumes the first truth result once", 'changing_condition(True, 0) != 11 or changing_condition(False, 0) != 1'),
+        ("if and consumes the first truth result once", 'changing_condition(True, 1) != 11 or changing_condition(False, 1) != 1'),
+        ("negation keeps the short circuit truth", 'changing_condition(True, 2) != 1 or changing_condition(False, 2) != 11'),
+        ("while checks each iteration without retesting the selected value", 'changing_condition(True, 3) != 12 or changing_condition(False, 3) != 1'),
+        ("conditional expression guard consumes truth once", 'changing_condition(True, 4) != 11 or changing_condition(False, 4) != 1'),
+        ("conditional condition consumes the selected arm anew", 'changing_condition(True, 5) != 2 or changing_condition(False, 5) != 1'),
+        ("length protocol is consumed once per condition", 'length_condition(False) != 11 or length_condition(True) != 12'),
+        ("None-returning operands keep their effects and short circuit", 'none_condition(True) != 11 or none_condition(False) != 2'),
     ),
 )
 
