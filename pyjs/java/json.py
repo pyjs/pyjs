@@ -144,20 +144,28 @@ class JSONReader:
         self.expect('"')
         # Schema indexing validates every token before decoding final field
         # values. Skipped strings need validation, not decoded allocations.
-        output = StringBuilder() if capture else None
+        output: StringBuilder | None = None
         start = self.position
         while self.position < self.length:
             code = int(self.source.unit(i32(self.position)))
             if code == 34:
-                if output is not None and start < self.position:
-                    output.append(self.source.slice(i32(start), i32(self.position)))
+                result = ""
+                if capture:
+                    if output is None:
+                        result = self.source.slice(i32(start), i32(self.position))
+                    else:
+                        if start < self.position:
+                            output.append(self.source.slice(i32(start), i32(self.position)))
+                        result = output.to_string()
                 self.position += 1
-                return output.to_string() if output is not None else ""
+                return result
             if code < 32:
                 raise ValueError("Unescaped JSON control character at " + str(self.position))
             if code != 92:
                 self.position += 1
                 continue
+            if capture and output is None:
+                output = StringBuilder()
             if output is not None and start < self.position:
                 output.append(self.source.slice(i32(start), i32(self.position)))
             self.position += 1
