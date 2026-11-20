@@ -20,7 +20,7 @@ from pyjs.tooling.browser import (
 
 
 @asynccontextmanager
-async def readiness_server(statuses):
+async def readiness_server(statuses, delay=0.0):
     requests = []
     handlers = []
     writers = []
@@ -36,16 +36,20 @@ async def readiness_server(statuses):
             if status is None:
                 await reader.read()
             else:
+                await asyncio.sleep(delay)
                 writer.write(
                     f"HTTP/1.1 {status} Test\r\nContent-Length: 0\r\n"
                     "Connection: close\r\n\r\n".encode()
                 )
                 await writer.drain()
-        except asyncio.IncompleteReadError:
+        except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionError:
+                pass
 
     server = await asyncio.start_server(respond, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
@@ -68,6 +72,43 @@ def test_http_readiness_allows_server_progress_and_retries(statuses):
             assert all(request.startswith(b"GET /json/version ") for request in requests)
 
     asyncio.run(run())
+
+
+def test_http_readiness_accepts_a_consistently_slow_response():
+    async def run():
+        async with readiness_server([200], delay=0.8) as (url, requests):
+            await browser.wait_for_http(url, timeout=4)
+            assert len(requests) >= 2
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_http_readiness_grows_timed_out_probes_without_extending_deadline(monkeypatch, wrapped):
+    clock = 0.0
+    timeouts = []
+    error = TimeoutError("slow response")
+    if wrapped:
+        error = URLError(error)
+
+    def request(url, timeout):
+        nonlocal clock
+        timeouts.append(timeout)
+        clock += timeout
+        raise error
+
+    def wait(delay):
+        nonlocal clock
+        clock += delay
+
+    monkeypatch.setattr(browser, "urlopen", request)
+    monkeypatch.setattr(browser.time, "monotonic", lambda: clock)
+    stopped = SimpleNamespace(is_set=lambda: False, wait=wait)
+    with pytest.raises(TimeoutError, match="Timed out waiting") as caught:
+        browser._wait_for_http("http://127.0.0.1/", 4.0, stopped)
+    assert timeouts == pytest.approx([0.5, 1.0, 2.0, 0.2])
+    assert clock == pytest.approx(4.0)
+    assert caught.value.__cause__ is error
 
 
 def test_http_readiness_timeout_retains_connection_error():
@@ -127,7 +168,8 @@ def test_browser_exit_interrupts_pending_readiness_probe():
 
 
 @pytest.mark.parametrize("outcome", ["ready", "connection-error", "unexpected-error"])
-def test_http_readiness_cancellation_joins_pending_probe(monkeypatch, outcome):
+@pytest.mark.parametrize("retry", [False, True])
+def test_http_readiness_cancellation_joins_pending_probe(monkeypatch, outcome, retry):
     async def run():
         loop = asyncio.get_running_loop()
         started = asyncio.Event()
@@ -139,6 +181,8 @@ def test_http_readiness_cancellation_joins_pending_probe(monkeypatch, outcome):
 
         def slow_request(url, timeout):
             calls.append(timeout)
+            if retry and len(calls) == 1:
+                raise TimeoutError("First probe timed out")
             loop.call_soon_threadsafe(started.set)
             try:
                 assert release.wait(2), "Test failed to release the HTTP probe"
@@ -162,8 +206,7 @@ def test_http_readiness_cancellation_joins_pending_probe(monkeypatch, outcome):
             with pytest.raises(asyncio.CancelledError):
                 await waiting
             assert finished.is_set()
-            assert len(calls) == 1
-            assert 0 < calls[0] <= 0.5
+            assert calls == ([0.5, 1.0] if retry else [0.5])
             if outcome == "ready":
                 assert response.closed
         finally:

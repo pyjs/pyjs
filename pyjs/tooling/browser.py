@@ -84,6 +84,11 @@ def request_json(url: str, method: str = "GET") -> dict[str, Any]:
 
 
 async def wait_for_http(url: str, timeout: float = 15) -> None:
+    """Poll without blocking the event loop, allowing longer probes after timeouts.
+
+    Cancellation joins the current probe and can wait for its socket timeout.
+    Socket timeouts do not bound DNS, redirects or trickling response headers.
+    """
     deadline = time.monotonic() + timeout
     stopped = threading.Event()
     waiting = asyncio.create_task(asyncio.to_thread(
@@ -110,18 +115,22 @@ async def wait_for_http(url: str, timeout: float = 15) -> None:
 
 def _wait_for_http(url: str, deadline: float, stopped: threading.Event) -> None:
     last_error = None
+    probe_timeout = 0.5
     while not stopped.is_set():
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
         try:
-            with urlopen(url, timeout=min(0.5, remaining)) as response:
+            with urlopen(url, timeout=min(probe_timeout, remaining)) as response:
                 if response.status < 400:
                     return
         except (OSError, URLError) as error:
             last_error = error
             if isinstance(error, HTTPError):
                 error.close()
+            if isinstance(error, TimeoutError) or (
+                    isinstance(error, URLError) and isinstance(error.reason, TimeoutError)):
+                probe_timeout *= 2
         stopped.wait(max(0, min(0.1, deadline - time.monotonic())))
     if not stopped.is_set():
         raise TimeoutError(f"Timed out waiting for {url}") from last_error

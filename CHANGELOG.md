@@ -6,11 +6,6 @@
   `pyjs.java.concurrent.sleep(milliseconds)` instead of busy polling. Native
   interruption remains catchable as `pyjs.java.errors.InterruptedException`.
 
-- Managed-browser readiness checks keep the event loop responsive and retry
-  slow HTTP probes within the startup deadline. Cancellation waits for the
-  pending probe to finish before browser cleanup; timeout errors retain the
-  underlying connection failure.
-
 - JVM and Android JSON model decoding validates skipped strings without
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.
@@ -32,6 +27,12 @@
   longer evaluates `isinstance` arguments a second time. Empty containers
   correctly fail truth assertions. Comparisons that cannot narrow a value
   retain detailed operand reporting.
+
+- Managed-browser readiness checks keep the event loop responsive and allow
+  progressively longer probes after socket timeouts, within the remaining
+  startup budget. Cancellation joins the pending probe before browser cleanup
+  and may wait for its socket timeout; DNS, redirects and trickling headers
+  are not bounded by that timeout. Errors retain the last connection failure.
 
 - Packaged Electron hosts can isolate native notifications in a helper
   process so a stalled Linux notification daemon does not block editing or
