@@ -9,6 +9,30 @@ from tests.java.test_exceptions import (
 )
 
 
+@pytest.mark.parametrize("condition", [
+    "value",
+    "value if flag else other",
+    "None if flag else value",
+    "(value if flag else other) and text",
+    "text or (value if flag else None)",
+    "not (value if flag else other)",
+])
+@pytest.mark.parametrize("statement", ["if ({condition}): return 1", "return 1 if ({condition}) else 0"])
+def test_non_truth_protocol_conditional_arms_have_a_located_diagnostic(condition, statement):
+    source = '''class Plain:
+    def __init__(self):
+        self.value = 1
+def check(flag: bool, value: Plain, other: Plain, text: str) -> int:
+    ''' + statement.format(condition=condition) + '''
+    return 0
+def main() -> int:
+    return check(True, Plain(), Plain(), "text")
+'''
+    with pytest.raises(JVMUnsupported) as caught:
+        transpile_jvm(source)
+    assert str(caught.value) == "JVM branch conditions must be bool at line 5"
+
+
 def test_value_returning_mixed_boolean_union_remains_explicit():
     with pytest.raises(JVMUnsupported, match="JVM union has incompatible runtime types"):
         transpile_jvm('''

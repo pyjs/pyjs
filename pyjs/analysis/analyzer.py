@@ -14357,8 +14357,7 @@ class InferenceVisitor(ast.NodeVisitor):
         )
 
     def visit_While(self, node: ast.While):
-        test = self.visit(node.test)
-        test = self.truth_test(node.test, test)
+        test = self.visit_truth_condition(node.test)
         body_visitor = self.branch_visitor(node.test, True)
         zero_visitor = self.branch_visitor(node.test, False)
         break_exits = []
@@ -15054,8 +15053,7 @@ class InferenceVisitor(ast.NodeVisitor):
         ), node)
 
     def visit_If(self, node: ast.If):
-        test = self.visit(node.test)
-        test = self.truth_test(node.test, test)
+        test = self.visit_truth_condition(node.test)
         body_visitor = self.branch_visitor(node.test, True)
         orelse_visitor = self.branch_visitor(node.test, False)
         body = body_visitor.visit_body(node.body)
@@ -15126,8 +15124,7 @@ class InferenceVisitor(ast.NodeVisitor):
         self.infer_empty_collection_literals([body, orelse])
 
     def visit_IfExp(self, node: ast.IfExp):
-        test = self.visit(node.test)
-        test = self.truth_test(node.test, test)
+        test = self.visit_truth_condition(node.test)
         body_visitor = self.narrow_for_condition(node.test, True)
         orelse_visitor = self.narrow_for_condition(node.test, False)
         body = body_visitor.visit_contextual_expression(

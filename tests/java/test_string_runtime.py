@@ -173,7 +173,7 @@ def test_initialized_guard_retains_the_optional_object_truth_boundary():
     with pytest.raises(JVMUnsupported) as caught:
         transpile_jvm(INITIALIZED_TRUTH_GUARD_CONTRACT.source)
     assert str(caught.value) == (
-        "JVM optional truth tests require narrowing first while compiling _pyjs_java_.truth"
+        "JVM optional truth tests require narrowing first at line 3 while compiling _pyjs_java_.truth"
     )
 
 

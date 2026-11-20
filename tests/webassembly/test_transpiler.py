@@ -716,7 +716,24 @@ def test_webassembly_nested_conditional_order(tmp_path):
 def test_webassembly_mixed_truth_condition_storage_boundary():
     with pytest.raises(WebAssemblyUnsupported) as caught:
         transpile_webassembly(MIXED_TRUTH_CONDITION_CONTRACT.source)
-    assert str(caught.value) == "WebAssembly union value storage is not implemented"
+    assert str(caught.value) == "WebAssembly value type dict__str_int is not implemented"
+
+
+def test_webassembly_collection_boolean_conditions_need_no_union_storage(tmp_path):
+    result = execute(tmp_path, '''
+def main() -> int:
+    values = [0]
+    empty: list[int] = []
+    total = 0
+    if values and True:
+        total += 1
+    if not (empty or False):
+        total += 2
+    while values and total < 5:
+        total += 1
+    return total + (10 if values or False else 0)
+''')
+    assert int(result) == 15
 
 
 @pytest.mark.parametrize(
