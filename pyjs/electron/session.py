@@ -48,7 +48,7 @@ class PermissionRequest:
 @js.native
 class Cookies:
     async def flushStore(self) -> None:
-        """Wait for pending cookie writes to reach this session's disk store."""
+        """Request a cookie-store flush; completion does not confirm disk writes."""
         ...
 
 

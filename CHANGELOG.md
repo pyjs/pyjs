@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Electron hosts can await `session.cookies.flushStore()` to persist pending
-  cookie changes before acknowledging an authentication transition.
+- Electron hosts can await `session.cookies.flushStore()` to request an
+  immediate cookie-store flush. Electron does not reliably report disk write
+  failures, so completion is not a durability acknowledgement.
 
 - Android Canvas supports circles and arcs with native paint styles, sweep
   angles and optional center closure for custom controls and diagrams.
