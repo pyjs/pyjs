@@ -6,6 +6,11 @@
   `pyjs.java.concurrent.sleep(milliseconds)` instead of busy polling. Native
   interruption remains catchable as `pyjs.java.errors.InterruptedException`.
 
+- Managed-browser readiness checks keep the event loop responsive and retry
+  slow HTTP probes within the startup deadline. Cancellation waits for the
+  pending probe to finish before browser cleanup; timeout errors retain the
+  underlying connection failure.
+
 - JVM and Android JSON model decoding validates skipped strings without
   constructing their decoded values, reducing temporary allocations while
   indexing nested fields. Escape validation and error positions are unchanged.
