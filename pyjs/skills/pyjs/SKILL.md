@@ -100,12 +100,16 @@ For native main-process alerts, use `pyjs.electron.notifications`:
 and register `on("show", callback)` and `on_failed(notification, callback)`
 before `show()`. Ordinary callbacks receive an Electron Event; the failure
 helper passes the error string and returns an owned unsubscriber. Keep the
-original callback for ordinary `removeListener` cleanup. Bound the wait for
+original callback for ordinary `removeListener` cleanup. Handle missing
 publication events: support and a returning `show()` do not prove delivery.
 `await show_notification(notification, timeout_ms=5000)` dismisses the previous
 alert, subscribes before showing, and resolves on native publication. Failure,
 early close, timeout and synchronous errors reject with owned listeners removed.
 Do not show the same object concurrently; close uncertain alerts after rejection.
+The timer cannot preempt synchronous native calls. Electron 45 on Linux uses
+blocking libnotify/D-Bus publication, which stalls the main event loop and IPC
+if the daemon is slow. Publication can succeed after `timeout_ms` or fail at
+the native timeout (observed around 25 seconds). This is not a hard deadline.
 `close()` dismisses the owned alert. IDs/groups apply only on macOS/Windows;
 Windows limits each to 64 UTF-16 units. Linux cannot guarantee replacement
 across process restarts. Apps own consent, signing/OS setup, durable scheduling,

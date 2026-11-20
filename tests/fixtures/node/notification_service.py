@@ -1,6 +1,7 @@
 """Private-session Linux notification daemon for the opt-in Electron test."""
 import subprocess
 import sys
+import time
 
 import dbus
 import dbus.mainloop.glib
@@ -29,6 +30,9 @@ class Notifications(dbus.service.Object):
         if title == "Failure example":
             raise dbus.exceptions.DBusException(
                 "publication rejected", name="org.freedesktop.DBus.Error.Failed")
+        if title == "Delayed example":
+            time.sleep(0.2)
+            return 2
         if title != "Native example" or body != "Body 🐍":
             raise AssertionError("Unexpected native notification payload")
         GLib.timeout_add(50, self.activate)

@@ -47,7 +47,7 @@ def on_failed(notification: Notification, callback: Callable[[str], None]) -> Ca
     """Subscribe to native publication errors and return an owned unsubscriber.
 
     The native Event is not forwarded. Missing events are not proof of success;
-    applications must bound their wait and retain retryable work.
+    applications must handle missing asynchronous events and retain retryable work.
     """
     ...
 
@@ -60,6 +60,12 @@ async def show_notification(notification: Notification, timeout_ms: int = 5000) 
     Failure, early close, timeout and synchronous errors reject. Only this
     call's listeners are removed. The caller owns closing an uncertain alert
     after rejection and must not concurrently show the same object.
+
+    The timer bounds event waiting, not synchronous native work. Electron 45
+    on Linux publishes through blocking libnotify/D-Bus calls. A slow daemon
+    stalls the main event loop; publication can resolve after timeout_ms or
+    fail at the native timeout (observed around 25 seconds). This helper
+    cannot preempt that call or provide a hard wall-clock deadline.
     """
     ...
 

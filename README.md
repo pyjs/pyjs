@@ -424,15 +424,21 @@ the error string and returns an unsubscribe function. For ordinary listeners,
 retain the callback passed to `on` and pass it to `removeListener` for removal.
 `close()` dismisses the owned notification.
 
-For bounded asynchronous publication, use
+To await native publication with an asynchronous event timeout, use
 `await show_notification(notification, timeout_ms=5000)`. It dismisses the
 object's previous alert before subscribing, then resolves on `show` or rejects
 on failure, early close, timeout or a synchronous exception. It removes only
 its own listeners; click handlers remain. Do not show the same object
 concurrently. After rejection, close any uncertain alert before retrying.
 
+The timer cannot interrupt synchronous native work. Electron 45 on Linux uses
+blocking libnotify/D-Bus publication: a slow notification daemon stalls the
+main event loop. The helper can resolve after `timeout_ms` or fail only at the
+native timeout (observed around 25 seconds); it is not a hard wall-clock
+deadline. Other main-process work and IPC are delayed during that call.
+
 Presenter support and a returning `show()` do not prove publication; wait for
-the native event with an application-owned timeout. Publication is not proof
+the native event, subject to these timeout limits. Publication is not proof
 that the user saw an alert. Signing, OS permission and Windows application
 registration remain deployment responsibilities. Optional `id` and `groupId`
 are supported on macOS/Windows, with a 64-UTF-16-unit Windows limit, but not on

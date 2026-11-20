@@ -68,7 +68,7 @@ assert.throws(main, /show failed/);
     assert result.returncode == 0, result.stderr
 
 
-def test_async_publication_is_bounded_and_releases_only_owned_listeners(tmp_path, monkeypatch):
+def test_async_publication_timeout_and_owned_listener_cleanup(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(Path(__file__).parent / "fixtures/node")
     try:
         module = importlib.import_module("notification_async")
@@ -169,7 +169,8 @@ def test_linux_native_notification_lifecycle_on_private_bus(tmp_path, monkeypatc
             process.wait(timeout=5)
     assert process.returncode == 0, output
     assert "native-timeout" not in output, output
-    for expected in ("notify: Native example Body 🐍", "native-shown", "native-acknowledged",
+    for expected in ("notify: Delayed example", "native-delayed-acknowledged", "close: 2",
+                     "notify: Native example Body 🐍", "native-shown", "native-acknowledged",
                      "native-clicked", "close: 1", "notify: Failure example",
                      "native-failed"):
         assert expected in output, output
