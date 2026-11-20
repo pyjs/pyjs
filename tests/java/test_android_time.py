@@ -10,8 +10,13 @@ from pyjs.java.time import (
     local_today,
     zone_id,
 )
+from tests.java.time_contract import zoned_time_contract
 
 pytestmark = pytest.mark.pyjs_android_jvm
+
+
+def test_android_zoned_time_gaps_overlaps_and_epoch_precision() -> None:
+    zoned_time_contract()
 
 
 def test_android_calendar_dates_respect_clock_zone_and_native_errors() -> None:

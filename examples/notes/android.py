@@ -15,6 +15,7 @@ from pyjs.android import (
     View,
     ViewGroup,
     create_chooser,
+    dp,
     parse_color,
 )
 from pyjs.android.recyclerview import (
@@ -29,6 +30,7 @@ from pyjs.android.recyclerview import (
 from pyjs.android.reorder import StaggeredGridDragCallback
 from pyjs.java import f32, i32
 
+from .android_datetime import DateTimePreview
 from .android_saves import BackgroundSaveDriver
 from .android_storage import OrderFile, OrderObserver, OrderSession
 
@@ -239,6 +241,7 @@ class NotesActivity(Activity):
     storage_observer: StorageStatus
     shared_preview: TextView
     shared_status: TextView
+    date_time: DateTimePreview
 
     def onCreate(self, state: Bundle) -> None:
         super().onCreate(state)
@@ -336,6 +339,16 @@ class NotesActivity(Activity):
             LinearLayoutParams(LayoutParams.MATCH_PARENT, 0, 1.0)
         )
         root.addView(recycler)
+        date_time = TextView(self)
+        date_time.setId(104)
+        date_time.setText("Choose date and time · preview only")
+        date_time.setContentDescription("Choose demo date and time")
+        date_time.setTextSize(14.0)
+        date_time.setMinimumHeight(dp(self, 48))
+        date_time.setPadding(40, 16, 40, 16)
+        self.date_time = DateTimePreview(date_time)
+        date_time.setOnClickListener(self.date_time)
+        root.addView(date_time)
         self.setContentView(root)
 
     def on_new_intent(self, intent: Intent) -> None:
@@ -373,6 +386,7 @@ class NotesActivity(Activity):
         super().onStop()
 
     def onDestroy(self) -> None:
+        self.date_time.close()
         session = self.storage_observer.adapter.session
         if session is not None:
             session.detach(self.storage_observer)

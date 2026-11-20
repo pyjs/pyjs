@@ -551,6 +551,28 @@ release the guard. Other targets remain immediately eligible. Implement
 movement flags, `on_move`, and `on_swiped` normally; preserve `super()` calls
 when overriding selection, target selection, or `on_moved` hooks.
 
+For native date/time selection, import `DatePickerDialog`, `TimePickerDialog`,
+`DateSetListener` and `TimeSetListener` from `pyjs.android.pickers`. Create
+dialogs with an Activity context and call `show()` on the main thread.
+Picker months are zero-based; `java.time` months are one-based. Use
+`is_24_hour_format(context)` to follow the device's time-display preference.
+The dialogs support API 21; the `TimePicker` hour/minute getters and setters
+require API 23 or newer.
+Only a selection callback commits a choice; Back/cancellation is separate
+through `DialogCancelListener` from `pyjs.android.dialogs`. Retain drafts
+outside dialogs and dismiss owned dialogs when their Activity is destroyed.
+Notes demonstrates a two-step preview without scheduling notifications.
+
+`pyjs.java.time` exposes `local_date_time`, `system_zone` and zoned/instant
+conversion on Android API 26+ and the JVM. `LocalDateTime.atZone()` follows
+Java's policy: a nonexistent local time moves forward by the clock gap, and
+an ambiguous time selects the earlier offset. Compare the resolved
+`toLocalDateTime()` with the input when silently adjusting a time would be
+incorrect. `withEarlierOffsetAtOverlap()` and `withLaterOffsetAtOverlap()`
+expose both occurrences; persist epoch milliseconds when storing an instant.
+Changing the device zone does not change that stored instant. These are native
+bindings, not CPython implementations or a recurring-reminder scheduler.
+
 For Android images, read a selected document with
 `context.get_content_resolver().open_input_stream(uri)` and close the stream
 in `finally`. It may return `None` or raise a native I/O or permission error.
