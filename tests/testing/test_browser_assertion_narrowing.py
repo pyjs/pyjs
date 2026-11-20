@@ -82,3 +82,38 @@ def test_assertion_reporting_evaluates_once_and_keeps_messages_lazy():
     with pytest.raises(AssertionError, match="missing value"):
         assert value is not None, detail(events)
     assert events == ["read", "message"]
+
+
+@js
+def test_non_narrowing_comparisons_report_actual_operands():
+    actual = "haystack contents"
+    with pytest.raises(AssertionError, match="left=needle.*right=haystack contents"):
+        assert "needle" in actual
+    events: list[str] = []
+    with pytest.raises(AssertionError, match="left=missing value.*right=expected"):
+        assert detail(events) == "expected"
+    assert events == ["message"]
+    left = optional_value(True)
+    right = optional_value(False)
+    with pytest.raises(AssertionError, match="left=.*right="):
+        assert left is right
+
+
+@js
+def test_falsy_values_fail_with_python_boolean_reporting():
+    items: list[int] = []
+    mapping: dict[str, int] = {}
+    text_value = ""
+    number = 0
+    with pytest.raises(AssertionError, match="items => False"):
+        assert items
+    with pytest.raises(AssertionError, match="mapping => False"):
+        assert mapping
+    with pytest.raises(AssertionError, match="text_value => False"):
+        assert text_value
+    with pytest.raises(AssertionError, match="number => False"):
+        assert number
+    items.append(1)
+    mapping["present"] = 1
+    assert items
+    assert mapping

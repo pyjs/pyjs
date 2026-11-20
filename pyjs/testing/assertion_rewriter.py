@@ -54,9 +54,14 @@ class AssertionRewriter(ast.NodeTransformer):
     def visit_Assert(self, node: ast.Assert):
         if isinstance(node.test, ast.Compare) and len(node.test.ops) == 1:
             comparison = node.test
-            narrows = isinstance(comparison.ops[0], (ast.Is, ast.IsNot)) or any(
-                isinstance(value, ast.Constant) and isinstance(value.value, str)
-                for value in (comparison.left, *comparison.comparators)
+            left, right = comparison.left, comparison.comparators[0]
+            operator = comparison.ops[0]
+            narrows = any(
+                isinstance(subject, (ast.Name, ast.Attribute))
+                and isinstance(literal, ast.Constant)
+                and ((isinstance(operator, (ast.Is, ast.IsNot)) and literal.value is None)
+                     or (isinstance(operator, (ast.Eq, ast.NotEq)) and isinstance(literal.value, str)))
+                for subject, literal in ((left, right), (right, left))
             )
             if not narrows:
                 return self.rewrite_comparison(node)

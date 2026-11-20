@@ -24,8 +24,6 @@ def test_rewritten_conditions_evaluate_once_and_keep_messages_lazy(condition, pa
 
     source = f"assert {condition}, message()"
     tree = ast.fix_missing_locations(AssertionRewriter(source).visit(ast.parse(source)))
-    assert isinstance(tree.body[0], ast.Assert)
-    assert ast.dump(tree.body[0].test) == ast.dump(ast.parse(condition, mode="eval").body)
     namespace = {"read": read, "message": message,
                  ASSERT_ALIAS: assert_condition, COMPARE_ALIAS: assert_compare}
     if passed:
@@ -34,6 +32,31 @@ def test_rewritten_conditions_evaluate_once_and_keep_messages_lazy(condition, pa
         with pytest.raises(AssertionError, match="custom detail"):
             exec(compile(tree, "<assertion>", "exec"), namespace)
     assert events == (["condition"] if passed else ["condition", "message"])
+
+
+@pytest.mark.parametrize("condition", [
+    "value is not None", "None is value", "record.value is None",
+    "value == 'yes'", "'no' != record.value", "not (value is None)",
+    "isinstance(read(), int)", "value and value.text", "value",
+])
+def test_narrowing_guards_retain_the_original_assertion(condition):
+    source = f"assert {condition}"
+    tree = ast.fix_missing_locations(AssertionRewriter(source).visit(ast.parse(source)))
+    assert isinstance(tree.body[0], ast.Assert)
+    assert ast.dump(tree.body[0].test) == ast.dump(ast.parse(condition, mode="eval").body)
+
+
+@pytest.mark.parametrize("condition", [
+    "'needle' in value", "'needle' not in value", "left is right", "left is not right",
+    "value < 'yes'", "'yes' >= value", "read() == 'yes'", "read() is not None", "value == 4",
+])
+def test_non_narrowing_comparisons_keep_operand_details(condition):
+    tree = ast.fix_missing_locations(AssertionRewriter(f"assert {condition}").visit(
+        ast.parse(f"assert {condition}")))
+    assert isinstance(tree.body[-1], ast.Expr)
+    call = tree.body[-1].value
+    assert isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+    assert call.func.id == COMPARE_ALIAS
 
 
 def test_rewritten_truth_protocol_is_not_called_again_for_reporting():

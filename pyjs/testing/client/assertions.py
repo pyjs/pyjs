@@ -18,7 +18,7 @@ def finish_assertion(condition: object, detail: str, message: callable | None):
 
 
 @js
-def assert_condition(condition: object, expression: str, message: callable | None):
+def assert_condition(condition: bool, expression: str, message: callable | None):
     detail = expression + " => " + str(condition)
     finish_assertion(condition, detail, message)
 
