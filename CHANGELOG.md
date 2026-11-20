@@ -28,9 +28,9 @@
   including field names. Escaped strings still share a single builder;
   validation, Unicode handling and diagnostic positions are unchanged.
 
-- IndexedDB request helpers preserve caller variables named `request`,
-  `resolve`, `reject`, or `validate` instead of shadowing them inside their
-  generated promise callbacks.
+- IndexedDB open and request-result helpers preserve caller variables named
+  `request`, `resolve`, `reject`, `upgrade`, or `validate` instead of shadowing
+  them inside their generated promise callbacks.
 
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;
