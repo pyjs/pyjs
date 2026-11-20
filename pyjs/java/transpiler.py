@@ -17,6 +17,7 @@ from pyjs.analysis.ir import (
     Branch,
     ClassIR,
     CollectionNew,
+    Comprehension,
     ContextExitCall,
     ExceptionCatch,
     ExceptionDispatch,
@@ -72,7 +73,7 @@ from pyjs.decorators import JVMField, backend_metadata, is_declaration
 from pyjs.numeric import NumericFormat, numeric_format
 from pyjs.python import native as native_builtins
 
-from . import callables, list_equality, list_slices, sets
+from . import callables, comprehensions, list_equality, list_slices, sets
 from .analysis import JVM_ENVIRONMENT
 from .boxed import SCALAR_BOXES, box, emit_equality, emit_key_guard, unbox_scalar
 from .classfile import (
@@ -780,6 +781,10 @@ class JVMEmitter:
             self.code.emit(0x03)
             self.code.local(0x36, self.local_count)
             self.local_count += 1
+        self.local_bound_flags.update({
+            name: self.slots[flag]
+            for name, flag in getattr(function, "jvm_capture_flags", {}).items()
+        })
         self.inherited_context_slot = None
         if any(isinstance(statement, ExceptionCatch) for block in blocks for statement in block.body):
             self.context_call("current", "()Ljava/lang/Throwable;")
@@ -1502,6 +1507,16 @@ class JVMEmitter:
                 raise JVMUnsupported("JVM module collection state is not implemented", node)
         if isinstance(node, Lambda):
             return callables.reference(self, node, self.lambdas[node])
+        if isinstance(node, Comprehension):
+            return comprehensions.expression(self, node)
+        if isinstance(node, comprehensions.CaptureValue):
+            return self.load(node.name, check_bound=False)
+        if isinstance(node, comprehensions.CaptureBound):
+            if node.name in self.local_bound_flags:
+                self.code.local(0x15, self.local_bound_flags[node.name])
+            else:
+                self.code.emit(0x04)
+            return "Z"
         if isinstance(node, (ast.Name, BlockArgument)):
             name = node.id if isinstance(node, ast.Name) else node.name
             result = self.load(name)
@@ -4960,8 +4975,8 @@ class JVMEmitter:
                     else:
                         mapping[name] = value
 
-    def load(self, name: str) -> str:
-        if name in self.local_bound_flags:
+    def load(self, name: str, *, check_bound: bool = True) -> str:
+        if check_bound and name in self.local_bound_flags:
             assigned = self.new_label("local.bound")
             self.code.local(0x15, self.local_bound_flags[name])
             self.code.branch(0x9A, assigned)

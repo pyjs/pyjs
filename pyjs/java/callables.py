@@ -26,6 +26,7 @@ def prepare(emitter, functions):
                         raise JVMUnsupported("JVM lambda captures are not implemented", node)
                     signature(emitter, node.obj, node)
                     function = lift_lambda(owner, node, f"lambda${len(emitter.lambdas)}")
+                    function.jvm_capture_flags = getattr(node, "jvm_capture_flags", {})
                     emitter.lambdas[node] = function
                     emitter.functions.add(function)
                     functions.append(function)

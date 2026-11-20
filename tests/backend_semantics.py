@@ -4262,6 +4262,12 @@ LOCAL_COLLECTION_CONTRACT = _contract(
     words = ["aa", "b", "cc", "d"]
     keyed = sorted(words, key=lambda word: len(word))
     reversed_keys = sorted(words, key=lambda word: len(word), reverse=True)
+    prefix = "selected:"
+    filtered = [prefix + word for word in words if len(word) > 1]
+    lengths = {word: len(word) for word in words}
+    unique_words = {word for word in ["a", "b", "a"]}
+    pairs = [word + str(index) for word in words if len(word) > 1
+             for index in range(3) if index != 1]
     ''',
     (
         ("sort uses Python Unicode order", "ordered[0] != 'a' or ordered[5] != '😀'"),
@@ -4272,6 +4278,10 @@ LOCAL_COLLECTION_CONTRACT = _contract(
         ("keyed sorting is stable", "','.join(keyed) != 'b,d,aa,cc'"),
         ("reverse keyed sorting retains ties", "','.join(reversed_keys) != 'aa,cc,b,d'"),
         ("keyed sorting leaves its input unchanged", "','.join(words) != 'aa,b,cc,d'"),
+        ("filtered comprehension captures the outer prefix", "','.join(filtered) != 'selected:aa,selected:cc'"),
+        ("dictionary comprehension retains keyed values", "len(lengths) != 4 or lengths['aa'] != 2 or lengths['d'] != 1"),
+        ("set comprehension retains unique values", "len(unique_words) != 2 or 'b' not in unique_words"),
+        ("dependent inner loops and filters retain order", "','.join(pairs) != 'aa0,aa2,cc0,cc2'"),
     ),
 )
 

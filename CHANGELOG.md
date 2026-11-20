@@ -24,6 +24,12 @@
   Publication waits have an event timeout, not a hard deadline: Electron's
   Linux notification calls can block the main process on a slow native daemon.
 
+- JVM and Android lower eager list, dictionary and set comprehensions through
+  shared loop IR. Nested scopes, filters and outer bindings retain Python
+  evaluation order, including deferred errors for unread unbound captures.
+  Outermost sources must have a supported first-class JVM representation;
+  outer `range()` sources and represented numeric items remain unsupported.
+
 - JVM and Android support fixed-signature Python function callbacks and
   non-capturing lambdas, including stable `sorted(..., key=..., reverse=...)`.
   Sorting materializes the source before evaluating each key exactly once.

@@ -57,6 +57,18 @@ class JVMInferenceVisitor(IRInferenceVisitor):
     supports_exception_causes = True
     supports_exception_args = True
 
+    def visit_ListComp(self, node):
+        from .comprehensions import lower
+        return lower(self, super().visit_ListComp(node), node)
+
+    def visit_DictComp(self, node):
+        from .comprehensions import lower
+        return lower(self, super().visit_DictComp(node), node)
+
+    def visit_SetComp(self, node):
+        from .comprehensions import lower
+        return lower(self, super().visit_SetComp(node), node)
+
     def analyze_isinstance(self, call):
         return call.isinstance(validate_numeric=False)
 
