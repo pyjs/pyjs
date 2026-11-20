@@ -722,6 +722,19 @@ def test_pydantic_v2_client_runtime_is_emitted_as_its_own_module():
                             fail(path, `one of ${members.join(', ')}`);
                         }
                         if (kind === 'union') {
+                            // A concrete optional branch cannot compete with None for model
+                            // fields. Avoid speculative errors and scoring on valid inputs.
+                            if (members.length === 2 && members.includes('NoneType')
+                                    && !members.includes('object')) {
+                                if (value === null || value === undefined) return null;
+                                const member = members[0] === 'NoneType' ? members[1] : members[0];
+                                try {
+                                    return validate(value, member, path, jsonKey);
+                                } catch (error) {
+                                    if (!(error instanceof TypeError)) throw error;
+                                    fail(path, 'a valid union member');
+                                }
+                            }
                             // JSON object keys are strings. An exact string branch wins over
                             // the numeric conversions needed by other key schemas.
                             if (jsonKey && typeof value === 'string' && members.includes('str')) return value;

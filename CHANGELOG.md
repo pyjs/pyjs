@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JavaScript model validation avoids constructing speculative exceptions for
+  valid optional fields, reducing bulk validation work while preserving
+  coercion and invalid-input diagnostics.
+
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;
   the truth of their keys and values does not affect the result.
