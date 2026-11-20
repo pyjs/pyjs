@@ -248,3 +248,15 @@ def main() -> int:
         return 42
     return 1
 ''', tmp_path)
+
+
+def test_tuple_key_diagnostic_points_at_sorted_call():
+    with pytest.raises(CompilationError) as error:
+        transpile_jvm('''def main() -> int:
+    values = [2, 1]
+    return sorted(values, key=lambda value: (value, value))[0]
+''')
+    diagnostic = error.value.diagnostic
+    assert diagnostic.code.value == "PYJS2001"
+    assert diagnostic.message == "JVM sorted() tuple keys are not implemented"
+    assert error.value.lineno == 3

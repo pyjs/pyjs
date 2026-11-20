@@ -1267,12 +1267,18 @@ with `pyjs template`.
   return, retaining native error reporting but allowing the open retry.
   Neither policy repairs corruption or replaces independent backups.
 - JVM `sorted()` supports lists, strings, sets and dictionary keys with stable
-  ordering, including `reverse=True`. It uses only `<`, leaves the input
-  unchanged, and bounds comparisons to O(n log n). Key callbacks, other
-  iterable kinds and fixed-width item representations remain explicit
-  compilation boundaries.
+  ordering, including `key` callbacks and `reverse=True`. It materializes the
+  input before evaluating each key once, then uses only `<` and bounds
+  comparisons to O(n log n). Sorting itself leaves the input unchanged;
+  callbacks may mutate it. Other iterable kinds, tuple keys and fixed-width
+  item representations remain explicit compilation boundaries.
   NaNs and inconsistent comparators have no guaranteed order; their output
   and comparison-call sequence may differ from CPython's sorting algorithm.
+- JVM callbacks support emitted module functions and non-capturing lambdas
+  with fixed positional signatures. Named module functions retain reference
+  identity across repeated loads; each evaluated lambda creates a new callback.
+  Defaults, bound methods, captures, represented numeric signatures and
+  adaptation between different runtime signatures remain unsupported.
 - JVM reference-valued sets support literals, empty construction, iteration,
   membership, truth, length, `add`, `discard`, `clear` and shallow `copy`.
   Numeric members, custom equality/hash, set algebra and iterable construction

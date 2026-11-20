@@ -197,6 +197,9 @@ class JVMInferenceVisitor(IRInferenceVisitor):
             if not isinstance(key_type, CallableClass):
                 self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                           "JVM sorted() key requires a fixed callable signature")
+            if is_builtin_class(key_type.return_type, "tuple"):
+                self.fail(source_node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "JVM sorted() tuple keys are not implemented")
             helper = resolve_imported(KeyedSorted, self.module, "KeyedSorted")(
                 source, item, key_type.return_type)
         else:

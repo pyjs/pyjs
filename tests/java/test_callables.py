@@ -1,8 +1,15 @@
+import sys
+
 import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
+from tests.backend_semantics import CALLABLE_IDENTITY_CONTRACT
 from tests.java.test_context_managers import assert_text_matches_python
+from tests.java.test_exceptions import (
+    assert_compiles_to_android_dex,
+    assert_matches_python,
+)
 
 
 @pytest.mark.parametrize("expression", ["double", "lambda value: value * 2"])
@@ -97,6 +104,53 @@ def main() -> str:
     callback: Callable[[bool], bool] = box.value
     return str(callback(False)) + str(box.value(True))
 ''', tmp_path)
+
+
+def test_named_function_identity_and_fresh_lambda_identity(tmp_path):
+    assert_matches_python(CALLABLE_IDENTITY_CONTRACT.source, tmp_path)
+
+
+def test_callback_identity_compiles_to_android_dex(tmp_path):
+    assert_compiles_to_android_dex(CALLABLE_IDENTITY_CONTRACT.source, tmp_path)
+
+
+def test_named_callback_identity_across_modules(tmp_path, monkeypatch):
+    name = "callback_identity_library"
+    (tmp_path / f"{name}.py").write_text('''from collections.abc import Callable
+def increment(value: int) -> int:
+    return value + 1
+def named() -> Callable[[int], int]:
+    return increment
+''')
+    monkeypatch.syspath_prepend(tmp_path)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    try:
+        assert_text_matches_python(f'''from collections.abc import Callable
+from {name} import increment, named
+def main() -> str:
+    callback: Callable[[int], int] = increment
+    return str(callback is named()) + ":" + str(named()(41))
+''', tmp_path)
+    finally:
+        sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize("use", [
+    "callback: Callable[[str], int] = item.rank\n    return callback('value')",
+    "return len(sorted(['a', 'b'], key=item.rank))",
+])
+def test_bound_method_callback_diagnostic_names_the_user_line(use):
+    with pytest.raises(JVMUnsupported) as error:
+        transpile_jvm(f'''from collections.abc import Callable
+class Item:
+    def rank(self, value: str) -> int:
+        return len(value)
+def main() -> int:
+    item = Item()
+    {use}
+''')
+    assert str(error.value) == (
+        "JVM bound-method callbacks are not implemented at line 7 while compiling _pyjs_java_.main")
 
 
 @pytest.mark.parametrize("declarations, expression, result, diagnostic", [

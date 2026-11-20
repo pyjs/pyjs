@@ -1779,6 +1779,60 @@ def parenthesized(source: NumericResult | TextResult) -> str:
 )
 
 
+CALLABLE_IDENTITY_CONTRACT = _contract(
+    '''
+from collections.abc import Callable
+from pyjs import js
+
+@js
+def increment(value: int) -> int:
+    return value + 1
+@js
+def decrement(value: int) -> int:
+    return value - 1
+@js
+def named() -> Callable[[int], int]:
+    return increment
+@js
+def anonymous() -> Callable[[int], int]:
+    return lambda value: value + 1
+@js
+def noop() -> None:
+    pass
+@js
+class Box:
+    def __init__(self, callback: Callable[[int], int]):
+        self.callback = callback
+@js
+def contains(callbacks: list[Callable[[int], int]], target: Callable[[int], int]) -> bool:
+    for callback in callbacks:
+        if callback is target:
+            return True
+    return False
+''',
+    "callable_identity",
+    '''
+    first: Callable[[int], int] = increment
+    second: Callable[[int], int] = increment
+    other: Callable[[int], int] = decrement
+    empty: Callable[[], None] = noop
+    alias = first
+    box = Box(first)
+    callbacks: list[Callable[[int], int]] = [first]
+    created = anonymous()
+    copied = created
+    ''',
+    (("named references", "first is not second or first is other"),
+     ("alias and field", "alias is not first or box.callback is not increment"),
+     ("factory", "named() is not named()"),
+     ("registry", "not contains(callbacks, increment)"),
+     ("void signature", "empty is not noop"),
+     ("fresh lambda", "anonymous() is anonymous()"),
+     ("lambda alias", "copied is not created"),
+     ("invocation", "named()(41) != 42 or anonymous()(41) != 42")),
+)
+
+
 CALLABLE_VALUE_CONTRACT = _contract(
     '''
 from collections.abc import Callable

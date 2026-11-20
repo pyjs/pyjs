@@ -8,7 +8,7 @@ from pyjs.analysis.lambdas import lift_lambda
 from pyjs.analysis.lifetime import lambda_captures
 from pyjs.analysis.objects import CallableClass
 
-from .classfile import Bytecode, ClassFile, Method
+from .classfile import Bytecode, ClassFile, Field, Method
 from .diagnostics import JVMUnsupported
 
 
@@ -95,12 +95,28 @@ def reference(emitter, node, target):
         code.emit(0xB8, target_ref.to_bytes(2, "big"))
         code.emit({"V": 0xB1, "J": 0xAD, "D": 0xAF, "Z": 0xAC}.get(result, 0xB0))
         wrapper.add_method(Method(0x0001, method, descriptor, code.render(), None, slot))
+        if not isinstance(node, Lambda):
+            wrapper.add_field(Field(0x0019, "INSTANCE", f"L{owner};"))
+            initialize = Bytecode()
+            new_adapter(initialize, wrapper, owner)
+            field = wrapper.field_reference(owner, "INSTANCE", f"L{owner};")
+            initialize.emit(0xB3, field.to_bytes(2, "big"))
+            initialize.emit(0xB1)
+            wrapper.add_method(Method(0x0008, "<clinit>", "()V", initialize.render(), None, 0))
         emitter.class_files[owner] = wrapper
-    emitter.code.emit(0xBB, emitter.class_file.constants.class_(owner).to_bytes(2, "big"))
-    emitter.code.emit(0x59)
-    constructor = emitter.class_file.method_reference(owner, "<init>", "()V")
-    emitter.code.emit(0xB7, constructor.to_bytes(2, "big"))
+    if isinstance(node, Lambda):
+        new_adapter(emitter.code, emitter.class_file, owner)
+    else:
+        field = emitter.class_file.field_reference(owner, "INSTANCE", f"L{owner};")
+        emitter.code.emit(0xB2, field.to_bytes(2, "big"))
     return f"L{interface};"
+
+
+def new_adapter(code, class_file, owner):
+    code.emit(0xBB, class_file.constants.class_(owner).to_bytes(2, "big"))
+    code.emit(0x59)
+    constructor = class_file.method_reference(owner, "<init>", "()V")
+    code.emit(0xB7, constructor.to_bytes(2, "big"))
 
 
 def invoke(emitter, node, value_type):

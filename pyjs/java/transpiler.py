@@ -1664,6 +1664,12 @@ class JVMEmitter:
             self.convert_abi_result(field_type, semantic_type, storage_format)
             return semantic_type
         if isinstance(node, ast.Attribute):
+            method_value = analyzed_value_object(node)
+            if isinstance(method_value, Function) and method_value.cls is not None:
+                raise JVMUnsupported(
+                    "JVM bound-method callbacks are not implemented", node,
+                    fragment=self.current_function.source_fragment,
+                )
             getters = getattr(node, "property_getters", ())
             target = getters[0] if getters and all(getter is getters[0] for getter in getters) else None
             if isinstance(target, Function):
