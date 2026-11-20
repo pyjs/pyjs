@@ -745,6 +745,14 @@ click listener, letting a parent handle taps on an otherwise inert child.
 Long-click and custom touch handlers remain independent.
 Use `isClickable()` to inspect that state; disabled and nonclickable views are
 not interchangeable for touch dispatch.
+For native touch/focus feedback, use `RippleDrawable` and `color_state_list`
+from `pyjs.android.drawables` on API 21+. Pass the ripple to
+`view.setBackground()`. Content and mask are separate nullable drawables;
+the mask clips feedback but is not itself displayed. With neither layer,
+feedback can extend onto the parent background. Use an opaque rounded
+`GradientDrawable` mask for a bounded flat icon button. Keep a separate
+drawable per view; native drawables have mutable bounds, state and callbacks.
+This does not add a click handler, accessible label or minimum touch target.
 `--pyjs-android-timeout` bounds the entire compiled suite, not each test.
 For large device suites, `--pyjs-android-batch-size=40` compiles and installs
 once, then selects at most 40 tests per instrumentation process. The timeout

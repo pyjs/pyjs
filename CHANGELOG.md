@@ -5,6 +5,10 @@
 - Android exposes localized date/time labels through `format_date_time` and
   `DateFormatFlags`, following the default time zone and device clock setting.
 
+- Android exposes native ripple backgrounds with optional content and mask
+  layers. Custom controls can retain platform interaction feedback without
+  displaying a default button background. Notes demonstrates card ripples.
+
 - Browser notification permission and action limits are accessible on
   `Notification`, and push encodings on `PushManager`, matching the browser's
   static APIs. Native JavaScript declarations retain annotated reference-valued

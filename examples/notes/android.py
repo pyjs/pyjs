@@ -18,6 +18,7 @@ from pyjs.android import (
     dp,
     parse_color,
 )
+from pyjs.android.drawables import RippleDrawable, color_state_list
 from pyjs.android.recyclerview import (
     ItemTouchHelper,
     RecyclerView,
@@ -59,7 +60,8 @@ class NoteHolder(RecyclerViewViewHolder):
         background.setColor(parse_color(color))
         background.setCornerRadius(24.0)
         background.setStroke(2, parse_color("#dadce0"))
-        label.setBackground(background)
+        label.setBackground(RippleDrawable(
+            color_state_list(parse_color("#335f6368")), background, None))
 
 
 class NotesAdapter(RecyclerViewAdapter):

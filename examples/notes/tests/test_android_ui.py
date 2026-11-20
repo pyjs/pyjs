@@ -4,6 +4,7 @@ import pytest
 from pyjs import JS, jvm
 from pyjs.android import Intent, TextView, View
 from pyjs.android.dates import DateFormatFlags, format_date_time
+from pyjs.android.drawables import RippleDrawable
 from pyjs.android.pickers import DatePickerDialog, TimePickerDialog
 from pyjs.android.recycler_testing import StaggeredGridSnapshot
 from pyjs.android.recyclerview import RecyclerView
@@ -557,12 +558,21 @@ def test_returning_from_another_share_task_restores_order_and_save_notifications
         reset_order()
 
 
+class CardFeedback(ViewAssertion):
+    def check(self, view: View | None, error: NoMatchingViewException | None) -> None:
+        assert error is None and view is not None
+        background = view.getBackground()
+        assert isinstance(background, RippleDrawable)
+        assert background.isStateful()
+
+
 def test_grid_displays_sample_cards_in_adapter_order() -> None:
     reset_order()
     launch(NotesActivity)
     by_id(100).assert_displayed()
     by_id(100).check(NoteOrder([1001, 1002, 1003, 1004, 1005, 1006, 1007]))
     by_text(LAUNCH_NOTE).assert_displayed()
+    by_text(LAUNCH_NOTE).check(CardFeedback())
     by_text(WEEKEND_NOTE).assert_displayed()
 
 
