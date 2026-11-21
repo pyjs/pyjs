@@ -1564,6 +1564,22 @@ def forward(callback: Callable[[object], int]) -> Callable[[str], int]:
 )
 
 
+SUPPLIED_CALLABLE_DEFAULT_CONTRACT = _contract('''
+from collections.abc import Callable
+from pyjs import js
+
+@js
+def add(value: int, extra: int = 10) -> int:
+    return value + extra
+
+@js
+def consume(callback: Callable[[int, int], int]) -> int:
+    return callback(1, 2)
+''', "supplied_callable_default_contract", "", (
+    ("supplied arguments override the source default", "consume(add) != 3"),
+))
+
+
 CALLABLE_DEFAULT_CONTRACT = _contract(
     '''
 from collections.abc import Callable

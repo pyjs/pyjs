@@ -10749,6 +10749,7 @@ class InferenceVisitor(ast.NodeVisitor):
     ) -> ast.expr:
         from .iterable_protocol import retain_iterable_conversion
         retain_iterable_conversion(node, expected_type)
+        self.validate_javascript_callable_view(node, expected_type)
         destinations = [member for member in get_type_members(expected_type)
                         if isinstance(member, Class) and member.generic_name != "NoneType"]
         if len(destinations) == 1 and destinations[0].generic_name == "Iterator":
@@ -10852,6 +10853,34 @@ class InferenceVisitor(ast.NodeVisitor):
             getattr(member, "generic_name", None) == "object"
             for member in get_type_members(expected_type)
         )
+
+    def validate_javascript_callable_view(self, node, expected_type):
+        if _ACTIVE_ENVIRONMENT.get().name != "js":
+            return
+        expected = callable_member(expected_type)
+        if expected is None or expected.parameter_types is None:
+            return
+        if any(member is not expected and is_call_argument_compatible(member, node)
+               for member in get_type_members(expected_type)):
+            return
+        function = analyzed_value_object(node)
+        if isinstance(function, Function) and (
+            is_native_for(function.py_obj, "js")
+            or function.cls is not None and is_native_for(function.cls.py_obj, "js")
+        ):
+            return
+        actual = callable_value_type(node)
+        if (isinstance(actual, CallableClass)
+                and actual.parameter_types is not None
+                and actual.minimum_arguments < len(actual.parameter_types)
+                and actual.minimum_arguments < expected.minimum_arguments):
+            # A fixed view must not erase the optional-argument boundary that
+            # the JS emitter uses to reject incompatible indirect calls.
+            self.fail(
+                getattr(node, "python_node", node), DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                "JavaScript callable views cannot require optional positional arguments",
+                help="Call the named function directly or use a fixed-arity wrapper.",
+            )
 
     def normalize_stored_value(
         self,

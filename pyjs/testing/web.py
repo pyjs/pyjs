@@ -195,7 +195,7 @@ async def wait_for_settled_phase(
 def wait_for_event(
     target: EventTarget,
     event_name: str,
-    trigger: Callable[[], None] | None = None,
+    trigger: Callable[[], object] | None = None,
 ) -> Promise[Event]:
     return Promise[Event](
         lambda resolve, reject: _listen_event(target, event_name, trigger, resolve)
@@ -206,7 +206,7 @@ def wait_for_event(
 def _listen_event(
     target: EventTarget,
     event_name: str,
-    trigger: Callable[[], None] | None,
+    trigger: Callable[[], object] | None,
     resolve: Callable[[Event], None],
 ) -> None:
     target.addEventListener(event_name, resolve, once=True)

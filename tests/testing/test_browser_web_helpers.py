@@ -1,6 +1,9 @@
+from collections.abc import Callable
+
 import pytest
 
 from pyjs import js
+from pyjs.javascript import Promise
 from pyjs.testing.interaction.gesture import (
     GesturePoint,
     GestureScript,
@@ -14,7 +17,7 @@ from pyjs.testing.web import (
 )
 from pyjs.web.dom import document
 from pyjs.web.domx import div, require_closest, require_element, span
-from pyjs.web.events import EventTarget, PointerEvent
+from pyjs.web.events import Event, EventTarget, PointerEvent
 from pyjs.web.timers import queueMicrotask
 
 
@@ -47,6 +50,37 @@ async def test_wait_for_event_accepts_explicit_none_and_keyword_arguments():
     pending = wait_for_event(target=target, event_name="click", trigger=None)
     target.click()
     assert (await pending).type == "click"
+
+
+@js
+def dispatch_ready() -> bool:
+    return document.body.dispatchEvent(Event("ready"))
+
+
+@pytest.mark.pyjs_web
+@js
+async def test_event_wait_ignores_synchronous_trigger_return_values():
+    first = await wait_for_event(document.body, "ready", dispatch_ready)
+    assert first.type == "ready"
+    target = div()
+    second = await wait_for_event(target, "ready", lambda: target.dispatchEvent(Event("ready")))
+    assert second.type == "ready"
+
+
+@js
+def wait_without_trigger(
+    wait: Callable[[EventTarget, str], Promise[Event]], target: EventTarget,
+) -> Promise[Event]:
+    return wait(target, "ready")
+
+
+@pytest.mark.pyjs_web
+@js
+async def test_typed_event_wait_can_omit_the_optional_trigger():
+    target = div()
+    pending = wait_without_trigger(wait_for_event, target)
+    target.dispatchEvent(Event("ready"))
+    assert (await pending).type == "ready"
 
 
 @js

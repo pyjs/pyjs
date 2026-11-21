@@ -151,3 +151,24 @@ def test_event_wait_rejects_async_triggers_during_compilation():
             async def main(target: EventTarget):
                 await wait_for_event(target, "ready", trigger)
         ''')
+
+
+@pytest.mark.parametrize("trigger", ["trigger", "None"])
+def test_event_wait_rejects_erasing_the_optional_trigger_abi(trigger):
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        analyze_module_source(f'''
+            from collections.abc import Callable
+            from pyjs import js
+            from pyjs.javascript import Promise
+            from pyjs.testing.web import wait_for_event
+            from pyjs.web.events import Event, EventTarget
+
+            @js
+            def indirect(wait: Callable[[EventTarget, str, Callable[[], object] | None], Promise[Event]],
+                         target: EventTarget, trigger: Callable[[], object]) -> Promise[Event]:
+                return wait(target, "ready", {trigger})
+
+            @js
+            def main(target: EventTarget, trigger: Callable[[], object]) -> Promise[Event]:
+                return indirect(wait_for_event, target, trigger)
+        ''')

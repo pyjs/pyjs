@@ -9,6 +9,11 @@
   no longer crosses a redundant async-wrapper adoption boundary.
   `wait_for_event()` accepts keywords and explicit `trigger=None`, requires a
   synchronous trigger, and removes its listener if that trigger throws.
+  Synchronous trigger return values are ignored; lambda triggers now execute
+  instead of leaving the wait pending. Converting an optional Python-function
+  signature to a typed `Callable` view that requires those arguments now
+  receives a compilation diagnostic rather than silently dropping arguments.
+  Call these functions directly when supplying optional arguments.
   Argument evaluation errors raise synchronously; registration and trigger
   errors reject the Promise. Browser lock acquisition is also Python-authored,
   preserving ordered handoff and the separate host-side asyncio implementation.

@@ -1,6 +1,6 @@
 import pytest
 
-from pyjs.analysis.diagnostics import CompilationError
+from pyjs.analysis.diagnostics import CompilationError, DiagnosticCode
 from pyjs.analysis.objects import (
     specialization_cache_key,
     specialization_type_name,
@@ -13,9 +13,102 @@ from pyjs.analysis.type_relations import (
 from pyjs.analysis.value_representation import same_erased_type
 from pyjs.java.analysis import JVM_ENVIRONMENT
 from pyjs.native.analysis import NATIVE_ENVIRONMENT
-from pyjs.testing.helpers import analyze_module_source, assert_module_transpile
+from pyjs.testing.helpers import (
+    ad,
+    analyze_module_source,
+    assert_module_transpile,
+    diagnostic_text,
+)
 from pyjs.webassembly.analysis import WEBASSEMBLY_ENVIRONMENT
-from tests.semantics.helpers import assert_semantics
+from tests.semantics.helpers import assert_semantics, run_javascript
+
+
+def test_supplied_callable_defaults_fail_early_on_javascript():
+    from tests.backend_semantics import SUPPLIED_CALLABLE_DEFAULT_CONTRACT
+    namespace = {}
+    exec(SUPPLIED_CALLABLE_DEFAULT_CONTRACT.source, namespace)
+    assert namespace["main"]() == 0
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments") as caught:
+        analyze_module_source(SUPPLIED_CALLABLE_DEFAULT_CONTRACT.source)
+    assert caught.value.diagnostic.code == DiagnosticCode.INCOMPATIBLE_ARGUMENT
+
+
+def test_optional_callable_view_diagnostic_locates_the_source_function():
+    ad(
+        '''\
+        from collections.abc import Callable
+        from pyjs import js
+        @js
+        def add(value: int, extra: int = 10) -> int:
+            return value + extra
+        def main():
+            callback: Callable[[int, int], int] = add
+        ''',
+        diagnostic_text(
+            "callback.py", 7, "callback: Callable[[int, int], int] = add",
+            "                                      ^^^",
+            "pyjs.CompilationError: JavaScript callable views cannot require optional positional arguments [PYJS1104]",
+            "help: Call the named function directly or use a fixed-arity wrapper.",
+        ),
+        filename="callback.py",
+    )
+
+
+def test_native_optional_parameters_keep_their_positional_calling_convention():
+    result, _ = run_javascript('''
+        from collections.abc import Callable
+        from pyjs import js
+        @js.native
+        class RegExp:
+            def __init__(self, pattern: str): ...
+            def test(self, value: str = "") -> bool: ...
+        @js
+        def consume(callback: Callable[[str], bool]) -> bool:
+            return callback("abc")
+        @js
+        def main() -> None:
+            print(consume(RegExp("a").test))
+    ''')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "True\n"
+
+
+def test_variadic_function_views_do_not_need_an_options_object():
+    assert_semantics('''
+        from collections.abc import Callable
+        from pyjs import js
+        @js
+        def total(*values: int) -> int:
+            return values[0] + values[1]
+        @js
+        def consume(callback: Callable[[int, int], int]) -> int:
+            return callback(1, 2)
+        @js
+        def main() -> None:
+            print(consume(total))
+        main()
+    ''')
+
+
+@pytest.mark.parametrize("binding", [
+    "callback: Callable[[int, int], int] = add",
+    "callback: Callable[[int, int], int] | None = None\ncallback = add",
+    "original = add\ncallback: Callable[[int, int], int] = original",
+    "callbacks: list[Callable[[int, int], int]] = [add]\ncallback = callbacks[0]",
+])
+def test_optional_callable_abi_cannot_be_erased_through_storage(binding):
+    source = '''from collections.abc import Callable
+from pyjs import js
+@js
+def add(value: int, extra: int = 10) -> int:
+    return value + extra
+@js
+def main() -> int:
+'''
+    source += "".join("    " + line + "\n" for line in binding.splitlines())
+    source += "    return callback(1, 2)\n"
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        analyze_module_source(source)
 
 
 @pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
@@ -55,9 +148,12 @@ def test_callable_identity_retains_optional_and_keyword_requirements():
         @js
         def named(value: int, extra: int = 10, *, label: str) -> int:
             return value + extra
+        @js
+        def strict(value: int, extra: int) -> int:
+            return value + extra
         def main() -> int:
             optional = add
-            fixed: Callable[[int, int], int] = add
+            fixed: Callable[[int, int], int] = strict
             keyword = named
             return optional(1)
     ''') as analysis:
@@ -191,10 +287,9 @@ def test_javascript_optional_callable_spreads_preserve_omitted_defaults():
     "callback: Callable[[int, int], int] = add",
     "callback: Callable[[int, int], int] | None = None",
 ])
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="JS fixed callable views still need optional-argument adapters")
-def test_javascript_fixed_callable_view_preserves_supplied_defaults(declaration):
-    assert_semantics(f'''
+def test_javascript_fixed_callable_view_rejects_hidden_optional_arguments(declaration):
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        analyze_module_source(f'''
         from collections.abc import Callable
         from pyjs import js
         @js
@@ -206,7 +301,7 @@ def test_javascript_fixed_callable_view_preserves_supplied_defaults(declaration)
             callback = add
             print(callback(1, 2))
         main()
-    ''')
+        ''')
 
 
 def test_javascript_fixed_callable_view_default_wrapper():
