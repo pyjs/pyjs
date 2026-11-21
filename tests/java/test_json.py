@@ -16,7 +16,8 @@ STRINGS = [
     "".join(chr(code) for code in range(128)), "ascii\uffffascii\U0010ffffend",
 ]
 STRING_TOKENS = [json.dumps(value) for value in STRINGS] + [
-    json.dumps("é雪😀", ensure_ascii=False), '"\\/"', '"\\u00aF"', '"\\u09Af"',
+    json.dumps("é雪😀", ensure_ascii=False), '"\ud800"', '"\udfff"',
+    '"\\/"', '"\\u00aF"', '"\\u09Af"',
     '"\\uD83D\\uDE00"', '"\\ud800x"', '"\\ud800\\u0061"',
 ]
 NUMBERS = ["0", "-0", "10", "-123", "0.1", "1e10", "-0.25E-2", "1E+3",
@@ -48,6 +49,35 @@ def test_string_decoder_matches_standard_json(token):
     reader = JSONReader(" \t" + token + "\r\n")
     assert reader.string() == json.loads(token)
     reader.finish()
+
+
+@pytest.mark.parametrize("value", ["", "plain text", "é雪😀", "\ud800", "\udfff"])
+def test_unescaped_strings_do_not_allocate_a_builder(monkeypatch, value):
+    def unexpected_builder():
+        raise AssertionError("Unescaped JSON strings do not need a builder")
+
+    monkeypatch.setattr(java_json, "StringBuilder", unexpected_builder)
+    reader = JSONReader(" \t" + json.dumps(value, ensure_ascii=False) + " true")
+    assert reader.string() == value
+    assert reader.boolean()
+    reader.finish()
+
+
+@pytest.mark.parametrize("token", ['"\\n"', '"prefix\\n\\u96ea suffix"', '"\\ud83d\\ude00"'])
+def test_escaped_strings_share_one_builder(monkeypatch, token):
+    original = java_json.StringBuilder
+    builders = []
+
+    def builder():
+        result = original()
+        builders.append(result)
+        return result
+
+    monkeypatch.setattr(java_json, "StringBuilder", builder)
+    reader = JSONReader(token)
+    assert reader.string() == json.loads(token)
+    reader.finish()
+    assert len(builders) == 1
 
 
 @pytest.mark.parametrize("token", NUMBERS)

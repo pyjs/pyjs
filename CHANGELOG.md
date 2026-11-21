@@ -24,6 +24,10 @@
   valid optional fields, reducing bulk validation work while preserving
   coercion and invalid-input diagnostics.
 
+- JVM and Android JSON decoding avoids builders for unescaped strings,
+  including field names. Escaped strings still share a single builder;
+  validation, Unicode handling and diagnostic positions are unchanged.
+
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;
   the truth of their keys and values does not affect the result.
