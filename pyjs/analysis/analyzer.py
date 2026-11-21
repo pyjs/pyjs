@@ -8901,6 +8901,26 @@ class InferenceVisitor(ast.NodeVisitor):
                 or getattr(called_function.py_obj, "__builtin__", False)
             )
         )
+        contextual_overloads = overloads
+        if len(overloads) > 1 and not any(
+            isinstance(argument, ast.Starred) for argument in node.args
+        ):
+            # A lambda cannot match a None-only parameter. Discard that
+            # context before its body needs the competing callable's types.
+            contextual_overloads = tuple(
+                overload for overload in overloads
+                if not any(
+                    isinstance(argument, ast.Lambda)
+                    and pattern is BUILTINS.search("NoneType")
+                    for argument, pattern in (
+                        [(argument, self.call_argument_pattern(overload, index))
+                         for index, argument in enumerate(node.args)]
+                        + [(keyword.value, self.call_keyword_pattern(keyword, overload))
+                           for keyword in node.keywords]
+                    )
+                )
+            )
+        overloads = contextual_overloads or overloads
         if len(overloads) == 1:
             signature_function = overloads[0]
         elif len(overloads) > 1:

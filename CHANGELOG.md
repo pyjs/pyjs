@@ -35,7 +35,8 @@
   Argument expressions now follow ordinary evaluation rules: their errors
   raise immediately rather than becoming rejected promises. Request and
   transaction failures still reject; optional validators passed as `None`
-  disable validation.
+  disable validation. `transaction_result` now requires native
+  `Promise.withResolvers` (Chrome 119 or Safari 17.4 and newer).
 
 - `pyjs.javascript.Promise[T]` exposes native construction, resolution,
   rejection, chaining, cleanup, combinators and resolver objects. Executors

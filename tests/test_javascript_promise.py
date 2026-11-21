@@ -68,6 +68,13 @@ def test_native_promise_constructor_and_resolver_types():
     assert await Promise.resolve(42).then(lambda value: Promise.resolve(str(value))) == "42"
     ''',
     '''
+    assert await Promise.resolve(41).then(lambda value: value + 1, None) == 42
+    assert await Promise.resolve(41).then(lambda value: value + 1, lambda error: -1) == 42
+    assert await Promise[int].reject("failure").then(lambda value: value + 1, lambda error: -1) == -1
+    assert await Promise.resolve(41).then(lambda value: Promise.resolve(value + 1), lambda error: -1) == 42
+    assert await Promise.resolve(int8(127)).then(lambda value: value + int8(1), None) == int8(-128)
+    ''',
+    '''
     pending = Promise[int].withResolvers()
     pending.reject("failed")
     result = pending.promise.then(lambda value: str(value), lambda reason: "recovered")
@@ -140,7 +147,7 @@ def test_native_promise_constructor_and_resolver_types():
 ])
 def test_native_promise_execution(body):
     source = (
-        "from pyjs import js\nfrom pyjs.javascript import Promise\n"
+        "from pyjs import int8, js\nfrom pyjs.javascript import Promise\n"
         "@js\nasync def main():\n"
         + textwrap.indent(textwrap.dedent(body).strip(), "    ")
         + '\n    print("passed")\n'

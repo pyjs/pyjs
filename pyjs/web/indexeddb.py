@@ -614,6 +614,8 @@ def transaction_result[T](
     I/O, or other work that lets IndexedDB auto-commit. Listeners are installed
     before the operation runs. Request success alone is not commit success.
     An already-finished transaction rejects without invoking the operation.
+
+    Requires native Promise.withResolvers (Chrome 119 or Safari 17.4+).
     """
     result = _TransactionResult[T](transaction)
     result.start(operation)

@@ -202,6 +202,25 @@ def test_native_generic_methods_expand_only_when_reached():
     )
 
 
+def test_two_argument_then_retains_lambda_parameter_type():
+    at(
+        '''
+        from pyjs.javascript import Promise
+        async def main(value: Promise[int]) -> int:
+            return await value.then(lambda item: item + 1, None)
+        ''',
+        '''
+        async def main(value: Promise__int) -> int:
+            return await value.[Promise__int]then(lambda item: item.[int]__add__!(1), None)
+        ''',
+        '''
+        export async function main(value) {
+            return await value.then((item) => item + 1, null);
+        }
+        ''',
+    )
+
+
 def test_native_constructor_extra_spread_arguments_have_a_diagnostic():
     source = '''
         from pyjs import js
