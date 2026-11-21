@@ -17,7 +17,9 @@ from perf.run import (
     calibrate,
     expected,
     oracle,
+    parse_peak_rss,
     parse_samples,
+    rss_command,
     summarize,
     tool,
     warmup_drift,
@@ -91,6 +93,17 @@ def test_summary_does_not_choose_fastest_sample():
     assert summarize([1, 2, 9]) == {"median": 2, "min": 1, "max": 9, "mad": 1}
 
 
+def test_rss_measurement_normalizes_linux_and_macos_units(tmp_path):
+    output = tmp_path / "rss.txt"
+    command = ["program", "argument"]
+    assert rss_command(command, output, "linux") == [
+        "/usr/bin/time", "-f", "%M", "-o", output, *command]
+    assert rss_command(command, output, "darwin") == [
+        "/usr/bin/time", "-l", "-o", output, *command]
+    assert parse_peak_rss("1234\n", "linux") == 1234
+    assert parse_peak_rss("  1263616  maximum resident set size\n", "darwin") == 1234
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX benchmark runner")
 def test_process_timeout_is_bounded():
     with pytest.raises(subprocess.TimeoutExpired):
@@ -152,7 +165,7 @@ def test_new_python_workloads_execute_as_javascript(tmp_path, case):
 
 @pytest.mark.parametrize("case", ("histogram",) + EXPANDED_CASES)
 @pytest.mark.parametrize("target", ("rust", "java", "pyjs-llvm", "pyjs-jvm"))
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Native benchmark adapters target Linux")
+@pytest.mark.skipif(sys.platform not in {"linux", "darwin"}, reason="POSIX benchmark adapters")
 def test_expanded_native_adapters_match_oracles(tmp_path, case, target):
     requirements = {"rust": ("rustc",), "java": ("java", "javac"),
                     "pyjs-jvm": ("java", "javac"), "pyjs-llvm": ("clang",)}
@@ -476,7 +489,7 @@ def test_live_ui_empty_state_and_artifact_containment(tmp_path):
         assert request(server, "GET", "/perf/artifact/first/../../outside.txt")[0] == 404
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux measurement host")
+@pytest.mark.skipif(sys.platform not in {"linux", "darwin"}, reason="POSIX measurement host")
 def test_runner_retains_unavailable_target_and_never_overwrites_snapshot(tmp_path):
     output = tmp_path / "snapshot"
     command = [sys.executable, "-m", "perf.run", "--output", str(output),

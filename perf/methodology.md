@@ -57,7 +57,7 @@ is outside the timed interval. Other adapters return a string without that
 write. This asymmetry is disclosed, not corrected using an estimated overhead.
 The native GC heap remains alive across batches and is destroyed at exit.
 
-Rust uses Cargo-equivalent Linux release flags: `-O`, `-C embed-bitcode=no`
+Rust uses Cargo-equivalent release flags: `-O`, `-C embed-bitcode=no`
 and `-C strip=debuginfo`. Stripping removes debug information inherited from
 the precompiled standard library, not runtime code. Ordinary bounds checks
 remain, and black_box on runtime kernel input discourages hoisting. LTO,
