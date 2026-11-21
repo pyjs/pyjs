@@ -1,6 +1,11 @@
 import asyncio
 import base64
+import io
 import subprocess
+import threading
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 
 import pytest
 from websockets.exceptions import ConnectionClosedError
@@ -12,6 +17,204 @@ from pyjs.tooling.browser import (
     BrowserPage,
     CDPSession,
 )
+
+
+@asynccontextmanager
+async def readiness_server(statuses, delay=0.0):
+    requests = []
+    handlers = []
+    writers = []
+
+    async def respond(reader, writer):
+        handlers.append(asyncio.current_task())
+        writers.append(writer)
+        try:
+            request = await reader.readuntil(b"\r\n\r\n")
+            index = len(requests)
+            requests.append(request)
+            status = statuses[min(index, len(statuses) - 1)]
+            if status is None:
+                await reader.read()
+            else:
+                await asyncio.sleep(delay)
+                writer.write(
+                    f"HTTP/1.1 {status} Test\r\nContent-Length: 0\r\n"
+                    "Connection: close\r\n\r\n".encode()
+                )
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except ConnectionError:
+                pass
+
+    server = await asyncio.start_server(respond, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield f"http://127.0.0.1:{port}/json/version", requests
+    finally:
+        server.close()
+        await server.wait_closed()
+        for writer in writers:
+            writer.close()
+        await asyncio.gather(*handlers)
+
+
+@pytest.mark.parametrize("statuses", [[200], [503, 200], [None, 200]])
+def test_http_readiness_allows_server_progress_and_retries(statuses):
+    async def run():
+        async with readiness_server(statuses) as (url, requests):
+            await browser.wait_for_http(url, timeout=2)
+            assert len(requests) == len(statuses)
+            assert all(request.startswith(b"GET /json/version ") for request in requests)
+
+    asyncio.run(run())
+
+
+def test_http_readiness_accepts_a_consistently_slow_response():
+    async def run():
+        async with readiness_server([200], delay=0.8) as (url, requests):
+            await browser.wait_for_http(url, timeout=4)
+            assert len(requests) >= 2
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_http_readiness_grows_timed_out_probes_without_extending_deadline(monkeypatch, wrapped):
+    clock = 0.0
+    timeouts = []
+    error = TimeoutError("slow response")
+    if wrapped:
+        error = URLError(error)
+
+    def request(url, timeout):
+        nonlocal clock
+        timeouts.append(timeout)
+        clock += timeout
+        raise error
+
+    def wait(delay):
+        nonlocal clock
+        clock += delay
+
+    monkeypatch.setattr(browser, "urlopen", request)
+    monkeypatch.setattr(browser.time, "monotonic", lambda: clock)
+    stopped = SimpleNamespace(is_set=lambda: False, wait=wait)
+    with pytest.raises(TimeoutError, match="Timed out waiting") as caught:
+        browser._wait_for_http("http://127.0.0.1/", 4.0, stopped)
+    assert timeouts == pytest.approx([0.5, 1.0, 2.0, 0.2])
+    assert clock == pytest.approx(4.0)
+    assert caught.value.__cause__ is error
+
+
+def test_http_readiness_timeout_retains_connection_error():
+    async def run():
+        url = f"http://127.0.0.1:{browser.free_port()}/json/version"
+        with pytest.raises(TimeoutError, match="Timed out waiting") as caught:
+            await browser.wait_for_http(url, timeout=0.1)
+        assert isinstance(caught.value.__cause__, URLError)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("timeout", [0, -1])
+def test_http_readiness_expired_deadline_does_not_start_request(monkeypatch, timeout):
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("An expired deadline must not start a request")
+
+    monkeypatch.setattr(browser, "urlopen", unexpected_request)
+    with pytest.raises(TimeoutError, match="Timed out waiting"):
+        asyncio.run(browser.wait_for_http("http://127.0.0.1/", timeout=timeout))
+
+
+def test_http_readiness_closes_http_error_response(monkeypatch):
+    body = io.BytesIO(b"Service unavailable")
+    error = HTTPError("http://127.0.0.1/", 503, "Unavailable", {}, body)
+
+    def unavailable(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(browser, "urlopen", unavailable)
+    with pytest.raises(TimeoutError) as caught:
+        asyncio.run(browser.wait_for_http(error.url, timeout=0.01))
+    assert caught.value.__cause__ is error
+    assert body.closed
+
+
+def test_browser_exit_interrupts_pending_readiness_probe():
+    async def run():
+        async with readiness_server([None]) as (url, requests):
+            instance = browser.Browser(executable="chrome")
+            instance.debug_port = int(url.split(":")[2].split("/")[0])
+            instance.process = SimpleNamespace(poll=lambda: None)
+            waiting = asyncio.create_task(instance._wait_for_startup())
+            try:
+                async with asyncio.timeout(2):
+                    while not requests:
+                        await asyncio.sleep(0.01)
+                    instance.process.poll = lambda: 1
+                    with pytest.raises(RuntimeError, match="Chrome exited"):
+                        await waiting
+                assert len(requests) == 1
+            finally:
+                waiting.cancel()
+                await asyncio.gather(waiting, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("outcome", ["ready", "connection-error", "unexpected-error"])
+@pytest.mark.parametrize("retry", [False, True])
+def test_http_readiness_cancellation_joins_pending_probe(monkeypatch, outcome, retry):
+    async def run():
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        calls = []
+        response = io.BytesIO()
+        response.status = 200
+
+        def slow_request(url, timeout):
+            calls.append(timeout)
+            if retry and len(calls) == 1:
+                raise TimeoutError("First probe timed out")
+            loop.call_soon_threadsafe(started.set)
+            try:
+                assert release.wait(2), "Test failed to release the HTTP probe"
+                if outcome == "connection-error":
+                    raise URLError("Request interrupted")
+                if outcome == "unexpected-error":
+                    raise ValueError("Invalid request")
+                return response
+            finally:
+                finished.set()
+
+        monkeypatch.setattr(browser, "urlopen", slow_request)
+        waiting = asyncio.create_task(browser.wait_for_http("http://127.0.0.1/"))
+        try:
+            await asyncio.wait_for(started.wait(), 3)
+            for _ in range(2):
+                waiting.cancel()
+                await asyncio.sleep(0)
+                assert not waiting.done()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await waiting
+            assert finished.is_set()
+            assert calls == ([0.5, 1.0] if retry else [0.5])
+            if outcome == "ready":
+                assert response.closed
+        finally:
+            release.set()
+            await asyncio.gather(waiting, return_exceptions=True)
+            response.close()
+
+    asyncio.run(run())
 
 
 class BrowserProcess:

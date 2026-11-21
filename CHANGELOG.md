@@ -38,6 +38,12 @@
   correctly fail truth assertions. Comparisons that cannot narrow a value
   retain detailed operand reporting.
 
+- Managed-browser readiness checks keep the event loop responsive and allow
+  progressively longer probes after socket timeouts, within the remaining
+  startup budget. Cancellation joins the pending probe before browser cleanup
+  and may wait for its socket timeout; DNS, redirects and trickling headers
+  are not bounded by that timeout. Errors retain the last connection failure.
+
 - Packaged Electron hosts can isolate native notifications in a helper
   process so a stalled Linux notification daemon does not block editing or
   other main-process work. The service bounds requests, revokes stale clicks,
