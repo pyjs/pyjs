@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from typing import cast
 
 from pyjs import js
 from pyjs.web.dom import DOMException
@@ -6,35 +7,74 @@ from pyjs.web.events import Event, EventTarget
 from pyjs.web.html import DOMStringList
 
 
-def _request_promise(expression: str, validator: str = "null") -> str:
-    """Keep caller scope while evaluating inside the rejecting executor."""
-    parameters = "getRequest"
-    arguments = f"() => ({expression})"
-    if validator == "null":
-        resolve = "resolve(request.result)"
-        setup = ""
+@js.inline("new Promise({executor})")
+def _promise(executor: Callable[[callable, callable], None]) -> Awaitable[object]: ...
+
+
+@js
+def _resolve_request(
+    request: IDBRequest[object],
+    validator: callable | None,
+    resolve: callable,
+    reject: callable,
+) -> None:
+    if validator is None:
+        resolve(request.result)
     else:
-        resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
-        setup = "const validate = getValidator();"
-        parameters += ", getValidator"
-        arguments += f", () => ({validator})"
-    return "".join(
-        [
-            f"(({parameters}) => new Promise((resolve, reject) => {{",
-            f"const request = getRequest();{setup}",
-            f"request.addEventListener('success', () => {resolve}, {{once: true}});",
-            "request.addEventListener('error', () => reject(request.error), ",
-            f"{{once: true}});}}))({arguments})",
-        ]
+        try:
+            resolve(validator(request.result))
+        except Exception as error:
+            reject(error)
+
+
+@js
+def _listen_request(
+    request: IDBRequest[object],
+    validator: callable | None,
+    resolve: callable,
+    reject: callable,
+) -> None:
+    request.addEventListener(
+        "success",
+        lambda event: _resolve_request(request, validator, resolve, reject),
+        once=True,
+    )
+    request.addEventListener("error", lambda event: reject(request.error), once=True)
+
+
+@js
+def _start_request(
+    get_request: Callable[[], IDBRequest[object]],
+    get_validator: Callable[[], callable | None],
+    resolve: callable,
+    reject: callable,
+) -> None:
+    request = get_request()
+    validator = get_validator()
+    _listen_request(request, validator, resolve, reject)
+
+
+@js
+def _request_promise(
+    get_request: Callable[[], IDBRequest[object]],
+    get_validator: Callable[[], callable | None],
+) -> Awaitable[object]:
+    return _promise(
+        lambda resolve, reject: _start_request(
+            get_request, get_validator, resolve, reject
+        )
     )
 
 
-def _rewrite_request_result(_arg_strs, self=None, **kwargs):
+def _rewrite_request_result(_arg_strs, request_promise, self=None, **kwargs):
+    """Evaluate caller expressions synchronously inside the rejecting executor."""
     if self is not None:
+        expression = self
         validator = _arg_strs[0] if _arg_strs else "null"
-        return _request_promise(self, validator)
-    validator = _arg_strs[1] if len(_arg_strs) > 1 else "null"
-    return _request_promise(_arg_strs[0], validator)
+    else:
+        expression = _arg_strs[0]
+        validator = _arg_strs[1] if len(_arg_strs) > 1 else "null"
+    return f"{request_promise}(() => ({expression}), () => ({validator}))"
 
 
 @js.native
@@ -346,7 +386,7 @@ class IDBRequest[T](EventTarget):
         self.source: IDBObjectStore | IDBIndex | IDBCursor | None = None
         self.transaction: IDBTransaction | None = None
 
-    @js.inline(_rewrite_request_result)
+    @js.inline(_rewrite_request_result, request_promise=_request_promise)
     async def value(self, validator: callable | None = None) -> T:
         if validator is None:
             return self.result
@@ -475,23 +515,60 @@ class IDBCursorWithValue(IDBCursor):
 
 
 @js
+def _notify_upgrade(
+    request: IDBRequest[object], upgrade: callable, event: IDBVersionChangeEvent
+) -> None:
+    upgrade(request.result, event.oldVersion, event.newVersion, request.transaction)
+
+
+@js
+def _start_open(
+    get_request: Callable[[], IDBRequest[object]],
+    get_upgrade: Callable[[], callable | None],
+    resolve: callable,
+    reject: callable,
+) -> None:
+    request = get_request()
+    upgrade = get_upgrade()
+    if upgrade is not None:
+        request.addEventListener(
+            "upgradeneeded",
+            lambda event: _notify_upgrade(
+                request, upgrade, cast(IDBVersionChangeEvent, event)
+            ),
+            once=True,
+        )
+    _listen_request(request, None, resolve, reject)
+
+
+@js
+def _open_promise(
+    get_request: Callable[[], IDBRequest[object]],
+    get_upgrade: Callable[[], callable | None],
+) -> Awaitable[object]:
+    return _promise(
+        lambda resolve, reject: _start_open(get_request, get_upgrade, resolve, reject)
+    )
+
+
+@js
 async def open_database(
     name: str, version: int, upgrade: callable | None = None
 ) -> IDBDatabase: ...
 
 
-@open_database.inline
-def open_database(_arg_strs, **kwargs):
+@open_database.inline(open_promise=_open_promise)
+def open_database(_arg_strs, open_promise, **kwargs):
     name, version = _arg_strs[:2]
     upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
-    return f"((getRequest, getUpgrade) => new Promise((resolve, reject) => {{const request = getRequest();const upgrade = getUpgrade();if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}}))(() => indexedDB.open({name}, {version}), () => ({upgrade}))"
+    return f"{open_promise}(() => indexedDB.open({name}, {version}), () => ({upgrade}))"
 
 
-@js.inline(_rewrite_request_result)
+@js.inline(_rewrite_request_result, request_promise=_request_promise)
 async def request_result[T](request: IDBRequest[T]) -> T: ...
 
 
-@js.inline(_rewrite_request_result)
+@js.inline(_rewrite_request_result, request_promise=_request_promise)
 async def request_values(request: IDBRequest[list[object]]) -> list[object]: ...
 
 

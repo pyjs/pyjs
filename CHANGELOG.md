@@ -30,7 +30,9 @@
 
 - IndexedDB open and request-result helpers preserve caller variables named
   `request`, `resolve`, `reject`, `upgrade`, or `validate` instead of shadowing
-  them inside their generated promise callbacks.
+  them inside their generated promise callbacks. Shared Python-authored
+  listeners retain synchronous setup and Promise scheduling; optional
+  validators passed as `None` through variables disable validation too.
 
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;

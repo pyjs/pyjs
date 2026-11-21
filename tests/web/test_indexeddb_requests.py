@@ -2,6 +2,7 @@ import pytest
 
 from pyjs import js
 from pyjs.web.crypto import crypto
+from pyjs.web.dom import window
 from pyjs.web.indexeddb import (
     IDBDatabase,
     IDBObjectStore,
@@ -125,6 +126,8 @@ async def test_request_helpers_do_not_capture_caller_variable_names():
         assert await request_result(getRequest) == "saved"
         request = store.get("one")
         assert await request.value() == "saved"
+        validate: callable | None = None
+        assert await store.get("one").value(validate) == "saved"
     finally:
         database.close()
         await request_result(indexedDB.deleteDatabase(name))
@@ -160,6 +163,30 @@ async def test_request_creation_errors_still_reject_the_returned_promise():
         assert str(error) == "Request creation failed"
         rejected = True
     assert rejected
+
+
+@js
+def mark_after_validation(events: list[str], value: object) -> object:
+    window.queueMicrotask(lambda: window.queueMicrotask(lambda: events.append("later")))
+    return value
+
+
+@js
+async def test_request_resolution_does_not_add_an_await_boundary():
+    name = "request-timing-" + crypto.randomUUID()
+    database = await open_database(name, 1, create_store)
+    try:
+        store = database.transaction("records", "readwrite").objectStore("records")
+        request = store.put("saved", "one")
+        events: list[str] = []
+        pending = request.value(lambda value: mark_after_validation(events, value))
+        assert await pending == "one"
+        assert len(events) == 0
+        assert await request_result(store.get("one")) == "saved"
+        assert events == ["later"]
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(name))
 
 
 @js
