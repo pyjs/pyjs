@@ -1,35 +1,57 @@
 from collections.abc import Awaitable, Callable
+from typing import cast
 
 from pyjs import js
+from pyjs.javascript import Promise
 from pyjs.web.dom import DOMException
 from pyjs.web.events import Event, EventTarget
 from pyjs.web.html import DOMStringList
 
 
-def _request_promise(expression: str, validator: str = "null") -> str:
-    if validator == "null":
-        resolve = "resolve(request.result)"
-        setup = ""
+@js
+def _resolve_request[T](
+    request: IDBRequest[T],
+    validator: Callable[[T], T] | None,
+    resolve: Callable[[T | Awaitable[T]], None],
+    reject: Callable[[object], None],
+) -> None:
+    if validator is None:
+        resolve(request.result)
     else:
-        resolve = "{try{resolve(validate(request.result))}catch(error){reject(error)}}"
-        setup = f"const validate = {validator};"
-    return "".join(
-        [
-            "new Promise((resolve, reject) => {",
-            f"const request = {expression};{setup}",
-            f"request.addEventListener('success', () => {resolve}, {{once: true}});",
-            "request.addEventListener('error', () => reject(request.error), ",
-            "{once: true});})",
-        ]
+        try:
+            resolve(validator(request.result))
+        except Exception as error:
+            reject(error)
+
+
+@js
+def _listen_request[T](
+    request: IDBRequest[T],
+    validator: Callable[[T], T] | None,
+    resolve: Callable[[T | Awaitable[T]], None],
+    reject: Callable[[object], None],
+) -> None:
+    request.addEventListener(
+        "success",
+        lambda event: _resolve_request(request, validator, resolve, reject),
+        once=True,
+    )
+    request.addEventListener("error", lambda event: reject(request.error), once=True)
+
+
+@js
+def request_result[T](
+    request: IDBRequest[T], validator: Callable[[T], T] | None = None
+) -> Promise[T]:
+    """Listen immediately; argument evaluation follows ordinary Python rules."""
+    return Promise[T](
+        lambda resolve, reject: _listen_request(request, validator, resolve, reject)
     )
 
 
-def _rewrite_request_result(_arg_strs, self=None, **kwargs):
-    if self is not None:
-        validator = _arg_strs[0] if _arg_strs else "null"
-        return _request_promise(self, validator)
-    validator = _arg_strs[1] if len(_arg_strs) > 1 else "null"
-    return _request_promise(_arg_strs[0], validator)
+def _request_value(self, _arg_strs, _keyword_strs, request_result, **kwargs):
+    validator = _arg_strs[0] if _arg_strs else _keyword_strs.get("validator", "null")
+    return f"{request_result}({self}, {{validator: {validator}}})"
 
 
 @js.native
@@ -341,7 +363,7 @@ class IDBRequest[T](EventTarget):
         self.source: IDBObjectStore | IDBIndex | IDBCursor | None = None
         self.transaction: IDBTransaction | None = None
 
-    @js.inline(_rewrite_request_result)
+    @js.inline(_request_value, request_result=request_result)
     async def value(self, validator: callable | None = None) -> T:
         if validator is None:
             return self.result
@@ -456,6 +478,118 @@ class IDBOpenDBRequest[T](IDBRequest[T]):
         self.onupgradeneeded: callable = None
 
 
+@js
+class _TransactionResult[T]:
+    def __init__(self, transaction: IDBTransaction):
+        self.transaction = transaction
+        self.pending = Promise[T].withResolvers()
+        self.result: T | None = None
+        self.ready = False
+        self.settled = False
+        self.complete_listener = lambda event: self.complete()
+        self.abort_listener = lambda event: self.abort()
+
+    def start(self, operation: Callable[[], Awaitable[T]]) -> None:
+        """Probe finished state without issuing a request.
+
+        An empty versionchange transaction may have no stores yet; its
+        NotFoundError does not mean the transaction has finished.
+        """
+        try:
+            names = self.transaction.objectStoreNames
+            name = names.item(0) or ""
+            try:
+                self.transaction.objectStore(name)
+            except DOMException as error:
+                if error.name != "NotFoundError":
+                    raise
+            self.transaction.addEventListener(
+                "complete", self.complete_listener, once=True
+            )
+            self.transaction.addEventListener("abort", self.abort_listener, once=True)
+            Promise[T].resolve(operation()).then(self.succeed, self.fail)
+        except Exception as error:
+            self.fail(error)
+
+    def dispose(self) -> bool:
+        if self.settled:
+            return False
+        self.settled = True
+        self.transaction.removeEventListener("complete", self.complete_listener)
+        self.transaction.removeEventListener("abort", self.abort_listener)
+        return True
+
+    def succeed(self, result: T) -> None:
+        self.result = result
+        self.ready = True
+
+    def complete(self) -> None:
+        if self.dispose():
+            if self.ready:
+                self.pending.resolve(cast(T, self.result))
+            else:
+                self.pending.reject(
+                    RuntimeError("IndexedDB operation outlived its transaction")
+                )
+
+    def abort(self) -> None:
+        if self.dispose():
+            error = self.transaction.error
+            if error is None:
+                self.pending.reject(RuntimeError("IndexedDB transaction aborted"))
+            else:
+                self.pending.reject(error)
+
+    def fail(self, error: object) -> None:
+        try:
+            self.transaction.abort()
+        except Exception:
+            pass
+        if self.dispose():
+            self.pending.reject(error)
+
+
+@js
+def _notify_upgrade(
+    request: IDBRequest[IDBDatabase], upgrade: callable, event: IDBVersionChangeEvent
+) -> None:
+    upgrade(request.result, event.oldVersion, event.newVersion, request.transaction)
+
+
+@js
+def _start_open(
+    name: str,
+    version: int,
+    upgrade: callable | None,
+    resolve: Callable[[IDBDatabase | Awaitable[IDBDatabase]], None],
+    reject: Callable[[object], None],
+) -> None:
+    request = indexedDB.open(name, version)
+    if upgrade is not None:
+        request.addEventListener(
+            "upgradeneeded",
+            lambda event: _notify_upgrade(
+                request, upgrade, cast(IDBVersionChangeEvent, event)
+            ),
+            once=True,
+        )
+    _listen_request(request, None, resolve, reject)
+
+
+@js
+def open_database(
+    name: str, version: int, upgrade: callable | None = None
+) -> Promise[IDBDatabase]:
+    return Promise[IDBDatabase](
+        lambda resolve, reject: _start_open(name, version, upgrade, resolve, reject)
+    )
+
+
+@js
+def request_values(request: IDBRequest[list[object]]) -> Promise[list[object]]:
+    return request_result(request)
+
+
 @js.native
 class IDBCursorWithValue(IDBCursor):
     """WebIDL source: @webref/idl/IndexedDB.idl
@@ -470,32 +604,9 @@ class IDBCursorWithValue(IDBCursor):
 
 
 @js
-async def open_database(
-    name: str, version: int, upgrade: callable | None = None
-) -> IDBDatabase: ...
-
-
-@open_database.inline
-def open_database(_arg_strs, **kwargs):
-    name, version = _arg_strs[:2]
-    upgrade = _arg_strs[2] if len(_arg_strs) > 2 else "null"
-    return f"new Promise((resolve, reject) => {{const request = indexedDB.open({name}, {version});const upgrade = {upgrade};if (upgrade !== null) request.addEventListener('upgradeneeded', event => upgrade(request.result, event.oldVersion, event.newVersion, request.transaction), {{once: true}});request.addEventListener('success', () => resolve(request.result), {{once: true}});request.addEventListener('error', () => reject(request.error), {{once: true}});}})"
-
-
-@js.inline(_rewrite_request_result)
-async def request_result[T](request: IDBRequest[T]) -> T: ...
-
-
-@js.inline(_rewrite_request_result)
-async def request_values(request: IDBRequest[list[object]]) -> list[object]: ...
-
-
-@js.inline(
-    "((transaction, operation) => new Promise((resolve, reject) => {{\n    // objectStore checks finished state without issuing a request. An empty\n    // versionchange transaction may have no stores yet (NotFoundError).\n    try {{ transaction.objectStore(transaction.objectStoreNames[0] ?? ''); }}\n    catch (error) {{ if (error.name !== 'NotFoundError') throw error; }}\n    let result, ready = false, settled = false;\n    const finish = (success, value) => {{\n        if (settled) return;\n        settled = true;\n        transaction.removeEventListener('complete', complete);\n        transaction.removeEventListener('abort', abort);\n        if (success) resolve(value); else reject(value);\n    }};\n    const complete = () => finish(ready, ready ? result : new Error('IndexedDB operation outlived its transaction'));\n    const abort = () => finish(false, transaction.error ?? new Error('IndexedDB transaction aborted'));\n    transaction.addEventListener('complete', complete, {{once: true}});\n    transaction.addEventListener('abort', abort, {{once: true}});\n    const fail = error => {{\n        try {{ transaction.abort(); }} catch {{}}\n        finish(false, error);\n    }};\n    try {{\n        Promise.resolve(operation()).then(value => {{result = value; ready = true;}}, fail);\n    }} catch (error) {{ fail(error); }}\n}}))({transaction}, {operation})"
-)
-async def transaction_result[T](
+def transaction_result[T](
     transaction: IDBTransaction, operation: Callable[[], Awaitable[T]]
-) -> T:
+) -> Promise[T]:
     """Run an operation and await transaction completion, aborting on failure.
 
     Call immediately after creating the transaction, before yielding. The
@@ -503,5 +614,9 @@ async def transaction_result[T](
     I/O, or other work that lets IndexedDB auto-commit. Listeners are installed
     before the operation runs. Request success alone is not commit success.
     An already-finished transaction rejects without invoking the operation.
+
+    Requires native Promise.withResolvers (Chrome 119 or Safari 17.4+).
     """
-    ...
+    result = _TransactionResult[T](transaction)
+    result.start(operation)
+    return result.pending.promise

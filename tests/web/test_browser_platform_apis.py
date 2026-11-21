@@ -17,7 +17,7 @@ from pyjs.web.crypto import crypto
 from pyjs.web.dom import DOMException, document
 from pyjs.web.dragdrop import DataTransfer, DragEvent
 from pyjs.web.encoding import TextDecoder, TextEncoder
-from pyjs.web.events import WheelEvent
+from pyjs.web.events import MouseEvent, PointerEvent, WheelEvent
 from pyjs.web.files import Blob, File
 from pyjs.web.indexeddb import (
     IDBDatabase,
@@ -319,6 +319,22 @@ def test_svg_wheel_pointer_and_drag_apis_are_native():
     assert drag.dataTransfer is not None
     assert (drag.clientX, drag.clientY) == (12, 34)
     assert transfer.getData("text/plain") == "note-1"
+
+
+@js
+def test_event_constructors_accept_css_coordinates():
+    mouse = MouseEvent("mousemove", clientX=12.0, clientY=-34.0)
+    wheel = WheelEvent("wheel", clientX=12.0, clientY=-34.0)
+    drag = DragEvent("dragstart", clientX=12.0, clientY=-34.0)
+    for event in [mouse, wheel, drag]:
+        assert event.clientX == 12.0
+        assert event.clientY == -34.0
+    pointer = PointerEvent("pointermove", clientX=12.5, clientY=-34.25,
+                           screenX=56.75, screenY=-78.5)
+    assert pointer.clientX == 12.5
+    assert pointer.clientY == -34.25
+    assert pointer.screenX == 56.75
+    assert pointer.screenY == -78.5
 
 
 @js

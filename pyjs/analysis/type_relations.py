@@ -27,6 +27,14 @@ def is_builtin_class(value_type, name):
             and value_type.generic_name == name)
 
 
+def awaitable_base(value_type):
+    while isinstance(value_type, Class):
+        if is_builtin_class(value_type, "Awaitable"):
+            return value_type
+        value_type = value_type.super
+    return None
+
+
 def inherited_sequence_slot(value_type, name):
     """Resolve a builtin sequence slot without erasing the receiver's type.
 

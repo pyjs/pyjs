@@ -97,8 +97,10 @@ def test_event_constructors_retain_cpython_values():
     assert MessageEvent("message", data="hello").data == "hello"
     assert MessageEvent("message").ports == []
 
-    pointer = PointerEvent("pointerdown", clientX=12, clientY=34)
-    assert (pointer.clientX, pointer.clientY) == (12, 34)
+    pointer = PointerEvent("pointerdown", clientX=12.5, clientY=-34.25,
+                           screenX=56.75, screenY=-78.5)
+    assert (pointer.clientX, pointer.clientY) == (12.5, -34.25)
+    assert (pointer.screenX, pointer.screenY) == (56.75, -78.5)
 
     wheel = WheelEvent("wheel", deltaX=5, deltaY=-10)
     assert (wheel.type, wheel.deltaX, wheel.deltaY) == ("wheel", 5, -10)

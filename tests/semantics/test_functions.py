@@ -27,6 +27,7 @@ from tests.backend_semantics import (
     MEMBERSHIP_ORDER_CONTRACT,
     NESTED_CONDITIONAL_CONTRACT,
     NUMERIC_NAME_CONTRACT,
+    OPTIONAL_CALLBACK_OVERLOAD_CONTRACT,
     REPRESENTED_ROUNDING_CONTRACT,
     SCALAR_NUMERIC_CONTRACT,
     SEQUENCE_REFLECTION_CONTRACT,
@@ -681,6 +682,10 @@ def test_shared_callable_values():
 
 def test_shared_callable_identity():
     assert_semantics(CALLABLE_IDENTITY_CONTRACT.print_source + "\nmain()\n")
+
+
+def test_optional_callback_overload_preserves_lambda_context():
+    assert_semantics(OPTIONAL_CALLBACK_OVERLOAD_CONTRACT.print_source + "\nmain()\n")
 
 
 def test_generic_forwarded_callbacks_keep_numeric_representations():

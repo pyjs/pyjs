@@ -82,8 +82,8 @@ class DragEvent(MouseEvent):
         *,
         bubbles: bool = False,
         cancelable: bool = False,
-        clientX: int = 0,
-        clientY: int = 0,
+        clientX: float = 0,
+        clientY: float = 0,
         dataTransfer: DataTransfer | None = None,
     ):
         super().__init__(

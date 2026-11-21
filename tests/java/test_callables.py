@@ -4,7 +4,10 @@ import pytest
 
 from pyjs.analysis.diagnostics import CompilationError
 from pyjs.java import JVMUnsupported, transpile_jvm
-from tests.backend_semantics import CALLABLE_IDENTITY_CONTRACT
+from tests.backend_semantics import (
+    CALLABLE_IDENTITY_CONTRACT,
+    OPTIONAL_CALLBACK_OVERLOAD_CONTRACT,
+)
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
     assert_compiles_to_android_dex,
@@ -23,6 +26,10 @@ def apply(callback: Callable[[int], int], value: int) -> int:
 def main() -> str:
     return str(apply({expression}, 21))
 ''', tmp_path)
+
+
+def test_optional_callback_overload_preserves_lambda_context(tmp_path):
+    assert_matches_python(OPTIONAL_CALLBACK_OVERLOAD_CONTRACT.source, tmp_path)
 
 
 def test_callback_results_and_runtime_function_selection(tmp_path):

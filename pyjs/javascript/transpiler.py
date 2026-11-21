@@ -61,6 +61,7 @@ JAVASCRIPT_RESERVED_IDENTIFIERS = {
     "finally",
     "for",
     "function",
+    "globalThis",
     "if",
     "implements",
     "import",
@@ -2487,6 +2488,8 @@ class Transpiler(_Unparser):
             self.write(exception_name)
         elif node.id in {"super", "this"} and isinstance(value, Class):
             self.write(node.id)
+        elif isinstance(value, Class) and value.generic_types and is_native_for(value.py_obj, "js"):
+            self.write("globalThis.", value.py_cls.__name__)
         else:
             self.write(javascript_identifier(node.id))
 

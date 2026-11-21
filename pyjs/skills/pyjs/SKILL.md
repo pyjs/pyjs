@@ -295,6 +295,36 @@ available for every released version.
   its IndexedDB requests, but not timers or network I/O. It resolves only after
   commit and aborts on operation failure; request success alone is not a
   durable-save acknowledgement.
+- Use `pyjs.javascript.Promise[T]` to adapt callback APIs without inline JS.
+  `T` is the final resolved value, not another awaitable. Construct with a
+  synchronous `(resolve, reject)` executor, or use
+  `pending = Promise[T].withResolvers()` and return `pending.promise` after
+  registering listeners. Resolve with `pending.resolve(value)` and reject
+  with `pending.reject(reason)`. `withResolvers()` needs Chrome 119 or
+  Safari 17.4; use the constructor for older runtimes.
+  `Promise.resolve(value)`, `Promise[T].reject(reason)`, `then`, `catch`,
+  `finally_`, `all`, `allSettled`, `race` and `any` use native scheduling and
+  promise adoption. `then()` passes through; `catch` can change the result
+  type. `resolve` requires a value; pass `None` for an empty completion.
+  Constructor and method arguments are positional-only; keyword calls are
+  rejected at compilation instead of becoming JavaScript options objects.
+  `Promise.try_(callback)` invokes a zero-argument callback immediately and
+  captures thrown errors (Chrome 128, Safari 18.2 or Node 23 and newer).
+  Use a lambda to supply arguments to the callback.
+  Executors run immediately and handlers run in microtasks. Compiled Python
+  async functions also use eager JavaScript execution, not lazy CPython
+  coroutines. There is no asyncio task cancellation or custom `__await__`
+  emulation. Do not use these bindings in CPython execution paths.
+  Use `return await work()` in an async function when returning its result.
+  Returning an awaitable itself is rejected; use a list or another container
+  if it must remain data. Known nested awaitables fail during compilation;
+  opaque `object` returns reject thenables at runtime before assimilation.
+  Native JavaScript APIs still use their own promise adoption semantics.
+  Native awaitable declarations must directly extend `Awaitable[T]` with
+  one matching type parameter; remapped inheritance is diagnosed rather
+  than guessing the result's numeric representation.
+  IndexedDB arguments are evaluated before the adapter is called, so argument
+  errors raise immediately. Database request failures reject the Promise.
 - For system sharing, import `ShareData` and `navigator` from
   `pyjs.web.sharing`. Check `hasattr(navigator, "share")`; availability depends
   on the browser, operating system, secure context and permissions policy.

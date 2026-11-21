@@ -1,6 +1,34 @@
 from pyjs.testing.helpers import at
 
 
+def test_open_database_keeps_arguments_outside_generated_callback_scope():
+    at(
+        """
+        from pyjs.web.indexeddb import open_database
+
+        async def main(request: str, resolve: int, upgrade: callable):
+            database = await open_database(request, resolve, upgrade)
+            database.close()
+        """,
+        """
+        def open_database(name: str, version: int, upgrade: callable | None=None) -> Promise[IDBDatabase]:
+            return Promise__IDBDatabase(lambda resolve, reject: _start_open(name, version, upgrade, resolve, reject))
+
+        async def main(request: str, resolve: int, upgrade: callable) -> None:
+            database: IDBDatabase = await open_database(request, resolve, upgrade)
+            database.[IDBDatabase]close()
+        """,
+        """
+        import { open_database } from './pyjs.web.indexeddb.js';
+
+        export async function main(request, resolve, upgrade) {
+            var database = await open_database(request, resolve, {upgrade: upgrade});
+            database.close();
+        }
+        """,
+    )
+
+
 def test_typed_store_preserves_request_results_without_runtime_wrappers():
     at(
         """
@@ -24,15 +52,16 @@ def test_typed_store_preserves_request_results_without_runtime_wrappers():
             await notes.[TypedIDBStore__str]clear!().[IDBRequest__NoneType]value!()
         """,
         """
+        import { request_result as $request_result } from './pyjs.web.indexeddb.js';
         import { get_list_item as $get_list_item } from './pyjs.python.js';
 
         export async function main(store) {
             var notes = store;
-            var value = await new Promise((resolve, reject) => {const request = notes.get('one');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            var values = await new Promise((resolve, reject) => {const request = notes.getAll();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var value = await $request_result(notes.get('one'), {validator: null});
+            var values = await $request_result(notes.getAll(), {validator: null});
             console.log((value != null ? value + '!' : 'missing'));
             console.log($get_list_item(values, 0) + '!');
-            await new Promise((resolve, reject) => {const request = notes.clear();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            await $request_result(notes.clear(), {validator: null});
         }
         """,
     )
@@ -68,6 +97,8 @@ def test_typed_request_can_validate_data_before_resolving():
                 print(value.[str]__add__!('!'))
         """,
         """
+        import { request_result as $request_result } from './pyjs.web.indexeddb.js';
+
         export function require_text(value) {
             if (!((typeof value === 'string'))) {
                 throw new RangeError('expected text');
@@ -77,7 +108,7 @@ def test_typed_request_can_validate_data_before_resolving():
 
         export async function main(store) {
             var notes = store;
-            var value = await new Promise((resolve, reject) => {const request = notes.get('one');const validate = require_text;request.addEventListener('success', () => {try{resolve(validate(request.result))}catch(error){reject(error)}}, {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var value = await $request_result(notes.get('one'), {validator: require_text});
             if (value != null) {
                 console.log(value + '!');
             }
@@ -98,6 +129,9 @@ def test_request_result_preserves_indexeddb_operation_result_types():
             await request_result(factory.deleteDatabase("notes"))
         """,
         """
+        def request_result(request: IDBRequest__T, validator: Callable[[T], T] | None=None) -> Promise[T]:
+            return Promise__T(lambda resolve, reject: _listen_request(request, validator, resolve, reject))
+
         async def main(factory: IDBFactory, store: IDBObjectStore) -> None:
             cleared: None = await request_result(store.[IDBObjectStore]clear())
             count: int = await request_result(store.[IDBObjectStore]count())
@@ -105,11 +139,13 @@ def test_request_result_preserves_indexeddb_operation_result_types():
             await request_result(factory.[IDBFactory]deleteDatabase('notes'))
         """,
         """
+        import { request_result } from './pyjs.web.indexeddb.js';
+
         export async function main(factory, store) {
-            var cleared = await new Promise((resolve, reject) => {const request = store.clear();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            var count = await new Promise((resolve, reject) => {const request = store.count();request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            await new Promise((resolve, reject) => {const request = store.delete('one');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
-            await new Promise((resolve, reject) => {const request = factory.deleteDatabase('notes');request.addEventListener('success', () => resolve(request.result), {once: true});request.addEventListener('error', () => reject(request.error), {once: true});});
+            var cleared = await request_result(store.clear());
+            var count = await request_result(store.count());
+            await request_result(store.delete('one'));
+            await request_result(factory.deleteDatabase('notes'));
         }
         """,
     )

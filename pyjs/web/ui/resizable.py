@@ -82,7 +82,7 @@ class ResizablePanelGroup(Widget):
     ):
         super().__init__()
         self.drag_index = -1
-        self.drag_start = 0
+        self.drag_start = 0.0
         self.before_start = 0.0
         self.after_start = 0.0
         self.move_listener = ResizableMoveListener(self)
@@ -114,7 +114,7 @@ class ResizablePanelGroup(Widget):
 
     def initialize(self):
         self.drag_index = -1
-        self.drag_start = 0
+        self.drag_start = 0.0
         self.before_start = 0.0
         self.after_start = 0.0
         self.move_listener = ResizableMoveListener(self)

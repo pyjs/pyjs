@@ -61,6 +61,7 @@ from .representation import (
     annotation_representation as runtime_annotation_representation,
 )
 from .type_relations import (
+    awaitable_base,
     callable_member,
     contains_json_object_schema,
     contains_type_variable,
@@ -5612,6 +5613,17 @@ class InferenceVisitor(ast.NodeVisitor):
             )
         value_obj = analyzed_value_object(value)
         if (
+            node.attr == "__await__" and isinstance(value_obj, Instance)
+            and _ACTIVE_ENVIRONMENT.get().name == "js"
+            and awaitable_base(value_obj.cls) is not None
+            and is_native_for(value_obj.cls.py_obj, "js")
+        ):
+            self.fail(
+                node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "Native JavaScript promises do not expose Python __await__",
+                help="Use await value instead of calling __await__ directly.",
+            )
+        if (
             isinstance(value_obj, TypeAliasValue)
             and numeric_format(value_obj.annotation) is not None
         ):
@@ -6043,10 +6055,11 @@ class InferenceVisitor(ast.NodeVisitor):
         return result
 
     def visit_Subscript(self, node: ast.Subscript):
-        slice_node = self.visit(node.slice)
         value = self.visit(node.value)
         receiver_obj = analyzed_value_object(value)
         if isinstance(receiver_obj, GenericClass):
+            if is_native_for(receiver_obj.py_obj, _ACTIVE_ENVIRONMENT.get().name):
+                return self.visit_type_annotation(node)
             self.fail(
                 node,
                 DiagnosticCode.UNSUPPORTED_SYNTAX,
@@ -6056,6 +6069,7 @@ class InferenceVisitor(ast.NodeVisitor):
                     "them directly as constructors."
                 ),
             )
+        slice_node = self.visit(node.slice)
         self.reject_union_subscript(node.value, receiver_obj)
         receiver_type = (
             receiver_obj.cls if isinstance(receiver_obj, Instance) else receiver_obj
@@ -6437,7 +6451,7 @@ class InferenceVisitor(ast.NodeVisitor):
                 continue
             pattern = self.call_argument_pattern(function, index)
             expected = substitute_type_variables(pattern, bindings)
-            if contains_type_variable(expected) or not is_call_argument_compatible(
+            if self.contains_unbound_type_variable(expected) or not is_call_argument_compatible(
                 expected,
                 argument,
             ):
@@ -6445,7 +6459,7 @@ class InferenceVisitor(ast.NodeVisitor):
         for keyword in keywords:
             pattern = self.call_keyword_pattern(keyword, function)
             expected = substitute_type_variables(pattern, bindings)
-            if contains_type_variable(expected) or not is_call_argument_compatible(
+            if self.contains_unbound_type_variable(expected) or not is_call_argument_compatible(
                 expected,
                 keyword.value,
             ):
@@ -7870,12 +7884,20 @@ class InferenceVisitor(ast.NodeVisitor):
             else None
         )
         normalized_args = []
-        for index, (source, argument) in enumerate(
-            zip(node.args, args, strict=True)
-        ):
+        position = 0
+        for source, argument in zip(node.args, args, strict=True):
+            index = position
             if isinstance(source, ast.Starred):
+                expanded_type = analyzed_value_type(argument.value)
                 if (
-                    index >= len(positional_parameters)
+                    position is not None and is_builtin_class(expanded_type, "tuple")
+                    and not expanded_type.tuple_variadic
+                ):
+                    position += len(expanded_type.generic_types)
+                else:
+                    position = None
+                if (
+                    index is not None and index >= len(positional_parameters)
                     and vararg_item_representation is not None
                 ):
                     actual = analyzed_representation(argument)
@@ -7889,6 +7911,9 @@ class InferenceVisitor(ast.NodeVisitor):
                                 "parameter type."
                             ),
                         )
+                normalized_args.append(argument)
+            elif index is None:
+                # The runtime-sized pack owns positional binding from here.
                 normalized_args.append(argument)
             elif (
                 index >= len(positional_parameters)
@@ -7908,6 +7933,12 @@ class InferenceVisitor(ast.NodeVisitor):
                     if index < len(positional_parameters)
                     else signature_function.vararg
                 )
+                if parameter is None:
+                    self.fail(
+                        source, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                        f"{signature_function.name}() received too many positional arguments",
+                        help=f"Pass at most {len(positional_parameters)} positional arguments.",
+                    )
                 normalized_args.append(
                     normalize_parameter(
                         source,
@@ -7915,6 +7946,8 @@ class InferenceVisitor(ast.NodeVisitor):
                         parameter,
                     )
                 )
+            if not isinstance(source, ast.Starred) and position is not None:
+                position += 1
         args = normalized_args
         for source, keyword in zip(node.keywords, keywords, strict=True):
             parameter = parameters_by_name.get(keyword.arg)
@@ -8625,6 +8658,7 @@ class InferenceVisitor(ast.NodeVisitor):
         runtime_methods,
         is_super_method_call,
     ):
+        self.validate_awaitable_result(node, return_type)
         dependency_objects = {}
         inline_function = called_function
         if isinstance(func.obj, Class) and is_inline_class(func.obj.py_obj):
@@ -8814,9 +8848,9 @@ class InferenceVisitor(ast.NodeVisitor):
                 called_function = call_target
             elif (
                 isinstance(call_target, Class)
-                # Application subclasses must bind their initializer even when
-                # a browser/native declaration supplies an inherited marker.
-                and not vars(call_target.py_obj).get("__builtin__", False)
+                # Native declarations have signatures too; their builtin marker
+                # must not suppress contextual callback typing.
+                and not call_target.container.scope.is_builtins
                 and not is_client_model_type(call_target)
                 and not (
                     isinstance(node.func, ast.Name)
@@ -8867,6 +8901,26 @@ class InferenceVisitor(ast.NodeVisitor):
                 or getattr(called_function.py_obj, "__builtin__", False)
             )
         )
+        contextual_overloads = overloads
+        if len(overloads) > 1 and not any(
+            isinstance(argument, ast.Starred) for argument in node.args
+        ):
+            # A lambda cannot match a None-only parameter. Discard that
+            # context before its body needs the competing callable's types.
+            contextual_overloads = tuple(
+                overload for overload in overloads
+                if not any(
+                    isinstance(argument, ast.Lambda)
+                    and pattern is BUILTINS.search("NoneType")
+                    for argument, pattern in (
+                        [(argument, self.call_argument_pattern(overload, index))
+                         for index, argument in enumerate(node.args)]
+                        + [(keyword.value, self.call_keyword_pattern(keyword, overload))
+                           for keyword in node.keywords]
+                    )
+                )
+            )
+        overloads = contextual_overloads or overloads
         if len(overloads) == 1:
             signature_function = overloads[0]
         elif len(overloads) > 1:
@@ -9417,6 +9471,16 @@ class InferenceVisitor(ast.NodeVisitor):
                 return iterable_item_type(function.vararg.annotation.obj)
         return None
 
+    def contains_unbound_type_variable(self, value_type):
+        lexical = list(self.func.type_parameters.values())
+        if self.func.cls is not None:
+            lexical.extend((self.func.cls.generic_types or {}).values())
+        bindings = {
+            variable: BUILTINS.search("object")
+            for variable in lexical if isinstance(variable, TypeVariableClass)
+        }
+        return contains_type_variable(substitute_type_variables(value_type, bindings))
+
     def visit_call_argument(
         self,
         argument,
@@ -9436,7 +9500,7 @@ class InferenceVisitor(ast.NodeVisitor):
             expected_callable is not None
             and expected_callable.parameter_types is not None
             and not any(
-                contains_type_variable(parameter)
+                self.contains_unbound_type_variable(parameter)
                 for parameter in expected_callable.parameter_types
             )
         )
@@ -11472,6 +11536,8 @@ class InferenceVisitor(ast.NodeVisitor):
         assert declared_return_type is None or isinstance(
             declared_return_type, (Class, UnionType)
         )
+        if self.func.is_async and declared_return_type is not None:
+            self.reject_async_awaitable_return(node.returns, declared_return_type)
         if declared_return_type is not None and node.returns is not None:
             self.validate_compound_representation(
                 node.returns,
@@ -11750,11 +11816,9 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_Await(self, node: ast.Await):
         value = self.visit(node.value)
-        awaitable_type = analyzed_value_type(value)
-        if (
-            not isinstance(awaitable_type, Class)
-            or awaitable_type.generic_name != "Awaitable"
-        ):
+        value_type = analyzed_value_type(value)
+        awaitable_type = awaitable_base(value_type)
+        if awaitable_type is None:
             actual_type = analyzed_value_type(value).to_annotation_str()
             self.fail(
                 node.value,
@@ -11762,6 +11826,30 @@ class InferenceVisitor(ast.NodeVisitor):
                 f"Cannot await value of type {actual_type}",
                 help="Await an Awaitable value, usually by calling an async function.",
             )
+        if (
+            _ACTIVE_ENVIRONMENT.get().name == "js"
+            and value_type is not awaitable_type
+            and not is_native_for(value_type.py_obj, "js")
+        ):
+            self.fail(
+                node.value, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "Python __await__ implementations are not supported in JavaScript",
+                help="Use an async function or a native JavaScript Promise.",
+            )
+        if _ACTIVE_ENVIRONMENT.get().name == "js" and value_type is not awaitable_type:
+            parameters = getattr(value_type.py_cls, "__type_params__", ())
+            base_arguments = next((
+                typing.get_args(base)
+                for base in getattr(value_type.py_cls, "__orig_bases__", ())
+                if typing.get_origin(base) is value_type.py_cls.__base__
+            ), ())
+            if value_type.super is not awaitable_type or len(parameters) != 1 or base_arguments != parameters:
+                self.fail(
+                    node.value, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Native awaitable inheritance cannot project this result representation",
+                    help="Declare a direct native Awaitable[T] subclass with one matching type parameter.",
+                )
+        self.validate_awaitable_result(node.value, value_type)
         awaited_type = awaitable_type.generic_types["T"]
         value_obj = awaited_type
         if isinstance(awaited_type, Class):
@@ -11788,9 +11876,48 @@ class InferenceVisitor(ast.NodeVisitor):
         previous = self.in_type_annotation
         self.in_type_annotation = True
         try:
-            return self._visit_type_annotation(node)
+            result = self._visit_type_annotation(node)
+            self.validate_awaitable_result(node, result.obj)
+            return result
         finally:
             self.in_type_annotation = previous
+
+    def validate_awaitable_result(self, node, value_type):
+        if _ACTIVE_ENVIRONMENT.get().name != "js":
+            return
+        for member in get_type_members(value_type):
+            base = awaitable_base(member)
+            if base is not None and any(
+                self.is_assimilated_value(item)
+                for item in get_type_members(base.generic_types["T"])
+            ):
+                self.fail(
+                    node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "JavaScript promises cannot preserve an awaitable as their resolved value",
+                    help="Use the final resolved type, or wrap the awaitable in a container.",
+                )
+
+    @staticmethod
+    def is_assimilated_value(value_type):
+        if awaitable_base(value_type) is not None:
+            return True
+        if isinstance(value_type, Class):
+            then = value_type.find_attrs("then")
+            return isinstance(then, Function) or (
+                isinstance(then, Instance) and callable_member(then.cls) is not None
+            )
+        return False
+
+    def reject_async_awaitable_return(self, node, value_type):
+        if (
+            _ACTIVE_ENVIRONMENT.get().name == "js"
+            and any(self.is_assimilated_value(member) for member in get_type_members(value_type))
+        ):
+            self.fail(
+                node, DiagnosticCode.INCOMPATIBLE_RETURN,
+                "Returning an awaitable or thenable from async def changes meaning in JavaScript",
+                help="Return await value to return its result, or wrap it in a container to preserve it.",
+            )
 
     def _visit_type_annotation(self, node):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -11940,12 +12067,12 @@ class InferenceVisitor(ast.NodeVisitor):
                         f"{expected_count} type {argument}."
                     ),
                 )
-            return Name(
-                value.obj(
-                    *item_types,
-                    tuple_variadic=tuple_variadic,
-                )
-            )
+            try:
+                specialized = value.obj(*item_types, tuple_variadic=tuple_variadic)
+            except DependencyError as dependency:
+                self.validate_awaitable_result(node, dependency.class_or_func)
+                raise
+            return Name(specialized)
         elif isinstance(node, ast.BinOp):
             if not isinstance(node.op, ast.BitOr):
                 self.fail_invalid_type_annotation(node)
@@ -12083,6 +12210,22 @@ class InferenceVisitor(ast.NodeVisitor):
                 declared_type,
             )
             return_type = analyzed_value_type(value)
+            if self.func.is_async:
+                self.reject_async_awaitable_return(node.value, return_type)
+                if _ACTIVE_ENVIRONMENT.get().name == "js" and any(
+                    is_builtin_class(member, "object") or isinstance(member, TypeVariableClass)
+                    for member in get_type_members(return_type)
+                ):
+                    from pyjs.javascript._async import checked_async_result
+
+                    helper = resolve_imported(checked_async_result, self.module)
+                    if not helper.signature_analyzed:
+                        raise DependencyError(helper)
+                    value = self.call_node(
+                        node.value, return_type,
+                        func=Name(helper, runtime_dependency=helper),
+                        args=[value], keywords=[],
+                    )
         if declared_type is None:
             representation = analyzed_representation(value) if value is not None else None
             if representations_conflict(
@@ -16763,6 +16906,15 @@ def promote_atomic_class_reachability(entry_point: Function) -> None:
 def flatten_objects(parent: Object) -> Iterator[Function]:
     if isinstance(parent, (Module, Class)):
         for obj in parent.children:
+            # Native generic signatures can grow their own type (for example
+            # Promise.all -> Promise[list[T]]). Resolve methods on demand;
+            # eagerly expanding every specialization never reaches a fixed point.
+            if (
+                isinstance(parent, Class) and parent.generic_types
+                and is_native_for(parent.py_obj, _ACTIVE_ENVIRONMENT.get().name)
+                and isinstance(obj, Function) and obj.name != "__init__"
+            ):
+                continue
             yield from flatten_objects(obj)
         if isinstance(parent, Module):
             for dependency in parent.type_dependencies:

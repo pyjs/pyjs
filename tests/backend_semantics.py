@@ -1459,6 +1459,30 @@ def iterator_increment(value: int8) -> int8:
 )
 
 
+OPTIONAL_CALLBACK_OVERLOAD_CONTRACT = _contract('''
+from collections.abc import Callable
+from typing import overload
+from pyjs import js
+
+@overload
+def apply(callback: None, value: int) -> int: ...
+
+@overload
+def apply(callback: Callable[[int], int], value: int) -> int: ...
+
+@js
+def apply(callback: Callable[[int], int] | None, value: int) -> int:
+    if callback is None:
+        return value
+    return callback(value)
+
+''', "optional_callback_overloads", "", (
+    ("positional lambda context", "apply(lambda value: value + 1, 41) != 42"),
+    ("keyword lambda context", "apply(callback=lambda value: value + 2, value=41) != 43"),
+    ("None overload remains valid", "apply(None, 7) != 7"),
+))
+
+
 LAMBDA_CLOSURE_CONTRACT = _contract(
     '''
 from collections.abc import Callable
