@@ -1966,7 +1966,7 @@ class Transpiler(_Unparser):
             called_function = (called_function.cls if isinstance(called_function.cls, CallableClass)
                                else called_function.find("__call__"))
         if isinstance(called_function, CallableClass):
-            if called_function.minimum_arguments < len(called_function.parameter_types or ()):
+            if called_function.javascript_options_start is not None:
                 # Count supplied values, not AST nodes: a spread can reach the
                 # options-object slot even when it is the only written argument.
                 pending, count = list(args), 0
@@ -1983,7 +1983,7 @@ class Transpiler(_Unparser):
                         else:
                             count = None
                             break
-                if count is None or count > called_function.minimum_arguments:
+                if count is None or count > called_function.javascript_options_start:
                     self.fail(
                         node,
                         DiagnosticCode.INCOMPATIBLE_ARGUMENT,

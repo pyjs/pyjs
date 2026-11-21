@@ -369,6 +369,16 @@ async def test_fetch_can_be_injected_as_an_async_callback():
 
 
 @js
+async def test_fetch_alias_preserves_positional_value_implementation():
+    original = fetch
+    request: Callable[[str, object], Awaitable[Response]] = original
+    response = await request("data:text/plain,alias", {"cache": "no-store"})
+    assert await response.text() == "alias"
+    response = await original("data:text/plain,inferred", None)
+    assert await response.text() == "inferred"
+
+
+@js
 async def test_fetch_callback_preserves_optional_options():
     request: Callable[[str], Awaitable[Response]] = fetch
     response = await request("data:text/plain,optional")

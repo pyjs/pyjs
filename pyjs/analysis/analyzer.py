@@ -596,6 +596,19 @@ def callable_value_type(value):
                 break
             length += 1
         parameters = parameters[:length]
+    options_start = None
+    if _ACTIVE_ENVIRONMENT.get().name == "js":
+        # An inline API's value implementation may use a different calling
+        # convention than its public signature. Keep the emitted boundary in
+        # the inferred type so aliases and conditional joins cannot erase it.
+        runtime = getattr(value, "runtime_dependency", None)
+        implementations = (runtime,) if isinstance(runtime, Function) else methods
+        options_start = min(
+            (len(method.params) - len(method.defaults) for method in implementations
+             if method.defaults and not is_native_for(method.py_obj, "js")
+             and not (method.cls is not None and is_native_for(method.cls.py_obj, "js"))),
+            default=None,
+        )
     return CallableClass(
         tuple(parameter.annotation.obj for parameter in parameters),
         return_type,
@@ -614,6 +627,7 @@ def callable_value_type(value):
             for parameter, default in zip(method.kwonlyargs, method.kw_defaults, strict=True)
             if default is None
         )),
+        javascript_options_start=options_start,
     )
 
 
@@ -4262,6 +4276,7 @@ class InferenceVisitor(ast.NodeVisitor):
                                 assigned_type.return_representation,
                                 minimum_arguments=signature.minimum_arguments,
                                 required_keywords=signature.required_keywords,
+                                javascript_options_start=signature.javascript_options_start,
                             )
                     if any(member is BUILTINS.search("object") for member in get_type_members(assigned_type)):
                         declared = narrow_visitor.declared_local(reassignment_target.id)
@@ -10863,22 +10878,15 @@ class InferenceVisitor(ast.NodeVisitor):
         if any(member is not expected and is_call_argument_compatible(member, node)
                for member in get_type_members(expected_type)):
             return
-        function = analyzed_value_object(node)
-        runtime = getattr(node, "runtime_dependency", None)
-        if isinstance(runtime, Function):
-            # Inline APIs may provide a different positional ABI as values.
-            # Validate the emitted implementation, not the direct-call facade.
-            function = runtime
-        if isinstance(function, Function) and (
-            is_native_for(function.py_obj, "js")
-            or function.cls is not None and is_native_for(function.cls.py_obj, "js")
-        ):
+        if isinstance(node, ast.IfExp):
+            self.validate_javascript_callable_view(node.body, expected_type)
+            self.validate_javascript_callable_view(node.orelse, expected_type)
             return
-        actual = callable_value_type(Name(runtime) if isinstance(runtime, Function) else node)
-        if (isinstance(actual, CallableClass)
-                and actual.parameter_types is not None
-                and actual.minimum_arguments < len(actual.parameter_types)
-                and actual.minimum_arguments < expected.minimum_arguments):
+        actual = callable_value_type(node)
+        if any(isinstance(member, CallableClass)
+               and member.javascript_options_start is not None
+               and member.javascript_options_start < expected.minimum_arguments
+               for member in get_type_members(actual)):
             # A fixed view must not erase the optional-argument boundary that
             # the JS emitter uses to reject incompatible indirect calls.
             self.fail(

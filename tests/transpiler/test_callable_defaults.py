@@ -44,8 +44,12 @@ def test_callable_default_arity_survives_analysis(environment, expression, minim
         ]
         fixed = CallableClass(result.parameter_types, result.return_type, result.super,
                               result.parameter_representations, result.return_representation)
-        assert same_analyzer_type(result, fixed) is (minimum == 2)
-        assert (specialization_cache_key(result) == specialization_cache_key(fixed)) is (minimum == 2)
+        options_start = 1 if environment is None and expression != "second" else None
+        assert result.javascript_options_start == options_start
+        assert same_analyzer_type(result, fixed) is (minimum == 2 and options_start is None)
+        assert (specialization_cache_key(result) == specialization_cache_key(fixed)) is (
+            minimum == 2 and options_start is None
+        )
         assert is_subclass(result, fixed)
         assert is_subclass(fixed, result) is (minimum == 2)
 

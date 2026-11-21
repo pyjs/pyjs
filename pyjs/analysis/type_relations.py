@@ -408,6 +408,10 @@ def merge_conditional_types(left, right):
                            if left.parameter_types is None or right.parameter_types is None
                            else max(left.minimum_arguments, right.minimum_arguments)),
         required_keywords=tuple(dict.fromkeys((*left.required_keywords, *right.required_keywords))),
+        javascript_options_start=min(
+            (start for start in (left.javascript_options_start, right.javascript_options_start)
+             if start is not None), default=None,
+        ),
     )
 
 
@@ -489,6 +493,7 @@ def substitute_type_variables(value_type, bindings):
             value_type.return_representation,
             minimum_arguments=value_type.minimum_arguments,
             required_keywords=value_type.required_keywords,
+            javascript_options_start=value_type.javascript_options_start,
         )
     if not isinstance(value_type, Class) or not value_type.generic_types:
         return value_type

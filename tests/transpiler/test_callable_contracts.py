@@ -68,9 +68,12 @@ def test_native_optional_parameters_keep_their_positional_calling_convention():
         @js
         def main() -> None:
             print(consume(RegExp("a").test))
+            original = RegExp("a").test
+            print(consume(original))
+            print(original("abc"))
     ''')
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "True\n"
+    assert result.stdout == "True\nTrue\nTrue\n"
 
 
 def test_variadic_function_views_do_not_need_an_options_object():
@@ -94,7 +97,14 @@ def test_variadic_function_views_do_not_need_an_options_object():
     ("value: int, extra: int", "value + extra"),
     ("value: int, *extra: int", "value + extra[0]"),
 ])
-def test_callable_views_use_the_inline_value_implementation_abi(parameters, expression):
+@pytest.mark.parametrize("binding", [
+    "callback: Callable[[int, int], int] = add",
+    "original = add\ncallback: Callable[[int, int], int] = original",
+    "original = [add]\ncallback: Callable[[int, int], int] = original[0]",
+    "original = {'add': add}\ncallback: Callable[[int, int], int] = original['add']",
+])
+def test_callable_views_use_the_inline_value_implementation_abi(parameters, expression, binding):
+    binding = binding.replace("\n", "\n            ")
     source = f'''
         from collections.abc import Callable
         from pyjs import js
@@ -109,7 +119,7 @@ def test_callable_views_use_the_inline_value_implementation_abi(parameters, expr
             return callback(1, 2)
         @js
         def main() -> None:
-            callback: Callable[[int, int], int] = add
+            {binding}
             print(callback(3, 4))
             print(consume(add))
         main()
@@ -118,7 +128,8 @@ def test_callable_views_use_the_inline_value_implementation_abi(parameters, expr
 
 
 @pytest.mark.parametrize("default", ["", " = 10"])
-def test_callable_views_reject_optional_value_implementations(default):
+@pytest.mark.parametrize("binding", ["add", "original"])
+def test_callable_views_reject_optional_value_implementations(default, binding):
     with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
         analyze_module_source(f'''
             from collections.abc import Callable
@@ -130,7 +141,66 @@ def test_callable_views_reject_optional_value_implementations(default):
             def add(value: int, extra: int = 10) -> int:
                 return value + extra
             def main() -> int:
-                callback: Callable[[int, int], int] = add
+                original = add
+                callback: Callable[[int, int], int] = {binding}
+                return callback(1, 2)
+        ''')
+
+
+def test_callable_abi_identity_survives_aliases_substitution_and_conditional_joins():
+    with analyze_module_source('''
+        from pyjs import js
+        @js.inline("({value} + {extra})")
+        def adapted(value: int, extra: int = 10) -> int:
+            return value + extra
+        @adapted.value
+        def adapted(value: int, *extra: int) -> int:
+            return value + (extra[0] if extra else 10)
+        @js
+        def ordinary(value: int, extra: int = 10) -> int:
+            return value + extra
+        def main(condition: bool) -> int:
+            positional = adapted
+            options = ordinary
+            mixed = positional if condition else options
+            return mixed(1)
+    ''') as analysis:
+        scope = analysis.entry_point.scope
+        positional, options, mixed = (
+            scope.lookup(name).cls for name in ("positional", "options", "mixed")
+        )
+        assert positional.minimum_arguments == options.minimum_arguments == 1
+        assert positional.javascript_options_start is None
+        assert options.javascript_options_start == mixed.javascript_options_start == 1
+        assert not same_erased_type(positional, options)
+        for key in (union_type_key, specialization_cache_key, specialization_type_name):
+            assert key(positional) != key(options)
+        for value in (positional, options):
+            assert substitute_type_variables(value, {}).javascript_options_start == value.javascript_options_start
+        assert merge_conditional_types(options, positional).javascript_options_start == 1
+
+
+@pytest.mark.parametrize("choice", ["positional if condition else options",
+                                    "options if condition else positional"])
+def test_conditional_alias_cannot_hide_an_optional_value_implementation(choice):
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        analyze_module_source(f'''
+            from collections.abc import Callable
+            from pyjs import js
+            @js.inline("({{value}} + {{extra}})")
+            def adapted(value: int, extra: int = 10) -> int:
+                return value + extra
+            @adapted.value
+            def adapted(value: int, *extra: int) -> int:
+                return value + (extra[0] if extra else 10)
+            @js
+            def ordinary(value: int, extra: int = 10) -> int:
+                return value + extra
+            def main(condition: bool) -> int:
+                positional = adapted
+                options = ordinary
+                mixed = {choice}
+                callback: Callable[[int, int], int] = mixed
                 return callback(1, 2)
         ''')
 
@@ -140,6 +210,10 @@ def test_callable_views_reject_optional_value_implementations(default):
     "callback: Callable[[int, int], int] | None = None\ncallback = add",
     "original = add\ncallback: Callable[[int, int], int] = original",
     "callbacks: list[Callable[[int, int], int]] = [add]\ncallback = callbacks[0]",
+    "callback: Callable[[int, int], int] = add if condition else strict",
+    "callback: Callable[[int, int], int] | None = add if condition else None",
+    "original = add if condition else None\ncallback: Callable[[int, int], int] | None = original",
+    "callback: Callable[[int, int], int] | None = strict if condition else (add if condition else None)",
 ])
 def test_optional_callable_abi_cannot_be_erased_through_storage(binding):
     source = '''from collections.abc import Callable
@@ -148,7 +222,10 @@ from pyjs import js
 def add(value: int, extra: int = 10) -> int:
     return value + extra
 @js
-def main() -> int:
+def strict(value: int, extra: int) -> int:
+    return value + extra
+@js
+def main(condition: bool) -> int:
 '''
     source += "".join("    " + line + "\n" for line in binding.splitlines())
     source += "    return callback(1, 2)\n"
