@@ -45,6 +45,10 @@
   erased to `object` check for thenables at the return boundary. CPython use
   of the Promise factory APIs raises explicitly instead of pretending to run.
 
+- Mouse, pointer, wheel and drag event constructors accept floating-point CSS
+  coordinates. Their bindings no longer reject fractional positions from
+  layout geometry when checking native constructor arguments.
+
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;
   the truth of their keys and values does not affect the result.
