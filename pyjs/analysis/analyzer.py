@@ -10864,12 +10864,17 @@ class InferenceVisitor(ast.NodeVisitor):
                for member in get_type_members(expected_type)):
             return
         function = analyzed_value_object(node)
+        runtime = getattr(node, "runtime_dependency", None)
+        if isinstance(runtime, Function):
+            # Inline APIs may provide a different positional ABI as values.
+            # Validate the emitted implementation, not the direct-call facade.
+            function = runtime
         if isinstance(function, Function) and (
             is_native_for(function.py_obj, "js")
             or function.cls is not None and is_native_for(function.cls.py_obj, "js")
         ):
             return
-        actual = callable_value_type(node)
+        actual = callable_value_type(Name(runtime) if isinstance(runtime, Function) else node)
         if (isinstance(actual, CallableClass)
                 and actual.parameter_types is not None
                 and actual.minimum_arguments < len(actual.parameter_types)

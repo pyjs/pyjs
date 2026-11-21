@@ -14,6 +14,8 @@
   signature to a typed `Callable` view that requires those arguments now
   receives a compilation diagnostic rather than silently dropping arguments.
   Call these functions directly when supplying optional arguments.
+  Native methods and inline APIs with positional value implementations, such
+  as `fetch`, retain their supported callback forms.
   Argument evaluation errors raise synchronously; registration and trigger
   errors reject the Promise. Browser lock acquisition is also Python-authored,
   preserving ordered handoff and the separate host-side asyncio implementation.

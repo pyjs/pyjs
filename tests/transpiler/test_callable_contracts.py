@@ -90,6 +90,51 @@ def test_variadic_function_views_do_not_need_an_options_object():
     ''')
 
 
+@pytest.mark.parametrize("parameters,expression", [
+    ("value: int, extra: int", "value + extra"),
+    ("value: int, *extra: int", "value + extra[0]"),
+])
+def test_callable_views_use_the_inline_value_implementation_abi(parameters, expression):
+    source = f'''
+        from collections.abc import Callable
+        from pyjs import js
+        @js.inline("({{value}} + {{extra}})")
+        def add(value: int, extra: int = 10) -> int:
+            return value + extra
+        @add.value
+        def add({parameters}) -> int:
+            return {expression}
+        @js
+        def consume(callback: Callable[[int, int], int]) -> int:
+            return callback(1, 2)
+        @js
+        def main() -> None:
+            callback: Callable[[int, int], int] = add
+            print(callback(3, 4))
+            print(consume(add))
+        main()
+    '''
+    assert_semantics(source)
+
+
+@pytest.mark.parametrize("default", ["", " = 10"])
+def test_callable_views_reject_optional_value_implementations(default):
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        analyze_module_source(f'''
+            from collections.abc import Callable
+            from pyjs import js
+            @js.inline("({{value}} + {{extra}})")
+            def add(value: int, extra: int{default}) -> int:
+                return value + extra
+            @add.value
+            def add(value: int, extra: int = 10) -> int:
+                return value + extra
+            def main() -> int:
+                callback: Callable[[int, int], int] = add
+                return callback(1, 2)
+        ''')
+
+
 @pytest.mark.parametrize("binding", [
     "callback: Callable[[int, int], int] = add",
     "callback: Callable[[int, int], int] | None = None\ncallback = add",
