@@ -4265,6 +4265,8 @@ class InferenceVisitor(ast.NodeVisitor):
                         # input view: the source may accept extra arguments.
                         # Keep the source's covariant result proof, however;
                         # native callable views project it from the storage ABI.
+                        # The JS calling convention also belongs to the assigned
+                        # implementation, not the local's previous value.
                         declared = narrow_visitor.declared_local(reassignment_target.id)
                         signature = callable_member(declared.cls)
                         if signature is not None and signature.parameter_types is not None:
@@ -4276,7 +4278,7 @@ class InferenceVisitor(ast.NodeVisitor):
                                 assigned_type.return_representation,
                                 minimum_arguments=signature.minimum_arguments,
                                 required_keywords=signature.required_keywords,
-                                javascript_options_start=signature.javascript_options_start,
+                                javascript_options_start=assigned_type.javascript_options_start,
                             )
                     if any(member is BUILTINS.search("object") for member in get_type_members(assigned_type)):
                         declared = narrow_visitor.declared_local(reassignment_target.id)
@@ -4634,6 +4636,11 @@ class InferenceVisitor(ast.NodeVisitor):
                             f"the annotation for {target.id!r}."
                         ),
                     )
+                if value is None and isinstance(existing, Instance):
+                    # Unpacking and with targets supply only the assigned type.
+                    self.validate_javascript_callable_view(
+                        ast.copy_location(Name(value_type), target), existing.cls,
+                    )
                 return ast.copy_location(Name(self.scope.lookup(target.id), ctx=target.ctx), target), False
             except NameError:
                 if not value_type:
@@ -4822,6 +4829,8 @@ class InferenceVisitor(ast.NodeVisitor):
             ):
                 apply_representation(target_value, value_representation)
             if value is assignment_value.node and isinstance(target_value, Instance):
+                if not is_new_name and not declared_storage:
+                    self.validate_javascript_callable_view(value, target_value.cls)
                 # A represented union keeps the full member map even when
                 # this write supplies only one arm (including on parameters).
                 if declared_storage:

@@ -102,6 +102,7 @@ def test_variadic_function_views_do_not_need_an_options_object():
     "original = add\ncallback: Callable[[int, int], int] = original",
     "original = [add]\ncallback: Callable[[int, int], int] = original[0]",
     "original = {'add': add}\ncallback: Callable[[int, int], int] = original['add']",
+    "original = ordinary\noriginal = add\ncallback: Callable[[int, int], int] = original",
 ])
 def test_callable_views_use_the_inline_value_implementation_abi(parameters, expression, binding):
     binding = binding.replace("\n", "\n            ")
@@ -114,6 +115,9 @@ def test_callable_views_use_the_inline_value_implementation_abi(parameters, expr
         @add.value
         def add({parameters}) -> int:
             return {expression}
+        @js
+        def ordinary(value: int, extra: int = 10) -> int:
+            return value + extra
         @js
         def consume(callback: Callable[[int, int], int]) -> int:
             return callback(1, 2)
@@ -214,6 +218,9 @@ def test_conditional_alias_cannot_hide_an_optional_value_implementation(choice):
     "callback: Callable[[int, int], int] | None = add if condition else None",
     "original = add if condition else None\ncallback: Callable[[int, int], int] | None = original",
     "callback: Callable[[int, int], int] | None = strict if condition else (add if condition else None)",
+    "original = strict\noriginal = add\ncallback: Callable[[int, int], int] = original",
+    "original = strict\nif condition:\n    original = add\ncallback: Callable[[int, int], int] = original",
+    "original = strict\noriginal, = (add,)\ncallback: Callable[[int, int], int] = original",
 ])
 def test_optional_callable_abi_cannot_be_erased_through_storage(binding):
     source = '''from collections.abc import Callable
@@ -231,6 +238,48 @@ def main(condition: bool) -> int:
     source += "    return callback(1, 2)\n"
     with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
         analyze_module_source(source)
+
+
+@pytest.mark.parametrize("assignment", ["callback = add", "if condition:\n        callback = add",
+                                        "callback, = (add,)"])
+def test_reassigned_inferred_callable_rejects_optional_indirect_arguments(assignment):
+    with pytest.raises(CompilationError, match="callable views cannot require optional positional arguments"):
+        assert_module_transpile(f'''
+from pyjs import js
+@js
+def strict(value: int, extra: int) -> int:
+    return value + extra
+@js
+def add(value: int, extra: int = 10) -> int:
+    return value + extra
+def main(condition: bool) -> int:
+    callback = strict
+    {assignment}
+    return callback(1, 2)
+''', "")
+
+
+def test_reassigned_shorter_inferred_callable_keeps_omission_supported():
+    assert_semantics('''
+        from pyjs import js
+        @js
+        def identity(value: int) -> int:
+            return value
+        @js
+        def add(value: int, extra: int = 10) -> int:
+            return value + extra
+        @js
+        def choose(condition: bool) -> int:
+            callback = identity
+            if condition:
+                callback = add
+            return callback(2)
+        @js
+        def main() -> None:
+            print(choose(True))
+            print(choose(False))
+        main()
+    ''')
 
 
 @pytest.mark.parametrize("environment", [None, NATIVE_ENVIRONMENT, JVM_ENVIRONMENT, WEBASSEMBLY_ENVIRONMENT],
