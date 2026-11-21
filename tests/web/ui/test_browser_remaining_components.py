@@ -358,16 +358,19 @@ async def test_resizable_rebuilds_drag_state_after_server_hydration():
             "pointerdown",
             bubbles=True,
             cancelable=True,
-            clientX=100,
+            clientX=100.25,
             pointerId=1,
         )
     )
-    window.dispatchEvent(PointerEvent("pointermove", clientX=140, pointerId=1))
-    window.dispatchEvent(PointerEvent("pointerup", clientX=140, pointerId=1))
+    assert panels.drag_start == 100.25
+    window.dispatchEvent(PointerEvent("pointermove", clientX=140.75, pointerId=1))
+    window.dispatchEvent(PointerEvent("pointerup", clientX=140.75, pointerId=1))
 
     first_size = float(first.getAttribute("data-size"))
     second_size = float(second.getAttribute("data-size"))
     assert first_size > 42
+    expected_size = 42 + 40.5 / panels.getBoundingClientRect().width * 100
+    assert abs(first_size - expected_size) < 0.000001
     assert second_size < 58
     assert round(first_size + second_size) == 100
     assert panels.drag_index == -1

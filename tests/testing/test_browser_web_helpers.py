@@ -20,7 +20,7 @@ from pyjs.web.events import PointerEvent
 class PointerListener:
     def __init__(self):
         self.events: list[str] = []
-        self.positions: list[int] = []
+        self.positions: list[float] = []
 
     @js.keep
     def handleEvent(self, event: PointerEvent):
