@@ -1,6 +1,8 @@
 import asyncio
+from collections.abc import Callable
 
 from pyjs import js
+from pyjs.javascript import Promise
 
 
 @js
@@ -20,11 +22,23 @@ class AsyncLock:
     @__init__.client
     def __init__(self):
         self._locked = False
-        self._waiters: list[callable] = []
+        self._waiters: list[Callable[[], None]] = []
 
     @js
     async def acquire(self) -> bool:
         return await self._host_lock.acquire()
+
+    @acquire.client
+    async def acquire(self) -> bool:
+        if not self._locked and len(self._waiters) == 0:
+            self._locked = True
+            return True
+        await Promise[None](
+            lambda resolve, reject: self._waiters.append(lambda: resolve(None))
+        )
+        self._waiters.pop(0)
+        self._locked = True
+        return True
 
     @js
     def release(self) -> None:
@@ -45,15 +59,3 @@ class AsyncLock:
     @locked.client
     def locked(self) -> bool:
         return self._locked
-
-
-AsyncLock.acquire.source("""
-if (!this._locked && this._waiters.length === 0) {
-    this._locked = true;
-    return true;
-}
-await new Promise(resolve => this._waiters.push(resolve));
-this._waiters.shift();
-this._locked = true;
-return true;
-""")

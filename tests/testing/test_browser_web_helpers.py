@@ -8,12 +8,14 @@ from pyjs.testing.interaction.gesture import (
 )
 from pyjs.testing.web import (
     dispatch_pointer_script,
+    next_frame,
     wait_for_event,
     wait_for_settled_phase,
 )
 from pyjs.web.dom import document
 from pyjs.web.domx import div, require_closest, require_element, span
-from pyjs.web.events import PointerEvent
+from pyjs.web.events import EventTarget, PointerEvent
+from pyjs.web.timers import queueMicrotask
 
 
 @js
@@ -36,6 +38,43 @@ async def test_wait_for_event_is_armed_before_a_synchronous_action():
     event = await wait_for_event(target, "click", target.click)
 
     assert event.type == "click"
+
+
+@pytest.mark.pyjs_web
+@js
+async def test_wait_for_event_accepts_explicit_none_and_keyword_arguments():
+    target = div()
+    pending = wait_for_event(target=target, event_name="click", trigger=None)
+    target.click()
+    assert (await pending).type == "click"
+
+
+@js
+def missing_event_target() -> EventTarget:
+    raise ValueError("target unavailable")
+
+
+@pytest.mark.pyjs_web
+@js
+def test_event_wait_argument_errors_raise_before_returning_a_promise():
+    caught = False
+    try:
+        wait_for_event(missing_event_target(), "click")
+    except ValueError:
+        caught = True
+    assert caught
+
+
+@pytest.mark.pyjs_web
+@js
+async def test_frame_registration_precedes_reactions_and_preserves_timestamp():
+    order: list[str] = []
+    pending = next_frame()
+    queueMicrotask(lambda: order.append("microtask"))
+    timestamp = await pending
+    order.append("frame")
+    assert timestamp >= 0.0
+    assert order == ["microtask", "frame"]
 
 
 @pytest.mark.pyjs_web

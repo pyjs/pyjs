@@ -432,7 +432,11 @@ comparisons of ordinary DOM elements; create or replace baselines with
 `animation_time_ms=` to pause animations at a deterministic capture point, and
 use `await wait_for_frames()` after DOM changes that only need layout and paint
 to settle. Use `await wait_for_event(target, name, trigger)` to arm the listener
-before a synchronous action.
+before a synchronous action. The trigger must return `None`, not an awaitable;
+omit it or pass `None` for an independently delivered event. Trigger failure
+removes the owned listener and rejects unless the event already resolved it.
+`next_frame()` registers immediately and returns a native Promise of the
+animation-frame timestamp. These helpers can be stored as function values.
 
 Projects may set recurring browser defaults under `[tool.pytest.ini_options]`
 using
