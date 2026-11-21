@@ -34,9 +34,30 @@ def infer_type_variables(
         bindings[pattern] = merge_return_types(current, actual)
         return
     if isinstance(pattern, UnionType):
+        if isinstance(actual, UnionType):
+            for member in actual.types:
+                infer_type_variables(
+                    pattern, member, bindings, iterable_item_type, defaults=defaults,
+                )
+            return
         candidates = [
             member for member in pattern.types if contains_type_variable(member)
         ]
+        if len(candidates) > 1:
+            structured = []
+            for candidate in candidates:
+                if isinstance(candidate, TypeVariableClass):
+                    continue
+                ancestor = actual
+                while isinstance(ancestor, Class):
+                    if isinstance(candidate, Class) and candidate.py_cls is ancestor.py_cls:
+                        structured.append(candidate)
+                        break
+                    ancestor = ancestor.super
+            if structured:
+                candidates = structured
+            else:
+                candidates = [member for member in candidates if isinstance(member, TypeVariableClass)]
         if len(candidates) == 1:
             infer_type_variables(
                 candidates[0],

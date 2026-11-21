@@ -3,9 +3,9 @@
 import json
 import random
 import time
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Self, TypedDict
+from typing import Self, TypedDict, overload
 from urllib.parse import quote, unquote
 
 from pyjs import js
@@ -26,6 +26,9 @@ __all__ = [
     "JSON",
     "JSONObject",
     "Math",
+    "Promise",
+    "PromiseResolvers",
+    "PromiseSettledResult",
     "SharedArrayBuffer",
     "TypedArray",
     "Uint8Array",
@@ -39,7 +42,107 @@ __all__ = [
     "WebAssemblyModule",
     "encodeURIComponent",
     "decodeURIComponent",
+    "typeof",
 ]
+
+
+@js.inline("typeof {value}")
+def typeof(value: object) -> str:
+    """JavaScript's native typeof operator, without Python type emulation."""
+    raise NotImplementedError("typeof requires the JavaScript runtime")
+
+
+@js.native
+class Promise[T](Awaitable[T]):
+    """Native JavaScript promise with resolved value type T.
+
+    Executors run immediately; reactions run in microtasks. Resolution adopts
+    other promises, and there is no asyncio-style cancellation. This binding
+    requires a JavaScript runtime, not CPython's event loop.
+    """
+
+    def __init__(
+        self,
+        executor: Callable[[Callable[[T | Awaitable[T]], None], Callable[[object], None]], None],
+    ):
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    def __await__(self) -> Iterator[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @overload
+    def then(self) -> Promise[T]: ...
+
+    @overload
+    def then[U](
+        self, onfulfilled: None, onrejected: Callable[[object], U | Awaitable[U]],
+    ) -> Promise[T | U]: ...
+
+    @overload
+    def then[U](
+        self,
+        onfulfilled: Callable[[T], U | Awaitable[U]],
+        onrejected: Callable[[object], U | Awaitable[U]] | None = None,
+    ) -> Promise[U]: ...
+
+    def then[U](
+        self,
+        onfulfilled: Callable[[T], U | Awaitable[U]] | None = None,
+        onrejected: Callable[[object], U | Awaitable[U]] | None = None,
+    ) -> Promise[T | U]: ...
+
+    def catch[U](self, onrejected: Callable[[object], U | Awaitable[U]]) -> Promise[T | U]: ...
+
+    @js.inline("{self}.finally({_args_joined})")
+    def finally_(self, onfinally: Callable[[], None | Awaitable[None]]) -> Promise[T]: ...
+
+    @classmethod
+    def resolve(cls, value: T | Awaitable[T]) -> Promise[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def reject(cls, reason: object) -> Promise[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def all[U](cls, values: Iterable[U | Awaitable[U]]) -> Promise[list[U]]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def allSettled[U](cls, values: Iterable[U | Awaitable[U]]) -> Promise[list[PromiseSettledResult[U]]]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def race(cls, values: Iterable[T | Awaitable[T]]) -> Promise[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def any(cls, values: Iterable[T | Awaitable[T]]) -> Promise[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    def withResolvers(cls) -> PromiseResolvers[T]:
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+    @classmethod
+    @js.inline("globalThis.Promise.try({callback})")
+    def try_(cls, callback: Callable[[], T | Awaitable[T]]) -> Promise[T]:
+        """Invoke a zero-argument callback immediately, capturing its failure."""
+        raise NotImplementedError("Promise requires the JavaScript runtime")
+
+
+@js.native
+class PromiseResolvers[T]:
+    promise: Promise[T]
+    resolve: Callable[[T | Awaitable[T]], None]
+    reject: Callable[[object], None]
+
+
+@js.native
+class PromiseSettledResult[T]:
+    status: str
+    value: T | None
+    reason: object
 
 
 @js.native
