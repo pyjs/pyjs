@@ -306,6 +306,8 @@ available for every released version.
   `finally_`, `all`, `allSettled`, `race` and `any` use native scheduling and
   promise adoption. `then()` passes through; `catch` can change the result
   type. `resolve` requires a value; pass `None` for an empty completion.
+  Constructor and method arguments are positional-only; keyword calls are
+  rejected at compilation instead of becoming JavaScript options objects.
   `Promise.try_(callback)` invokes a zero-argument callback immediately and
   captures thrown errors (Chrome 128, Safari 18.2 or Node 23 and newer).
   Use a lambda to supply arguments to the callback.

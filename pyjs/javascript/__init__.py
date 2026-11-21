@@ -64,6 +64,7 @@ class Promise[T](Awaitable[T]):
     def __init__(
         self,
         executor: Callable[[Callable[[T | Awaitable[T]], None], Callable[[object], None]], None],
+        /,
     ):
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
@@ -75,7 +76,7 @@ class Promise[T](Awaitable[T]):
 
     @overload
     def then[U](
-        self, onfulfilled: None, onrejected: Callable[[object], U | Awaitable[U]],
+        self, onfulfilled: None, onrejected: Callable[[object], U | Awaitable[U]], /,
     ) -> Promise[T | U]: ...
 
     @overload
@@ -83,41 +84,43 @@ class Promise[T](Awaitable[T]):
         self,
         onfulfilled: Callable[[T], U | Awaitable[U]],
         onrejected: Callable[[object], U | Awaitable[U]] | None = None,
+        /,
     ) -> Promise[U]: ...
 
     def then[U](
         self,
         onfulfilled: Callable[[T], U | Awaitable[U]] | None = None,
         onrejected: Callable[[object], U | Awaitable[U]] | None = None,
+        /,
     ) -> Promise[T | U]: ...
 
-    def catch[U](self, onrejected: Callable[[object], U | Awaitable[U]]) -> Promise[T | U]: ...
+    def catch[U](self, onrejected: Callable[[object], U | Awaitable[U]], /) -> Promise[T | U]: ...
 
     @js.inline("{self}.finally({_args_joined})")
-    def finally_(self, onfinally: Callable[[], None | Awaitable[None]]) -> Promise[T]: ...
+    def finally_(self, onfinally: Callable[[], None | Awaitable[None]], /) -> Promise[T]: ...
 
     @classmethod
-    def resolve(cls, value: T | Awaitable[T]) -> Promise[T]:
+    def resolve(cls, value: T | Awaitable[T], /) -> Promise[T]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
-    def reject(cls, reason: object) -> Promise[T]:
+    def reject(cls, reason: object, /) -> Promise[T]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
-    def all[U](cls, values: Iterable[U | Awaitable[U]]) -> Promise[list[U]]:
+    def all[U](cls, values: Iterable[U | Awaitable[U]], /) -> Promise[list[U]]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
-    def allSettled[U](cls, values: Iterable[U | Awaitable[U]]) -> Promise[list[PromiseSettledResult[U]]]:
+    def allSettled[U](cls, values: Iterable[U | Awaitable[U]], /) -> Promise[list[PromiseSettledResult[U]]]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
-    def race(cls, values: Iterable[T | Awaitable[T]]) -> Promise[T]:
+    def race(cls, values: Iterable[T | Awaitable[T]], /) -> Promise[T]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
-    def any(cls, values: Iterable[T | Awaitable[T]]) -> Promise[T]:
+    def any(cls, values: Iterable[T | Awaitable[T]], /) -> Promise[T]:
         raise NotImplementedError("Promise requires the JavaScript runtime")
 
     @classmethod
@@ -126,7 +129,7 @@ class Promise[T](Awaitable[T]):
 
     @classmethod
     @js.inline("globalThis.Promise.try({callback})")
-    def try_(cls, callback: Callable[[], T | Awaitable[T]]) -> Promise[T]:
+    def try_(cls, callback: Callable[[], T | Awaitable[T]], /) -> Promise[T]:
         """Invoke a zero-argument callback immediately, capturing its failure."""
         raise NotImplementedError("Promise requires the JavaScript runtime")
 

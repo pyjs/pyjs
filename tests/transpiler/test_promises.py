@@ -88,6 +88,67 @@ def test_async_executor_is_rejected_before_it_can_lose_a_rejection():
             pass
 
 
+@pytest.mark.parametrize("expression", [
+    "Promise[int](executor=lambda resolve, reject: resolve(42))",
+    "Promise.resolve(value=42)",
+    "Promise[int].reject(reason='failure')",
+    "Promise.all(values=[1, 2])",
+    "Promise.allSettled(values=[1, 2])",
+    "Promise.race(values=[1, 2])",
+    "Promise.any(values=[1, 2])",
+    "Promise.try_(callback=lambda: 42)",
+    "value.then(onfulfilled=lambda item: item + 1)",
+    "value.then(None, onrejected=lambda reason: 42)",
+    "value.then(lambda item: item, onrejected=lambda reason: 42)",
+    "value.catch(onrejected=lambda reason: 42)",
+    "value.finally_(onfinally=lambda: None)",
+])
+def test_promise_keyword_arguments_fail_before_native_emission(expression):
+    source = (
+        "from pyjs.javascript import Promise\n"
+        "def main(value: Promise[int]):\n"
+        f"    return {expression}\n"
+    )
+    with pytest.raises(CompilationError, match="positional-only") as caught:
+        with analyze_source(source):
+            pass
+    assert caught.value.diagnostic.code == DiagnosticCode.INCOMPATIBLE_ARGUMENT
+
+
+def test_promise_keyword_diagnostic_locates_the_argument():
+    ad(
+        '''\
+        from pyjs.javascript import Promise
+        def main():
+            return Promise.resolve(value=42)
+        ''',
+        diagnostic_text(
+            "promise.py", 3, "return Promise.resolve(value=42)",
+            "                       ^^^^^^^^",
+            "pyjs.CompilationError: resolve() parameter 'value' is positional-only [PYJS1104]",
+            "help: Pass 'value' as a positional argument.",
+        ),
+        filename="promise.py",
+    )
+
+
+@pytest.mark.parametrize(("binding", "argument"), [
+    ("Promise[int].resolve", "value=42"),
+    ("value.then", "onfulfilled=lambda item: item + 1"),
+])
+def test_extracted_promise_methods_retain_positional_only_parameters(binding, argument):
+    source = (
+        "from pyjs.javascript import Promise\n"
+        "def main(value: Promise[int]):\n"
+        f"    operation = {binding}\n"
+        f"    return operation({argument})\n"
+    )
+    with pytest.raises(CompilationError, match="unexpected keyword argument") as caught:
+        with analyze_source(source):
+            pass
+    assert caught.value.diagnostic.code == DiagnosticCode.INCOMPATIBLE_ARGUMENT
+
+
 def test_python_await_protocol_is_not_mistaken_for_a_native_promise():
     source = '''
         from pyjs import js
