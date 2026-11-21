@@ -1,6 +1,7 @@
 import pytest
 
 from pyjs import js
+from pyjs.javascript import Promise
 from pyjs.web.crypto import crypto
 from pyjs.web.dom import window
 from pyjs.web.indexeddb import (
@@ -97,17 +98,16 @@ def invalid_database_name() -> str:
 
 
 @js
-async def test_open_argument_errors_reject_without_evaluating_later_arguments():
+async def test_open_argument_errors_raise_without_evaluating_later_arguments():
     events: list[str] = []
-    pending = open_database(invalid_database_name(), database_version(events), database_upgrade(events))
-    assert len(events) == 0
     rejected = False
     try:
-        await pending
+        open_database(invalid_database_name(), database_version(events), database_upgrade(events))
     except ValueError as error:
         assert str(error) == "Name lookup failed"
         rejected = True
     assert rejected
+    assert len(events) == 0
 
 
 @js
@@ -154,15 +154,27 @@ def missing_request() -> IDBRequest[object]:
 
 
 @js
-async def test_request_creation_errors_still_reject_the_returned_promise():
-    pending = request_result(missing_request())
+async def test_request_argument_errors_raise_before_returning_a_promise():
     rejected = False
     try:
-        await pending
+        request_result(missing_request())
     except ValueError as error:
         assert str(error) == "Request creation failed"
         rejected = True
     assert rejected
+
+
+@js
+async def test_awaited_arguments_use_normal_function_call_semantics():
+    name = "awaited-request-" + crypto.randomUUID()
+    database = await open_database(await Promise.resolve(name), 1, create_store)
+    try:
+        store = database.transaction("records", "readwrite").objectStore("records")
+        assert await request_result(await Promise.resolve(store.put("saved", "one"))) == "one"
+        assert await request_result(store.get("one")) == "saved"
+    finally:
+        database.close()
+        await request_result(indexedDB.deleteDatabase(name))
 
 
 @js

@@ -30,9 +30,20 @@
 
 - IndexedDB open and request-result helpers preserve caller variables named
   `request`, `resolve`, `reject`, `upgrade`, or `validate` instead of shadowing
-  them inside their generated promise callbacks. Shared Python-authored
-  listeners retain synchronous setup and Promise scheduling; optional
-  validators passed as `None` through variables disable validation too.
+  them inside generated callbacks. Python-authored request and transaction
+  adapters use native Promise bindings without adding suspension points.
+  Argument expressions now follow ordinary evaluation rules: their errors
+  raise immediately rather than becoming rejected promises. Request and
+  transaction failures still reject; optional validators passed as `None`
+  disable validation.
+
+- `pyjs.javascript.Promise[T]` exposes native construction, resolution,
+  rejection, chaining, cleanup, combinators and resolver objects. Executors
+  run immediately; reactions use JavaScript microtasks, not an asyncio loop.
+  Nested awaitable result types and Python async returns that JavaScript
+  would silently flatten receive compilation diagnostics. Async returns
+  erased to `object` check for thenables at the return boundary. CPython use
+  of the Promise factory APIs raises explicitly instead of pretending to run.
 
 - JVM and Android support dictionary truth tests and `bool(mapping)`, including
   dictionary-valued fields and function results. Empty dictionaries are false;
