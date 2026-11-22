@@ -259,6 +259,7 @@ def same_erased_type(left, right) -> bool:
             parameters_match
             and left.minimum_arguments == right.minimum_arguments
             and left.required_keywords == right.required_keywords
+            and left.javascript_options_start == right.javascript_options_start
             and same_erased_type(left.return_type, right.return_type)
         )
     return same_analyzer_type(left, right)

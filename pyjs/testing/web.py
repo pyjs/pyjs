@@ -1,14 +1,17 @@
 """Small helpers for browser-compiled UI tests."""
 
+from collections.abc import Callable
 from typing import cast
 
 from pyjs import js
+from pyjs.javascript import Promise
 from pyjs.testing.client.runtime import window
 from pyjs.testing.client.state import RenderArtifact
 from pyjs.ui.interaction import InteractionSample
 from pyjs.web.dom import Element, Node, document
 from pyjs.web.dragdrop import DataTransfer, DragEvent
 from pyjs.web.events import Event, EventTarget, KeyboardEvent, PointerEvent
+from pyjs.web.timers import requestAnimationFrame
 
 from .interaction.gesture import GestureScript, InteractionClock
 
@@ -157,8 +160,15 @@ def selector_count(root: Element, selector: str) -> int:
     return len(root.querySelectorAll(selector))
 
 
-@js.inline("new Promise((resolve) => requestAnimationFrame(resolve))")
-async def next_frame() -> None: ...
+@js
+def _request_frame(resolve: Callable[[float], None]) -> None:
+    requestAnimationFrame(resolve)
+
+
+@js
+def next_frame() -> Promise[float]:
+    """Register immediately and resolve with the native frame timestamp."""
+    return Promise[float](lambda resolve, reject: _request_frame(resolve))
 
 
 @js
@@ -182,23 +192,30 @@ async def wait_for_settled_phase(
 
 
 @js
-async def wait_for_event(
+def wait_for_event(
     target: EventTarget,
     event_name: str,
-    trigger: callable | None = None,
-) -> Event: ...
-
-
-@wait_for_event.inline
-def wait_for_event(_arg_strs, **kwargs):
-    target, event_name = _arg_strs[:2]
-    trigger = f"{_arg_strs[2]}();" if len(_arg_strs) == 3 else ""
-    return (
-        "new Promise((resolve) => {"
-        f"{target}.addEventListener({event_name}, resolve, {{once: true}});"
-        f"{trigger}"
-        "})"
+    trigger: Callable[[], object] | None = None,
+) -> Promise[Event]:
+    return Promise[Event](
+        lambda resolve, reject: _listen_event(target, event_name, trigger, resolve)
     )
+
+
+@js
+def _listen_event(
+    target: EventTarget,
+    event_name: str,
+    trigger: Callable[[], object] | None,
+    resolve: Callable[[Event], None],
+) -> None:
+    target.addEventListener(event_name, resolve, once=True)
+    if trigger is not None:
+        try:
+            trigger()
+        except Exception:
+            target.removeEventListener(event_name, resolve)
+            raise
 
 
 @js

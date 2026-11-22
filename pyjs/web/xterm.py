@@ -3,6 +3,7 @@
 from collections.abc import Callable
 
 from pyjs import js
+from pyjs.javascript import Promise
 from pyjs.tooling.npm import NpmImport, NpmPackage
 from pyjs.web.dom import Element
 
@@ -116,7 +117,7 @@ create_fit.source("return new $fit.FitAddon();")
 
 
 @js
-async def write(terminal: Terminal, text: str) -> None: ...
-
-
-write.source("return new Promise(resolve => terminal.write(text, resolve));")
+def write(terminal: Terminal, text: str) -> Promise[None]:
+    return Promise[None](
+        lambda resolve, reject: terminal.write(text, lambda: resolve(None))
+    )

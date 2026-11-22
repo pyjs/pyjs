@@ -596,6 +596,19 @@ def callable_value_type(value):
                 break
             length += 1
         parameters = parameters[:length]
+    options_start = None
+    if _ACTIVE_ENVIRONMENT.get().name == "js":
+        # An inline API's value implementation may use a different calling
+        # convention than its public signature. Keep the emitted boundary in
+        # the inferred type so aliases and conditional joins cannot erase it.
+        runtime = getattr(value, "runtime_dependency", None)
+        implementations = (runtime,) if isinstance(runtime, Function) else methods
+        options_start = min(
+            (len(method.params) - len(method.defaults) for method in implementations
+             if method.defaults and not is_native_for(method.py_obj, "js")
+             and not (method.cls is not None and is_native_for(method.cls.py_obj, "js"))),
+            default=None,
+        )
     return CallableClass(
         tuple(parameter.annotation.obj for parameter in parameters),
         return_type,
@@ -614,6 +627,7 @@ def callable_value_type(value):
             for parameter, default in zip(method.kwonlyargs, method.kw_defaults, strict=True)
             if default is None
         )),
+        javascript_options_start=options_start,
     )
 
 
@@ -4251,6 +4265,8 @@ class InferenceVisitor(ast.NodeVisitor):
                         # input view: the source may accept extra arguments.
                         # Keep the source's covariant result proof, however;
                         # native callable views project it from the storage ABI.
+                        # The JS calling convention also belongs to the assigned
+                        # implementation, not the local's previous value.
                         declared = narrow_visitor.declared_local(reassignment_target.id)
                         signature = callable_member(declared.cls)
                         if signature is not None and signature.parameter_types is not None:
@@ -4262,6 +4278,7 @@ class InferenceVisitor(ast.NodeVisitor):
                                 assigned_type.return_representation,
                                 minimum_arguments=signature.minimum_arguments,
                                 required_keywords=signature.required_keywords,
+                                javascript_options_start=assigned_type.javascript_options_start,
                             )
                     if any(member is BUILTINS.search("object") for member in get_type_members(assigned_type)):
                         declared = narrow_visitor.declared_local(reassignment_target.id)
@@ -4619,6 +4636,11 @@ class InferenceVisitor(ast.NodeVisitor):
                             f"the annotation for {target.id!r}."
                         ),
                     )
+                if value is None and isinstance(existing, Instance):
+                    # Unpacking and with targets supply only the assigned type.
+                    self.validate_javascript_callable_view(
+                        ast.copy_location(Name(value_type), target), existing.cls,
+                    )
                 return ast.copy_location(Name(self.scope.lookup(target.id), ctx=target.ctx), target), False
             except NameError:
                 if not value_type:
@@ -4807,6 +4829,8 @@ class InferenceVisitor(ast.NodeVisitor):
             ):
                 apply_representation(target_value, value_representation)
             if value is assignment_value.node and isinstance(target_value, Instance):
+                if not is_new_name and not declared_storage:
+                    self.validate_javascript_callable_view(value, target_value.cls)
                 # A represented union keeps the full member map even when
                 # this write supplies only one arm (including on parameters).
                 if declared_storage:
@@ -10749,6 +10773,7 @@ class InferenceVisitor(ast.NodeVisitor):
     ) -> ast.expr:
         from .iterable_protocol import retain_iterable_conversion
         retain_iterable_conversion(node, expected_type)
+        self.validate_javascript_callable_view(node, expected_type)
         destinations = [member for member in get_type_members(expected_type)
                         if isinstance(member, Class) and member.generic_name != "NoneType"]
         if len(destinations) == 1 and destinations[0].generic_name == "Iterator":
@@ -10852,6 +10877,32 @@ class InferenceVisitor(ast.NodeVisitor):
             getattr(member, "generic_name", None) == "object"
             for member in get_type_members(expected_type)
         )
+
+    def validate_javascript_callable_view(self, node, expected_type):
+        if _ACTIVE_ENVIRONMENT.get().name != "js":
+            return
+        expected = callable_member(expected_type)
+        if expected is None or expected.parameter_types is None:
+            return
+        if any(member is not expected and is_call_argument_compatible(member, node)
+               for member in get_type_members(expected_type)):
+            return
+        if isinstance(node, ast.IfExp):
+            self.validate_javascript_callable_view(node.body, expected_type)
+            self.validate_javascript_callable_view(node.orelse, expected_type)
+            return
+        actual = callable_value_type(node)
+        if any(isinstance(member, CallableClass)
+               and member.javascript_options_start is not None
+               and member.javascript_options_start < expected.minimum_arguments
+               for member in get_type_members(actual)):
+            # A fixed view must not erase the optional-argument boundary that
+            # the JS emitter uses to reject incompatible indirect calls.
+            self.fail(
+                getattr(node, "python_node", node), DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                "JavaScript callable views cannot require optional positional arguments",
+                help="Call the named function directly or use a fixed-arity wrapper.",
+            )
 
     def normalize_stored_value(
         self,

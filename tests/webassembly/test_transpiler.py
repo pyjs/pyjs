@@ -408,6 +408,12 @@ def test_default_callable_views_reach_the_wasm_callable_boundary():
         transpile_webassembly(CALLABLE_DEFAULT_CONTRACT.source)
 
 
+def test_supplied_callable_defaults_reach_the_wasm_callable_boundary():
+    from tests.backend_semantics import SUPPLIED_CALLABLE_DEFAULT_CONTRACT
+    with pytest.raises(WebAssemblyUnsupported, match="WebAssembly functions require fixed positional parameters"):
+        transpile_webassembly(SUPPLIED_CALLABLE_DEFAULT_CONTRACT.source)
+
+
 def test_optional_callback_overload_reaches_the_wasm_union_boundary():
     from tests.backend_semantics import OPTIONAL_CALLBACK_OVERLOAD_CONTRACT
     with pytest.raises(WebAssemblyUnsupported, match="WebAssembly union value storage is not implemented"):

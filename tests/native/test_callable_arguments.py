@@ -6,12 +6,17 @@ from pyjs.tooling.llvm import LLVM
 from tests.backend_semantics import (
     CALLABLE_INPUT_CONTRACT,
     OPTIONAL_CALLBACK_OVERLOAD_CONTRACT,
+    SUPPLIED_CALLABLE_DEFAULT_CONTRACT,
 )
 from tests.native.allocation_support import run_allocation_case
 
 
 def test_optional_callback_overload_preserves_lambda_context(tmp_path):
     LLVM().assert_matches_python(OPTIONAL_CALLBACK_OVERLOAD_CONTRACT.source, directory=tmp_path)
+
+
+def test_supplied_callable_defaults_match_python(tmp_path):
+    LLVM().assert_matches_python(SUPPLIED_CALLABLE_DEFAULT_CONTRACT.source, directory=tmp_path)
 
 
 def test_shared_callable_input_contract(tmp_path):

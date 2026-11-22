@@ -2245,6 +2245,7 @@ class CallableClass(Class):
         *,
         minimum_arguments: int | None = None,
         required_keywords: tuple[str, ...] = (),
+        javascript_options_start: int | None = None,
     ):
         Object.__init__(self, "callable", ClassScope(base.scope), base.container)
         self.parameter_types = parameter_types
@@ -2253,6 +2254,7 @@ class CallableClass(Class):
         self.return_representation = return_representation
         self.minimum_arguments = len(parameter_types or ()) if minimum_arguments is None else minimum_arguments
         self.required_keywords = required_keywords
+        self.javascript_options_start = javascript_options_start
         self.generic_types = None
         self.generic_name = "Callable"
         self.internal_scope = ClassScope(self.scope)
@@ -2392,6 +2394,7 @@ def union_type_key(value_type: Class | UnionType):
             value_type.return_representation,
             value_type.minimum_arguments,
             value_type.required_keywords,
+            value_type.javascript_options_start,
         )
     if isinstance(value_type, TypeVariableClass):
         return "TypeVar", id(value_type)
@@ -2431,6 +2434,7 @@ def specialization_cache_key(value_type: Class | UnionType):
             value_type.return_representation,
             value_type.minimum_arguments,
             value_type.required_keywords,
+            value_type.javascript_options_start,
         )
     return id(value_type)
 
@@ -2459,6 +2463,8 @@ def specialization_type_name(value_type: Class | UnionType) -> str:
             name += f"__min{value_type.minimum_arguments}"
         if value_type.required_keywords:
             name += "__kw_" + "_".join(value_type.required_keywords)
+        if value_type.javascript_options_start is not None:
+            name += f"__js_options{value_type.javascript_options_start}"
         return name
     if isinstance(value_type, TypeVariableClass):
         return value_type.name

@@ -2,7 +2,7 @@
 from collections.abc import Awaitable, Callable
 
 from pyjs import js
-from pyjs.javascript import Uint8Array
+from pyjs.javascript import Promise, Uint8Array
 
 
 @js.native
@@ -184,8 +184,16 @@ def set_timeout(callback: Callable[[], None], milliseconds: int) -> Timer: ...
 @js.inline("clearTimeout({timer})")
 def clear_timeout(timer: Timer | None) -> None: ...
 
-@js.inline("(milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)))({milliseconds})")
-async def sleep(milliseconds: int) -> None: ...
+@js
+def _schedule_sleep(milliseconds: int, complete: Callable[[], None]) -> None:
+    set_timeout(complete, milliseconds)
+
+
+@js
+def sleep(milliseconds: int) -> Promise[None]:
+    return Promise[None](
+        lambda resolve, reject: _schedule_sleep(milliseconds, lambda: resolve(None))
+    )
 
 @js.inline("Date.now()")
 def now() -> int: ...

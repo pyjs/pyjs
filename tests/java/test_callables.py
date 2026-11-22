@@ -7,6 +7,7 @@ from pyjs.java import JVMUnsupported, transpile_jvm
 from tests.backend_semantics import (
     CALLABLE_IDENTITY_CONTRACT,
     OPTIONAL_CALLBACK_OVERLOAD_CONTRACT,
+    SUPPLIED_CALLABLE_DEFAULT_CONTRACT,
 )
 from tests.java.test_context_managers import assert_text_matches_python
 from tests.java.test_exceptions import (
@@ -30,6 +31,11 @@ def main() -> str:
 
 def test_optional_callback_overload_preserves_lambda_context(tmp_path):
     assert_matches_python(OPTIONAL_CALLBACK_OVERLOAD_CONTRACT.source, tmp_path)
+
+
+def test_supplied_callable_defaults_reach_the_jvm_callback_boundary():
+    with pytest.raises(JVMUnsupported, match="JVM function values require an emitted fixed-arity module function"):
+        transpile_jvm(SUPPLIED_CALLABLE_DEFAULT_CONTRACT.source)
 
 
 def test_callback_results_and_runtime_function_selection(tmp_path):

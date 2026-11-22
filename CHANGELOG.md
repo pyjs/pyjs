@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Browser frame/event waits, Node sleeps, and xterm writes now use typed,
+  Python-authored native Promise adapters and can be passed as function values.
+  Registration remains immediate. `next_frame()` exposes the native floating
+  timestamp; Node sleeps and xterm writes resolve to `None`. xterm completion
+  no longer crosses a redundant async-wrapper adoption boundary.
+  `wait_for_event()` accepts keywords and explicit `trigger=None`, requires a
+  synchronous trigger, and removes its listener if that trigger throws.
+  Synchronous trigger return values are ignored; lambda triggers now execute
+  instead of leaving the wait pending. Converting a known named function's
+  optional signature to a typed `Callable` view requiring those arguments now
+  receives a compilation diagnostic rather than silently dropping arguments.
+  Call these functions directly when supplying optional arguments.
+  Native methods and inline APIs with positional value implementations, such
+  as `fetch`, retain their supported callback forms.
+  This does not implement general calling-convention adaptation; defaulted
+  lambdas and opaque `Callable[..., T]` views remain outside this diagnostic.
+  Argument evaluation errors raise synchronously; registration and trigger
+  errors reject the Promise. Browser lock acquisition is also Python-authored,
+  preserving ordered handoff and the separate host-side asyncio implementation.
+
 - JVM and Android workers and instrumentation tests can pause with
   `pyjs.java.concurrent.sleep(milliseconds)` instead of busy polling. Native
   interruption remains catchable as `pyjs.java.errors.InterruptedException`.
