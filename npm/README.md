@@ -28,6 +28,8 @@ The first command downloads the pinned Python standalone archive, verifies its
 SHA-256, installs the current PyJS checkout into it, and writes the platform
 package under `npm/dist/`. The smoke test packs both npm packages, installs them
 into a temporary project, and exercises the installed `pyjs` command.
+The launcher is staged with a copy of the root `LICENSE` before packing;
+no generated license copy is kept in the source checkout.
 
 Downloaded runtimes and generated npm packages are intentionally ignored by Git.
 
