@@ -52,6 +52,18 @@ def test_npm_pack_rejects_unexpected_package_count(tmp_path, monkeypatch):
         smoke_test.pack(tmp_path / "source", tmp_path)
 
 
+def test_launcher_archive_includes_current_project_license(tmp_path):
+    from npm.tests.smoke_test import NPM, pack
+
+    if shutil.which(NPM) is None:
+        pytest.skip("npm is required to inspect the packed launcher")
+    path = pack(NPM_ROOT / "cli", tmp_path)
+    with tarfile.open(path) as archive:
+        assert archive.extractfile("package/LICENSE").read() == (
+            NPM_ROOT.parent / "LICENSE"
+        ).read_bytes()
+
+
 def write_package(path, name, version, **metadata):
     package = {"name": name, "version": version, **metadata}
     content = json.dumps(package).encode()

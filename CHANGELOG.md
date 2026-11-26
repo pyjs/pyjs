@@ -7,6 +7,8 @@
 Release highlights and installation instructions are in
 [the 0.5.0 release notes](releases/0.5.0.md).
 
+- The standalone npm launcher archive includes the project's license text.
+
 - Browser frame/event waits, Node sleeps, and xterm writes now use typed,
   Python-authored native Promise adapters and can be passed as function values.
   Registration remains immediate. `next_frame()` exposes the native floating
