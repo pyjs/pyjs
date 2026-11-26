@@ -44,17 +44,17 @@ pyjs = "pyjs.cli:main"
 pyjs = "pyjs.testing.pytest_plugin"
 
 [project.optional-dependencies]
-examples = ["pyjs-examples==0.4.0"]
-extras = ["pyjs-extras==0.4.0"]
-stripe = ["pyjs-extras[stripe]==0.4.0"]
+examples = ["pyjs-examples==0.5.0"]
+extras = ["pyjs-extras==0.5.0"]
+stripe = ["pyjs-extras[stripe]==0.5.0"]
 django = ["django>=6.0,<6.2"]
 webgpu = ["wgpu==0.32.0"]
 
 [dependency-groups]
 dev = [
     "django>=6.0,<6.2",
-    "pyjs-examples==0.4.0",
-    "pyjs-extras[stripe]==0.4.0",
+    "pyjs-examples==0.5.0",
+    "pyjs-extras[stripe]==0.5.0",
     "pytest-xdist==3.8.0",
     "ruff==0.15.22",
     "uvicorn>=0.52,<1",

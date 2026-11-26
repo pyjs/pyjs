@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyjs-examples"
-version = "0.4.0"
+version = "0.5.0"
 requires-python = ">=3.14"
 authors = [
     {name = "Lex Berezhny", email = "lex@damoti.com"},
@@ -14,7 +14,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 dependencies = [
-    "pyjs==0.4.0",
+    "pyjs==0.5.0",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -37,13 +37,13 @@ Source = "https://github.com/pyjs/pyjs"
 store = [
     "django>=6.0,<6.2",
     "pydantic>=2,<3",
-    "pyjs-extras==0.4.0",
+    "pyjs-extras==0.5.0",
     "uvicorn>=0.52,<1",
 ]
 test = [
     "django>=6.0,<6.2",
     "pydantic>=2,<3",
-    "pyjs-extras==0.4.0",
+    "pyjs-extras==0.5.0",
     "pytest>=9.0",
     "uvicorn>=0.52,<1",
 ]

@@ -1,5 +1,6 @@
 """Build every Python distribution and test installation outside the checkout."""
 
+import argparse
 import os
 import subprocess
 import sys
@@ -39,6 +40,12 @@ def distributions(directory):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out-dir", type=Path,
+                        help="retain validated archives and checksums for publication")
+    args = parser.parse_args()
+    if args.out_dir is not None and args.out_dir.exists():
+        parser.error("--out-dir must not already exist")
     with tempfile.TemporaryDirectory(prefix="pyjs-distributions-") as temporary:
         work = Path(temporary)
         dist = work / "dist"
@@ -61,6 +68,9 @@ def main():
                                 cwd=work, env=clean_env, text=True, capture_output=True, check=True)
         if result.stdout.strip() != "45":
             raise AssertionError(f"Installed CLI returned {result.stdout!r}; stderr: {result.stderr}")
+        if args.out_dir is not None:
+            subprocess.run([sys.executable, str(ROOT / "npm/scripts/release.py"),
+                            "python", str(dist), str(args.out_dir.resolve())], check=True)
 
 
 if __name__ == "__main__":

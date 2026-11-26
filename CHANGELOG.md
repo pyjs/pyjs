@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.0
+
+Release highlights and installation instructions are in
+[the 0.5.0 release notes](releases/0.5.0.md).
+
 - Browser frame/event waits, Node sleeps, and xterm writes now use typed,
   Python-authored native Promise adapters and can be passed as function values.
   Registration remains immediate. `next_frame()` exposes the native floating
@@ -464,6 +469,9 @@
   static field lookup and evaluates the receiver and right-hand side once.
   List-valued field `+=` and `*=` receive an unsupported-operation diagnostic
   until their in-place semantics are supported; use `extend()` for addition.
+  Set-valued field `|=`, `-=`, `&=` and `^=` also receive a diagnostic; use
+  set mutation methods to preserve aliases, or ordinary assignment to replace
+  the field value.
 
 - Markdown supports application-defined link routing and image-reference
   observers for authorized galleries, while keeping local links and media
