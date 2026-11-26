@@ -62,11 +62,9 @@ def write_package(path, name, version, **metadata):
 
 
 def test_release_versions_and_tag_agree():
-    assert validate_versions() == "0.4.0"
-    assert launcher_version() == "0.4.1"
-
-    with pytest.raises(RuntimeError, match="cannot use a full release tag"):
-        validate_versions("v0.4.0")
+    assert validate_versions() == "0.5.0"
+    assert launcher_version() == "0.5.0"
+    assert validate_versions("v0.5.0") == "0.5.0"
 
 
 @pytest.fixture
@@ -82,7 +80,7 @@ def launcher_manifest(tmp_path, monkeypatch):
     return tmp_path / "cli/package.json", manifest
 
 
-@pytest.mark.parametrize("version", ["0.3.9", "0.5.0", "0.4.1-rc.1", "latest"])
+@pytest.mark.parametrize("version", ["0.4.9", "0.6.0", "0.5.1-rc.1", "latest"])
 def test_launcher_revision_rejects_non_patch_versions(launcher_manifest, version):
     path, manifest = launcher_manifest
     manifest["version"] = version
@@ -93,16 +91,25 @@ def test_launcher_revision_rejects_non_patch_versions(launcher_manifest, version
 
 def test_full_release_still_requires_matching_tag(launcher_manifest):
     path, manifest = launcher_manifest
-    manifest["version"] = "0.4.0"
+    manifest["version"] = "0.5.0"
     path.write_text(json.dumps(manifest))
-    assert validate_versions("v0.4.0") == "0.4.0"
-    with pytest.raises(RuntimeError, match="does not match v0.4.0"):
+    assert validate_versions("v0.5.0") == "0.5.0"
+    with pytest.raises(RuntimeError, match="does not match v0.5.0"):
+        validate_versions("v0.6.0")
+
+
+def test_launcher_only_patch_does_not_allow_full_release_tag(launcher_manifest):
+    path, manifest = launcher_manifest
+    manifest["version"] = "0.5.1"
+    path.write_text(json.dumps(manifest))
+    assert validate_versions() == "0.5.0"
+    with pytest.raises(RuntimeError, match="cannot use a full release tag"):
         validate_versions("v0.5.0")
 
 
 def test_launcher_patch_cannot_change_runtime_versions(launcher_manifest):
     path, manifest = launcher_manifest
-    manifest["optionalDependencies"]["@pyjsdev/cli-linux-arm64"] = "0.4.1"
+    manifest["optionalDependencies"]["@pyjsdev/cli-linux-arm64"] = "0.5.1"
     path.write_text(json.dumps(manifest))
     with pytest.raises(RuntimeError, match="Release versions do not agree"):
         validate_versions()
@@ -122,7 +129,7 @@ def test_runtime_package_selectors_and_executable(target, tmp_path):
     manifest = json.loads((tmp_path / "package.json").read_text())
     assert manifest == {
         "name": target.package_name,
-        "version": "0.4.0",
+        "version": "0.5.0",
         "description": f"Portable PyJS runtime for {target.name}",
         "license": "BSD-3-Clause",
         "repository": {
@@ -212,7 +219,7 @@ def test_public_workflow_builds_and_gates_every_runtime():
     assert validation["if"] == "github.event_name == 'push' || inputs.target == 'all'"
     assert builds["linux-arm64"]["runner"] == "ubuntu-24.04-arm"
     publication = jobs["publish-runtimes"]
-    assert publication["needs"] == ["validate", "validate-native"]
+    assert publication["needs"] == ["validate", "validate-native", "assemble"]
     assert jobs["validate-native"]["uses"] == "./.github/workflows/native-platforms.yml"
     assert jobs["validate-native"]["needs"] == "preflight"
     assert jobs["validate-native"]["if"] == validation["if"]
@@ -234,7 +241,10 @@ def test_shared_runtime_build_checks_python_packages_and_can_avoid_pr_archives()
     workflow = yaml.safe_load((NPM_ROOT.parent / ".github/workflows/build-runtime.yml").read_text())
     assert workflow[True]["workflow_call"]["inputs"]["retain-artifact"]["default"] is True
     steps = workflow["jobs"]["build"]["steps"]
-    assert any(step.get("run") == "python scripts/check_distributions.py" for step in steps)
+    assert any(step.get("run") == "python scripts/check_distributions.py --out-dir dist/python" for step in steps)
+    python_upload = next(step for step in steps if step.get("name") == "Upload tested Python distributions")
+    assert python_upload["if"] == "inputs.retain-artifact && inputs.target == 'linux-x64'"
+    assert python_upload["with"]["name"] == "python-dist"
     for name in ("Prepare release artifact", "Upload release artifact"):
         assert next(step for step in steps if step.get("name") == name)["if"] == "inputs.retain-artifact"
     checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout@"))
@@ -265,7 +275,7 @@ def test_arm64_artifact_verifies_checksum(tmp_path, include_launcher):
     assert manifest == {
         "schema": 1,
         "target": "linux-arm64",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "packages": [{
             "cpu": ["arm64"],
             "file": "runtime.tgz",
@@ -274,7 +284,7 @@ def test_arm64_artifact_verifies_checksum(tmp_path, include_launcher):
             "os": ["linux"],
             "pyjsRuntime": metadata["pyjsRuntime"],
             "sha256": manifest["packages"][0]["sha256"],
-            "version": "0.4.0",
+            "version": "0.5.0",
         }],
     }
     assert (destination / "cli.tgz").exists() is include_launcher
@@ -290,7 +300,7 @@ def test_release_artifact_records_and_verifies_package_metadata(tmp_path):
     write_package(
         packages / "runtime.tgz",
         "@pyjsdev/cli-linux-x64",
-        "0.4.0",
+        "0.5.0",
         os=["linux"],
         cpu=["x64"],
         libc=["glibc"],
@@ -323,12 +333,12 @@ def test_release_artifact_records_and_verifies_package_metadata(tmp_path):
                 "os": ["linux"],
                 "pyjsRuntime": {"pythonVersion": "3.14.7"},
                 "sha256": manifest["packages"][1]["sha256"],
-                "version": "0.4.0",
+                "version": "0.5.0",
             },
         ],
         "schema": 1,
         "target": "linux-x64",
-        "version": "0.4.0",
+        "version": "0.5.0",
     }
     assert verified_archive(destination, "@pyjsdev/cli") == destination / "cli.tgz"
     assert verified_archive(

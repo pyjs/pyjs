@@ -198,7 +198,10 @@ PR tests use read-only tokens, no repository secrets, and no self-hosted
 runners. Release publishing remains protected and tag-triggered: it calls the
 same CI workflow and publishes only after all tests/builds pass, without
 rebuilding the tested npm archives. Release archives are retained for three
-days; PR package checks avoid archive uploads. Manual single-platform builds
+days; PR package checks avoid archive uploads. Python distributions and GitHub
+release assets use the same tested-artifact path. See the
+[release procedure](releases/README.md) for preparation and publisher setup.
+Manual single-platform builds
 never publish and are not substitutes for the full release gate.
 
 ## Repository landmarks

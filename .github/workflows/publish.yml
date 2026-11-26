@@ -1,4 +1,4 @@
-name: Build and publish PyJS npm packages
+name: Build and publish PyJS release
 
 on:
   push:
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: npm-release-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -75,10 +75,95 @@ jobs:
     needs: preflight
     uses: ./.github/workflows/native-platforms.yml
 
+  assemble:
+    name: Verify and assemble release artifacts
+    needs: [preflight, validate, validate-native]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out public source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Download tested Python distributions
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-dist
+          path: artifacts/python-dist
+      - name: Download tested npm packages
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: npm-*
+          path: artifacts
+      - name: Verify archives and assemble GitHub assets
+        run: >-
+          python npm/scripts/release.py github artifacts release-bundle
+          --revision "$GITHUB_SHA"
+      - name: Retain release bundle for inspection
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-bundle
+          path: release-bundle
+          if-no-files-found: error
+          retention-days: 3
+
+  publish-python:
+    name: Publish Python distributions
+    if: github.event_name == 'push'
+    needs: [preflight, assemble]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out public source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Download tested Python distributions
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-dist
+          path: python-dist
+      - name: Verify Python archives
+        run: python npm/scripts/release.py verify-python python-dist
+      - name: Publish pyjs
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          packages-dir: python-dist/pyjs
+      - name: Publish pyjs-examples
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          packages-dir: python-dist/pyjs-examples
+      - name: Publish pyjs-extras
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          packages-dir: python-dist/pyjs-extras
+      - name: Verify registry installation
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          python -m venv "$RUNNER_TEMP/release-install"
+          "$RUNNER_TEMP/release-install/bin/python" -m pip install \
+            "pyjs[examples,extras]==$RELEASE_VERSION"
+          "$RUNNER_TEMP/release-install/bin/python" -m pip check
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/release-install/bin/pyjs" --version
+          "$RUNNER_TEMP/release-install/bin/python" -I -c \
+            'import os; from importlib.metadata import version; assert all(version(p) == os.environ["RELEASE_VERSION"] for p in ("pyjs", "pyjs-examples", "pyjs-extras"))'
+
   publish-runtimes:
     name: Publish ${{ matrix.package }}
     if: github.event_name == 'push'
-    needs: [validate, validate-native]
+    needs: [validate, validate-native, assemble]
     strategy:
       fail-fast: false
       matrix:
@@ -179,3 +264,30 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund \
             "@pyjsdev/cli@${{ needs.preflight.outputs.version }}"
           ./node_modules/.bin/pyjs --version
+
+  github-release:
+    name: Publish GitHub release
+    if: github.event_name == 'push'
+    needs: [preflight, assemble, publish-python, publish-launcher]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-bundle
+          path: release-bundle
+      - name: Verify checksums
+        working-directory: release-bundle
+        run: sha256sum --check SHA256SUMS
+      - name: Create release with tested archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release-bundle/*
+          --verify-tag --title "PyJS $RELEASE_VERSION"
+          --notes-file release-bundle/RELEASE_NOTES.md
