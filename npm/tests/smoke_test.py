@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -38,6 +39,14 @@ def pack(source: Path, destination: Path) -> Path:
     return destination / records[0]["filename"]
 
 
+def pack_launcher(destination: Path) -> Path:
+    with tempfile.TemporaryDirectory(prefix="pyjs-npm-launcher-") as temporary:
+        source = Path(temporary) / "cli"
+        shutil.copytree(NPM_ROOT / "cli", source)
+        shutil.copy2(NPM_ROOT.parent / "LICENSE", source / "LICENSE")
+        return pack(source, destination.resolve())
+
+
 def assert_output(command: list[str], expected: str, cwd: Path):
     result = run(command, cwd=cwd, capture=True)
     actual = result.stdout.strip()
@@ -70,7 +79,7 @@ def main():
     packages.mkdir(parents=True, exist_ok=True)
     runtime_manifest = json.loads((runtime / "package.json").read_text())
     runtime_archive = pack(runtime, packages)
-    cli_archive = pack(NPM_ROOT / "cli", packages)
+    cli_archive = pack_launcher(packages)
 
     with tempfile.TemporaryDirectory(prefix="pyjs-npm-") as temporary:
         project = Path(temporary)
