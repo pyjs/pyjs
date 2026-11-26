@@ -62,6 +62,27 @@ def main():
 
 
 @pytest.mark.parametrize("base", ["TypedDict", "JSONObject"])
+@pytest.mark.parametrize("operation", ["|=", "-=", "&=", "^="])
+def test_augmented_set_field_rejected_until_in_place_semantics_supported(base, operation):
+    source = f'''\
+from typing import TypedDict
+from pyjs.javascript import JSONObject
+class Record({base}):
+    tags: set[str]
+def main():
+    record = Record(tags={{"a", "b"}})
+    alias = record["tags"]
+    record["tags"] {operation} {{"b", "c"}}
+    print(alias is record["tags"], len(alias), len(record["tags"]))
+'''
+    with pytest.raises(CompilationError, match="Set-valued TypedDict/JSONObject fields") as caught:
+        analyze_source(source, filename="set_field.py")
+    assert caught.value.diagnostic.code == DiagnosticCode.UNSUPPORTED_SYNTAX
+    assert caught.value.filename == "set_field.py"
+    assert caught.value.lineno == 8
+
+
+@pytest.mark.parametrize("base", ["TypedDict", "JSONObject"])
 def test_list_field_extend_preserves_alias(base):
     assert_semantics(f'''
         from typing import TypedDict
