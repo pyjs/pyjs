@@ -460,6 +460,11 @@
 - Input group start addons render before the control without requiring callers
   to put them first in DOM order.
 
+- Augmented assignment to literal TypedDict and JSONObject fields preserves
+  static field lookup and evaluates the receiver and right-hand side once.
+  List-valued field `+=` and `*=` receive an unsupported-operation diagnostic
+  until their in-place semantics are supported; use `extend()` for addition.
+
 - Markdown supports application-defined link routing and image-reference
   observers for authorized galleries, while keeping local links and media
   disabled by default. `decodeURIComponent` decodes UTF-8 URI components with

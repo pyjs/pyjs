@@ -5481,6 +5481,33 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_AugAssign(self, node: ast.AugAssign):
         target = self.visit(node.target)
+        target_type = analyzed_value_type(target)
+        if (
+            isinstance(target, Subscript)
+            and isinstance(analyzed_value_type(target.value), TypedDictClass)
+            and isinstance(target_type, Class)
+        ):
+            # Binary lowering replaces these mutable values instead of mutating
+            # them, leaving aliases to the original field value unchanged.
+            if target_type.generic_name == "list" and isinstance(node.op, (ast.Add, ast.Mult)):
+                self.fail(
+                    node,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "List-valued TypedDict/JSONObject fields do not support augmented assignment",
+                    help=(
+                        "Use field.extend(values) for in-place addition. "
+                        "Use ordinary assignment if replacing the list is intended."
+                    ),
+                )
+            if target_type.generic_name == "set" and isinstance(
+                node.op, (ast.BitOr, ast.Sub, ast.BitAnd, ast.BitXor)
+            ):
+                self.fail(
+                    node,
+                    DiagnosticCode.UNSUPPORTED_SYNTAX,
+                    "Set-valued TypedDict/JSONObject fields do not support augmented assignment",
+                    help="Use ordinary assignment if replacing the set is intended.",
+                )
         if analyzed_array_format(target) is not None:
             self.fail(
                 node,
@@ -5508,7 +5535,9 @@ class InferenceVisitor(ast.NodeVisitor):
                             prefix, captured = self.capture_assignment_value(self.visit(bound))
                             prefixes.append(prefix)
                             setattr(write_target.slice, part, captured)
-                else:
+                elif not isinstance(write_target.slice, ast.Constant):
+                    # Literal keys have no side effects and must stay literal
+                    # for TypedDict/JSONObject field lookup after lowering.
                     prefix, write_target.slice = self.capture_assignment_value(
                         self.visit(node.target.slice),
                     )

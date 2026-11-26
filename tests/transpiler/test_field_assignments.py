@@ -481,24 +481,22 @@ def test_factory_field_assignment_waits_for_constructor_in_ir_analysis():
         """).strip()
 
 
-def test_augmented_item_assignment_captures_receiver_index_and_old_value():
+def test_augmented_item_assignment_captures_receiver_and_preserves_literal_index():
     at(
         "values = [3]\nvalues[0] += 2",
         """
         values: list[int] = [3]
         $assignment1: list[int] = values
-        $assignment2: int = 0
-        $assignment3: int = $get_list_item($assignment1, $assignment2).[int]__add__!(2)
-        $set_list_item($assignment1, $assignment2, $assignment3)
+        $assignment2: int = $get_list_item($assignment1, 0).[int]__add__!(2)
+        $set_list_item($assignment1, 0, $assignment2)
         """,
         """
         import { get_list_item as $get_list_item, set_list_item as $set_list_item } from './pyjs.python.js';
 
         var values = [3];
         var $assignment1 = values;
-        var $assignment2 = 0;
-        var $assignment3 = $get_list_item($assignment1, $assignment2) + 2;
-        $set_list_item($assignment1, $assignment2, $assignment3);
+        var $assignment2 = $get_list_item($assignment1, 0) + 2;
+        $set_list_item($assignment1, 0, $assignment2);
         """,
     )
 
