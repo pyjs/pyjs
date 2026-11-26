@@ -462,6 +462,8 @@
 
 - Augmented assignment to literal TypedDict and JSONObject fields preserves
   static field lookup and evaluates the receiver and right-hand side once.
+  List-valued field `+=` and `*=` receive an unsupported-operation diagnostic
+  until their in-place semantics are supported; use `extend()` for addition.
 
 - Markdown supports application-defined link routing and image-reference
   observers for authorized galleries, while keeping local links and media

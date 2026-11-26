@@ -1,6 +1,6 @@
 import pytest
 
-from pyjs.analysis.diagnostics import CompilationError
+from pyjs.analysis.diagnostics import CompilationError, DiagnosticCode
 from pyjs.analysis.source import analyze_source
 
 from .helpers import assert_semantics
@@ -35,6 +35,46 @@ def test_augmented_literal_field_preserves_key_and_evaluation_order(base):
             rows[0]["count"] += 2
             print(rows[0]["label"], rows[0]["count"])
             print("|".join(events))
+
+        main()
+    ''')
+
+
+@pytest.mark.parametrize("base", ["TypedDict", "JSONObject"])
+@pytest.mark.parametrize("operation", ["+= [2]", "*= 2"])
+def test_augmented_list_field_rejected_until_in_place_semantics_supported(base, operation):
+    source = f'''\
+from typing import TypedDict
+from pyjs.javascript import JSONObject
+class Record({base}):
+    items: list[int]
+def main():
+    record = Record(items=[1])
+    alias = record["items"]
+    record["items"] {operation}
+    print(alias is record["items"], len(alias), len(record["items"]))
+'''
+    with pytest.raises(CompilationError, match="List-valued TypedDict/JSONObject fields") as caught:
+        analyze_source(source, filename="list_field.py")
+    assert caught.value.diagnostic.code == DiagnosticCode.UNSUPPORTED_SYNTAX
+    assert caught.value.filename == "list_field.py"
+    assert caught.value.lineno == 8
+
+
+@pytest.mark.parametrize("base", ["TypedDict", "JSONObject"])
+def test_list_field_extend_preserves_alias(base):
+    assert_semantics(f'''
+        from typing import TypedDict
+        from pyjs.javascript import JSONObject
+
+        class Record({base}):
+            items: list[int]
+
+        def main():
+            record = Record(items=[1])
+            alias = record["items"]
+            record["items"].extend([2])
+            print(alias is record["items"], len(alias), len(record["items"]))
 
         main()
     ''')

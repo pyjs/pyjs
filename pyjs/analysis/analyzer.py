@@ -5481,6 +5481,25 @@ class InferenceVisitor(ast.NodeVisitor):
 
     def visit_AugAssign(self, node: ast.AugAssign):
         target = self.visit(node.target)
+        target_type = analyzed_value_type(target)
+        if (
+            isinstance(target, Subscript)
+            and isinstance(analyzed_value_type(target.value), TypedDictClass)
+            and isinstance(target_type, Class)
+            and target_type.generic_name == "list"
+            and isinstance(node.op, (ast.Add, ast.Mult))
+        ):
+            # Binary lowering replaces the list instead of mutating it, which
+            # would leave aliases to a newly supported list field unchanged.
+            self.fail(
+                node,
+                DiagnosticCode.UNSUPPORTED_SYNTAX,
+                "List-valued TypedDict/JSONObject fields do not support augmented assignment",
+                help=(
+                    "Use field.extend(values) for in-place addition. "
+                    "Use ordinary assignment if replacing the list is intended."
+                ),
+            )
         if analyzed_array_format(target) is not None:
             self.fail(
                 node,
