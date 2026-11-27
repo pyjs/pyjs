@@ -2279,7 +2279,7 @@ class Transpiler(_Unparser):
     @staticmethod
     def supplied_argument_layout(method, node):
         if (method.is_static or method.inline_decorator is not None
-                or method.has_source_decorator or len(node.args) > len(method.params)
+                or len(node.args) > len(method.params)
                 or any(isinstance(arg, ast.Starred) for arg in node.args)
                 or any(keyword.arg is None for keyword in node.keywords)):
             return None
@@ -2313,10 +2313,15 @@ class Transpiler(_Unparser):
         if len({self.method_argument_layout(method) for method in variants}) < 2:
             return False
         supplied_layouts = {self.supplied_argument_layout(method, node) for method in variants}
-        # Unused trailing defaults and unconsumed rest parameters do not change
-        # where this call's operands go. Preserve the direct call in that case.
+        # Equal destinations are not enough: direct lowering lifts required
+        # keywords ahead of options, which can reorder effects and exceptions.
         if None not in supplied_layouts and len(supplied_layouts) == 1:
-            return False
+            required, locations = supplied_layouts.pop()
+            positional = tuple(locations.index(index) for index in range(required))
+            options = {key: index for index, key in enumerate(locations) if isinstance(key, str)}
+            if (*positional, *options.values()) == tuple(range(len(locations))):
+                return False
+            return self.emit_virtual_method_call(node, {required: (positional, options, set())})
         if (any(isinstance(arg, ast.Starred) for arg in node.args)
                 or any(keyword.arg is None for keyword in node.keywords)):
             self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
@@ -2367,6 +2372,10 @@ class Transpiler(_Unparser):
                 old_omitted.update(omitted)
             else:
                 layouts[required] = positional, options, omitted
+        return self.emit_virtual_method_call(node, layouts)
+
+    def emit_virtual_method_call(self, node, layouts):
+        supplied = list(node.args) + [keyword.value for keyword in node.keywords]
         function = self.temporary_name("method")
         arguments = [self.temporary_name("argument") for _ in supplied]
         self.write("((" + ", ".join([function, *arguments]) + ") => ")

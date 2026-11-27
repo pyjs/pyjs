@@ -390,3 +390,89 @@ def test_virtual_override_keyword_only_extension_reuses_existing_variadic_option
             update(Child())
         main()
     ''')
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("raises", [False, True])
+@pytest.mark.parametrize("second_default", ["", " = 1"])
+@pytest.mark.parametrize("extension", ["", ", *, bonus: int = 3", ", *rest: int", ", **options: int"])
+def test_virtual_override_compatible_layout_preserves_keyword_order(extension, second_default, raises, asynchronous):
+    async_def, awaited = ("async def ", "await ") if asynchronous else ("def ", "")
+    assert_semantics(f'''
+        from pyjs import js
+        import asyncio
+        @js
+        class Base:
+            def total(self, first: int, second: int{second_default}) -> int:
+                return first + second
+        @js
+        class Extra(Base):
+            def total(self, first: int, second: int{second_default}, third: int = 2) -> int:
+                return first + second + third
+        @js
+        class Other(Base):
+            def total(self, first: int, second: int{second_default}{extension}) -> int:
+                return first + second * 10
+        @js
+        {async_def}receiver(value: Base) -> Base:
+            print("receiver")
+            return value
+        @js
+        {async_def}argument(value: int) -> int:
+            print(value)
+            if {raises} and value == 2:
+                raise ValueError("stop")
+            return value
+        @js
+        {async_def}update(value: Base):
+            try:
+                print(({awaited}receiver(value)).total(
+                    second={awaited}argument(2), first={awaited}argument(1)))
+            except ValueError:
+                print("caught")
+        {async_def}main():
+            {awaited}update(Base())
+            {awaited}update(Extra())
+            {awaited}update(Other())
+        {"asyncio.run(main())" if asynchronous else "main()"}
+    ''')
+
+
+@pytest.mark.parametrize("changed_arity", [False, True])
+def test_virtual_override_source_body_uses_declared_argument_layout(changed_arity):
+    source = f'''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1) -> int:
+                return first + second
+        @js
+        class Extra(Base):
+            def total(self, first: int, second: int = 1, third: int = 2) -> int:
+                return first + second * 10 + third * 100
+        @js
+        class Source(Base):
+            @js
+            def total(self, first: int{' = 5' if changed_arity else ''}, second: int = 1) -> int:
+                return first + second * 1000
+            total.source("return first + second * 1000;")
+        @js
+        def argument(value: int) -> int:
+            print(value)
+            return value
+        @js
+        def update(value: Base):
+            print(value.total(1), value.total(1, 2), value.total(1, second=4))
+            print(value.total(second=argument(2), first=argument(1)))
+        def main():
+            update(Base())
+            update(Extra())
+            update(Source())
+        main()
+    '''
+    if changed_arity:
+        with pytest.raises(CompilationError, match="require fixed ordinary parameters"):
+            with compile_source(source):
+                pass
+    else:
+        assert_semantics(source)

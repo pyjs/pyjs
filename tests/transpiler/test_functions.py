@@ -85,9 +85,13 @@ def test_virtual_override_unused_defaults_preserve_direct_emission():
         @js
         def update(value: Base) -> int:
             return value.total(1) + value.total(1, 2) + value.total(first=1, second=4)
+        @js
+        def reordered(value: Base) -> int:
+            return value.total(second=2, first=1)
         def main():
             print(update(Base()))
             print(update(Extra()))
+            print(reordered(Extra()))
     ''', '''
         class Base:
 
@@ -102,9 +106,13 @@ def test_virtual_override_unused_defaults_preserve_direct_emission():
         def update(value: Base) -> int:
             return value.[Base]total(1).[int]__add__!(value.[Base]total(1, 2)).[int]__add__!(value.[Base]total(first=1, second=4))
 
+        def reordered(value: Base) -> int:
+            return value.[Base]total(second=2, first=1)
+
         def main() -> None:
             print(update(Base()))
             print(update(Extra()))
+            print(reordered(Extra()))
     ''', '''
         export class Base {
 
@@ -124,9 +132,14 @@ def test_virtual_override_unused_defaults_preserve_direct_emission():
             return value.total(1) + value.total(1, {second: 2}) + value.total(1, {second: 4});
         }
 
+        export function reordered(value) {
+            return (($method0, $argument1, $argument2) => $method0($argument2, {['second']: $argument1}))(value.total.bind(value), 2, 1);
+        }
+
         export function main() {
             console.log(update(new Base()));
             console.log(update(new Extra()));
+            console.log(reordered(new Extra()));
         }
     ''')
 

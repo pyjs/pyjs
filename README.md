@@ -331,8 +331,8 @@ operators to the existing list/set record-field surface.
 JavaScript virtual method calls adapt supplied operands when a reached
 override changes required parameters to defaults, including renamed
 positional operands. Omitted values use the runtime method's defaults. Calls
-that already route supplied operands correctly remain direct, including
-overrides that add unused optional parameters.
+that already route supplied operands correctly and preserve their evaluation
+order remain direct, including overrides that add unused optional parameters.
 This adaptation supports fixed ordinary instance-method parameters. Ambiguous
 same-arity layouts, argument unpacking and variable-length signatures report
 compilation diagnostics when their calling conventions differ. Bound method
