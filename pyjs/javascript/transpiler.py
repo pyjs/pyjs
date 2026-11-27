@@ -897,6 +897,7 @@ class Transpiler(_Unparser):
         self.importer = importer
         self.exporter = exporter
         self.temporary_index = 0
+        self.virtual_method_cache = {}
         self.source_maps = source_maps
         self.include_object = include_object
         self.reference_object = reference_object
@@ -1069,6 +1070,7 @@ class Transpiler(_Unparser):
         transpiler.comparison_bindings = self.comparison_bindings
         transpiler.awaited_comparisons = self.awaited_comparisons
         transpiler.temporary_index = self.temporary_index
+        transpiler.virtual_method_cache = self.virtual_method_cache
         if isinstance(node, (ast.IfExp, ast.JoinedStr, ast.Await)):
             precedence = _Precedence.ATOM
         if precedence is not None:
@@ -2012,6 +2014,9 @@ class Transpiler(_Unparser):
                     self.write(src)
             return
 
+        if self.visit_virtual_method_call(node):
+            return
+
         super_call = (
             isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Call)
@@ -2196,7 +2201,7 @@ class Transpiler(_Unparser):
             self.visit_call_arg(arg)
         self.write("])")
 
-    def bound_method_source(self, node):
+    def bound_method_source(self, node, *, adapt=True):
         if not isinstance(node, Attribute) or not isinstance(node.obj, Function):
             return None
         method = node.obj
@@ -2207,6 +2212,11 @@ class Transpiler(_Unparser):
         receiver_type = analyzed_value_object(node.value)
         if isinstance(receiver_type, Class) and not method.is_classmethod and not is_super:
             return None
+        if adapt and len({len(variant.params) - len(variant.defaults)
+                          for variant in self.virtual_method_variants(node)}) > 1:
+            self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JavaScript bound method values cannot mix calling conventions",
+                      help="Call the method directly inside a fixed-arity wrapper.")
         receiver = "this" if is_super else self.isolated_visit(node.value)
         simple = is_super or isinstance(node.value, ast.Name)
         owner = receiver if simple else "$receiver"
@@ -2224,6 +2234,125 @@ class Transpiler(_Unparser):
 
     def visit_call_arg(self, node):
         self.traverse(node)
+
+    def virtual_method_variants(self, node):
+        if not isinstance(node, Attribute) or not isinstance(node.obj, Function):
+            return ()
+        method = node.obj
+        if (method.cls is None or method.is_static or method.is_property
+                or method.is_property_setter or method.name == "__init__"
+                or method.cls.container.scope.is_builtins
+                or method.inline_decorator is not None
+                or is_lexical_super_call(node.value, self.current_function)
+                or isinstance(analyzed_value_object(node.value), Class)):
+            return ()
+        members = get_type_members(analyzed_value_type(node.value))
+        roots = (self.current_function or self.entry_point).visited
+        # Emission sees a finalized reachable graph. Keep repeated call sites
+        # from rescanning that graph; isolated expression emitters share this.
+        key = method, tuple(members), frozenset(roots)
+        if key in self.virtual_method_cache:
+            return self.virtual_method_cache[key]
+        methods = {method}
+        for root in roots:
+            for candidate in root.compilation_objects:
+                if (isinstance(candidate, Class)
+                        and any(is_subclass(candidate, member) for member in members)):
+                    override = candidate.find_attrs(method.name)
+                    if isinstance(override, Function) and override.is_analyzed:
+                        methods.add(override)
+        result = tuple(sorted(methods, key=lambda value: (value.cls.name, value.name)))
+        self.virtual_method_cache[key] = result
+        return result
+
+    @staticmethod
+    def method_argument_layout(method):
+        required = len(method.params) - len(method.defaults)
+        return (required, tuple(
+            f"${index}" if index < method.posonly_count else param.arg
+            for index, param in enumerate(method.params) if index >= required
+        ), tuple(param.arg for param in method.kwonlyargs),
+            method.vararg is not None, method.kwarg is not None)
+
+    def visit_virtual_method_call(self, node):
+        variants = self.virtual_method_variants(node.func)
+        if len({self.method_argument_layout(method) for method in variants}) < 2:
+            return False
+        if (any(isinstance(arg, ast.Starred) for arg in node.args)
+                or any(keyword.arg is None for keyword in node.keywords)):
+            self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JavaScript virtual calls with changing calling conventions cannot unpack arguments")
+        layouts = {}
+        supplied = list(node.args) + [keyword.value for keyword in node.keywords]
+        for method in variants:
+            if (method.vararg is not None or method.kwarg is not None or method.kwonlyargs
+                    or method.is_static or method.inline_decorator is not None
+                    or method.has_source_decorator or len(node.args) > len(method.params)):
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "JavaScript virtual calls with changing calling conventions require fixed ordinary parameters")
+            required = len(method.params) - len(method.defaults)
+            bound = dict(enumerate(range(len(node.args))))
+            for source_index, named in enumerate(node.keywords, len(node.args)):
+                index = next((index for index, param in enumerate(method.params)
+                              if index >= method.posonly_count and param.arg == named.arg), None)
+                if index is None or index in bound:
+                    self.fail(node, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                              f"Override {method.cls.name}.{method.name} cannot accept keyword {named.arg!r}")
+                bound[index] = source_index
+            if any(index not in bound for index in range(required)):
+                self.fail(node, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                          f"Override {method.cls.name}.{method.name} requires an omitted argument")
+            for index, source_index in bound.items():
+                param, source = method.params[index], supplied[source_index]
+                if (not is_return_type_compatible(param.annotation.obj, analyzed_value_type(source))
+                        or param.representation != analyzed_representation(source)):
+                    self.fail(node, DiagnosticCode.INCOMPATIBLE_ARGUMENT,
+                              f"Override {method.cls.name}.{method.name} cannot accept the supplied operand type")
+            positional = tuple(bound[index] for index in range(required))
+            options = {f"${index}" if index < method.posonly_count else method.params[index].arg: source_index
+                       for index, source_index in bound.items() if index >= required}
+            omitted = {f"${index}" if index < method.posonly_count else param.arg
+                       for index, param in enumerate(method.params)
+                       if index >= required and index not in bound}
+            if required in layouts:
+                old_positional, old_options, old_omitted = layouts[required]
+                # Equal emitted arity cannot distinguish overrides. Extra keys
+                # are harmless only if all methods agree on each supplied key.
+                if (old_positional != positional or options.keys() & old_omitted
+                        or old_options.keys() & omitted or any(
+                        key in old_options and old_options[key] != value
+                        for key, value in options.items())):
+                    self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                              "JavaScript virtual overrides have ambiguous argument layouts")
+                old_options.update(options)
+                old_omitted.update(omitted)
+            else:
+                layouts[required] = positional, options, omitted
+        function = self.temporary_name("method")
+        arguments = [self.temporary_name("argument") for _ in supplied]
+        self.write("((" + ", ".join([function, *arguments]) + ") => ")
+        for branch, (required, (positional, options, _)) in enumerate(sorted(layouts.items())):
+            if branch < len(layouts) - 1:
+                self.write(f"{function}.length === {required} ? ")
+            self.write(function + "(")
+            self.write(", ".join(arguments[index] for index in positional))
+            if options:
+                if positional:
+                    self.write(", ")
+                self.write("{" + ", ".join(f"[{key!r}]: {arguments[index]}"
+                                          for key, index in sorted(options.items())) + "}")
+            self.write(")")
+            if branch < len(layouts) - 1:
+                self.write(" : ")
+        self.write(")(")
+        # Bind before evaluating operands, as Python acquires the bound method
+        # first. Argument awaits remain in the caller, not inside an adapter.
+        self.write(self.bound_method_source(node.func, adapt=False))
+        for source in supplied:
+            self.write(", ")
+            self.visit_call_arg(source)
+        self.write(")")
+        return True
 
     def visit_keyword(self, node):
         self.write(node.arg)

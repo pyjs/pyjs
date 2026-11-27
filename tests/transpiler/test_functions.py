@@ -6,11 +6,69 @@ from pyjs.testing.helpers import (
     aat,
     ad,
     analyze_module_source,
+    assert_module_analysis_transpile,
     assert_module_transpile,
     assert_transpile,
     at,
     diagnostic_text,
 )
+
+
+def test_virtual_override_defaulted_operand_abi():
+    assert_module_analysis_transpile('''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, value: int) -> int:
+                return value
+        @js
+        class Child(Base):
+            def total(self, amount: int = 7) -> int:
+                return amount * 10
+        @js
+        def update(value: Base) -> int:
+            return value.total(2)
+        def main():
+            print(update(Child()))
+    ''', '''
+        class Base:
+
+            def total(value: int) -> int:
+                return value
+
+        class Child(Base):
+
+            def total(amount: int=7) -> int:
+                return amount.[int]__mul__!(10)
+
+        def update(value: Base) -> int:
+            return value.[Base]total(2)
+
+        def main() -> None:
+            print(update(Child()))
+    ''', '''
+        export class Base {
+
+            total(value) {
+                return value;
+            }
+        }
+
+        export class Child extends Base {
+
+            total({ amount=7} = {}) {
+                return amount * 10;
+            }
+        }
+
+        export function update(value) {
+            return (($method0, $argument1) => $method0.length === 0 ? $method0({['amount']: $argument1}) : $method0($argument1))(value.total.bind(value), 2);
+        }
+
+        export function main() {
+            console.log(update(new Child()));
+        }
+    ''')
 
 
 def test_abstract_iterable_loop_selects_mapping_keys_at_acquisition():
