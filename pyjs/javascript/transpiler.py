@@ -1637,6 +1637,8 @@ class Transpiler(_Unparser):
         reverse = getattr(node, "reverse", False)
         left, right = ((node.args[0], node.func.value) if reverse else
                        (node.func.value, node.args[0]))
+        option_keys = set()
+        positional_operand = False
         for candidate, declaration in declarations:
             method = candidate.find_attrs(name)
             if (not inspect.isfunction(declaration) or not isinstance(method, Function)
@@ -1654,6 +1656,10 @@ class Transpiler(_Unparser):
                 self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                           "JavaScript in-place overrides must preserve the analyzed operand and result types",
                           help="Narrow the receiver before applying the in-place operator.")
+            if method.defaults:
+                option_keys.add("$0" if method.posonly_count else method.params[0].arg)
+            else:
+                positional_operand = True
         # Resolve special methods on the type, not on instance attributes.
         # Keep operands outside the callback so awaits stay in the caller.
         names = []
@@ -1670,7 +1676,22 @@ class Transpiler(_Unparser):
         direct = not reverse and node.func.attr == name
         if not direct:
             self.write(f"{protocol} ? ")
-        self.write(f"{protocol}.call({lhs.id}, {rhs.id})")
+        self.write(f"{protocol}.call({lhs.id}, ")
+        if option_keys:
+            # These validated methods have exactly one fixed operand. Emitted
+            # required operands have length 1; a defaulted options object has
+            # length 0. Each options method consumes only its declared key,
+            # including when subclasses rename that operand.
+            if positional_operand:
+                self.write(f"{protocol}.length ? {rhs.id} : ")
+            self.write("{")
+            self.interleave(lambda: self.write(", "),
+                            lambda key: self.write(f"[{key!r}]: {rhs.id}"),
+                            sorted(option_keys))
+            self.write("}")
+        else:
+            self.write(rhs.id)
+        self.write(")")
         if not direct:
             self.write(" : ")
             fallback.func = Attribute(node.func.obj, value=node.func.value, attr=node.func.attr)

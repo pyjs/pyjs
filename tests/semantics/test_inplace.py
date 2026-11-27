@@ -201,7 +201,8 @@ def test_subclass_with_incompatible_inplace_result_diagnoses():
             pass
 
 
-def test_inplace_keeps_awaits_in_caller_and_captures_old_field_value():
+@pytest.mark.parametrize("default", ["", " = 7"])
+def test_inplace_keeps_awaits_in_caller_and_captures_old_field_value(default):
     assert_semantics('''
         from pyjs import js
         import asyncio
@@ -232,7 +233,7 @@ def test_inplace_keeps_awaits_in_caller_and_captures_old_field_value():
             (await receiver(values))[await index()] += await argument(values)
             print(values[0] is original, values[0].count, original.count)
         asyncio.run(main())
-    ''')
+    '''.replace("amount: int)", f"amount: int{default})"))
 
 
 def test_generic_inplace_method_and_inherited_implementation():
@@ -291,3 +292,51 @@ def test_augmented_matrix_multiplication_keeps_explicit_boundary():
     with pytest.raises(CompilationError, match="augmented assignment does not support MatMult"):
         with compile_source(source):
             pass
+
+
+@pytest.mark.parametrize("base_method,child_method", [
+    ("__add__", "optional"),
+    ("required", "optional"),
+    ("optional", "required"),
+    ("optional", "optional"),
+    ("optional", "inherited"),
+])
+@pytest.mark.parametrize("positional_only", [False, True])
+@pytest.mark.parametrize("child_operand", ["amount", "__proto__"])
+def test_inplace_defaulted_operands_follow_runtime_method_abi(
+    base_method, child_method, positional_only, child_operand,
+):
+    base_name = "__add__" if base_method == "__add__" else "__iadd__"
+    base_default = " = 7" if base_method == "optional" else ""
+    child_default = " = 11" if child_method == "optional" else ""
+    positional = ", /" if positional_only else ""
+    child = "pass" if child_method == "inherited" else f'''
+            def __iadd__(self, {child_operand}: int{child_default}{positional}) -> Base:
+                self.count += {child_operand}
+                return self
+    '''.strip()
+    assert_semantics(f'''
+        from pyjs import js
+        @js
+        class Base:
+            def __init__(self):
+                self.count = 1
+            def {base_name}(self, other: int{base_default}) -> "Base":
+                self.count += other
+                return self
+        @js
+        class Child(Base):
+            {child}
+        @js
+        def update(value: Base):
+            alias = value
+            value += 2
+            print(value is alias, value.count)
+        def main():
+            update(Base())
+            update(Child())
+            direct: Base = Child()
+            direct += 2
+            print(direct.count)
+        main()
+    ''')
