@@ -71,6 +71,66 @@ def test_virtual_override_defaulted_operand_abi():
     ''')
 
 
+def test_virtual_override_unused_defaults_preserve_direct_emission():
+    assert_module_analysis_transpile('''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1) -> int:
+                return first + second
+        @js
+        class Extra(Base):
+            def total(self, first: int, second: int = 1, third: int = 2) -> int:
+                return first + second + third
+        @js
+        def update(value: Base) -> int:
+            return value.total(1) + value.total(1, 2) + value.total(first=1, second=4)
+        def main():
+            print(update(Base()))
+            print(update(Extra()))
+    ''', '''
+        class Base:
+
+            def total(first: int, second: int=1) -> int:
+                return first.[int]__add__!(second)
+
+        class Extra(Base):
+
+            def total(first: int, second: int=1, third: int=2) -> int:
+                return first.[int]__add__!(second).[int]__add__!(third)
+
+        def update(value: Base) -> int:
+            return value.[Base]total(1).[int]__add__!(value.[Base]total(1, 2)).[int]__add__!(value.[Base]total(first=1, second=4))
+
+        def main() -> None:
+            print(update(Base()))
+            print(update(Extra()))
+    ''', '''
+        export class Base {
+
+            total(first, { second=1} = {}) {
+                return first + second;
+            }
+        }
+
+        export class Extra extends Base {
+
+            total(first, { second=1, third=2} = {}) {
+                return first + second + third;
+            }
+        }
+
+        export function update(value) {
+            return value.total(1) + value.total(1, {second: 2}) + value.total(1, {second: 4});
+        }
+
+        export function main() {
+            console.log(update(new Base()));
+            console.log(update(new Extra()));
+        }
+    ''')
+
+
 def test_abstract_iterable_loop_selects_mapping_keys_at_acquisition():
     assert_module_transpile(
         '''

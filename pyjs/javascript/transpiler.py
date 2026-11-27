@@ -2274,11 +2274,48 @@ class Transpiler(_Unparser):
         ), method.vararg is not None,
             # Extra keyword-only names do not move fixed positional arguments.
             # With *args, however, adding an options slot shifts the rest pack.
-            bool(method.vararg is not None and (method.kwonlyargs or method.kwarg)))
+            bool(method.vararg is not None and (method.defaults or method.kwonlyargs or method.kwarg)))
+
+    @staticmethod
+    def supplied_argument_layout(method, node):
+        if (method.is_static or method.inline_decorator is not None
+                or method.has_source_decorator or len(node.args) > len(method.params)
+                or any(isinstance(arg, ast.Starred) for arg in node.args)
+                or any(keyword.arg is None for keyword in node.keywords)):
+            return None
+        required = len(method.params) - len(method.defaults)
+        locations = [index if index < required else (
+            f"${index}" if index < method.posonly_count else method.params[index].arg)
+            for index in range(len(node.args))]
+        bound = set(range(len(node.args)))
+        keyword_names = {keyword.arg for keyword in node.keywords}
+        for named in node.keywords:
+            index = next((index for index, param in enumerate(method.params)
+                          if index >= method.posonly_count and param.arg == named.arg), None)
+            if index is None:
+                if (method.kwarg is None
+                        and not any(param.arg == named.arg for param in method.kwonlyargs)):
+                    return None
+                locations.append(named.arg)
+            else:
+                if index in bound:
+                    return None
+                bound.add(index)
+                locations.append(index if index < required else named.arg)
+        if (any(index not in bound for index in range(required))
+                or any(default is None and param.arg not in keyword_names
+                       for param, default in zip(method.kwonlyargs, method.kw_defaults, strict=True))):
+            return None
+        return required, tuple(locations)
 
     def visit_virtual_method_call(self, node):
         variants = self.virtual_method_variants(node.func)
         if len({self.method_argument_layout(method) for method in variants}) < 2:
+            return False
+        supplied_layouts = {self.supplied_argument_layout(method, node) for method in variants}
+        # Unused trailing defaults and unconsumed rest parameters do not change
+        # where this call's operands go. Preserve the direct call in that case.
+        if None not in supplied_layouts and len(supplied_layouts) == 1:
             return False
         if (any(isinstance(arg, ast.Starred) for arg in node.args)
                 or any(keyword.arg is None for keyword in node.keywords)):

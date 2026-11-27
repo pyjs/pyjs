@@ -289,3 +289,104 @@ def test_virtual_override_varargs_options_slot_change_still_diagnoses():
     with pytest.raises(CompilationError, match="require fixed ordinary parameters"):
         with compile_source(source):
             pass
+
+
+@pytest.mark.parametrize("extension, result", [
+    ("", "0"),
+    (", *, bonus: int = 3", "bonus * 10000"),
+    (", *rest: int", "len(rest)"),
+    (", **options: int", "len(options)"),
+])
+def test_virtual_override_unused_trailing_defaults_keep_compatible_siblings(extension, result):
+    assert_semantics(f'''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1) -> int:
+                return first + second
+        @js
+        class Extra(Base):
+            def total(self, first: int, second: int = 1, third: int = 2) -> int:
+                return first + second * 10 + third * 100
+        @js
+        class Other(Base):
+            def total(self, first: int, second: int = 1{extension}) -> int:
+                return first + second * 1000 + {result}
+        @js
+        def update(value: Base):
+            print(value.total(1))
+            print(value.total(1, 2))
+            print(value.total(1, second=4))
+        def main():
+            update(Base())
+            update(Extra())
+            update(Other())
+        main()
+    ''')
+
+
+def test_virtual_override_omitted_renamed_option_keeps_runtime_default():
+    assert_semantics('''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1) -> int:
+                return first + second
+        @js
+        class Child(Base):
+            def total(self, first: int, amount: int = 3, **options: int) -> int:
+                return first + amount + len(options)
+        @js
+        def update(value: Base):
+            print(value.total(2))
+        def main():
+            update(Base())
+            update(Child())
+        main()
+    ''')
+
+
+def test_virtual_override_supplied_renamed_option_with_kwargs_still_diagnoses():
+    source = '''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1) -> int:
+                return first + second
+        @js
+        class Child(Base):
+            def total(self, first: int, amount: int = 3, **options: int) -> int:
+                return first + amount + len(options)
+        @js
+        def update(value: Base):
+            print(value.total(2, 4))
+        def main():
+            update(Child())
+    '''
+    with pytest.raises(CompilationError, match="require fixed ordinary parameters"):
+        with compile_source(source):
+            pass
+
+
+def test_virtual_override_keyword_only_extension_reuses_existing_variadic_options_slot():
+    assert_semantics('''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, second: int = 1, *rest: int) -> int:
+                return first + second + sum(rest)
+        @js
+        class Child(Base):
+            def total(self, first: int, second: int = 1, *rest: int,
+                      bonus: int = 3) -> int:
+                return first + second * 10 + sum(rest) * 100 + bonus * 1000
+        @js
+        def update(value: Base):
+            print(value.total(1))
+            print(value.total(1, 2))
+            print(value.total(1, 2, 3, 4))
+        def main():
+            update(Base())
+            update(Child())
+        main()
+    ''')
