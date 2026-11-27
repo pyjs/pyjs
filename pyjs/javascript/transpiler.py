@@ -1611,9 +1611,108 @@ class Transpiler(_Unparser):
             self.write(")")
         return True
 
+    def visit_inplace_call(self, node):
+        receiver, name = node.javascript_inplace
+        members = get_type_members(receiver)
+        candidates = set(members) | {
+            candidate for root in self.current_function.visited
+            for candidate in root.compilation_objects
+            if isinstance(candidate, Class)
+            and any(is_subclass(candidate, member) for member in members)
+        }
+        fallback = Call(node.obj, func=node.func)
+        vars(fallback).update(vars(node))
+        fallback.javascript_inplace = None
+        absent = object()
+        declarations = [(candidate, inspect.getattr_static(candidate.py_obj, name, absent))
+                        for candidate in candidates]
+        declarations = [(candidate, declaration) for candidate, declaration in declarations
+                        if declaration is not absent]
+        if not declarations:
+            self.visit_call(fallback)
+            return
+        if not isinstance(node.func, Attribute) or len(node.args) != 1 or node.keywords:
+            self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      "JavaScript in-place operators require an ordinary application method")
+        reverse = getattr(node, "reverse", False)
+        left, right = ((node.args[0], node.func.value) if reverse else
+                       (node.func.value, node.args[0]))
+        option_keys = set()
+        positional_operand = False
+        for candidate, declaration in declarations:
+            method = candidate.find_attrs(name)
+            if (not inspect.isfunction(declaration) or not isinstance(method, Function)
+                    or method.py_func is not declaration or method.name != name
+                    or method.is_staticmethod or method.is_classmethod or method.is_async
+                    or method.inline_decorator is not None):
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "JavaScript in-place operators require an ordinary application method")
+            if (len(method.params) != 1 or method.vararg is not None or method.kwarg is not None
+                    or method.kwonlyargs
+                    or not is_return_type_compatible(method.params[0].annotation.obj, analyzed_value_type(right))
+                    or method.params[0].representation != analyzed_representation(right)
+                    or not is_return_type_compatible(analyzed_value_type(node), method.return_type)
+                    or method.return_representation != analyzed_representation(node)):
+                self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                          "JavaScript in-place overrides must preserve the analyzed operand and result types",
+                          help=(f"Check {candidate.name}.{name}; exactly one operand parameter is supported. "
+                                "Narrow the receiver before applying the in-place operator."))
+            if method.defaults:
+                option_keys.add("$0" if method.posonly_count else method.params[0].arg)
+            else:
+                positional_operand = True
+        # Resolve special methods on the type, not on instance attributes.
+        # Keep operands outside the callback so awaits stay in the caller.
+        names = []
+        owner = self.current_function or self.entry_point
+        for label, source in (("inplace_left", left), ("inplace_right", right)):
+            identifier = self.temporary_name(label)
+            local = analyzed_value_type(source)(identifier, owner.scope, owner)
+            value = Name(local, id=identifier, ctx=ast.Load())
+            set_analyzed_representation(value, analyzed_representation(source))
+            names.append(value)
+        lhs, rhs = names
+        self.write(f"(({lhs.id}, {rhs.id}) => ")
+        protocol = f"globalThis.Object.getPrototypeOf({lhs.id}).{name}"
+        direct = not reverse and node.func.attr == name
+        if not direct:
+            self.write(f"{protocol} ? ")
+        self.write(f"{protocol}.call({lhs.id}, ")
+        if option_keys:
+            # These validated methods have exactly one fixed operand. Emitted
+            # required operands have length 1; a defaulted options object has
+            # length 0. Each options method consumes only its declared key,
+            # including when subclasses rename that operand.
+            if positional_operand:
+                self.write(f"{protocol}.length ? {rhs.id} : ")
+            self.write("{")
+            self.interleave(lambda: self.write(", "),
+                            lambda key: self.write(f"[{key!r}]: {rhs.id}"),
+                            sorted(option_keys))
+            self.write("}")
+        else:
+            self.write(rhs.id)
+        self.write(")")
+        if not direct:
+            self.write(" : ")
+            fallback.func = Attribute(node.func.obj, value=node.func.value, attr=node.func.attr)
+            vars(fallback.func).update(vars(node.func))
+            fallback.func.value = rhs if reverse else lhs
+            fallback.args = [lhs if reverse else rhs]
+            self.traverse(fallback)
+        self.write(")(")
+        self.visit_call_arg(left)
+        self.write(", ")
+        self.visit_call_arg(right)
+        self.write(")")
+
     def visit_call(self, node: Call):
         self.set_precedence(_Precedence.ATOM, node.func)
         call_target = analyzed_value_object(node.func)
+
+        if getattr(node, "javascript_inplace", None) is not None:
+            self.visit_inplace_call(node)
+            return
 
         if self.literal_string_membership(node):
             return

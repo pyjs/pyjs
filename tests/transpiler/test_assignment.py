@@ -1687,6 +1687,72 @@ def test_lowered_list_calls_preserve_augmented_assignment_identity():
             assert updated.value.augmented is True
 
 
+def test_application_inplace_method_analysis_and_emission():
+    at('''
+        @js
+        class Box:
+            def __iadd__(self, amount: int) -> "Box":
+                return self
+        def main():
+            value = Box()
+            value += 2
+    ''', '''
+        class Box:
+
+            def __iadd__(amount: int) -> Box:
+                return self
+
+        def main() -> None:
+            value: Box = Box()
+            value = value.[Box]__iadd__(2)
+    ''', '''
+        export class Box {
+
+            __iadd__(amount) {
+                return this;
+            }
+        }
+
+        export function main() {
+            var value = new Box();
+            value = (($inplace_left0, $inplace_right1) => globalThis.Object.getPrototypeOf($inplace_left0).__iadd__.call($inplace_left0, $inplace_right1))(value, 2);
+        }
+    ''')
+
+
+def test_defaulted_inplace_method_analysis_and_emission():
+    at('''
+        @js
+        class Box:
+            def __iadd__(self, amount: int = 7) -> "Box":
+                return self
+        def main():
+            value = Box()
+            value += 2
+    ''', '''
+        class Box:
+
+            def __iadd__(amount: int=7) -> Box:
+                return self
+
+        def main() -> None:
+            value: Box = Box()
+            value = value.[Box]__iadd__(2)
+    ''', '''
+        export class Box {
+
+            __iadd__({ amount=7} = {}) {
+                return this;
+            }
+        }
+
+        export function main() {
+            var value = new Box();
+            value = (($inplace_left0, $inplace_right1) => globalThis.Object.getPrototypeOf($inplace_left0).__iadd__.call($inplace_left0, {['amount']: $inplace_right1}))(value, 2);
+        }
+    ''')
+
+
 def test_augmented_assignment_with_undefined_value():
     ad(
         """\
