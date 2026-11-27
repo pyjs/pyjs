@@ -582,7 +582,7 @@ def test_writes_to_common_fields_on_union_typed_values_match_python():
 
 
 @pytest.mark.parametrize("annotation", ["int | str", "int | str | None"])
-def test_narrowed_properties_still_invoke_the_getter(annotation):
+def test_repeated_property_reads_recheck_each_result(annotation):
     assert_semantics(f'''
         from pyjs import js
 
@@ -597,8 +597,11 @@ def test_narrowed_properties_still_invoke_the_getter(annotation):
 
         @js
         def inspect(value: Value) -> str:
-            if isinstance(value.item, int):
-                return str(value.item)
+            first = value.item
+            if isinstance(first, int):
+                second = value.item
+                if isinstance(second, str):
+                    return second
             return 'unexpected'
 
         @js

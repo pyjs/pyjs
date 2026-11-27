@@ -692,6 +692,20 @@ def main():
 both JavaScript `null` and `undefined`, while identity comparisons between
 ordinary objects retain identity semantics.
 
+A `@property` access invokes its getter each time. A guard on one result does
+not narrow a later access, even for a read-only property. Capture the result
+before narrowing it:
+
+```python
+value = item.optional_property
+if value is not None:
+    print(value.upper())
+```
+
+This also applies to fields reached through a property, such as
+`item.current_record.name`. Ordinary stored fields and captured locals retain
+normal flow narrowing. Getter calls are not cached or removed.
+
 ### Operator overloading
 
 Built-in operators use their normal JavaScript equivalents for compatible

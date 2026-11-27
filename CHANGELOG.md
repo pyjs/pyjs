@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Type guards no longer narrow subsequent `@property` accesses, which invoke
+  the getter again and may return different values. This applies consistently
+  to None checks, `isinstance`, truthiness and literal comparisons, including
+  assertions and early-return guards. Capture the result in a local before
+  narrowing it; ordinary field narrowing remains supported.
+
 - JavaScript virtual calls preserve supplied operands when subclass overrides
   change required/defaulted parameter layouts. Runtime defaults remain owned
   by the selected override, with receiver and operand evaluation performed

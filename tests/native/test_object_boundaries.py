@@ -56,7 +56,8 @@ def test_bare_collection_narrowing_allows_header_queries_without_inventing_item_
         def read(holder: Holder) -> str:
             result = ""
             if isinstance(holder.value, list): result += str(len(holder.value))
-            if isinstance(holder.item, list): result += str(len(holder.item))
+            item = holder.item
+            if isinstance(item, list): result += str(len(item))
             return result
         def main() -> str:
             gc_set_threshold(1)
@@ -143,8 +144,9 @@ def test_incompatible_concrete_casts_are_diagnosed_before_memory_access(source):
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-def test_object_properties_project_payloads_and_recheck_stale_proofs(tmp_path, optimize):
+def test_object_properties_project_captures_and_check_explicit_casts(tmp_path, optimize):
     result = LLVM().assert_matches_python('''
+        from typing import cast
         from pyjs.native import gc_collect, gc_set_threshold
         class Item:
             def __init__(self, text: str): self.text = text
@@ -158,14 +160,15 @@ def test_object_properties_project_payloads_and_recheck_stale_proofs(tmp_path, o
             holder.value = None
             gc_collect()
         def read(holder: Holder) -> str:
-            if isinstance(holder.item, str):
-                return str(len(holder.item))
-            if isinstance(holder.item, int):
-                return str(holder.item)
-            if isinstance(holder.item, Item):
+            item = holder.item
+            if isinstance(item, str):
+                return str(len(item))
+            if isinstance(item, int):
+                return str(item)
+            if isinstance(item, Item):
                 change(holder)
                 try:
-                    return holder.item.text
+                    return cast(Item, holder.item).text
                 except Exception:
                     return "checked"
             return "other"

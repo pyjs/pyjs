@@ -2599,6 +2599,7 @@ class InferenceVisitor(ast.NodeVisitor):
         value_type: UnionType,
         *,
         for_assignment: bool = False,
+        receiver=None,
     ) -> UnionFieldResolution | UnionMethodResolution:
         fields = []
         methods = []
@@ -2627,14 +2628,20 @@ class InferenceVisitor(ast.NodeVisitor):
 
         union_name = value_type.to_annotation_str(" | ")
         if missing:
+            help_text = (
+                f"Missing from {', '.join(missing)}. Narrow the value with "
+                f"isinstance() before accessing {node.attr!r}."
+            )
+            if receiver is not None and self.reads_property(receiver):
+                help_text = (
+                    "Property getters may return a different value on each read. "
+                    "Capture the result in a local variable, then narrow that variable."
+                )
             self.fail(
                 node,
                 DiagnosticCode.UNDEFINED_ATTRIBUTE,
                 f"Attribute {node.attr!r} is not defined on every member of {union_name}",
-                help=(
-                    f"Missing from {', '.join(missing)}. Narrow the value with "
-                    f"isinstance() before accessing {node.attr!r}."
-                ),
+                help=help_text,
             )
         if incompatible or (fields and methods):
             self.fail(
@@ -2752,6 +2759,18 @@ class InferenceVisitor(ast.NodeVisitor):
         narrowed.scope.add(value)
         return narrowed
 
+    @staticmethod
+    def reads_property(value):
+        return any(getattr(part, "property_getters", ()) for part in ast.walk(value))
+
+    def narrowing_value(self, node):
+        value = self.visit(node)
+        # An attribute path through a getter re-evaluates it on every read.
+        # A captured local has no getter in its expression and can be narrowed.
+        if self.reads_property(value):
+            return None
+        return value
+
     def get_none_identity_narrowing(self, test):
         if (
             not isinstance(test, ast.Compare)
@@ -2769,7 +2788,10 @@ class InferenceVisitor(ast.NodeVisitor):
             return None
         if not isinstance(value_node, (ast.Name, ast.Attribute)):
             return None
-        value = self.guard_value(self.visit(value_node), preserve_local=True)
+        value = self.narrowing_value(value_node)
+        if value is None:
+            return None
+        value = self.guard_value(value, preserve_local=True)
         if not isinstance(value.obj, Instance):
             return None
         value_types = get_type_members(value.obj.cls)
@@ -3623,7 +3645,10 @@ class InferenceVisitor(ast.NodeVisitor):
             return None
         target_types = [self.isinstance_type(node) for node in target_nodes]
         value_node = test.args[0]
-        current_type = analyzed_value_type(self.guard_value(self.visit(value_node), preserve_local=True))
+        value = self.narrowing_value(value_node)
+        if value is None:
+            return None
+        current_type = analyzed_value_type(self.guard_value(value, preserve_local=True))
         matching = [
             member
             for member in get_type_members(current_type)
@@ -3658,7 +3683,10 @@ class InferenceVisitor(ast.NodeVisitor):
     def get_truthiness_narrowing(self, test):
         if not isinstance(test, (ast.Name, ast.Attribute)):
             return None
-        value_type = analyzed_value_type(self.guard_value(self.visit(test), preserve_local=True))
+        value = self.narrowing_value(test)
+        if value is None:
+            return None
+        value_type = analyzed_value_type(self.guard_value(value, preserve_local=True))
         if not isinstance(value_type, UnionType):
             return None
         non_none_types = [
@@ -3690,7 +3718,10 @@ class InferenceVisitor(ast.NodeVisitor):
             return None
         if not isinstance(literal, str):
             return None
-        value_type = analyzed_value_type(self.visit(value_node))
+        value = self.narrowing_value(value_node)
+        if value is None:
+            return None
+        value_type = analyzed_value_type(value)
         if not any(
             isinstance(member, LiteralClass)
             for member in get_type_members(value_type)
@@ -5715,7 +5746,6 @@ class InferenceVisitor(ast.NodeVisitor):
         }:
             self.reject_union_subscript(node.value, value_obj, node.attr)
         resolution = None
-        narrowed_attribute = None
         try:
             if getattr(node, "class_lookup", False):
                 # Synthesized implicit protocol calls bypass instance fields and
@@ -5759,14 +5789,12 @@ class InferenceVisitor(ast.NodeVisitor):
                 try:
                     attr = self.scope.lookup(ast.unparse(node))
                     if getattr(attr, "narrowed_from", None) is not None:
-                        # A flow proof refines a property's result, not the
-                        # descriptor access itself. Retain getter identity so
-                        # IR lowering does not turn the next read into a field.
-                        narrowed_attribute = attr
+                        # Attribute proofs describe stored fields, not fresh
+                        # getter results. Preserve the descriptor's own type.
                         if union_type is None:
                             declared = value_obj.find(node.attr)
                         else:
-                            resolution = self.resolve_union_attribute(node, union_type)
+                            resolution = self.resolve_union_attribute(node, union_type, receiver=value)
                             declared = (resolution.methods[0]
                                         if isinstance(resolution, UnionMethodResolution) else attr)
                         if isinstance(declared, Function) and declared.is_property:
@@ -5778,7 +5806,7 @@ class InferenceVisitor(ast.NodeVisitor):
                                       f"Runtime function attribute {node.attr!r} is not supported")
                         attr = value_obj.find(node.attr)
                     else:
-                        resolution = self.resolve_union_attribute(node, union_type)
+                        resolution = self.resolve_union_attribute(node, union_type, receiver=value)
                         if isinstance(resolution, UnionFieldResolution):
                             attr = resolution.value_type(
                                 ast.unparse(node),
@@ -5988,9 +6016,6 @@ class InferenceVisitor(ast.NodeVisitor):
                 f"Property {node.attr!r} getters",
             )
             set_analyzed_representation(attribute, representation)
-            if narrowed_attribute is not None:
-                attribute.obj = narrowed_attribute
-                set_analyzed_representation(attribute, analyzed_representation(narrowed_attribute))
             return attribute
         if isinstance(attr, Function):
             if union_functions:

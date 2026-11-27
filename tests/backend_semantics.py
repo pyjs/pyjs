@@ -3135,6 +3135,107 @@ REVERSED_PROTOCOL_CONTRACT = _contract(
 )
 
 
+_PROPERTY_CAPTURE_SOURCE = '''
+    from pyjs import js
+    @js
+    class Declared:
+        def __init__(self):
+            self.calls = 0
+        @property
+        def value(self) -> str:
+            self.calls += 1
+            return str(self.calls)
+    @js
+    def read_declared(box: Declared) -> str:
+        if box.value:
+            return box.value.upper()
+        return "empty"
+    @js
+    class Inbox:
+        def __init__(self, value: str | None):
+            self.stored: str | None = value
+            self.calls = 0
+        @property
+        def value(self) -> str | None:
+            self.calls += 1
+            result = self.stored
+            self.stored = None
+            return result
+    @js
+    class Child(Inbox):
+        pass
+    @js
+    class Override(Inbox):
+        @property
+        def value(self) -> str | None:
+            self.calls += 10
+            result = self.stored
+            self.stored = None
+            return result
+    @js
+    def read_none(box: Inbox) -> str:
+        value = box.value
+        if value is not None:
+            return value.upper()
+        return "absent"
+    @js
+    def read_instance(box: Inbox) -> str:
+        value = box.value
+        if not isinstance(value, str):
+            return "absent"
+        return value.upper()
+    @js
+    def read_truth(box: Inbox) -> str:
+        value = box.value
+        if value:
+            return value.upper()
+        return "empty"
+    @js
+    def read_assert(box: Inbox) -> str:
+        value = box.value
+        assert value is not None
+        return value.upper()
+    '''
+
+
+PROPERTY_CAPTURE_CONTRACT = _contract(
+    _PROPERTY_CAPTURE_SOURCE,
+    "property_capture",
+    '''
+    direct = Inbox("hello")
+    inherited = Child("world")
+    overridden = Override("virtual")
+    asserted = Child("once")
+    declared = Declared()
+    ''',
+    (
+        ("None guard captures once", 'read_none(direct) != "HELLO" or direct.calls != 1'),
+        ("later read still invokes getter", 'read_none(direct) != "absent" or direct.calls != 2'),
+        ("inherited getter", 'read_none(inherited) != "WORLD" or inherited.calls != 1'),
+        ("inherited absent result", 'read_none(inherited) != "absent" or inherited.calls != 2'),
+        ("virtual getter and truthiness", 'read_truth(overridden) != "VIRTUAL" or overridden.calls != 10'),
+        ("virtual getter evaluated again", 'read_truth(overridden) != "empty" or overridden.calls != 20'),
+        ("assert capture", 'read_assert(asserted) != "ONCE" or asserted.calls != 1'),
+        ("empty string remains present", 'read_none(Inbox("")) != ""'),
+        ("empty string truthiness", 'read_truth(Inbox("")) != "empty"'),
+        ("initially absent", 'read_none(Inbox(None)) != "absent"'),
+        ("nonoptional getter is not cached", 'read_declared(declared) != "2" or declared.calls != 2'),
+    ),
+)
+
+
+PROPERTY_INSTANCE_CAPTURE_CONTRACT = _contract(
+    _PROPERTY_CAPTURE_SOURCE,
+    "property_instance_capture",
+    'box = Child("hello")',
+    (
+        ("inherited getter and inverse isinstance guard", 'read_instance(box) != "HELLO" or box.calls != 1'),
+        ("subsequent absent result", 'read_instance(box) != "absent" or box.calls != 2'),
+        ("initially absent", 'read_instance(Inbox(None)) != "absent"'),
+    ),
+)
+
+
 ASSERT_NARROWING_CONTRACT = _contract(
     """
     from pyjs import js, int8
