@@ -2271,8 +2271,10 @@ class Transpiler(_Unparser):
         return (required, tuple(
             f"${index}" if index < method.posonly_count else param.arg
             for index, param in enumerate(method.params) if index >= required
-        ), tuple(param.arg for param in method.kwonlyargs),
-            method.vararg is not None, method.kwarg is not None)
+        ), method.vararg is not None,
+            # Extra keyword-only names do not move fixed positional arguments.
+            # With *args, however, adding an options slot shifts the rest pack.
+            bool(method.vararg is not None and (method.kwonlyargs or method.kwarg)))
 
     def visit_virtual_method_call(self, node):
         variants = self.virtual_method_variants(node.func)

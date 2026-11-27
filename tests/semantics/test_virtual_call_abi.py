@@ -242,3 +242,50 @@ def test_virtual_override_specialized_generic_receiver():
             update(Child())
         main()
     ''')
+
+
+@pytest.mark.parametrize("keywords", ["sample=2", ""])
+@pytest.mark.parametrize("structural", [False, True])
+def test_virtual_override_additional_keyword_only_defaults_preserve_call_layout(keywords, structural):
+    assert_semantics(f'''
+        from pyjs import js
+        @js
+        class Observer:
+            {"__pyjs_structural__ = True" if structural else "pass"}
+            def updated(self, value: int, *, sample: int = 1) -> int:
+                return value + sample
+        @js
+        class Recorder{'' if structural else '(Observer)'}:
+            def updated(self, value: int, *, sample: int = 1,
+                        capture: bool = True, extra: int = 3) -> int:
+                return value + sample + (extra if capture else 0)
+        @js
+        def update(observer: Observer):
+            print(observer.updated(4, {keywords}))
+        def main():
+            update(Observer())
+            update(Recorder())
+        main()
+    ''')
+
+
+def test_virtual_override_varargs_options_slot_change_still_diagnoses():
+    source = '''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, *values: int) -> int:
+                return sum(values)
+        @js
+        class Child(Base):
+            def total(self, *values: int, offset: int = 3) -> int:
+                return sum(values) + offset
+        @js
+        def update(value: Base):
+            print(value.total(2, 3))
+        def main():
+            update(Child())
+    '''
+    with pytest.raises(CompilationError, match="require fixed ordinary parameters"):
+        with compile_source(source):
+            pass
