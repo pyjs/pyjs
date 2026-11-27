@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- JavaScript virtual calls preserve supplied operands when subclass overrides
+  change required/defaulted parameter layouts. Runtime defaults remain owned
+  by the selected override, with receiver and operand evaluation performed
+  once. Unsupported ambiguous layouts and bound-method convention changes
+  receive diagnostics instead of silently substituting default values.
+
 - JavaScript augmented assignments call application `__iadd__` and related
   in-place methods before ordinary binary operators. Mutating methods preserve
   aliases, and their return values are written back to locals, attributes and

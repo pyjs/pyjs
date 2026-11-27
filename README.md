@@ -328,6 +328,17 @@ custom descriptors and `NotImplemented` fallback are not supported; these
 cases produce compilation diagnostics. This does not add mutable collection
 operators to the existing list/set record-field surface.
 
+JavaScript virtual method calls adapt supplied operands when a reached
+override changes required parameters to defaults, including renamed
+positional operands. Omitted values use the runtime method's defaults. Calls
+that already route supplied operands correctly and preserve their evaluation
+order remain direct, including overrides that add unused optional parameters.
+This adaptation supports fixed ordinary instance-method parameters. Ambiguous
+same-arity layouts, argument unpacking and variable-length signatures report
+compilation diagnostics when their calling conventions differ. Bound method
+values with differing required-parameter counts need a fixed-arity wrapper
+that calls the method directly.
+
 Node provisioning uses [sdkmgr](https://github.com/pyjs/sdkmgr), which reuses
 mise or nvm and installs the requested version only when necessary. Explicit
 `Node(executable=...)` and `PYJS_NODE` selections still take precedence and
