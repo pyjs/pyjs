@@ -318,6 +318,14 @@ Use `--json` for structured results or `--perf` to compare Python and generated
 JavaScript timing. DOM, WebGPU, and other browser APIs still run through an
 application or browser test.
 
+Application classes can define ordinary synchronous instance methods such as
+`__iadd__` for JavaScript augmented assignment. PyJS preserves operand order
+and writes the returned value back to the assignment target. Subclass methods
+must fit the operand and result types of the declared receiver. Method aliases,
+custom descriptors and `NotImplemented` fallback are not supported; these
+cases produce compilation diagnostics. This does not add mutable collection
+operators to the existing list/set record-field surface.
+
 Node provisioning uses [sdkmgr](https://github.com/pyjs/sdkmgr), which reuses
 mise or nvm and installs the requested version only when necessary. Explicit
 `Node(executable=...)` and `PYJS_NODE` selections still take precedence and

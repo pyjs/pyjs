@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- JavaScript augmented assignments call application `__iadd__` and related
+  in-place methods before ordinary binary operators. Mutating methods preserve
+  aliases, and their return values are written back to locals, attributes and
+  items, including record fields. Reached subclasses can introduce the
+  protocol through a base-typed receiver. Unsupported method descriptors and
+  incompatible override signatures report compilation errors. Existing
+  collection-field restrictions remain unchanged.
+
 ## 0.5.0
 
 Release highlights and installation instructions are in

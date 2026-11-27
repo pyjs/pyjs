@@ -17165,6 +17165,31 @@ class JavaScriptInferenceVisitor(InferenceVisitor):
 
     numeric_domains = frozenset({"portable", "wgsl", "javascript"})
 
+    def analyze_binary_operation(self, node, left, right):
+        if not getattr(node, "augmented", False):
+            return super().analyze_binary_operation(node, left, right)
+        if type(node.op) not in self.BIN_OPS:
+            self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
+                      f"JavaScript augmented assignment does not support {type(node.op).__name__}")
+        receiver = analyzed_value_type(left)
+        members = get_type_members(receiver)
+        if all(member.container.scope.is_builtins for member in members):
+            return super().analyze_binary_operation(node, left, right)
+        name = "__i" + self.BIN_OPS[type(node.op)][0][2:]
+        method = receiver.find_attrs(name) if isinstance(receiver, Class) else None
+        if isinstance(method, Function):
+            invocation = ast.copy_location(ast.Call(
+                func=ast.copy_location(ast.Attribute(value=node.left, attr=name, ctx=ast.Load()), node.left),
+                args=[node.right], keywords=[]), node)
+            result = self.visit_Call(invocation)
+        else:
+            result = super().analyze_binary_operation(node, left, right)
+        # A subclass can introduce this protocol even when its declared base
+        # has only an ordinary binary method. Retain it before tree shaking.
+        result.runtime_protocols = (*result.runtime_protocols, (receiver, (name,)))
+        result.javascript_inplace = (receiver, name)
+        return result
+
 
 JS_ENVIRONMENT = AnalysisEnvironment(
     "js",
