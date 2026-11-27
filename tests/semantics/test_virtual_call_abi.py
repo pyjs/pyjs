@@ -476,3 +476,43 @@ def test_virtual_override_source_body_uses_declared_argument_layout(changed_arit
                 pass
     else:
         assert_semantics(source)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("arguments", [
+    "second=argument(2), first=argument(1), z=argument(3), a=argument(4)",
+    "first=argument(1), second=argument(2), z=argument(3), a=argument(4)",
+    "z=argument(3), second=argument(2), third=argument(8), a=argument(4), first=argument(1)",
+])
+def test_virtual_override_preserves_kwargs_insertion_order(arguments, asynchronous):
+    async_def, awaited = ("async def ", "await ") if asynchronous else ("def ", "")
+    if asynchronous:
+        arguments = arguments.replace("argument(", "await argument(")
+    assert_semantics(f'''
+        from pyjs import js
+        import asyncio
+        @js
+        class Base:
+            def total(self, first: int, second: int, **options: int) -> int:
+                for key in options:
+                    print(key, options[key])
+                return first + second
+        @js
+        class Extra(Base):
+            def total(self, first: int, second: int, third: int = 2,
+                      **options: int) -> int:
+                for key in options:
+                    print(key, options[key])
+                return first + second + third
+        @js
+        {async_def}argument(value: int) -> int:
+            print("argument", value)
+            return value
+        @js
+        {async_def}update(value: Base):
+            print(value.total({arguments}))
+        {async_def}main():
+            {awaited}update(Base())
+            {awaited}update(Extra())
+        {"asyncio.run(main())" if asynchronous else "main()"}
+    ''')

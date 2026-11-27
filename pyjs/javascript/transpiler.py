@@ -2388,7 +2388,7 @@ class Transpiler(_Unparser):
                 if positional:
                     self.write(", ")
                 self.write("{" + ", ".join(f"[{key!r}]: {arguments[index]}"
-                                          for key, index in sorted(options.items())) + "}")
+                                          for key, index in options.items()) + "}")
             self.write(")")
             if branch < len(layouts) - 1:
                 self.write(" : ")

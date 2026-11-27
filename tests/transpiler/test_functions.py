@@ -144,6 +144,49 @@ def test_virtual_override_unused_defaults_preserve_direct_emission():
     ''')
 
 
+def test_virtual_override_options_emit_in_source_insertion_order():
+    assert_module_transpile('''
+        from pyjs import js
+        @js
+        class Base:
+            def total(self, first: int, **options: int) -> int:
+                return first
+        @js
+        class Extra(Base):
+            def total(self, first: int, third: int = 2, **options: int) -> int:
+                return first + third
+        @js
+        def update(value: Base) -> int:
+            return value.total(z=3, a=4, first=1)
+        def main():
+            print(update(Extra()))
+    ''', '''
+        export class Base {
+
+            total(first, { ...$options} = {}) {
+                var options = new Map(Object.entries($options));
+                return first;
+            }
+        }
+
+        export class Extra extends Base {
+
+            total(first, { third=2, ...$options} = {}) {
+                var options = new Map(Object.entries($options));
+                return first + third;
+            }
+        }
+
+        export function update(value) {
+            return (($method0, $argument1, $argument2, $argument3) => $method0($argument3, {['z']: $argument1, ['a']: $argument2}))(value.total.bind(value), 3, 4, 1);
+        }
+
+        export function main() {
+            console.log(update(new Extra()));
+        }
+    ''')
+
+
 def test_abstract_iterable_loop_selects_mapping_keys_at_acquisition():
     assert_module_transpile(
         '''
