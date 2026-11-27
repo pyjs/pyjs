@@ -1655,7 +1655,8 @@ class Transpiler(_Unparser):
                     or method.return_representation != analyzed_representation(node)):
                 self.fail(node, DiagnosticCode.UNSUPPORTED_SYNTAX,
                           "JavaScript in-place overrides must preserve the analyzed operand and result types",
-                          help="Narrow the receiver before applying the in-place operator.")
+                          help=(f"Check {candidate.name}.{name}; exactly one operand parameter is supported. "
+                                "Narrow the receiver before applying the in-place operator."))
             if method.defaults:
                 option_keys.add("$0" if method.posonly_count else method.params[0].arg)
             else:

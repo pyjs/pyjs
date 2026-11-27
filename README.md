@@ -321,7 +321,9 @@ application or browser test.
 Application classes can define ordinary synchronous instance methods such as
 `__iadd__` for JavaScript augmented assignment. PyJS preserves operand order
 and writes the returned value back to the assignment target. Subclass methods
-must fit the operand and result types of the declared receiver. Method aliases,
+must fit the operand and result types of the declared receiver. Methods accept
+exactly one operand parameter, required or defaulted; additional parameters
+are unsupported even when defaulted. Method aliases,
 custom descriptors and `NotImplemented` fallback are not supported; these
 cases produce compilation diagnostics. This does not add mutable collection
 operators to the existing list/set record-field surface.

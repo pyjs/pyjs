@@ -196,9 +196,13 @@ def test_subclass_with_incompatible_inplace_result_diagnoses():
         def main():
             update(Child())
     '''
-    with pytest.raises(CompilationError, match="in-place overrides must preserve"):
+    with pytest.raises(CompilationError, match="in-place overrides must preserve") as caught:
         with compile_source(source):
             pass
+    assert caught.value.diagnostic.help == (
+        "Check Child.__iadd__; exactly one operand parameter is supported. "
+        "Narrow the receiver before applying the in-place operator.",
+    )
 
 
 @pytest.mark.parametrize("default", ["", " = 7"])
