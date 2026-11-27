@@ -202,9 +202,10 @@ def test_int_narrowing_keeps_boolean_identity(tmp_path, optimize):
             return value
 
         def property_value(box: Property) -> str:
-            if isinstance(box.value, int):
-                return repr(box.value) + '/' + str(box.value + 2)
-            return box.value
+            value = box.value
+            if isinstance(value, int):
+                return repr(value) + '/' + str(value + 2)
+            return value
 
         def main() -> str:
             return '|'.join([describe(True), describe(1), describe(False), field(Box(True)),
@@ -237,8 +238,9 @@ def test_narrowed_tagged_integers_require_explicit_unboxed_conversion(statement,
 
 
 @pytest.mark.parametrize("optimize", [0, 2])
-def test_narrowed_integer_load_rechecks_union_fields_and_properties(tmp_path, optimize):
+def test_narrowed_integer_load_rechecks_union_fields_and_explicit_property_casts(tmp_path, optimize):
     comparison = LLVM().assert_matches_python('''
+        from typing import cast
         class First:
             def __init__(self, value: int | str):
                 self.value = value
@@ -262,7 +264,7 @@ def test_narrowed_integer_load_rechecks_union_fields_and_properties(tmp_path, op
             return 0
         def prop(holder: Changing) -> int:
             if isinstance(holder.value, int):
-                return holder.value + 1
+                return cast(int, holder.value) + 1
             return 0
         def main() -> int:
             count = 0

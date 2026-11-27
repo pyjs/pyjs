@@ -556,10 +556,11 @@ def test_stop_iteration_preserves_payload_through_unwinding_and_collection(tmp_p
 
 @pytest.mark.parametrize("optimize", [0, 2])
 @pytest.mark.parametrize("origin", ["raised", "generator"])
-def test_stop_iteration_value_repeated_attribute_reads_preserve_narrowed_layout(tmp_path, optimize, origin):
+def test_stop_iteration_value_repeated_cast_reads_preserve_checked_layout(tmp_path, optimize, origin):
     statement = "raise StopIteration(value)" if origin == "raised" else "next(stream)"
     result = LLVM().assert_matches_python(f'''
         from collections.abc import Generator
+        from typing import cast
         from pyjs.native import gc_collect, gc_set_threshold
 
         class Box:
@@ -578,17 +579,17 @@ def test_stop_iteration_value_repeated_attribute_reads_preserve_narrowed_layout(
             except StopIteration as error:
                 gc_collect()
                 if isinstance(error.value, str):
-                    return error.value
+                    return cast(str, error.value)
                 if isinstance(error.value, bytes):
-                    return error.value.decode()
+                    return cast(bytes, error.value).decode()
                 if isinstance(error.value, bool):
-                    return str(not error.value)
+                    return str(not cast(bool, error.value))
                 if isinstance(error.value, int):
-                    return str(int(error.value) + 1)
+                    return str(int(cast(int, error.value)) + 1)
                 if isinstance(error.value, float):
-                    return str(error.value + 0.5)
+                    return str(cast(float, error.value) + 0.5)
                 if isinstance(error.value, Box):
-                    return error.value.text
+                    return cast(Box, error.value).text
                 if error.value is None:
                     return 'none'
             return 'wrong payload'
@@ -680,6 +681,9 @@ def main() -> str:
     return str(events)
 '''.replace("SCALAR", scalar).replace("ORDINARY", ordinary)
     source = source.replace("LOCAL", "value = error.value" if local else "pass")
+    if not local:
+        source = source.replace("str(READ + 1))", "str(cast(int, READ) + 1))")
+        source = source.replace("str(READ + 1.0))", "str(cast(float, READ) + 1.0))")
     source = source.replace("READ", "value" if local else "error.value")
     message = ("StopIteration.value cannot erase represented scalar arithmetic; "
                "convert the completion explicitly or use typed delegation")

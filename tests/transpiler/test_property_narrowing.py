@@ -109,17 +109,18 @@ def test_captured_local_can_narrow_in_all_guard_contexts(environment, guard, bod
 
 
 @pytest.mark.parametrize("environment", ENVIRONMENTS)
-@pytest.mark.parametrize("body", [
-    "if isinstance(box.value, str):\n    return box.value.upper()\nreturn ''",
-    "if isinstance(box.value, int):\n    return ''\nreturn box.value.upper()",
+@pytest.mark.parametrize("annotation, body", [
+    ("str | int", "if isinstance(box.value, str):\n    return box.value.upper()\nreturn ''"),
+    ("str | int", "if isinstance(box.value, int):\n    return ''\nreturn box.value.upper()"),
+    ("object", "if isinstance(box.value, str):\n    return box.value.upper()\nreturn ''"),
 ])
-def test_nonoptional_union_property_never_inherits_positive_or_negative_proof(environment, body):
-    source = source_for(body).replace("str | None", "str | int").replace("self.stored = None", "self.stored = 42")
+def test_broad_property_never_inherits_positive_or_negative_proof(environment, annotation, body):
+    source = source_for(body).replace("str | None", annotation).replace("self.stored = None", "self.stored = 42")
     namespace = {}
     exec(compile(source, "changing_getter.py", "exec"), namespace)
     with pytest.raises(AttributeError, match="'int' object has no attribute 'upper'"):
         namespace["main"]()
-    with pytest.raises(CompilationError, match="Attribute 'upper' is not defined on every member"):
+    with pytest.raises(CompilationError, match="Attribute 'upper' is not defined"):
         analyze_source(source, wrap=False, environment=environment)
 
 
